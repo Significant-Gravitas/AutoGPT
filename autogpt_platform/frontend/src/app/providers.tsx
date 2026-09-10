@@ -12,6 +12,7 @@ import {
   PostHogProvider,
   PostHogUserTracker,
 } from "@/providers/posthog/posthog-provider";
+import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker";
 import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, ThemeProviderProps } from "next-themes";
@@ -25,9 +26,12 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <NuqsAdapter>
         <PostHogProvider>
           <BackendAPIProvider>
-            <SentryUserTracker />
-            <PostHogUserTracker />
+            {/* All four read useSearchParams (directly or via useAuth), which
+                bails out of static rendering unless it sits under Suspense. */}
             <Suspense fallback={null}>
+              <SentryUserTracker />
+              <PostHogUserTracker />
+              <AdsConversionTracker />
               <PostHogPageViewTracker />
             </Suspense>
             <CredentialsProvider>

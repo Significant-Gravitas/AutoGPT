@@ -27,7 +27,10 @@ const BRAIN_DUMP_DURATION_MS = 10_000;
 const RECOMMENDATIONS_POLL_MS = 2_500;
 // A job the backend never finished (process restart mid-run) must not
 // strand the user on this screen — advance anyway after this ceiling.
-const RECOMMENDATIONS_MAX_WAIT_MS = 60_000;
+// The recommender runs on the fast model, so a job still unanswered this
+// late is one that is not coming; the connect dialog falls back to popular
+// providers rather than making the user watch a bar for another minute.
+const RECOMMENDATIONS_MAX_WAIT_MS = 15_000;
 // While waiting on the job the bar parks just short of full so it still
 // reads as "almost there", not "stuck at done".
 const WAITING_PROGRESS_CAP = 95;
@@ -48,7 +51,9 @@ export function usePreparingStep({
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
   const isDumpPath = isBrainDumpEnabled && peekIntroPath() === "A";
-  const checklist = isDumpPath ? BRAIN_DUMP_CHECKLIST : GENERIC_CHECKLIST;
+  const checklist: readonly string[] = isDumpPath
+    ? BRAIN_DUMP_CHECKLIST
+    : GENERIC_CHECKLIST;
   const duration = isDumpPath ? BRAIN_DUMP_DURATION_MS : GENERIC_DURATION_MS;
   const stepInterval = duration / checklist.length;
 

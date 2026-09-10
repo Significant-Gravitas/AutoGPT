@@ -24,7 +24,7 @@ import uuid as uuidlib
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
-from backend.copilot.graphiti.client import derive_group_id
+from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.ingest import (
@@ -42,6 +42,7 @@ from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
+from backend.copilot.transports import resolve_default_chat_route
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
@@ -165,6 +166,8 @@ async def _write_consolidated_fact(
     fact: ConsolidatedFact,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    expert_id: str | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=fact.content,
@@ -187,6 +190,7 @@ async def _write_consolidated_fact(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        expert_id=expert_id,
     )
 
 
@@ -197,6 +201,8 @@ async def _write_proposed_finding(
     finding: ProposedFinding,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    expert_id: str | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=finding.content,
@@ -221,6 +227,7 @@ async def _write_proposed_finding(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        expert_id=expert_id,
     )
 
 
@@ -398,7 +405,9 @@ async def _apply_entity_invalidations(
     return total, summaries
 
 
-async def _create_dream_session(user_id: str, pass_id: str) -> str:
+async def _create_dream_session(
+    user_id: str, pass_id: str, expert_id: str | None = None
+) -> str:
     """Create the dream-kind ChatSession shell and return its id.
 
     Written up front (before the memory ops) because the fact/proposal
@@ -431,12 +440,23 @@ async def _create_dream_session(user_id: str, pass_id: str) -> str:
         org_id, team_id = None, None
 
     session_id = str(uuidlib.uuid4())
+    # A dream is unattended, but the user reads and replies to it, and on a
+    # self-hosted install the platform route may not exist at all — so it
+    # starts on the same connection the user chose for everything else.
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    metadata = ChatSessionMetadata(
+        kind="dream",
+        dream_pass_id=pass_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+    )
     await chat_db().create_chat_session(
         session_id=session_id,
         user_id=user_id,
         organization_id=org_id,
         team_id=team_id,
-        metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
+        metadata=metadata,
+        expert_id=expert_id,
     )
     # ``create_chat_session`` takes no title; set it via the dedicated
     # accessor so the session doesn't render as "(untitled)" in the chat
@@ -537,6 +557,7 @@ async def apply_operations(
     pass_id: str,
     ops: DreamOperations,
     *,
+    expert_id: str | None = None,
     known_fact_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
@@ -615,13 +636,15 @@ async def apply_operations(
             "snapshot": DreamOperationsSnapshot(),
         }
 
-    group_id = derive_group_id(user_id)
+    group_id = derive_memory_group_id(user_id, expert_id)
 
     # Phase A — create the session shell up front so the MemoryEnvelope
     # provenance can reference its id. The user-facing narrative summary
     # is written AFTER the ops (see below), so a partway failure leaves an
     # empty dream rather than a 'completed' narrative with no memory.
-    session_id = await _create_dream_session(user_id=user_id, pass_id=pass_id)
+    session_id = await _create_dream_session(
+        user_id=user_id, pass_id=pass_id, expert_id=expert_id
+    )
 
     # Tracks completion of only the episodes THIS pass enqueues, so the
     # drain below waits on the dream's own writes and not on unrelated
@@ -633,7 +656,13 @@ async def apply_operations(
     write_summaries: list[WriteSummary] = []
     for i, fact in enumerate(ops.writes):
         if await _write_consolidated_fact(
-            user_id, pass_id, i, fact, session_id=session_id, completion=completion
+            user_id,
+            pass_id,
+            i,
+            fact,
+            session_id=session_id,
+            completion=completion,
+            expert_id=expert_id,
         ):
             completion.register()
             written += 1
@@ -651,7 +680,13 @@ async def apply_operations(
     proposal_summaries: list[WriteSummary] = []
     for i, prop in enumerate(ops.proposals):
         if await _write_proposed_finding(
-            user_id, pass_id, i, prop, session_id=session_id, completion=completion
+            user_id,
+            pass_id,
+            i,
+            prop,
+            session_id=session_id,
+            completion=completion,
+            expert_id=expert_id,
         ):
             completion.register()
             proposed += 1

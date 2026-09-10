@@ -21,7 +21,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
 const flagsReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
+  Flag: {
+    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
+    HIRE_EXPERTS: "hire-experts",
+  },
   useGetFlag: (flag: string) => flags.current[flag] ?? false,
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
@@ -52,6 +56,7 @@ const PENDING_INTRO: IntroCardResponse = {
   path: "A",
   greeting: "",
   greeting_done: false,
+  greeting_pending: true,
   prompts: [],
 };
 
@@ -108,7 +113,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     // The regression: with the flag off the intro query is disabled, so it
     // never answers — and "no answer yet" was read as "still generating".
     // isAwaitingGreeting stayed true forever and EmptySession hides the
-    // composer, PulseChips and SuggestionThemes behind it, so the default
+    // composer and SuggestionThemes behind it, so the default
     // flag-off copilot rendered a hero with no way to type.
     flags.current = {};
 
@@ -342,6 +347,28 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
 
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
+    // The orb sits centered for exactly this window; only the greeting
+    // itself anchors the page to the top.
+    expect(result.current.anchorTop).toBe(false);
+  });
+
+  it("releases the loader when the server sends no greeting and no pending flag", async () => {
+    // A terminally-empty Path A (generation gave up server-side): there is
+    // nothing coming, so holding the orb up would strand the composer.
+    server.use(
+      getGetBrainDumpIntroMockHandler200({
+        path: "A",
+        greeting: "",
+        greeting_done: false,
+        greeting_pending: false,
+        prompts: [],
+      }),
+    );
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
+
+    expect(result.current.isVisible).toBe(false);
   });
 
   it("polls past the pending answer and reveals the greeting when it lands", async () => {
@@ -380,6 +407,32 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     expect(urls).toHaveLength(1);
   });
 
+  it("never paints the card for a done verdict that still carries a greeting", async () => {
+    // The verdict is cached in an effect, which runs after the render that
+    // first saw it — reading only the cached copy flashed the card for the
+    // paint in between.
+    countIntroRequests({
+      path: "A",
+      greeting: "Welcome back.",
+      greeting_done: true,
+    });
+    const painted: boolean[] = [];
+
+    renderHook(
+      () => {
+        const value = useOnboardingIntroCard();
+        painted.push(value.isVisible);
+        return value;
+      },
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() =>
+      expect(window.localStorage.getItem(GREETING_DONE_KEY)).toBe("user-1"),
+    );
+
+    expect(painted).not.toContain(true);
+  });
+
   it("writes no cache entry while the user record is still loading", async () => {
     authUser.current = null;
     countIntroRequests({
@@ -408,4 +461,31 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
   });
+});
+
+describe("useOnboardingIntroCard — team selection belongs to the wizard", () => {
+  it.each([false, true])(
+    "does not poll for a team after the greeting settles (done=%s)",
+    async (greetingDone) => {
+      flags.current = {
+        "onboarding-brain-dump": true,
+        "onboarding-expert-team": true,
+        "hire-experts": true,
+      };
+      const requests = countIntroRequests({
+        ...READY_INTRO,
+        greeting_done: greetingDone,
+        team_pending: true,
+      });
+      const { result } = renderIntro();
+      await waitFor(() => expect(requests).toHaveLength(1));
+      await waitFor(() =>
+        expect(result.current.isAwaitingGreeting).toBe(false),
+      );
+      expect(result.current.isVisible).toBe(!greetingDone);
+      await new Promise((resolve) => setTimeout(resolve, 3200));
+      expect(requests).toHaveLength(1);
+    },
+    10_000,
+  );
 });

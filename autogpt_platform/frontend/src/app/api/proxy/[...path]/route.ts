@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   fetchWorkspaceDownloadWithRetry,
+  getResponseStartTimeoutMs,
   getWorkspaceDownloadErrorMessage,
   isWorkspaceDownloadRequest,
   watchResponseStart,
@@ -218,7 +219,10 @@ async function handler(
     // much tighter response-start watch arms only once the request body has
     // been fully uploaded — a multi-minute upload is legitimate, a backend
     // that stays silent after receiving everything is stalled.
-    const responseStart = watchResponseStart(hasBody ? req.body : null);
+    const responseStart = watchResponseStart(
+      hasBody ? req.body : null,
+      getResponseStartTimeoutMs(path, method),
+    );
 
     let backendResponse: Response;
     try {

@@ -58,6 +58,11 @@ class OnboardingStep(StrEnum):
     # Copilot home first-run: the capability-cards modal was completed or
     # skipped. Unrewarded; recorded so it shows only once per user.
     CAPABILITY_CARDS = "CAPABILITY_CARDS"
+    # First-visit intro card for a tab, dismissed via its CTA or otherwise.
+    # Unrewarded; recorded so each tab introduces itself only once per user.
+    AGENTS_TAB_INTRO = "AGENTS_TAB_INTRO"
+    MARKETPLACE_TAB_INTRO = "MARKETPLACE_TAB_INTRO"
+    BUILD_TAB_INTRO = "BUILD_TAB_INTRO"
 
 
 FrontendOnboardingStep = Literal[
@@ -71,4 +76,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
     OnboardingStep.CAPABILITY_CARDS,
+    OnboardingStep.AGENTS_TAB_INTRO,
+    OnboardingStep.MARKETPLACE_TAB_INTRO,
+    OnboardingStep.BUILD_TAB_INTRO,
 ]

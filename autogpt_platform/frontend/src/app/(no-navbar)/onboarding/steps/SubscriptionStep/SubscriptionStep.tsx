@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { PLAN_KEYS } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionStep } from "./useSubscriptionStep";
+import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 
 export function SubscriptionStep() {
   const {
@@ -44,12 +45,21 @@ export function SubscriptionStep() {
           </Text>
         </div>
 
+        <div className="w-full max-w-2xl">
+          <TrialCard returnTo="onboarding" />
+        </div>
         <div className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]">
           {(["monthly", "yearly"] as const).map((cycle) => (
             <button
               key={cycle}
               type="button"
               onClick={() => setBilling(cycle)}
+              // Read by DataFast's script directly (delegated click listener on
+              // document), the same way the marketing site tags its CTAs — no
+              // JS needed. The `-cycle` suffix becomes the `cycle` metadata key.
+              data-fast-goal="paywall_billing_toggle"
+              data-fast-goal-cycle={cycle}
+              data-fast-goal-surface="onboarding_paywall"
               className={cn(
                 "rounded-full border-none px-4 py-1.5 text-xs font-medium transition-all",
                 billing === cycle
@@ -83,6 +93,7 @@ export function SubscriptionStep() {
                 loading={isUpdatingTier && selectedPlan === plan.key}
                 disabled={isUpdatingTier && selectedPlan !== plan.key}
                 priceCaption="billing-period"
+                ctaGoalSurface="onboarding_paywall"
                 className={cn(
                   plan.key === PLAN_KEYS.MAX && "order-1 md:order-none",
                   plan.key === PLAN_KEYS.PRO && "order-2 md:order-none",

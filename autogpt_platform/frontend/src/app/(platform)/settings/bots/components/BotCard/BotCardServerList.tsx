@@ -15,6 +15,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platformName: string;
+  serverNoun: string;
   serverLinks: PlatformLinkInfo[];
   isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
@@ -22,6 +23,7 @@ type Props = {
 
 export function BotCardServerList({
   platformName,
+  serverNoun,
   serverLinks,
   isPending,
   onUnlink,
@@ -30,8 +32,8 @@ export function BotCardServerList({
     return (
       <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
         <Text variant="small" as="span" className="text-zinc-500">
-          No servers linked yet. Use &quot;Add bot to {platformName}&quot; to
-          invite the bot — already added it? Run <code>/setup</code> there to
+          No {serverNoun}s linked yet. Use &quot;Add bot to {platformName}&quot;{" "}
+          to invite the bot — already added it? Run <code>/setup</code> there to
           finish connecting.
         </Text>
       </div>
@@ -45,6 +47,7 @@ export function BotCardServerList({
           key={link.id}
           link={link}
           platformName={platformName}
+          serverNoun={serverNoun}
           isPending={isPending(link.id)}
           onUnlink={() => onUnlink(link.id)}
         />
@@ -56,6 +59,7 @@ export function BotCardServerList({
 type RowProps = {
   link: PlatformLinkInfo;
   platformName: string;
+  serverNoun: string;
   isPending: boolean;
   onUnlink: () => void;
 };
@@ -63,6 +67,7 @@ type RowProps = {
 function BotCardServerRow({
   link,
   platformName,
+  serverNoun,
   isPending,
   onUnlink,
 }: RowProps) {
@@ -89,13 +94,12 @@ function BotCardServerRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                  <Icon icon={AlertCircleIcon} size={14} /> Bot not in server
+                  <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {platformName} can&apos;t see this server, so we can&apos;t
-                resolve its name. Re-invite the bot, or unlink to remove this
-                row.
+                {platformName} didn&apos;t give us a name for this {serverNoun}.
+                It stays linked and usable; unlink to remove this row.
               </TooltipContent>
             </Tooltip>
           ) : (

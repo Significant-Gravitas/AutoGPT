@@ -50,6 +50,18 @@ describe("getAccountMenuItems", () => {
     expect(texts).not.toContain("Admin");
   });
 
+  test("new layout points What's new at the changelog docs", () => {
+    const items = getAccountMenuItems(undefined, true).flatMap(
+      (group) => group.items,
+    );
+    const whatsNew = items.find((item) => item.text === "What's new");
+
+    expect(whatsNew?.href).toBe(
+      "https://agpt.co/docs/platform/changelog/changelog/",
+    );
+    expect(whatsNew?.external).toBe(true);
+  });
+
   test("new layout adds an Admin entry for admin users", () => {
     const texts = flattenTexts(getAccountMenuItems("admin", true));
 

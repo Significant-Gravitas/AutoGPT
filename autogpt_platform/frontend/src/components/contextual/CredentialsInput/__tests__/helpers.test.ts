@@ -72,6 +72,14 @@ describe("getSupportedTypes", () => {
       "host_scoped",
     ]);
   });
+
+  // A device-code provider shipped with no branch here, so its blocks offered
+  // no connect method at all and "Add account" fell through to OAuth.
+  it("returns device_code when supportsDeviceCode is true", () => {
+    expect(getSupportedTypes(false, false, false, false, true)).toEqual([
+      "device_code",
+    ]);
+  });
 });
 
 describe("getCredentialTypeLabel", () => {
@@ -118,6 +126,15 @@ describe("getActionButtonText", () => {
       expect(getActionButtonText(true, false, false, false, true)).toBe(
         "Connect another account",
       );
+    });
+
+    it("uses ChatGPT sign-in copy for the internal Codex provider", () => {
+      expect(
+        getActionButtonText(true, false, false, false, false, "codex"),
+      ).toBe("Sign in with ChatGPT");
+      expect(
+        getActionButtonText(true, false, false, false, true, "codex"),
+      ).toBe("Reconnect ChatGPT");
     });
   });
 
@@ -460,6 +477,19 @@ describe("resolveActionTarget", () => {
 
   it("returns oauth when only OAuth2 is supported", () => {
     expect(resolveActionTarget(false, true, false, false, false)).toBe("oauth");
+  });
+
+  it("returns device_code when only device auth is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, false, true)).toBe(
+      "device_code",
+    );
+  });
+
+  // Device auth is only reachable if it also counts toward the multi-type
+  // check — otherwise a provider offering device auth plus an API key would
+  // silently skip the selector and open the API-key modal.
+  it("counts device auth toward the multi-type selector", () => {
+    expect(countSupportedTypes(false, true, false, false, true)).toBe(2);
   });
 
   it("returns api_key when only API key is supported", () => {

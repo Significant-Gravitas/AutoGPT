@@ -11,6 +11,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
 from .base import BaseTool, ToolResponseBase
+from .helpers import get_block_provider
 from .models import (
     BlockInfoSummary,
     BlockListResponse,
@@ -186,6 +187,7 @@ class FindBlockTool(BaseTool):
                             block.optimized_description or block.description or ""
                         ),
                         categories=[c.value for c in block.categories],
+                        provider=get_block_provider(block),
                     )
                     return BlockListResponse(
                         message=(
@@ -260,6 +262,7 @@ class FindBlockTool(BaseTool):
                     name=block.name,
                     description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
+                    provider=get_block_provider(block),
                 )
 
                 blocks.append(summary)

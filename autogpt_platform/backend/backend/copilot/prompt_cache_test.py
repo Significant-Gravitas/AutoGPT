@@ -482,6 +482,13 @@ class TestSanitizeUserContextField:
 
         assert _sanitize_user_context_field("hello world") == "hello world"
 
+    def test_ampersands_unchanged(self):
+        from backend.copilot.service import _sanitize_user_context_field
+
+        assert _sanitize_user_context_field("research & development") == (
+            "research & development"
+        )
+
     def test_empty_string(self):
         from backend.copilot.service import _sanitize_user_context_field
 

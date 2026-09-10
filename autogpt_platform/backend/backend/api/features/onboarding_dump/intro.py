@@ -10,14 +10,17 @@ fallback when Langfuse is unconfigured or unreachable.
 """
 
 import asyncio
-import json
 import logging
 import os
-import re
 
 from langfuse import get_client
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
+from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.providers import (
+    known_providers,
+    provider_lines,
+)
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -28,6 +31,9 @@ settings = Settings()
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5")
 _TIMEOUT_SECONDS = 30
 
+# The Langfuse copy of these instructions wins whenever it is reachable,
+# so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
+# change made only here is invisible in prod.
 LANGFUSE_PROMPT_NAME = os.environ.get(
     "BRAIN_DUMP_GREETING_PROMPT_NAME", "Brain Dump Greeting"
 )
@@ -68,19 +74,26 @@ PROMPT_ICONS = frozenset(
 DEFAULT_PROMPT_ICON = "sparkle"
 
 # The local fallback for the Langfuse-managed instructions. The greeting
-# reflects the dump back so the user can see they were heard; the suggested
+# diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are AutoPilot, an AI teammate that can run real \
-recurring automations: watch sources, draft content, send digests, build \
-agents that work while the user sleeps. A new user just recorded a short \
-spoken brain dump about their work. Write the greeting they will see when \
-they first open the app.
+_LOCAL_PROMPT = """You are AutoPilot, this user's built-in Head of AI. \
+You are theirs alone, never shared, and you run a team for them: you can \
+build real recurring automations (watch sources, draft content, send \
+digests, run agents while they sleep) and you can bring in experts to own \
+whole areas of their work. A new user just recorded a short spoken brain \
+dump about their work. Write the greeting they will see when they first \
+open the app.
 
 Return ONLY valid JSON with exactly these keys:
 - "greeting": 2-3 sentences, max 450 characters, second person, warm and \
-concrete. Show them you listened by naming the specific things they \
-actually said. This is their FIRST time in the app — never say "welcome \
+concrete. Diagnose, the way a consultant would on day one: name the \
+specific problems you heard in their own terms ("you have a marketing \
+problem and a support problem"), then say you are putting a team \
+together to take them on. NEVER name a specific expert, and never say \
+anyone has been hired or assigned — the team is proposed separately, \
+below your text, and naming someone here would promise a colleague who \
+may not exist. This is their FIRST time in the app — never say "welcome \
 back" or imply any prior visit or conversation. The app already renders \
 "Hey, <name>" directly above this text, so NEVER use the user's name or \
 any other salutation ("good to have you here", "welcome") — open \
@@ -130,6 +143,15 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     Never raises: a failed or malformed generation degrades to the
     template below rather than costing the user their greeting.
+
+    The greeting is unvalidated model output. ``transcript`` is the user's
+    own words, and the "only name real integrations" constraint in the
+    prompt is advisory, so an injected or hallucinated tool name can reach
+    the prose. That surface is deliberately left open: the text is shown
+    only to the person who recorded it, and the ids that become
+    connectable or recommended tiles are validated against
+    :func:`providers.known_providers` in ``recommend.py`` rather than
+    trusted from prose.
     """
     text = transcript.strip()
     if not text:
@@ -141,6 +163,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
+    content = f"{_integrations_block()}{instructions}{text}"
     data = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
     # truncated or malformed, and one retry is far cheaper than shipping
@@ -150,13 +173,13 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": f"{instructions}{text}"}],
+                    messages=[{"role": "user", "content": content}],
                     temperature=0.6,
                     max_tokens=3000,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
-            data = _parse_response_json(response.choices[0].message.content or "")
+            data = parse_response_json(response.choices[0].message.content or "")
         except Exception as e:  # degrades to the template below
             logger.warning(
                 "Brain dump greeting generation failed (attempt %s): %s",
@@ -182,6 +205,25 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
 
 
+def _integrations_block() -> str:
+    """The live provider registry, prepended to the instructions.
+
+    Without it the model invents the tools it promises to wire up, and the
+    user's first suggested automation is one we cannot run. Goes in front
+    of the instructions (which end with ``Transcript:``) so the whole
+    static half of the message stays a stable prefix.
+    """
+    lines = provider_lines(known_providers())
+    if not lines:
+        return ""
+    return (
+        "These are the integrations this platform can connect to. Only "
+        "promise automations that these can actually carry out, and never "
+        "name a tool that is not on this list:\n"
+        f"{lines}\n\n"
+    )
+
+
 async def _fetch_langfuse_prompt() -> str | None:
     """Fetch the greeting instructions from Langfuse.
 
@@ -203,31 +245,6 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:  # local prompt is the fallback
         logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
         return None
-
-
-def _parse_response_json(content: str) -> dict | None:
-    """Parse the model's JSON, tolerating markdown fences and preamble.
-
-    Anthropic models have no OpenAI-style JSON mode, so the contract is
-    prompt-level ("return ONLY valid JSON") and the parser forgives the
-    two ways that commonly bends: a ```json fence around the object, or
-    stray prose before/after it.
-    """
-    text = content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        try:
-            data = json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            return None
-    return data if isinstance(data, dict) else None
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
@@ -256,18 +273,19 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     """A greeting that is true even when the model gave us nothing.
 
-    Deliberately makes no claim about *what* was said — inventing detail
-    here would be worse than being generic.
+    Deliberately makes no claim about *what* was said, and names nobody —
+    inventing either would be worse than being generic.
     """
     if not transcript.strip():
         return (
-            "I'm ready when you are. Tell me what your week looks like and "
-            "I'll find the parts worth handing over. Here are a few places "
-            "we could start.",
+            "I'm your Head of AI here. Tell me what your week looks like "
+            "and I'll work out who and what you need. Here are a few "
+            "places we could start.",
             fallback_prompts(),
         )
     return (
-        "Thanks for talking me through your work — I've got it. "
+        "Thanks for talking me through your work — I've got it. I'm your "
+        "Head of AI here, and I'll start putting a team around this. "
         "Here are a few places I can start.",
         fallback_prompts(),
     )

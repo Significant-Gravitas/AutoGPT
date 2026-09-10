@@ -194,7 +194,8 @@ export type CredentialsType =
   | "api_key"
   | "oauth2"
   | "user_password"
-  | "host_scoped";
+  | "host_scoped"
+  | "device_code";
 
 export type Credentials =
   | APIKeyCredentials
@@ -220,6 +221,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: Record<string, CredentialsProviderName>;
+  discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
   secret?: boolean;
 };
@@ -620,6 +622,7 @@ export type CredentialsMetaResponse = {
   scopes?: Array<string>;
   username?: string;
   host?: string;
+  mcp_auth_scheme?: "basic" | "bearer" | null;
   is_system?: boolean;
   is_managed?: boolean;
 };
@@ -690,28 +693,32 @@ export type HostScopedCredentials = BaseCredentials & {
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
-  | "AGENT_RUN"
-  | "ZERO_BALANCE"
-  | "LOW_BALANCE"
-  | "BLOCK_EXECUTION_FAILED"
-  | "CONTINUOUS_AGENT_ERROR"
-  | "DAILY_SUMMARY"
-  | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY"
-  | "AGENT_APPROVED"
-  | "AGENT_REJECTED";
+  | "BRIEFING"
+  | "ALERT"
+  | "VERDICT"
+  | "OPS"
+  | "SUBSCRIPTION_WELCOME"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_FINAL_NOTICE"
+  | "SUBSCRIPTION_CANCELLED"
+  | "SUBSCRIPTION_RESUMED"
+  | "SUBSCRIPTION_ENDED";
 
-// Mirror of backend/backend/data/notifications.py:NotificationPreference
+export type BriefingFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "OFF";
+
+// Mirror of backend/backend/data/notifications.py:NotificationPreferenceDTO.
+// A volume knob rather than a checkbox list: billing and account messages are
+// service mail and are not represented here.
 export type NotificationPreferenceDTO = {
   email: string;
-  preferences: { [key in NotificationType]: boolean };
+  briefing_frequency: BriefingFrequency;
+  alerts_enabled: boolean;
+  store_verdicts_enabled: boolean;
   daily_limit: number;
 };
 
 export type NotificationPreference = NotificationPreferenceDTO & {
   user_id: UserID;
-  emails_sent_today: number;
-  last_reset_date: Date;
 };
 
 /* Mirror of backend/data/integrations.py:Webhook */
@@ -898,7 +905,11 @@ export type OnboardingStep =
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT"
   // Copilot home first-run: capability-cards modal completed or skipped
-  | "CAPABILITY_CARDS";
+  | "CAPABILITY_CARDS"
+  // First-visit intro card for a tab, dismissed however the user chose
+  | "AGENTS_TAB_INTRO"
+  | "MARKETPLACE_TAB_INTRO"
+  | "BUILD_TAB_INTRO";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.

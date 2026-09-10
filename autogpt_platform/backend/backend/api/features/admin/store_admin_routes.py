@@ -12,6 +12,9 @@ import backend.api.features.library.model as library_model
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
+import backend.api.features.store.skill_model as skill_model
+import backend.api.features.store.skill_routes as skill_routes
+import backend.api.features.store.skill_submission_db as skill_submission_db
 import backend.util.json
 
 logger = logging.getLogger(__name__)
@@ -164,10 +167,50 @@ async def admin_add_agent_to_library(
     Add a pending marketplace agent to the admin's library for review.
     Uses admin-level access to bypass marketplace APPROVED-only checks.
 
-    The builder can load the graph because get_graph() checks library
-    membership as a fallback: "you added it, you keep it."
+    The builder can then load the graph: get_graph() grants a library
+    version that was submitted, and PENDING counts as submitted.
     """
     return await library_db.add_store_agent_to_library_as_admin(
         store_listing_version_id=store_listing_version_id,
         user_id=user_id,
     )
+
+
+@router.get(
+    "/skills/submissions",
+    summary="Admin List Pending Skill Submissions",
+    tags=["store", "admin"],
+    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
+)
+async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
+    """Skill submissions awaiting review, oldest first."""
+    return await skill_submission_db.list_pending_skill_submissions()
+
+
+@router.post(
+    "/skills/submissions/{skill_listing_version_id}/review",
+    summary="Review Skill Submission",
+    tags=["store", "admin"],
+    responses={404: {"description": "Submission not found"}},
+    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
+)
+async def review_skill_submission(
+    skill_listing_version_id: str,
+    request: skill_model.SkillReviewRequest,
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+) -> skill_model.SkillSubmission:
+    """Approve or reject a skill submission.
+
+    Approval promotes the version to the one the marketplace serves, so the
+    browse cache is dropped; a rejection changes nothing shoppers can see.
+    """
+    submission = await skill_submission_db.review_skill_submission(
+        skill_listing_version_id,
+        is_approved=request.is_approved,
+        reviewer_id=user_id,
+        comments=request.comments,
+        internal_comments=request.internal_comments or "",
+    )
+    if request.is_approved:
+        store_cache.clear_all_caches()
+    return submission

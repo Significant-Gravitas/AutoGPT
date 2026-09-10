@@ -15,8 +15,13 @@ import { useCopilotUIStore } from "../../store";
  */
 export function useCollapseContextPanelOnSession(sessionId: string | null) {
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
+  const clearLastArtifact = useCopilotUIStore((s) => s.clearLastArtifact);
   useMountEffect(() => {
     if (!sessionId) return;
     closeArtifactPanel();
+    // closeArtifactPanel remembers the preview for the in-session sidebar
+    // toggle; entering a session must forget it, or the new chat's toggle
+    // would restore the previous chat's artifact.
+    clearLastArtifact();
   });
 }

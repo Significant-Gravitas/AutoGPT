@@ -1,75 +1,122 @@
 "use client";
 
-import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Button } from "@/components/atoms/Button/Button";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { FlashIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { workflowNeedsSetup } from "../../helpers";
+import { Text } from "@/components/atoms/Text/Text";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
+import {
+  GridViewIcon,
+  ListViewIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { useState } from "react";
+import {
+  filterExpertWorkflows,
+  WORKFLOW_FILTERS,
+  WorkflowFilter,
+} from "../../helpers";
+import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
+import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
+import { FilterIconMenu } from "./FilterIconMenu";
+import { useExpertWorkflowsView } from "./useExpertWorkflowsView";
+import { ViewToggle } from "./ViewToggle";
+
+const VIEW_OPTIONS = [
+  { value: "list", label: "List view", icon: ListViewIcon },
+  { value: "grid", label: "Grid view", icon: GridViewIcon },
+] as const;
 
 interface Props {
-  expert: Expert;
-  accentIconClass: string;
-  onInstallWorkflow: () => void;
+  expertName: string;
+  workflows: ExpertWorkflowRef[];
+  accentClassName: string;
+  expertId?: string;
+  coverColor?: string;
+  emptyMessage?: string;
+  onInstallWorkflow?: () => void;
+  onAskWorkflow?: (prompt: string) => void;
 }
 
 export function ExpertWorkflowsSection({
-  expert,
-  accentIconClass,
+  expertName,
+  workflows,
+  accentClassName,
+  expertId,
+  coverColor,
+  emptyMessage,
   onInstallWorkflow,
+  onAskWorkflow,
 }: Props) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<WorkflowFilter>("all");
+  const { view, setView } = useExpertWorkflowsView();
+  const visible = filterExpertWorkflows(workflows, query, filter);
+
   return (
     <section>
-      <div className="mb-2.5 flex items-center justify-between">
-        <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-          Workflows
-        </div>
-        <Button
-          variant="ghost"
-          size="small"
-          leftIcon={<Icon icon={PlusSignIcon} size={16} />}
-          onClick={onInstallWorkflow}
-        >
-          Install workflow
-        </Button>
-      </div>
-      {expert.workflows.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          No workflows yet. Install one to give {expert.name} something to run.
-        </p>
-      ) : (
-        <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-200/80 bg-white">
-          {expert.workflows.map((workflow) => (
-            <div
-              key={workflow.id}
-              className="flex items-center gap-3 px-4 py-3"
-              data-testid="expert-workflow-row"
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
+        <Text variant="large-medium" tone="primary">
+          {expertName}&apos;s Workflows
+        </Text>
+        <div className="flex items-center gap-2">
+          {onInstallWorkflow ? (
+            <Button
+              variant="secondary"
+              size="small"
+              leadingIcon={PlusSignIcon}
+              onClick={onInstallWorkflow}
             >
-              <Icon
-                icon={FlashIcon}
-                size={18}
-                className={`shrink-0 ${accentIconClass}`}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-[15px] font-medium text-zinc-800">
-                  {workflow.name ?? "Unnamed workflow"}
-                </div>
-                {workflow.description ? (
-                  <div className="line-clamp-1 text-[13px] text-zinc-500">
-                    {workflow.description}
-                  </div>
-                ) : null}
-              </div>
-              {workflowNeedsSetup(workflow) ? (
-                <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
-                  Needs setup
-                </span>
-              ) : workflow.schedule_cron ? (
-                <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">
-                  {humanizeCronExpression(workflow.schedule_cron)}
-                </span>
-              ) : null}
-            </div>
+              Install workflow
+            </Button>
+          ) : null}
+          <SearchInput
+            size="small"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search workflows"
+            className="w-48"
+          />
+          <FilterIconMenu
+            label="Filter workflows"
+            value={filter}
+            defaultValue="all"
+            options={WORKFLOW_FILTERS}
+            onChange={setFilter}
+          />
+          <ViewToggle value={view} options={VIEW_OPTIONS} onChange={setView} />
+        </div>
+      </div>
+      {workflows.length === 0 ? (
+        <Text variant="body" tone="muted">
+          {emptyMessage ??
+            `No workflows yet. Install one to give ${expertName} something to run.`}
+        </Text>
+      ) : visible.length === 0 ? (
+        <Text variant="body" tone="muted">
+          No workflows match.
+        </Text>
+      ) : view === "list" ? (
+        <div className="flex flex-col gap-3 pt-4" data-testid="workflow-list">
+          {visible.map((workflow) => (
+            <ExpertWorkflowListItem
+              key={workflow.id}
+              workflow={workflow}
+              expertId={expertId}
+              accentClassName={accentClassName}
+              onAsk={onAskWorkflow}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((workflow) => (
+            <ExpertWorkflowCard
+              key={workflow.id}
+              workflow={workflow}
+              expertId={expertId}
+              coverColor={coverColor}
+              onAsk={onAskWorkflow}
+            />
           ))}
         </div>
       )}

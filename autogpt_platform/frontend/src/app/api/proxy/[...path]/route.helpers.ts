@@ -150,8 +150,32 @@ export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
 // legitimately slow transfers (big uploads) spend their time in the upload
 // phase, which this timeout deliberately excludes.
 export const RESPONSE_START_TIMEOUT_MS = 30_000;
+export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
 
-export function watchResponseStart(requestBody: ReadableStream | null) {
+export function getResponseStartTimeoutMs(
+  path: string[],
+  method: string,
+): number {
+  const isCodexCredentialControl =
+    path.length >= 5 &&
+    path.slice(0, 4).join("/") === "api/integrations/codex/credentials" &&
+    ((method === "DELETE" && path.length === 5) ||
+      (method === "GET" &&
+        path.length === 6 &&
+        (path[5] === "account" || path[5] === "rate-limits")));
+  if (
+    (method === "GET" && path.join("/") === "api/integrations/codex/login") ||
+    isCodexCredentialControl
+  ) {
+    return CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS;
+  }
+  return RESPONSE_START_TIMEOUT_MS;
+}
+
+export function watchResponseStart(
+  requestBody: ReadableStream | null,
+  timeoutMs: number = RESPONSE_START_TIMEOUT_MS,
+) {
   const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -161,11 +185,11 @@ export function watchResponseStart(requestBody: ReadableStream | null) {
         abort.abort(
           new DOMException(
             "Backend sent no response within " +
-              `${RESPONSE_START_TIMEOUT_MS}ms of receiving the request`,
+              `${timeoutMs}ms of receiving the request`,
             "TimeoutError",
           ),
         ),
-      RESPONSE_START_TIMEOUT_MS,
+      timeoutMs,
     );
   }
 

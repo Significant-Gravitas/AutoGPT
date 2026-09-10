@@ -3,7 +3,6 @@
 
 // A depth meter, not a limit: the ring fills toward 3:00 and then holds.
 // Nothing stops at 3:00 — the longer someone talks, the better the dump.
-export const RING_TARGET_SECONDS = 180;
 
 // Recording keeps going far past the ring: 30 min is the hard stop, and
 // even then everything captured is kept.
@@ -76,10 +75,6 @@ export function formatElapsed(totalSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function ringProgress(elapsedSeconds: number) {
-  return Math.min(1, elapsedSeconds / RING_TARGET_SECONDS);
-}
-
 // Chrome/Edge give us webm/opus; Safari only offers mp4. Mirrors the
 // existing copilot recorder so both paths hit the same server allowlist.
 export function pickMimeType() {
@@ -97,9 +92,20 @@ export function isPermissionDenied(error: unknown) {
   return error instanceof DOMException && error.name === "NotAllowedError";
 }
 
-export function headline(name: string) {
-  const trimmed = name.trim();
-  return trimmed
-    ? `What keeps stealing your week, ${trimmed}?`
-    : "What keeps stealing your week?";
+export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
+
+// The backend's quality gate rejects dumps with these codes when the
+// transcription succeeded but carried nothing to personalize from —
+// silence, filler, or an STT hallucination. Distinct from a transcription
+// failure: the take went through fine, it just didn't say enough.
+const INSUFFICIENT_DUMP_ERROR_CODES = [
+  "no_usable_speech",
+  "insufficient_content",
+] as const;
+
+export function isInsufficientDump(errorCode: unknown) {
+  return (
+    typeof errorCode === "string" &&
+    INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)
+  );
 }

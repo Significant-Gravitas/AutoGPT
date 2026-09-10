@@ -71,6 +71,59 @@ def _stub_scheduler() -> Scheduler:
     return s
 
 
+class TestAddCopilotTurnScheduleExpertAttribution:
+    """A follow-up scheduled from an expert chat must persist that expert id in
+    the job args, so the fresh session minted at fire time is scoped to her and
+    its runs count as the expert's work. Plain chats persist no expert.
+
+    In-process (no SpinTestServer): the RPC return-value round-trip is unrelated
+    to attribution — what matters is the persisted CopilotTurnJobArgs that fire
+    time reads back, which is exactly what ``_persist_schedule`` receives here.
+    """
+
+    @staticmethod
+    def _fake_job() -> MagicMock:
+        job = MagicMock(id="cop-1", next_run_time=None)
+        job.name = "copilot turn"
+        job.trigger = MagicMock(timezone="UTC")
+        return job
+
+    def _persisted_args(self, *, expert_id=None):
+        s = _stub_scheduler()
+        experts_store = MagicMock()
+        experts_store.resolve_private_expert_tenancy = MagicMock(
+            return_value=("personal-org", "personal-team")
+        )
+        with (
+            patch.object(
+                s, "_persist_schedule", return_value=self._fake_job()
+            ) as persist,
+            # Creation-time expert validation resolves tenancy via
+            # run_async; the stub scheduler has no event loop, so hand
+            # run_async the mock's (non-coroutine) return value directly.
+            patch(
+                "backend.executor.scheduler.experts_db",
+                return_value=experts_store,
+            ),
+            patch("backend.executor.scheduler.run_async", new=lambda v: v),
+        ):
+            s.add_copilot_turn_schedule(
+                user_id="user-1",
+                session_id=None,
+                message="check CI",
+                run_at=datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc),
+                user_timezone="UTC",
+                expert_id=expert_id,
+            )
+        return persist.call_args.kwargs["job_args"]
+
+    def test_expert_session_persists_expert_id(self) -> None:
+        assert self._persisted_args(expert_id="expert-1").expert_id == "expert-1"
+
+    def test_plain_session_persists_no_expert(self) -> None:
+        assert self._persisted_args().expert_id is None
+
+
 class TestAddCommunityRebuildSchedule:
     def test_registers_with_expected_cron_and_jobstore(self) -> None:
         s = _stub_scheduler()
@@ -794,3 +847,69 @@ class TestLaunchDarklyLifecycle:
         ):
             sched._shutdown_launchdarkly_for_scheduler()
         shutdown.assert_not_called()
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+def test_get_jobs_cached_sets_the_scheduler_jobs_gauge():
+    """autogpt_scheduler_jobs has an alert on it and was never set."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.scheduler import Scheduler
+
+    s = Scheduler.__new__(Scheduler)
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+    s._jobs_cache_version = 0
+    s.scheduler = MagicMock()
+    s.scheduler.get_jobs.return_value = [object(), object(), object()]
+
+    assert len(s._get_jobs_cached()) == 3
+    assert (
+        _counter("autogpt_scheduler_jobs", job_type="execution", status="scheduled")
+        == 3
+    )
+
+
+def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
+    """An invalidation that lands while get_jobs() is in flight rejects the
+    cache write; the gauge must be rejected with it, or a slow stale read can
+    overwrite a newer count that another reader already published."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.scheduler import Scheduler
+
+    s = Scheduler.__new__(Scheduler)
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+    s._jobs_cache_version = 0
+    s.scheduler = MagicMock()
+
+    # A fresh, accepted read publishes 5.
+    s.scheduler.get_jobs.return_value = [object()] * 5
+    s._get_jobs_cached()
+
+    def gauge() -> float:
+        return _counter(
+            "autogpt_scheduler_jobs", job_type="execution", status="scheduled"
+        )
+
+    assert gauge() == 5
+
+    # Now a read whose query is interrupted by an invalidation: it returns a
+    # different count, but the version moved, so the cache write is skipped.
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+
+    def _slow_query_then_invalidated(**_):
+        s._invalidate_jobs_cache()
+        return [object()] * 2
+
+    s.scheduler.get_jobs.side_effect = _slow_query_then_invalidated
+    assert len(s._get_jobs_cached()) == 2  # caller still gets the list
+    assert s._jobs_cache is None  # write-back was rejected
+    assert gauge() == 5  # and so was the gauge update

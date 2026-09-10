@@ -198,7 +198,12 @@ class TestRunValidation:
             pass
 
         block.create_session.assert_called_once_with(
-            ctx.user_id, dry_run=True, organization_id=None, team_id=None
+            ctx.user_id,
+            dry_run=True,
+            organization_id=None,
+            team_id=None,
+            llm_auth_provider="platform",
+            llm_credential_id=None,
         )
 
     @pytest.mark.asyncio

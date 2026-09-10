@@ -56,6 +56,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
+CopilotLlmAuthProvider = Literal["platform", "codex"]
 
 
 class TransportProfile(BaseModel):
@@ -229,7 +230,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-4-8",
+        default="anthropic/claude-opus-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -358,7 +359,7 @@ class ChatConfig(BaseSettings):
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     daily_cost_limit_microdollars: int = Field(
-        default=1_000_000,
+        default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
         "0 means no spend allowed (will block); there is no unlimited tier.",
     )
@@ -429,10 +430,55 @@ class ChatConfig(BaseSettings):
         default=10.0,
         ge=0.01,
         le=1000.0,
-        description="Maximum spend in USD per SDK query. The CLI attempts "
-        "to wrap up gracefully when this budget is reached. "
-        "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
+        description="Maximum spend in USD per SDK query — a backstop, not a "
+        "target: it sits ~10x above the observed per-TURN p90. Measured over "
+        "60 days ending 2026-09-02, one PlatformCostLog row = one turn: "
+        "sonnet-5 p50 $0.28 / p75 $0.46 / p90 $0.93 (n=707); "
+        "opus-4-8 p50 $0.49 / p90 $1.34 (n=18). Note request < turn < session: "
+        "over half of all rows are near-zero utility calls (flash-lite, haiku, "
+        "sonar), so unfiltered aggregates understate a real turn. "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
+    )
+    tree_ceiling_fraction_of_daily: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Share of the user's tier-scaled DAILY limit that one tree "
+        "(a root turn plus everything it spawns) may consume. Scaling off the "
+        "tier rather than a flat number keeps the ceiling proportionate: a "
+        "NO_TIER user (multiplier 0.0) gets 0, i.e. no spawns at all.",
+    )
+    tree_ceiling_floor_microdollars: int = Field(
+        default=500_000,
+        ge=0,
+        description="Lower bound on a tree ceiling, in microdollars ($0.50), so "
+        "a small daily limit still affords a tree at least one real turn — "
+        "per-SESSION spend is p50 $0.49 / p75 $1.14 / p90 $3.25 (n=319, "
+        "60 days ending 2026-09-02).",
+    )
+    tree_ceiling_microdollars: int = Field(
+        default=10_000_000,
+        ge=0,
+        description="Absolute cap on a tree ceiling, in microdollars ($10.00), "
+        "applied after the tier-scaled fraction and the floor. The effective "
+        "ceiling is min(remaining budget, max(fraction x tier daily, floor), "
+        "this cap). Checked at turn start, so overshoot is at most one turn.",
+    )
+    tree_max_nodes: int = Field(
+        default=8,
+        ge=1,
+        description="Max turns (root included) one root turn may spawn, "
+        "counted per tree rather than per node so it is enforceable atomically.",
+    )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="Context window the SDK subprocess is held to, in tokens "
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). "
+        "Moonshot routes use the lower of this and the SKU's catalog window; "
+        "Anthropic routes take it as given.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
@@ -503,13 +549,12 @@ class ChatConfig(BaseSettings):
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
     claude_agent_cross_user_prompt_cache: bool = Field(
-        default=True,
-        description="Enable cross-user prompt caching via SystemPromptPreset. "
-        "The Claude Code default prompt becomes a cacheable prefix shared "
-        "across all users, and our custom prompt is appended after it. "
+        default=False,
+        description="Include the Claude Code default prompt as a cacheable prefix "
+        "shared across all users, with our custom prompt appended after it. "
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
-        "from the prefix. Set to False to fall back to passing the system "
-        "prompt as a raw string.",
+        "from the prefix. Set to True to opt in. When False, our system prompt "
+        "is passed as a raw string and replaces the Claude Code default prompt.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",
@@ -1345,6 +1390,44 @@ class ChatConfig(BaseSettings):
             f"generation routes through OpenRouter, or override "
             f"CHAT_TITLE_MODEL to an ``anthropic/`` or ``claude-`` slug."
         )
+
+    # --- Voice mode TTS (see ``copilot/speech.py``) ---
+    voice_tts_model: str = Field(
+        default="gpt-4o-mini-tts",
+        description="OpenAI speech model used for voice-mode replies.",
+    )
+    voice_tts_voice: str = Field(
+        default="marin",
+        description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
+    )
+    voice_tts_instructions: str = Field(
+        default=(
+            "Speak like a colleague at the next desk: natural pace, warm and "
+            "engaged, never flat. Move briskly through comma-separated lists — "
+            "items get a light separation, not a pause each. No newsreader "
+            "delivery and no slowing down for emphasis."
+        ),
+        description="Delivery instruction for a spoken reply. gpt-4o-mini-tts "
+        "takes its pacing from this rather than from ``speed``.",
+    )
+    voice_tts_speed: float = Field(
+        default=1.2,
+        ge=0.25,
+        le=4.0,
+        description="Playback rate for synthesis. The instruction alone barely "
+        "moves comma-heavy listings; this does (12.6s to 10.3s at 1.3).",
+    )
+    voice_tts_usd_per_1k_chars: float = Field(
+        default=0.02,
+        ge=0,
+        # A negative or non-finite rate yields a cost the usage recorder
+        # cannot write — and TTS has no token counts to fall back on, so
+        # synthesis would keep running unmetered.
+        allow_inf_nan=False,
+        description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "
+        "per audio token, which the request does not report; ~$0.015/min of "
+        "speech at ~750 chars/min is the estimate behind this default.",
+    )
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

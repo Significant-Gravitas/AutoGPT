@@ -1,12 +1,16 @@
 "use client";
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import type { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
+import {
+  GREETING_ORB_LAYOUT_ID,
+  ORB_FLIP_TRANSITION,
+  ORB_FLIP_TRANSITION_REDUCED,
+  SMALL_ORB_PARAMS,
+} from "../../helpers/greetingOrb";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import {
   Tooltip,
   TooltipContent,
@@ -75,40 +79,21 @@ interface Props {
   disabled?: boolean;
 }
 
-// The default glass params are tuned for the big onboarding orb; at 32px
-// that much frost and distortion collapses into a flat purple ball. Light
-// frost + gentle refraction keeps the drifting blobs readable this small.
-// Also rendered by EmptySession's hero while the greeting is on its way,
-// so the orb is already on screen before the reveal.
-export const SMALL_ORB_PARAMS: GlassParams = {
-  frost: 1.5,
-  saturation: 1.5,
-  tint: 0.12,
-  edge: 0.55,
-  distortion: 8,
-  ringWidth: 1,
-  ringDepth: 2,
-  ringDark: 0.25,
-};
-
-// The purple the orb's blobs blend into — the name mirrors it. Shared with
-// the hero heading this card replaces so the swap is invisible.
-export const ORB_PURPLE = "#8a4dff";
-
-const GREETING_START = 0.35;
-const WORD_STAGGER = 0.08;
-const ROW_STAGGER = 0.12;
+// The orb travels into this card's heading from the loader, so the
+// heading is revealed on its arrival and everything below waits for the
+// trip to finish.
+const HEADING_START = 0.2;
+const GREETING_START = 0.5;
+const GREETING_DURATION = 0.45;
 const ROW_START_BUFFER = 0.3;
 const FOOTER_BUFFER = 0.35;
 
 // One reveal schedule shared with EmptySession so the composer can enter
-// after everything here has finished. All timings hang off the greeting's
-// word count — the prompts wait for the last word, the footer waits for
-// the last row, the composer comes after the footer.
-export function introRevealTimings(greeting: string, promptCount: number) {
-  const words = greeting.split(" ").filter(Boolean).length;
-  const promptsStart = GREETING_START + words * WORD_STAGGER + ROW_START_BUFFER;
-  const footerStart = promptsStart + promptCount * ROW_STAGGER + FOOTER_BUFFER;
+// after everything here has finished. The greeting lands in one piece, the
+// prompt list follows as one block, then the footer, then the composer.
+export function introRevealTimings() {
+  const promptsStart = GREETING_START + GREETING_DURATION + ROW_START_BUFFER;
+  const footerStart = promptsStart + FOOTER_BUFFER;
   const composerStart = footerStart + 0.4;
   return { promptsStart, footerStart, composerStart };
 }
@@ -144,10 +129,7 @@ export function OnboardingIntroCard({
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }
-  const { promptsStart, footerStart } = introRevealTimings(
-    greeting,
-    prompts.length,
-  );
+  const { promptsStart, footerStart } = introRevealTimings();
 
   function reveal(delay: number) {
     if (prefersReducedMotion) {
@@ -169,65 +151,71 @@ export function OnboardingIntroCard({
       className="mb-8 w-full max-w-[48rem] text-left"
       data-testid="onboarding-intro-card"
     >
-      {/* Not revealed: this exact row is already on screen as the hero's
-          heading while the greeting generates, in this exact spot. Fading
-          and rising it here would blink a heading that never moved. */}
       <div className="mb-4 flex items-center gap-3">
-        <span className="relative size-8 shrink-0">
+        {/* Not revealed — it flies in from the loader's centre under its
+            own layout animation. Fading it too would fight that trip. */}
+        <motion.span
+          layoutId={GREETING_ORB_LAYOUT_ID}
+          transition={
+            prefersReducedMotion
+              ? ORB_FLIP_TRANSITION_REDUCED
+              : ORB_FLIP_TRANSITION
+          }
+          className="relative block size-8 shrink-0"
+        >
           <GlassOrb params={SMALL_ORB_PARAMS} />
-        </span>
-        <Text variant="h3" className="!text-[1.25rem] text-zinc-800">
-          Hey, <span style={{ color: ORB_PURPLE }}>{name}</span>
-        </Text>
+        </motion.span>
+        <motion.div {...reveal(HEADING_START)}>
+          <Text variant="large-medium" tone="primary">
+            Hey, <span className="text-zinc-900">{name}</span>
+          </Text>
+        </motion.div>
         {transcript && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleCopyTranscript}
-                aria-label="Copy your recording's transcript"
-                className="ml-auto rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-              >
-                {isCopied ? (
-                  <Icon
-                    icon={Tick02Icon}
-                    size={16}
-                    className="text-emerald-600"
-                  />
-                ) : (
-                  <Icon icon={Copy01Icon} size={16} />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {isCopied ? "Copied!" : "Copy everything you told me"}
-            </TooltipContent>
-          </Tooltip>
+          <motion.div className="ml-auto" {...reveal(HEADING_START)}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  aria-label="Copy your recording's transcript"
+                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  {isCopied ? (
+                    <Icon
+                      icon={Tick02Icon}
+                      size={16}
+                      className="text-emerald-600"
+                    />
+                  ) : (
+                    <Icon icon={Copy01Icon} size={16} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCopied ? "Copied!" : "Copy everything you told me"}
+              </TooltipContent>
+            </Tooltip>
+          </motion.div>
         )}
       </div>
 
-      <TextGenerateEffect
-        words={greeting}
-        duration={0.4}
-        delay={GREETING_START}
-        className="text-left !font-normal [&>div]:!mt-0 [&_div]:!text-[1.25rem] [&_div]:!leading-normal [&_div]:!tracking-normal [&_span]:!text-zinc-700"
-      />
+      <motion.div {...reveal(GREETING_START)}>
+        <Text variant="large" tone="secondary" className="text-pretty">
+          {greeting}
+        </Text>
+      </motion.div>
 
       {prompts.length > 0 && (
         <motion.ol
           {...reveal(promptsStart)}
           // Negative margins let the card's border breathe outward while
           // the row content (px-5) stays aligned with the text above it.
-          className="-mx-5 mt-6 divide-y divide-zinc-100 overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm"
+          className="-mx-5 mt-5 divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white"
         >
-          {prompts.map((prompt, index) => {
+          {prompts.map((prompt) => {
             const promptIcon = PROMPT_ICONS[prompt.icon ?? ""] ?? SparklesIcon;
             return (
-              <motion.li
-                key={prompt.title}
-                {...reveal(promptsStart + 0.15 + index * ROW_STAGGER)}
-                data-testid="onboarding-intro-prompt"
-              >
+              <li key={prompt.title} data-testid="onboarding-intro-prompt">
                 <button
                   type="button"
                   disabled={disabled}
@@ -235,33 +223,30 @@ export function OnboardingIntroCard({
                   // which also creates the session and retires the greeting
                   // via the regular first-send path in useCopilotPage.
                   onClick={() => onSelectPrompt(prompt.prompt)}
-                  className="group flex w-full cursor-pointer items-center gap-4 px-5 py-4 text-left transition-colors duration-150 hover:bg-violet-50/60 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
+                  className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-zinc-50 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
                 >
                   <Icon
                     icon={promptIcon}
-                    size={18}
-                    className="shrink-0 text-violet-500"
+                    size={15}
+                    className="shrink-0 text-zinc-400"
                   />
-                  <Text
-                    variant="body-medium"
-                    className="!text-[0.9375rem] !text-zinc-800"
-                  >
+                  <Text variant="body-medium" tone="primary">
                     {prompt.title}
                   </Text>
                   <Icon
                     icon={ArrowRight01Icon}
-                    size={16}
-                    className="ml-auto shrink-0 text-violet-500 transition-transform duration-150 ease-out group-hover:translate-x-1"
+                    size={15}
+                    className="ml-auto shrink-0 text-zinc-400 transition-transform duration-150 ease-out group-hover:translate-x-1"
                   />
                 </button>
-              </motion.li>
+              </li>
             );
           })}
         </motion.ol>
       )}
 
       <motion.div {...reveal(footerStart)}>
-        <Text variant="body" className="mt-6 !text-[0.9375rem] !text-zinc-500">
+        <Text variant="body" tone="muted" className="mt-5">
           Want to do something else? Just write it in the textbox below.
         </Text>
       </motion.div>

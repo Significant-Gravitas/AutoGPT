@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,8 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -153,6 +156,8 @@ def _make_chat_session_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -1526,16 +1531,9 @@ class TestRegressionUserSettings:
         mock_user = MagicMock()
         mock_user.id = USER_ID
         mock_user.email = "test@example.com"
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         self.mock_user_actions.find_unique_or_raise = AsyncMock(return_value=mock_user)
 
@@ -1571,18 +1569,13 @@ class TestRegressionUserSettings:
         mock_user.stripeCustomerId = None
         mock_user.topUpConfig = None
         mock_user.onboardingCompletedAt = None
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         mock_user.subscriptionTier = "NO_TIER"
+        mock_user.defaultChatAuthProvider = None
+        mock_user.defaultChatCredentialId = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone
@@ -3054,9 +3047,9 @@ class TestPR18Cutover:
         # After cutover, the route should ALWAYS set org (not conditionally)
         import inspect
 
-        from backend.api.features import v1 as api_v1
+        from backend.api.features.api_keys import routes as api_key_routes
 
-        route_src = inspect.getsource(api_v1.create_api_key)
+        route_src = inspect.getsource(api_key_routes.create_api_key)
         assert (
             "if ctx.org_id" not in route_src
         ), "Route should always set organizationId, not conditionally"
@@ -3226,11 +3219,19 @@ class TestReviewFindings:
         return m
 
     def _owner_ctx(self, org_id="org-review-1", team_id="team-review-1"):
-        ctx = MagicMock()
-        ctx.user_id = USER_ID
-        ctx.org_id = org_id
-        ctx.team_id = team_id
-        return ctx
+        # A MagicMock grants every permission: check_org_permission reads
+        # ctx.is_org_owner etc., and an auto-created attribute is truthy.
+        return RequestContext(
+            user_id=USER_ID,
+            org_id=org_id,
+            team_id=team_id,
+            is_org_owner=True,
+            is_org_admin=False,
+            is_org_billing_manager=False,
+            is_team_admin=False,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
 
     def _make_invitation(self, **overrides):
         m = MagicMock()
@@ -3377,30 +3378,41 @@ class TestReviewFindings:
         assert exc_info.value.status_code == 403
 
     # ------------------------------------------------------------------
-    # 6. update_team ctx.team_id / ws_id mismatch
+    # 6. update_team authorizes by target team, not active team (SECRT-2453)
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_update_team_rejects_mismatched_team_id(self):
-        """PATCH /teams/{ws_id} should reject when ctx.team_id != ws_id."""
+    async def test_update_team_authorizes_by_target_not_active_team(self):
+        """PATCH /teams/{ws_id} authorizes against the target team from the
+        URL, independent of the caller's active team. An org admin
+        (MANAGE_WORKSPACES) may update a team even when ctx.team_id differs."""
         from backend.api.features.orgs.team_model import UpdateTeamRequest
         from backend.api.features.orgs.team_routes import update_team
 
+        # Active team is team-1; the target is a different team in the same org.
         ctx = self._owner_ctx(org_id="org-review-1", team_id="team-1")
 
-        # Mock the team_db.get_team call that validates org ownership
-        with patch(
-            "backend.api.features.orgs.team_routes.team_db.get_team",
-            new_callable=AsyncMock,
+        updated = MagicMock()
+        with (
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.get_team",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.update_team",
+                new_callable=AsyncMock,
+                return_value=updated,
+            ) as mock_update,
         ):
-            with pytest.raises(HTTPException) as exc_info:
-                await update_team(
-                    org_id="org-review-1",
-                    ws_id="team-2",  # different from ctx.team_id
-                    request=UpdateTeamRequest(name="Hacked"),
-                    ctx=ctx,
-                )
-            assert exc_info.value.status_code == 403
+            result = await update_team(
+                org_id="org-review-1",
+                ws_id="team-2",  # different from ctx.team_id
+                request=UpdateTeamRequest(name="Renamed"),
+                ctx=ctx,
+            )
+
+        assert result is updated
+        mock_update.assert_awaited_once()
 
     # ------------------------------------------------------------------
     # 7. reject_transfer has no org membership check

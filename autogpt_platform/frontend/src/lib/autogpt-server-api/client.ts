@@ -322,7 +322,11 @@ export default class BackendAPI {
     provider: string,
     scopes?: string[],
     credentialID?: string,
-  ): Promise<{ login_url: string; state_token: string }> {
+  ): Promise<{
+    login_url: string;
+    state_token: string;
+    cancel_url?: string | null;
+  }> {
     return this._get(
       `/integrations/${provider}/login`,
       buildOAuthLoginQuery(scopes, credentialID),

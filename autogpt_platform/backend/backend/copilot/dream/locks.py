@@ -31,6 +31,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
+from backend.copilot.graphiti.client import derive_memory_scope_key
+
 logger = logging.getLogger(__name__)
 
 DREAM_LOCK_KEY_PREFIX = "dream:inflight:"
@@ -64,8 +66,9 @@ _EXTEND_SCRIPT = (
 )
 
 
-def _lock_key(user_id: str) -> str:
-    return f"{DREAM_LOCK_KEY_PREFIX}{user_id}"
+def _lock_key(user_id: str, expert_id: str | None = None) -> str:
+    scope_id = derive_memory_scope_key(user_id, expert_id)
+    return f"{DREAM_LOCK_KEY_PREFIX}{scope_id}"
 
 
 class DreamLockHeld(Exception):
@@ -144,7 +147,12 @@ class DreamLockHandle:
 
 
 @asynccontextmanager
-async def dream_lock(user_id: str, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS):
+async def dream_lock(
+    user_id: str,
+    ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
+    *,
+    expert_id: str | None = None,
+):
     """Acquire a per-user advisory lock for the dream pass.
 
     Raises ``DreamLockHeld`` if another process holds the lock.
@@ -157,7 +165,7 @@ async def dream_lock(user_id: str, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS):
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    key = _lock_key(user_id)
+    key = _lock_key(user_id, expert_id)
     token = str(uuid.uuid4())
 
     acquired = await redis.set(key, token, nx=True, ex=ttl_seconds)
@@ -197,7 +205,9 @@ async def dream_lock(user_id: str, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS):
                 )
 
 
-async def read_dream_lock_token(user_id: str) -> str | None:
+async def read_dream_lock_token(
+    user_id: str, expert_id: str | None = None
+) -> str | None:
     """Current holder's ownership token, or None when no lock is held.
 
     The batch path calls this while still holding the lock (at input-bundle
@@ -208,7 +218,7 @@ async def read_dream_lock_token(user_id: str) -> str | None:
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    raw = await redis.get(_lock_key(user_id))
+    raw = await redis.get(_lock_key(user_id, expert_id))
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -216,7 +226,9 @@ async def read_dream_lock_token(user_id: str) -> str | None:
     return str(raw)
 
 
-async def release_dream_lock(user_id: str, token: str | None) -> None:
+async def release_dream_lock(
+    user_id: str, token: str | None, expert_id: str | None = None
+) -> None:
     """Release a disowned dream lock (batch path) once the pass terminates.
 
     Compare-and-delete on ``token``: a blind delete is NOT safe here — the
@@ -240,7 +252,13 @@ async def release_dream_lock(user_id: str, token: str | None) -> None:
     try:
         redis = await get_redis_async()
         deleted = await cast(
-            "Any", redis.eval(_UNLOCK_SCRIPT, 1, _lock_key(user_id), token)
+            "Any",
+            redis.eval(
+                _UNLOCK_SCRIPT,
+                1,
+                _lock_key(user_id, expert_id),
+                token,
+            ),
         )
         if deleted:
             logger.debug("Released disowned dream lock for user %s", user_id[:12])

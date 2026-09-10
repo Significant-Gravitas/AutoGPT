@@ -18,6 +18,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
+    _current_envelope,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -55,11 +56,13 @@ from .e2b_file_tools import (
     get_read_tool_handler,
     get_write_tool_handler,
 )
+from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -139,6 +143,7 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
+        envelope: The turn's tree envelope; spawn tools derive children from it.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -146,6 +151,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
@@ -722,6 +728,7 @@ def _make_truncating_wrapper(
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -741,7 +748,7 @@ def _make_truncating_wrapper(
     Swapping this order would cause the frontend to lose ``is_dry_run``.
     """
 
-    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+    async def execute(args: dict[str, Any]) -> dict[str, Any]:
         # Detect empty-args truncation: args is empty AND the original tool
         # declared at least one *required* property. Tools whose params are all
         # optional (filters-only tools like list_schedules) legitimately accept
@@ -825,6 +832,12 @@ def _make_truncating_wrapper(
 
         return truncated
 
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        if tool_display_bridge is None:
+            return await execute(args)
+        with tool_display_bridge.execution_context(tool_name, args) as clean_args:
+            return await execute(clean_args)
+
     return wrapper
 
 
@@ -832,6 +845,7 @@ def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -880,7 +894,11 @@ def create_copilot_mcp_server(
             annotations=_PARALLEL_ANNOTATION,
         )(
             _make_truncating_wrapper(
-                handler, tool_name, input_schema=schema, required_args=required
+                handler,
+                tool_name,
+                input_schema=schema,
+                required_args=required,
+                tool_display_bridge=tool_display_bridge,
             )
         )
         sdk_tools.append(decorated)
