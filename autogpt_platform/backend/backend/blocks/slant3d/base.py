@@ -1,8 +1,8 @@
 import asyncio
 from pathlib import Path
+from shutil import copyfileobj
+from tempfile import TemporaryFile
 from urllib.parse import quote
-
-import aiofiles
 
 from backend.blocks._base import Block
 from backend.data.execution import ExecutionContext
@@ -41,6 +41,9 @@ class Slant3DBlockBase(Block):
             ) from exc
         if not response.ok or result.get("success") is False:
             error = result.get("error") or result.get("message") or "Unknown error"
+            match error:
+                case {"message": str(message)}:
+                    error = message
             raise RuntimeError(f"Slant3D API request failed: {error}")
         return result
 
@@ -88,35 +91,38 @@ class Slant3DBlockBase(Block):
         execution_context: ExecutionContext,
         staging_lock: asyncio.Lock | None = None,
     ) -> str:
-        async with staging_lock or asyncio.Lock():
-            local_path = await store_media_file(
-                file=file_url,
-                execution_context=execution_context,
-                return_format="for_local_processing",
+        graph_exec_id = execution_context.graph_exec_id
+        if not graph_exec_id:
+            raise ValueError("execution_context.graph_exec_id is required")
+        with TemporaryFile() as content:
+            async with staging_lock or asyncio.Lock():
+                local_path = await store_media_file(
+                    file=file_url,
+                    execution_context=execution_context,
+                    return_format="for_local_processing",
+                )
+                path = Path(get_exec_file_path(graph_exec_id, local_path))
+                with path.open("rb") as source:
+                    await asyncio.to_thread(copyfileobj, source, content)
+            content.seek(0)
+            upload = await self._make_request(
+                "POST",
+                "files/direct-upload",
+                api_key,
+                json={"name": path.name, "platformId": platform_id},
             )
-            assert execution_context.graph_exec_id
-            path = Path(get_exec_file_path(execution_context.graph_exec_id, local_path))
-            async with aiofiles.open(path, "rb") as source:
-                content = await source.read()
-        name = path.name
-        upload = await self._make_request(
-            "POST",
-            "files/direct-upload",
-            api_key,
-            json={"name": name, "platformId": platform_id},
-        )
-        data = upload["data"]
-        await Requests(retry_max_attempts=1).put(
-            data["presignedUrl"],
-            data=content,
-            headers={"Content-Type": "application/octet-stream"},
-        )
-        confirmed = await self._make_request(
-            "POST",
-            "files/confirm-upload",
-            api_key,
-            json={"filePlaceholder": data["filePlaceholder"]},
-        )
+            data = upload["data"]
+            await Requests(retry_max_attempts=1).put(
+                data["presignedUrl"],
+                data=content,
+                headers={"Content-Type": "application/octet-stream"},
+            )
+            confirmed = await self._make_request(
+                "POST",
+                "files/confirm-upload",
+                api_key,
+                json={"filePlaceholder": data["filePlaceholder"]},
+            )
         return confirmed["data"]["publicFileServiceId"]
 
     async def _format_order_data(

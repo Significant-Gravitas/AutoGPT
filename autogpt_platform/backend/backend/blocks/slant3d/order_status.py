@@ -12,6 +12,8 @@ from ._api import (
 )
 from .base import Slant3DBlockBase
 
+PAGE_LIMIT = 100
+
 
 class Slant3DGetOrdersBlock(Slant3DBlockBase):
     class Input(BlockSchemaInput):
@@ -50,13 +52,13 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
                 "GET",
                 "orders",
                 credentials.api_key.get_secret_value(),
-                params={"page": page, "limit": 100},
+                params={"page": page, "limit": PAGE_LIMIT},
             )
             orders.extend(order["publicId"] for order in result["data"])
             total_pages = result.get("pagination", {}).get("totalPages")
             if not result["data"] or (total_pages is not None and page >= total_pages):
                 break
-            if total_pages is None and len(result["data"]) < 100:
+            if total_pages is None and len(result["data"]) < PAGE_LIMIT:
                 break
             page += 1
         yield "orders", orders
@@ -143,7 +145,7 @@ class Slant3DCancelOrderBlock(Slant3DBlockBase):
             f"orders/{quote(input_data.order_id, safe='')}",
             credentials.api_key.get_secret_value(),
         )
-        yield "status", result["message"]
+        yield "status", result.get("message") or "Order cancelled"
 
 
 class Slant3DProcessOrderBlock(Slant3DBlockBase):

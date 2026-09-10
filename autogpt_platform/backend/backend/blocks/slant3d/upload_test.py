@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 
@@ -11,6 +11,11 @@ from backend.data.execution import ExecutionContext
 async def test_slicer_loads_workspace_attachment_with_user_context(
     tmp_path, read_error
 ):
+    uploaded = []
+
+    async def put(url, **kwargs):
+        uploaded.append(kwargs["data"].read())
+
     context = ExecutionContext(
         user_id="user-1",
         graph_exec_id="run-1",
@@ -52,7 +57,7 @@ async def test_slicer_loads_workspace_attachment_with_user_context(
         requests.return_value.get = AsyncMock(
             side_effect=ValueError("URL scheme 'workspace' is not allowed")
         )
-        requests.return_value.put = AsyncMock()
+        requests.return_value.put = AsyncMock(side_effect=put)
         outputs = block.run(
             block.Input(
                 credentials=TEST_CREDENTIALS_INPUT,
@@ -75,9 +80,10 @@ async def test_slicer_loads_workspace_attachment_with_user_context(
     requests.return_value.get.assert_not_awaited()
     requests.return_value.put.assert_awaited_once_with(
         "https://upload.example.com/model",
-        data=b"STL bytes",
+        data=ANY,
         headers={"Content-Type": "application/octet-stream"},
     )
+    assert uploaded == [b"STL bytes"]
     assert api.await_args_list[0].kwargs["json"] == {
         "name": "CalibrationCube.stl",
         "platformId": "platform-1",

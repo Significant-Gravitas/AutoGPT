@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 
@@ -142,7 +142,9 @@ async def test_api_errors_are_raised(status, payload):
     response.json.return_value = payload
     with patch("backend.blocks.slant3d.base.Requests") as requests:
         requests.return_value.request = AsyncMock(return_value=response)
-        with pytest.raises(RuntimeError, match="Invalid filament"):
+        with pytest.raises(
+            RuntimeError, match="^Slant3D API request failed: Invalid filament$"
+        ):
             await Slant3DFilamentBlock()._make_request("POST", "orders", "key")
         assert requests.call_args.kwargs["retry_max_attempts"] == 1
 
@@ -180,6 +182,11 @@ async def test_platform_selection_is_unambiguous(platforms, expected):
 async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_path):
     source = tmp_path / "model.stl"
     source.write_bytes(b"STL bytes")
+    uploaded = []
+
+    async def put(url, **kwargs):
+        uploaded.append(kwargs["data"].read())
+
     block = Slant3DFilamentBlock()
     placeholder = {
         "publicFileServiceId": "file-1",
@@ -204,7 +211,7 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_
         "backend.blocks.slant3d.base.store_media_file",
         AsyncMock(return_value=str(source)),
     ) as media:
-        requests.return_value.put = AsyncMock()
+        requests.return_value.put = AsyncMock(side_effect=put)
         assert (
             await block._upload_file(
                 "https://files.example.com/model.stl?download=1",
@@ -221,9 +228,10 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_
     )
     requests.return_value.put.assert_awaited_once_with(
         "https://upload.example.com/object",
-        data=b"STL bytes",
+        data=ANY,
         headers={"Content-Type": "application/octet-stream"},
     )
+    assert uploaded == [b"STL bytes"]
     assert api.await_args_list[0].kwargs["json"] == {
         "name": "model.stl",
         "platformId": "platform-1",

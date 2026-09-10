@@ -125,6 +125,10 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
                 f"but {input_data.quantity} were requested. "
                 "No valid total was returned for the requested quantity."
             )
+        total = result["data"].get("total")
+        if total is None:
+            raise ValueError("Slant3D did not return a printing total")
+        price = float(total)
         yield "message", result["message"]
-        yield "price", float(result["data"]["total"])
+        yield "price", price
         yield "file_id", file_id

@@ -199,7 +199,7 @@ async def test_parallel_uploads_preserve_different_files_with_the_same_name(tmp_
         return {"data": {"publicFileServiceId": str(kwargs["json"]["filePlaceholder"])}}
 
     async def put(url, **kwargs):
-        uploaded.append(kwargs["data"])
+        uploaded.append(kwargs["data"].read())
 
     downloader = Mock()
     downloader.get = AsyncMock(

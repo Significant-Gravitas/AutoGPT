@@ -90,7 +90,7 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
                 "hexColor": filament["hexValue"].removeprefix("#"),
                 "colorTag": (
                     filament["color"]
-                    if filament["profile"] == "PLA"
+                    if filament["profile"].casefold() == "pla"
                     else f"{filament['profile'].lower()}{filament['color'].capitalize()}"
                 ),
             }
