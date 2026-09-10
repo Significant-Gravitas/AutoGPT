@@ -46,7 +46,9 @@ export function SetupNeeded({ enabled }: Props) {
       </div>
       <ul className="flex flex-col gap-2" aria-label="Setup items">
         {items.map((item) => (
-          <li key={`${item.workflow_id}-${item.providers.join("+")}`}>
+          <li
+            key={`${item.expert_id}-${item.workflow_id}-${item.providers.join("+")}`}
+          >
             <SetupNeededRow
               item={item}
               isConnectable={isConnectable(item)}

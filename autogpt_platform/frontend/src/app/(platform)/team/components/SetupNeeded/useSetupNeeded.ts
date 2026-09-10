@@ -59,25 +59,25 @@ export function useSetupNeeded({ enabled }: Args) {
 
   function grantTo(
     item: ExpertSetupItem,
-    credential: { id: string; provider: string },
+    credential: { id: string; provider?: string },
   ) {
+    // A row can name a credential without naming its provider, and half a
+    // sentence is worse than a general one.
+    const service = credential.provider
+      ? formatProviderName(credential.provider)
+      : "this service";
     grant(
       { expertId: item.expert_id, data: { credential_ids: [credential.id] } },
       {
         onSuccess: () =>
-          toast({
-            title: `${item.expert_name} can now use ${formatProviderName(credential.provider)}`,
-          }),
+          toast({ title: `${item.expert_name} can now use ${service}` }),
       },
     );
   }
 
   function allow(item: ExpertSetupItem) {
     if (!item.credential_id) return;
-    grantTo(item, {
-      id: item.credential_id,
-      provider: item.providers[0] ?? "",
-    });
+    grantTo(item, { id: item.credential_id, provider: item.providers[0] });
   }
 
   function connect(item: ExpertSetupItem) {
