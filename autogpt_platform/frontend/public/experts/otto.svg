@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="860" viewBox="165 95 920 970" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="140 95 970 970" fill="none">
 <title>Otto</title>
 <desc>Blue and cyan illustrated avatar of Otto, Head of AI, on a transparent background.</desc>
 <g stroke="#082449" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
 <!-- Hair behind the neck -->
 <path fill="#367ECE" d="M472 505C458 562 489 590 533 584L564 479Z"/>
 <!-- Jacket silhouette -->
-<path fill="#367ECE" d="M238 928C252 795 285 737 458 674Q485 630 524 621L688 661 842 700C954 742 988 804 1018 925Q920 988 726 1001L580 1003Q371 1000 238 928Z"/>
+<path fill="#367ECE" d="M238 928C252 795 285 737 458 674Q485 630 524 621L688 661 842 700C954 742 988 804 1018 925L1018 1080L238 1080L238 928Z"/>
 <!-- Shirt -->
-<path fill="#8DDAF4" d="M512 672Q586 726 696 681L730 1001 580 1003Z"/>
+<path fill="#8DDAF4" d="M512 672Q586 726 696 681L738 1080 596 1080Z"/>
 <!-- Neck and face -->
 <path fill="#C8F0FA" d="M519 466C507 426 500 399 495 374L555 263 659 236Q732 252 761 332C784 384 793 443 789 491Q787 549 748 577L696 635 693 709C643 754 555 735 516 692Q504 675 515 648C527 624 525 581 516 533C490 550 456 552 438 528C415 498 437 457 468 453Q497 447 519 466Z"/>
 <!-- Hair -->
