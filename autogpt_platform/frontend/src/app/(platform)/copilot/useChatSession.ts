@@ -28,11 +28,15 @@ import { latestExpertSessionParams } from "./expertSessionQuery";
 interface UseChatSessionOptions {
   dryRun?: boolean;
   expertId?: string | null;
+  /** Off = keep the fresh new-task state addressed to the expert instead of
+   *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
+  adoptLatestExpertThread?: boolean;
 }
 
 export function useChatSession({
   dryRun = false,
   expertId = null,
+  adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
@@ -113,6 +117,7 @@ export function useChatSession({
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
   const canAdoptExpertSession =
+    adoptLatestExpertThread &&
     !!expertId &&
     !sessionId &&
     expertId === mountExpertIdRef.current &&
@@ -188,22 +193,28 @@ export function useChatSession({
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const { hydratedMessages, historicalTurnStats } = useMemo(() => {
-    if (!freshSessionData || !sessionId)
+  const { hydratedMessages, historicalTurnStats, activeTurnStartMessageId } =
+    useMemo(() => {
+      if (!freshSessionData || !sessionId)
+        return {
+          hydratedMessages: undefined,
+          historicalTurnStats: new Map() as TurnStatsMap,
+          activeTurnStartMessageId: null,
+        };
+      const result = convertChatSessionMessagesToUiMessages(
+        sessionId,
+        freshSessionData.messages ?? [],
+        {
+          isComplete: !hasActiveStream,
+          activeTurnStartedAt: activeStreamStartedAt,
+        },
+      );
       return {
-        hydratedMessages: undefined,
-        historicalTurnStats: new Map() as TurnStatsMap,
+        hydratedMessages: result.messages,
+        historicalTurnStats: result.stats,
+        activeTurnStartMessageId: result.activeTurnStartId,
       };
-    const result = convertChatSessionMessagesToUiMessages(
-      sessionId,
-      freshSessionData.messages ?? [],
-      { isComplete: !hasActiveStream },
-    );
-    return {
-      hydratedMessages: result.messages,
-      historicalTurnStats: result.stats,
-    };
-  }, [freshSessionData, sessionId, hasActiveStream]);
+    }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession();
@@ -254,6 +265,7 @@ export function useChatSession({
       );
     }
     if (
+      copilotLlmAuth !== null &&
       copilotLlmAuth.authProvider !== "platform" &&
       resolvedLLMAuth.authProvider === "platform"
     ) {
@@ -265,11 +277,18 @@ export function useChatSession({
     }
 
     try {
-      const sessionData: CreateSessionRequest = {
-        llm_auth_provider: resolvedLLMAuth.authProvider,
-      };
-      if (resolvedLLMAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+      const sessionData: CreateSessionRequest = {};
+      // Only an explicit choice travels. Naming the route unconditionally
+      // makes every new chat an override, which is how a connection picked
+      // once quietly became the account's default and how a default changed
+      // in Settings stopped taking effect: the server skips its own default
+      // whenever the client names one. `copilotLlmAuth` is null until the
+      // user actually picks, and null means "use whatever the server says".
+      if (copilotLlmAuth !== null) {
+        sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
+        if (resolvedLLMAuth.authProvider === "codex") {
+          sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+        }
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
@@ -345,6 +364,10 @@ export function useChatSession({
         ? "codex"
         : "platform"
       : null;
+  const sessionLlmCredentialId =
+    sessionId && sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
+      : null;
 
   // The expert this session actually belongs to, straight off the session
   // response rather than the URL — the ?expertId= param only describes what
@@ -360,11 +383,13 @@ export function useChatSession({
     sessionId,
     setSessionId,
     sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,

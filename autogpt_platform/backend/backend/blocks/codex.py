@@ -147,8 +147,8 @@ class CodeGenerationBlock(Block):
             title="Transport",
             default=CodexExecutionTransport.OPENAI_API,
             description=(
-                "Use an OpenAI API key or your connected ChatGPT plan through "
-                "Codex App Server."
+                "Use an OpenAI API key, or your connected ChatGPT subscription "
+                "through Codex App Server if supported by your plan."
             ),
             advanced=False,
         )

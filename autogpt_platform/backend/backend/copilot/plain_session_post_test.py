@@ -8,7 +8,8 @@ from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage, Expert, User
 
 from backend.copilot import db as copilot_db
-from backend.copilot.model import ChatSessionMetadata
+from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.tools.expert_proposal import autopilot_session_guard
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,37 @@ async def test_append_plain_session_message_creates_session_and_dedupes(
             where={"sessionId": expert_session.session_id}
         )
         assert expert_messages == []
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_plain_session_message_creates_an_interactive_thread(
+    server: SpinTestServer,
+):
+    """The auto-created primary thread must not be stamped as an automation.
+
+    A new user in the experts cohort gets a briefing before their first chat
+    and is dropped straight into this thread. Inheriting the unset-metadata
+    ``automation`` default would have ``autopilot_session_guard`` tell them
+    their own thread "was started by an automation" the moment they ask to
+    hire someone.
+    """
+    user_id = f"plain-session-origin-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        session_id = await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=str(uuid4())
+        )
+        assert session_id is not None
+
+        created = await copilot_db.get_chat_session_metadata(session_id)
+        assert created is not None
+        assert created.metadata.origin == "interactive"
+
+        session = ChatSession.new(user_id, dry_run=False, session_id=session_id)
+        session.metadata = created.metadata
+        assert autopilot_session_guard(user_id, session) is None
     finally:
         await _cleanup(user_id)
 

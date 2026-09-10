@@ -4,13 +4,9 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import {
-  type ExpertCardHiredState,
-  getExpertAccent,
-  getExpertAvatarUrl,
-} from "../helpers";
+import Link from "next/link";
+import { getExpertAccent } from "../helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -20,19 +16,18 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
-  hiredState: ExpertCardHiredState;
-  onClick: () => void;
+  isHired: boolean;
 }
 
-export function ExpertCard({ expert, hiredState, onClick }: Props) {
+/** Each card is a plain link to the expert's own page, so a profile can be
+ *  shared and opened directly. */
+export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
-  const avatarUrl = getExpertAvatarUrl(expert);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+    <Link
+      href={`/marketplace/experts/${expert.id}`}
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div
         className={cn(
@@ -43,8 +38,8 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
           <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
-            {avatarUrl ? (
-              <AvatarImage src={avatarUrl} alt={expert.name} />
+            {expert.avatar_url ? (
+              <AvatarImage src={expert.avatar_url} alt={expert.name} />
             ) : null}
             <AvatarFallback>{expert.name}</AvatarFallback>
           </Avatar>
@@ -99,25 +94,14 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
             {expert.workflows.length}{" "}
             {expert.workflows.length === 1 ? "workflow" : "workflows"}
           </span>
-          {hiredState === "hired" ? (
+          {isHired ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
-              On your team
-            </span>
-          ) : hiredState === "unknown" ? (
-            <Skeleton
-              aria-busy="true"
-              aria-label="Loading team status"
-              className="h-5 w-20 rounded-full"
-            />
-          ) : hiredState === "error" ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
-              View details
-              <Icon icon={ArrowRight02Icon} size={16} />
+              Hired
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
-              Hire
+              View
               <Icon
                 icon={ArrowRight02Icon}
                 size={16}
@@ -127,6 +111,6 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
           )}
         </div>
       </div>
-    </button>
+    </Link>
   );
 }

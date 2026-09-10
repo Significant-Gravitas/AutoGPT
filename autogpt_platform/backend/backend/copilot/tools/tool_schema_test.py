@@ -100,7 +100,54 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Includes the two-step Soul edit flow (update_expert_soul preview +
 # confirm_expert_soul_update); registry measures ~52.2k chars locally, with
 # ~800 headroom for CI env deltas and wording tweaks.
-_CHAR_BUDGET = 53_000
+# Bumped 53000 -> 54_000 for the copilot tool-chain UI: ``ask_question`` is back
+# in TOOL_REGISTRY as a first-class tool (docked clarifying-question flow), so
+# its schema counts again on top of the Soul edit flow. Merged registry measures
+# 53349 chars; ~650 headroom for CI env deltas and wording tweaks.
+# Bumped 54_000 -> 59_000 for the expert team tools: delegate_to_expert plus
+# the confirm-gated hire/raise pair, their shared confirm, and handoff_to_expert.
+# No single session sees them all (hire/raise/confirm and handoff/soul gate on
+# opposite sides of session.expert_id), but the registry total counts every
+# tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
+# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# same confirm gate) and raise_expert's color palette enum + persona-name
+# guidance. Merged registry measures 59625 chars; ~1.4k headroom.
+# Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
+# nine tools grew 50-400 chars each with no single PR at fault, dev reached
+# 60,984, and the next PR to add anything was ejected from the merge queue.
+# Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
+# PRs add 1,763) rather than against whatever sits on dev today, because each
+# branch's CI only ever sees its own delta. Registry measures 62,747 with all
+# ten merged; 2,253 headroom.
+# list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
+# under 65_000 without a bump of their own; merged registry measures 62,694.
+# Bumped 65_000 -> 67_651 on 2026-09-09: dev's 62,747 plus the six expert PRs
+# then in flight, which add 4,903 between them and blow the old ceiling by 2,650
+# while each branch's own CI, measuring only its own delta, stays green.
+# Measured per branch, not estimated:
+#     #14443 fix-expert-credential-grant-paths  +3,744
+#     #14207 multi-expert-teams                   +981
+#     #11220 input-blocks-alongside-trigger       +178
+#     #14244 agent-collab-architecture              +0
+#     #14209 autopilot-auto-mode-v2                 +0
+#     #14432 secrt-2593-publish                     +0
+# There is NO margin on top, deliberately. This limit is a brake: it exists to
+# make every increase in what AutoPilot pays per turn a decision someone took,
+# so slack for growth nobody has measured is the one thing it must not carry.
+# The assertion below is a strict <, so the ceiling is the measured total plus
+# one — 67,651 admits exactly that aggregate and nothing beyond it.
+# The next tool that does not fit raises this line itself, with its own measured
+# number and its own row above.
+#
+# ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
+# both look correct: each one's CI only measures its own delta against dev, while
+# the budget has to cover what every in-flight PR adds together. Taking the
+# incoming side lowers a ceiling that has already ejected a green PR.
+#
+# Measure it the way this test does — one json.dumps over the whole list —
+# not by summing per-tool lengths, which misses ~142 chars of array
+# separators and overstates the headroom.
+_CHAR_BUDGET = 67_651
 
 
 @pytest.fixture(scope="module")

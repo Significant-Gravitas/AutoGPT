@@ -1,16 +1,21 @@
-import { useContext } from "react";
-import { getValue } from "@/lib/utils";
+import { useContext, useEffect, useRef } from "react";
 
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaResponse,
-  CredentialsProviderName,
+  CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
+import { trackCredentialConnectionFailure } from "@/services/credentials/connection-analytics";
+import {
+  getCredentialProviderFromSchema,
+  getDiscriminatorValue,
+} from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 
 export function classifyCredentials(
   allSaved: readonly CredentialsMetaResponse[],
@@ -64,27 +69,18 @@ export function classifyCredentials(
   return { savedCredentials, upgradeableCredentials };
 }
 
-export type CredentialsData =
-  | {
-      provider: string;
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: true;
-      discriminatorValue?: string;
-    }
-  | (CredentialsProviderData & {
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: false;
-      discriminatorValue?: string;
-      upgradeableCredentials: CredentialsMetaResponse[];
-    });
+export type CredentialsData = CredentialsProviderData & {
+  schema: BlockIOCredentialsSubSchema;
+  supportsApiKey: boolean;
+  supportsOAuth2: boolean;
+  supportsDeviceCode: boolean;
+  supportsUserPassword: boolean;
+  supportsHostScoped: boolean;
+  isLoading: false;
+  discriminatorValue?: string;
+  upgradeableCredentials: CredentialsMetaResponse[];
+  allProviderCredentials: CredentialsMetaResponse[];
+};
 
 export function getSupportedCredentialTypes(
   schema: BlockIOCredentialsSubSchema,
@@ -99,47 +95,52 @@ export function getSupportedCredentialTypes(
   return schema.credentials_types;
 }
 
+/**
+ * Maps a block's accepted credential types to the connect methods its UI
+ * should offer.
+ *
+ * These are usually the same list, but a device-code grant produces an
+ * ordinary OAuth2 credential — so such a block accepts `oauth2` (otherwise
+ * saved credentials stop matching) while `device_code` is what the user must
+ * actually go through. Letting `device_code` shadow `oauth2` keeps the UI
+ * from offering an authorization-code redirect the provider has no client
+ * secret for, which is what made these blocks unconnectable.
+ */
+export function deriveAuthMethods(supportedTypes: readonly CredentialsType[]) {
+  const authMethods = getConnectableCredentialTypes(supportedTypes);
+  return {
+    supportsApiKey: authMethods.includes("api_key"),
+    supportsDeviceCode: authMethods.includes("device_code"),
+    supportsOAuth2: authMethods.includes("oauth2"),
+    supportsUserPassword: authMethods.includes("user_password"),
+    supportsHostScoped: authMethods.includes("host_scoped"),
+  };
+}
+
+export function getConnectableCredentialTypes(
+  supportedTypes: readonly CredentialsType[],
+) {
+  const usesDeviceAuth = supportedTypes.includes("device_code");
+  return supportedTypes.filter((type) => type !== "oauth2" || !usesDeviceAuth);
+}
+
 export default function useCredentials(
   credsInputSchema: BlockIOCredentialsSubSchema,
-  nodeInputValues?: Record<string, any>,
+  nodeInputValues?: Record<string, unknown>,
+  selectedProvider?: string,
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const discriminatorValue = [
-    credsInputSchema.discriminator
-      ? getValue(credsInputSchema.discriminator, nodeInputValues)
-      : null,
-    ...(credsInputSchema.discriminator_values || []),
-  ].find(Boolean);
-
-  const discriminatedProvider = credsInputSchema.discriminator_mapping
-    ? credsInputSchema.discriminator_mapping[discriminatorValue]
-    : null;
-
-  let providerName: CredentialsProviderName;
-  if (credsInputSchema.credentials_provider.length > 1) {
-    if (!credsInputSchema.discriminator) {
-      throw new Error(
-        "Multi-provider credential input requires discriminator!",
-      );
-    }
-    if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
-      return null;
-    }
-    providerName = discriminatedProvider;
-  } else {
-    providerName = credsInputSchema.credentials_provider[0];
-  }
+  const inputs = nodeInputValues ?? {};
+  const discriminatorValue = getDiscriminatorValue(inputs, credsInputSchema);
+  const providerName = getCredentialProviderFromSchema(
+    inputs,
+    credsInputSchema,
+    selectedProvider,
+  );
+  useReportProviderUnknown(providerName, allProviders);
+  if (!providerName) return null;
   const provider = allProviders ? allProviders[providerName] : null;
-
-  // If block input schema doesn't have credentials, return null
-  if (!credsInputSchema) {
-    return null;
-  }
 
   const supportedTypes = getSupportedCredentialTypes(
     credsInputSchema,
@@ -149,10 +150,13 @@ export default function useCredentials(
     ...credsInputSchema,
     credentials_types: supportedTypes,
   };
-  const supportsApiKey = supportedTypes.includes("api_key");
-  const supportsOAuth2 = supportedTypes.includes("oauth2");
-  const supportsUserPassword = supportedTypes.includes("user_password");
-  const supportsHostScoped = supportedTypes.includes("host_scoped");
+  const {
+    supportsApiKey,
+    supportsDeviceCode,
+    supportsOAuth2,
+    supportsUserPassword,
+    supportsHostScoped,
+  } = deriveAuthMethods(supportedTypes);
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -167,10 +171,12 @@ export default function useCredentials(
 
   return {
     ...provider,
+    allProviderCredentials: provider.savedCredentials,
     provider: providerName,
     schema: effectiveSchema,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
@@ -178,4 +184,26 @@ export default function useCredentials(
     discriminatorValue,
     isLoading: false,
   };
+}
+
+/** A provider missing from the *loaded* map renders as a permanent loading
+ *  state, never an error — the card silently drops the row it owes the user.
+ *  A null map is still in flight and means nothing, and an empty one is what a
+ *  settled logged-out session publishes — neither says a provider is unknown. */
+function useReportProviderUnknown(
+  providerName: string | null,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  const reportedFor = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!providerName || !allProviders) return;
+    if (Object.keys(allProviders).length === 0) return;
+    if (providerName in allProviders) return;
+    if (reportedFor.current.has(providerName)) return;
+    reportedFor.current.add(providerName);
+    trackCredentialConnectionFailure("credential_card_never_rendered", {
+      provider: providerName,
+    });
+  }, [providerName, allProviders]);
 }

@@ -205,7 +205,12 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             return config_required
 
         agent_credentials, card = await self._resolve_credentials(
-            user_id, graph, trigger_node, kwargs.get("credentials") or {}, session_id
+            user_id,
+            graph,
+            trigger_node,
+            kwargs.get("credentials") or {},
+            session_id,
+            session.expert_id,
         )
         if card:
             return card
@@ -275,7 +280,10 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             graph_id = library_agent.graph_id
             graph_version = library_agent.graph_version
 
-        graph = await graph_db().get_graph(graph_id, graph_version, user_id=user_id)
+        # Sub-graphs are needed to aggregate the full set of required credentials.
+        graph = await graph_db().get_graph(
+            graph_id, graph_version, user_id=user_id, include_subgraphs=True
+        )
         if not graph:
             return None, ErrorResponse(
                 message=f"Agent graph '{graph_id}' not found.",
@@ -329,6 +337,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         trigger_node: Node,
         selection: dict[str, str],
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], SetupRequirementsResponse | None]:
         """Resolve the agent's credentials, or return a setup card to fill them.
 
@@ -340,12 +349,12 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         Returns ``(agent_credentials, None)`` when ready to proceed, or
         ``({}, SetupRequirementsResponse)`` when the user must act first.
         """
-        matched, _ = await match_user_credentials_to_graph(user_id, graph)
+        matched, _ = await match_user_credentials_to_graph(user_id, graph, expert_id)
         trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
 
         effective = dict(matched)
         if selection:
-            available = await get_user_credentials(user_id)
+            available = await get_user_credentials(user_id, expert_id)
             effective.update(self._resolve_selection(graph, selection, available))
 
         # Force the trigger credential into the card until it's explicitly

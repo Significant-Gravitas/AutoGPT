@@ -2,28 +2,34 @@ import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { selectableCardClassName } from "../styles";
+import { selectableCardClassName, type SelectableCardColors } from "../helpers";
 
-type Props = {
+interface Props {
   sample: VoiceSample;
   choice: "a" | "b";
   choiceGroupName: string;
   isSelected: boolean;
+  labelClassName?: string;
+  colors?: SelectableCardColors;
+  compact?: boolean;
   onSelect: () => void;
-};
+}
 
 export function SampleCard({
   sample,
   choice,
   choiceGroupName,
   isSelected,
+  labelClassName,
+  colors,
+  compact = false,
   onSelect,
 }: Props) {
   return (
     <label
       className={cn(
         "block w-full text-left",
-        selectableCardClassName(isSelected, true),
+        selectableCardClassName(isSelected, true, colors, compact),
       )}
     >
       <input
@@ -35,19 +41,36 @@ export function SampleCard({
         aria-label={sample.label}
         className="sr-only"
       />
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-accent">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3",
+          compact ? "mb-1" : "mb-2",
+        )}
+      >
+        <span
+          className={cn(
+            "text-xs font-semibold uppercase tracking-[0.12em]",
+            labelClassName ?? "text-accent",
+          )}
+        >
           {sample.label}
         </span>
         {isSelected ? (
           <Icon
             icon={CheckmarkCircle02Icon}
             size={18}
-            className="shrink-0 text-accent"
+            className={cn("shrink-0", labelClassName ?? "text-accent")}
           />
         ) : null}
       </div>
-      <p className="whitespace-pre-line text-[15px] leading-relaxed text-muted-foreground">
+      <p
+        className={cn(
+          "whitespace-pre-line text-muted-foreground",
+          compact
+            ? "line-clamp-3 text-sm leading-normal"
+            : "text-[15px] leading-relaxed",
+        )}
+      >
         {sample.text}
       </p>
     </label>

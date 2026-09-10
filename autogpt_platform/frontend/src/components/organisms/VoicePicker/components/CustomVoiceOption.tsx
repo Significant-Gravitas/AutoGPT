@@ -1,32 +1,44 @@
-import { selectableCardClassName } from "../styles";
+import { cn } from "@/lib/utils";
+import { selectableCardClassName, type SelectableCardColors } from "../helpers";
 
 const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
 const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
 
-type Props = {
+interface Props {
   choiceGroupName: string;
   textareaId: string;
   customText: string;
   isSelected: boolean;
+  labelClassName?: string;
+  colors?: SelectableCardColors;
+  compact?: boolean;
   onFocus: () => void;
   onChange: (value: string) => void;
-};
+}
 
 export function CustomVoiceOption({
   choiceGroupName,
   textareaId,
   customText,
   isSelected,
+  labelClassName,
+  colors,
+  compact = false,
   onFocus,
   onChange,
 }: Props) {
   const characterCountId = `${textareaId}-character-count`;
 
   return (
-    <div className={selectableCardClassName(isSelected)}>
+    <div
+      className={selectableCardClassName(isSelected, false, colors, compact)}
+    >
       <label
         htmlFor={`${textareaId}-choice`}
-        className="mb-2 block cursor-pointer text-xs font-medium uppercase tracking-[0.12em] text-accent"
+        className={cn(
+          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-[0.12em]",
+          labelClassName ?? "text-accent",
+        )}
       >
         <input
           id={`${textareaId}-choice`}
@@ -47,11 +59,15 @@ export function CustomVoiceOption({
         value={customText}
         onFocus={onFocus}
         onChange={(event) => onChange(event.target.value)}
-        rows={CUSTOM_VOICE_TEXTAREA_ROWS}
+        rows={compact ? 2 : CUSTOM_VOICE_TEXTAREA_ROWS}
         maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
         aria-describedby={characterCountId}
         placeholder="Paste a few sentences written the way you'd like this expert to sound."
-        className="w-full resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        className={cn(
+          "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          compact ? "rounded-md px-3 py-2" : "rounded-xl px-4 py-2.5",
+          isSelected ? "border-ring" : "border-input focus:border-ring",
+        )}
       />
       <p
         id={characterCountId}

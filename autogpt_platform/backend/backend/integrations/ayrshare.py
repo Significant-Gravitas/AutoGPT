@@ -519,7 +519,6 @@ class AyrshareClient:
         response = await self._requests.post(
             self.POST_ENDPOINT, json=payload, headers=headers
         )
-        logger.warning(f"Ayrshare request: {payload} and headers: {headers}")
         if not response.ok:
             logger.error(
                 f"Ayrshare API request failed ({response.status}): {response.text()}"

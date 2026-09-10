@@ -76,6 +76,9 @@ class TestApplyBuildingModeRestart:
         suffix: str = "\n\n<building_guide>GUIDE</building_guide>",
         prior_emitted: bool = False,
         thinking_reprompted: bool = False,
+        delegation_supplement: str = "",
+        oversight_supplement: str = "",
+        team_building_supplement: str = "",
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -96,6 +99,9 @@ class TestApplyBuildingModeRestart:
             state=state,
             sdk_options=sdk_options,
             base_system_prompt="BASE",
+            delegation_supplement=delegation_supplement,
+            oversight_supplement=oversight_supplement,
+            team_building_supplement=team_building_supplement,
             graphiti_supplement="",
             use_e2b=False,
             session_id="sess-1",
@@ -116,6 +122,22 @@ class TestApplyBuildingModeRestart:
         assert state.resume_file == "sess-1"
         assert state.query_message == continuation
         assert "building mode" in status.message.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("supplement", ["delegation", "oversight"])
+    async def test_supplements_survive_the_restart(self, mocker, supplement):
+        """The restart rebuilds the system prompt from its own parts.
+
+        Tool registration happened once, before it, so both tool groups stay
+        callable for the rest of the turn — dropping their disclosure rules
+        here is exactly the silent-delegation hole these supplements close.
+        """
+        marker = f"<{supplement}>RULES</{supplement}>"
+        _, state, _, _ = await self._run(mocker, **{f"{supplement}_supplement": marker})
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert marker in text
 
     @pytest.mark.asyncio
     async def test_empty_suffix_degrades_without_prompt_upgrade(self, mocker):
@@ -165,6 +187,9 @@ class TestApplyBuildingModeRestart:
                 state=state,
                 sdk_options=MagicMock(),
                 base_system_prompt="BASE",
+                delegation_supplement="",
+                oversight_supplement="",
+                team_building_supplement="",
                 graphiti_supplement="",
                 use_e2b=False,
                 session_id="sess-1",

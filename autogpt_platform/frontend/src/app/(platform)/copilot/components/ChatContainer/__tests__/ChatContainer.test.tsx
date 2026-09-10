@@ -3,6 +3,7 @@ import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   render,
   screen,
   cleanup,
@@ -38,6 +39,7 @@ function resetCopilotStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
     },
   });
 }
@@ -103,19 +105,6 @@ vi.mock("framer-motion", () => {
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
   ChatInput: ({ disabled }: { disabled?: boolean }) => (
     <input data-testid="chat-input" disabled={disabled} />
-  ),
-}));
-
-vi.mock("@/components/atoms/Tooltip/BaseTooltip", () => ({
-  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
   ),
 }));
 
@@ -218,7 +207,36 @@ describe("ChatContainer", () => {
     cleanup();
     resetCopilotStore();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps usage tooltips hoverable and dismissible as the limit changes", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "Unsent draft" } });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.getByTestId("chat-input")).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("Unsent draft");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(input.parentElement!, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toBeDefined();
+    await act(async () => {});
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(consoleWarn.mock.calls.flat().join(" ")).not.toMatch(
+      /controlled|uncontrolled/,
+    );
+    consoleWarn.mockRestore();
   });
 
   it("renders the blurred usage-limit backdrop only when the limit is reached", () => {
@@ -314,16 +332,21 @@ describe("ChatContainer", () => {
   });
 
   describe("auto-open artifact panel behavior", () => {
+    // The chat column itself runs full width; the reading-width cap lives on
+    // the message list and the composer, so anchor the check on the composer.
+    function expectChatColumnIsCapped() {
+      expect(screen.getByTestId("chat-input").closest(".max-w-3xl")).not.toBe(
+        null,
+      );
+    }
+
     it("does not auto-open the artifact panel on initial render", () => {
       mockArtifactsEnabled.mockReturnValue(true);
 
       render(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not auto-open when rerendering within the same session", () => {
@@ -333,10 +356,7 @@ describe("ChatContainer", () => {
       rerender(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("clears the artifact preview when sessionId changes", () => {
@@ -364,10 +384,7 @@ describe("ChatContainer", () => {
       const panel = useCopilotUIStore.getState().artifactPanel;
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not carry a stale back stack into the next session", () => {
@@ -419,6 +436,7 @@ describe("ChatContainer", () => {
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
           activeTab: "files",
+          lastArtifact: null,
         },
       });
 
@@ -433,10 +451,7 @@ describe("ChatContainer", () => {
       expect(
         useCopilotUIStore.getState().artifactPanel.activeArtifact,
       ).toBeNull();
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
   });
 });

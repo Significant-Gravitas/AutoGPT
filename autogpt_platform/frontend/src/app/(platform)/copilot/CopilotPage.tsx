@@ -13,7 +13,6 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
-import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
@@ -164,8 +163,11 @@ function MainArea({
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
+            hasFloatingControls={showNewLayout}
           />
-          {!isMobile && isArtifactsEnabled && (
+          {/* Owns the session-entry reset that forgets the previous chat's
+              artifact. */}
+          {isArtifactsEnabled && (
             <ContextPanelAutoOpen
               key={`context-auto-open-${sessionId ?? "new"}`}
               sessionId={sessionId}
@@ -176,8 +178,9 @@ function MainArea({
       {!isMobile && isArtifactsEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} />
       )}
-      {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
-      {!isMobile && isArtifactsEnabled && sessionId && <ContextPanelToggle />}
+      {!isMobile && isArtifactsEnabled && sessionId && (
+        <ArtifactPanel hasExternalClose />
+      )}
     </div>
   );
 }

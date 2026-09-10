@@ -7,8 +7,9 @@ from pytest_mock import MockerFixture
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
+from backend.util.feature_flag import Flag
 
-from .service import build_home_dashboard
+from .service import _get_pending_questions, build_home_dashboard
 
 
 def _execution() -> GraphExecutionMeta:
@@ -83,6 +84,24 @@ def home_dependencies(mocker: MockerFixture):
     mocker.patch(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date",
         AsyncMock(return_value=None),
+    )
+    # The flag-gated sources must be mocked even though the gates default to
+    # off: several tests patch `service.is_feature_enabled` module-wide to
+    # True, which opens these gates too. Left unmocked, they then run real
+    # Prisma queries on this test's function-scoped event loop — the closed
+    # loop leaves a dead connection in the shared engine pool that panics the
+    # query engine when a later (session-loop) test starts a transaction.
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_session_titles",
+        AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
     )
 
 
@@ -388,3 +407,48 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     assert dashboard.upcoming_tasks == []
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+class TestPendingQuestionsFlagGate:
+    """Question items ship with the expert-team surface: without the
+    hire-experts flag, Home must not just return an empty list but must
+    never reach into chat_db at all — a return-value-only assertion would
+    still pass if someone deleted the flag check and the DB happened to
+    return nothing (e.g. no sessions yet)."""
+
+    @pytest.mark.asyncio
+    async def test_flag_off_returns_empty_and_never_touches_chat_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        is_enabled = mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=False),
+        )
+        get_sessions = mocker.patch(
+            "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+            AsyncMock(return_value=["should never be reached"]),
+        )
+
+        result = await _get_pending_questions(user_id="user-1")
+
+        assert result == []
+        get_sessions.assert_not_awaited()
+        is_enabled.assert_awaited_once_with(Flag.HIRE_EXPERTS, "user-1", default=False)
+
+    @pytest.mark.asyncio
+    async def test_flag_on_reads_pending_questions_from_chat_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=True),
+        )
+        get_sessions = mocker.patch(
+            "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+            AsyncMock(return_value=["session-info"]),
+        )
+
+        result = await _get_pending_questions(user_id="user-1")
+
+        assert result == ["session-info"]
+        get_sessions.assert_awaited_once_with("user-1")

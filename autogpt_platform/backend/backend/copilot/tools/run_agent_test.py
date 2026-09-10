@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 from backend.data.execution import ExecutionStatus
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import (
@@ -16,15 +17,18 @@ from ._test_data import (
     make_session,
     setup_firecrawl_test_data,
     setup_llm_test_data,
+    setup_subagent_test_data,
     setup_test_data,
 )
 from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
 from .run_agent import RunAgentInput, RunAgentTool
+from .utils import get_or_create_library_agent
 
 # This is so the formatter doesn't remove the fixture imports
 setup_llm_test_data = setup_llm_test_data
 setup_test_data = setup_test_data
 setup_firecrawl_test_data = setup_firecrawl_test_data
+setup_subagent_test_data = setup_subagent_test_data
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -299,6 +303,72 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     assert "user_readiness" in setup_info
     assert setup_info["user_readiness"]["has_all_credentials"] is False
     assert len(setup_info["user_readiness"]["missing_credentials"]) > 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_missing_sub_agent_credentials(setup_subagent_test_data):
+    """An orchestrator agent must surface the credentials its SUB-agents need,
+    instead of starting a run in which every sub-agent fails."""
+    user = setup_subagent_test_data["user"]
+    library_agent = setup_subagent_test_data["library_agent"]
+
+    tool = RunAgentTool()
+    session = make_session(user_id=user.id)
+
+    response = await tool.execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        library_agent_id=library_agent.id,
+        inputs={"url": "https://example.com"},
+        dry_run=False,
+        session=session,
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    assert result_data.get("type") == "setup_requirements", (
+        "Expected the inline setup card for the sub-agent's Firecrawl "
+        f"credentials, got: {result_data.get('type')}"
+    )
+    missing = result_data["setup_info"]["user_readiness"]["missing_credentials"]
+    assert [c["provider"] for c in missing.values()] == ["firecrawl"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_marketplace_agent_missing_sub_agent_credentials(
+    setup_subagent_test_data,
+):
+    """Same as above via the marketplace slug path, which resolves the graph
+    through the store."""
+    user = setup_subagent_test_data["user"]
+    store_submission = setup_subagent_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    session = make_session(user_id=user.id)
+
+    response = await tool.execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        username_agent_slug=f"{user.email.split('@')[0]}/{store_submission.slug}",
+        inputs={"url": "https://example.com"},
+        dry_run=False,
+        session=session,
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    assert result_data.get("type") == "setup_requirements", (
+        "Expected the inline setup card for the sub-agent's Firecrawl "
+        f"credentials, got: {result_data.get('type')}"
+    )
+    missing = result_data["setup_info"]["user_readiness"]["missing_credentials"]
+    assert [c["provider"] for c in missing.values()] == ["firecrawl"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -833,6 +903,126 @@ async def test_run_agent_schedule_structural_error_returns_error_response(
     # user should see the validation error, not the credential setup card.
     assert result_data.get("error") == "graph_validation_failed"
     assert result_data.get("type") != "setup_requirements"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_prefers_explicit_timezone_over_stored_preference(
+    setup_test_data,
+):
+    """The QA repro: AutoPilot asks for a timezone, confirms it back to the
+    user, and the schedule must be created in that one — not the profile's."""
+    _, fake_scheduler, _ = await _schedule_with_timezone(
+        setup_test_data,
+        stored_timezone="Europe/Amsterdam",
+        timezone="Europe/London",
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "Europe/London"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_without_explicit_timezone_uses_stored_preference(
+    setup_test_data,
+):
+    _, fake_scheduler, _ = await _schedule_with_timezone(
+        setup_test_data, stored_timezone="Europe/Amsterdam"
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "Europe/Amsterdam"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_falls_back_to_utc_when_user_has_no_timezone(
+    setup_test_data,
+):
+    _, fake_scheduler, _ = await _schedule_with_timezone(
+        setup_test_data, stored_timezone=USER_TIMEZONE_NOT_SET
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "UTC"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_rejects_invalid_explicit_timezone(setup_test_data):
+    """An unknown timezone is refused, never silently downgraded to UTC —
+    the model has already told the user which timezone it is scheduling in."""
+    response, fake_scheduler, library_agent_spy = await _schedule_with_timezone(
+        setup_test_data,
+        stored_timezone="Europe/Amsterdam",
+        timezone="Mars/Olympus_Mons",
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+    assert result_data.get("error") == "invalid_timezone"
+    assert "Mars/Olympus_Mons" in result_data["message"]
+    assert fake_scheduler.add_execution_schedule.await_count == 0
+    # A rejected schedule must not have added the agent to the user's library.
+    assert library_agent_spy.await_count == 0
+
+
+async def _schedule_with_timezone(
+    setup_test_data, *, stored_timezone: str, **run_agent_kwargs
+):
+    """Schedule an agent and hand back (response, scheduler mock, library-agent spy)."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+    tool = RunAgentTool()
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.return_value = GraphExecutionJobInfo(
+        id=str(uuid.uuid4()),
+        name="My Schedule",
+        next_run_time="",
+        timezone="UTC",
+        user_id=user.id,
+        graph_id=str(uuid.uuid4()),
+        graph_version=1,
+        cron="0 10 * * *",
+        input_data={},
+    )
+
+    library_agent_spy = AsyncMock(wraps=get_or_create_library_agent)
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.get_scheduler_client",
+            return_value=fake_scheduler,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.user_db",
+            _fake_user_db(stored_timezone),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            library_agent_spy,
+        ),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=(f"{user.email.split('@')[0]}/{store_submission.slug}"),
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 10 * * *",
+            dry_run=False,
+            session=make_session(user_id=user.id),
+            **run_agent_kwargs,
+        )
+    return response, fake_scheduler, library_agent_spy
+
+
+def _fake_user_db(stored_timezone: str):
+    """Stub ``user_db()`` so the stored timezone under test is exact,
+    independent of whatever the shared fixture user happens to carry."""
+    fake = MagicMock()
+    fake.get_user_by_id = AsyncMock(return_value=MagicMock(timezone=stored_timezone))
+    return MagicMock(return_value=fake)
 
 
 @pytest.mark.asyncio(loop_scope="session")

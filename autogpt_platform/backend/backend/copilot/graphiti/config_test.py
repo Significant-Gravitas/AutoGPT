@@ -193,11 +193,11 @@ class TestApplyLocalGraphitiModels:
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Qwen3.5-4B Unsloth GGUF
-        assert cfg.llm_model == "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+        # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
+        assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
-        assert cfg.reranker_model == "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+        assert cfg.reranker_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # embedder: text-embedding-3-small → nomic-embed-text
         assert cfg.embedder_model == "nomic-embed-text"
 

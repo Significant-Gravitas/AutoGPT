@@ -11,6 +11,7 @@ from backend.util.exceptions import (
     BlockUnknownError,
     ExecutionFailureReason,
     InsufficientBalanceError,
+    UserPaywalledError,
     get_execution_failure_reason,
 )
 
@@ -102,6 +103,37 @@ def test_typed_insufficient_balance_error_is_classified_by_type():
     assert (
         get_execution_failure_reason(error)
         == ExecutionFailureReason.INSUFFICIENT_BALANCE
+    )
+
+
+def test_paywall_error_is_classified_by_type():
+    """A paywalled node failure is a trusted, terminal, user-actionable
+    failure — the same class as an exhausted wallet. Without a typed reason it
+    never reached graph stats, so a denied run reported COMPLETED with a null
+    error while the node inside carried the real denial."""
+    error = UserPaywalledError("A Max plan or higher is required to use ChatGPT.")
+
+    assert (
+        get_execution_failure_reason(error)
+        == ExecutionFailureReason.ENTITLEMENT_REQUIRED
+    )
+
+
+def test_paywall_error_is_still_importable_from_rate_limit():
+    """It moved to break an import cycle; every existing call site imports it
+    from its old home."""
+    from backend.copilot.rate_limit import UserPaywalledError as ReExported
+
+    assert ReExported is UserPaywalledError
+
+
+def test_untyped_entitlement_wording_is_not_classified():
+    """Classification is by type, never by message text."""
+    assert (
+        get_execution_failure_reason(
+            RuntimeError("A Max plan or higher is required to use ChatGPT.")
+        )
+        is None
     )
 
 

@@ -70,20 +70,12 @@ interface CopilotStreamStore {
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
-  /**
-   * True while the current chat is in `streaming` or `submitted` state.
-   * Shared so views outside the chat tree (e.g. the workspace sidebar's
-   * Progress tab) can decide whether to render an "active" task list view
-   * or fall back to an "idle/done" view without prop drilling.
-   */
-  isStreaming: boolean;
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
   clearSession: (sessionId: string) => void;
   getMessageSnapshot: (sessionId: string) => UIMessage[];
   setMessageSnapshot: (sessionId: string, messages: UIMessage[]) => void;
-  setStreaming: (streaming: boolean) => void;
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
@@ -106,7 +98,6 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       pendingFirstSend: null,
       pendingFirstSendSessionId: null,
       pendingFileParts: [],
-      isStreaming: false,
 
       getCoord(sessionId) {
         return { ...defaultCoord, ...get().sessions[sessionId] };
@@ -147,11 +138,6 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           },
         }));
       },
-      setStreaming(streaming) {
-        if (get().isStreaming === streaming) return;
-        set({ isStreaming: streaming });
-      },
-
       setPendingFirstSend(send) {
         set({ pendingFirstSend: send, pendingFirstSendSessionId: null });
       },
@@ -186,7 +172,6 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           pendingFirstSend: null,
           pendingFirstSendSessionId: null,
           pendingFileParts: [],
-          isStreaming: false,
         });
       },
     }),

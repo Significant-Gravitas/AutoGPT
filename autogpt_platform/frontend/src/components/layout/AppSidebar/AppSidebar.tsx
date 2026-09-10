@@ -28,15 +28,13 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
-import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
-  Home01Icon,
+  Home10Icon,
   NoteEditIcon,
   Store01Icon,
   UserGroup02Icon,
@@ -58,7 +56,7 @@ const MAIN_LINKS: NavLink[] = [
 
 // /home 404s without the experts flag, so the entry only exists for the
 // cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
+const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -142,40 +140,47 @@ function NewTaskItem() {
   );
 }
 
-function NavMenu({
-  links,
-  leading,
-  renderAfterItem,
-}: {
-  links: NavLink[];
-  leading?: ReactNode;
-  renderAfterItem?: (link: NavLink) => ReactNode;
-}) {
+interface NavItemProps {
+  link: NavLink;
+}
+
+function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
   return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip={link.name}
+        isActive={isLinkActive(pathname, link.href)}
+        className={navItemClassName}
+      >
+        <Link href={link.href}>
+          <Icon
+            icon={link.icon}
+            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+          />
+          <span className="truncate">{link.name}</span>
+          <NavLinkLoader />
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function NavMenu({
+  links,
+  leading,
+}: {
+  links: NavLink[];
+  leading?: ReactNode;
+}) {
+  return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <SidebarMenuItem key={link.href}>
-          <SidebarMenuButton
-            asChild
-            tooltip={link.name}
-            isActive={isLinkActive(pathname, link.href)}
-            className={navItemClassName}
-          >
-            <Link href={link.href}>
-              <Icon
-                icon={link.icon}
-                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-              />
-              <span className="truncate">{link.name}</span>
-              <NavLinkLoader />
-            </Link>
-          </SidebarMenuButton>
-          {renderAfterItem?.(link)}
-        </SidebarMenuItem>
+        <NavItem key={link.href} link={link} />
       ))}
     </SidebarMenu>
   );
@@ -243,7 +248,7 @@ export function AppSidebar(props: Props) {
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
-    ? [HOME_LINK, ...MAIN_LINKS.filter((link) => link.href !== "/library")]
+    ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
     ? [
@@ -256,7 +261,7 @@ export function AppSidebar(props: Props) {
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "o") return;
       if (!event.metaKey && !event.ctrlKey) return;
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
@@ -294,8 +299,8 @@ export function AppSidebar(props: Props) {
                   links={mainLinks}
                   leading={
                     <>
+                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
                       <NewTaskItem />
-                      <SidebarSearch />
                     </>
                   }
                 />
@@ -305,12 +310,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu
-                links={workspaceLinks}
-                renderAfterItem={(link) =>
-                  link.href === "/team" ? <SidebarTeamMembers /> : null
-                }
-              />
+              <NavMenu links={workspaceLinks} />
             </CollapsibleNavGroup>
           </motion.div>
 

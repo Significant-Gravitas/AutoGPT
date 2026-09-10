@@ -5,8 +5,10 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { SelectWidget } from "../SelectWidget";
 
 interface SelectMockProps {
+  label?: string;
   onValueChange?: (value: string) => void;
   options?: unknown;
+  placeholder?: string;
   value?: string;
 }
 
@@ -120,6 +122,68 @@ describe("SelectWidget", () => {
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
       value: "",
       options: [{ value: "0", label: "Red" }],
+    });
+  });
+
+  it("forwards an accessible label and placeholder", () => {
+    render(
+      <SelectWidget
+        {...createProps({
+          label: "Transport",
+          placeholder: "Select a transport",
+        })}
+      />,
+    );
+
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      label: "Transport",
+      placeholder: "Select a transport",
+    });
+  });
+
+  it("uses top-level metadata for a nullable enum field", () => {
+    const enumSchema: WidgetProps["schema"] = {
+      type: "string",
+      enum: ["platform", "codex_app_server"],
+      enumNames: ["AutoGPT Platform", "ChatGPT"],
+      title: "AutoPilotTransport",
+    };
+    const transportSchema: WidgetProps["schema"] = {
+      anyOf: [enumSchema, { type: "null" }],
+      placeholder: "Select a transport",
+      title: "Transport",
+    };
+
+    render(
+      <SelectWidget
+        {...createProps({
+          name: "transport",
+          label: "AutoPilotTransport",
+          schema: enumSchema,
+          registry: {
+            ...createProps().registry,
+            rootSchema: {
+              type: "object",
+              properties: { transport: transportSchema },
+            },
+          },
+          options: {
+            enumOptions: [
+              { value: "platform", label: "platform" },
+              { value: "codex_app_server", label: "codex_app_server" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      label: "Transport",
+      placeholder: "Select a transport",
+      options: [
+        { value: "0", label: "AutoGPT Platform" },
+        { value: "1", label: "ChatGPT" },
+      ],
     });
   });
 

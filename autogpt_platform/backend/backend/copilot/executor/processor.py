@@ -11,20 +11,23 @@ import os
 import subprocess
 import threading
 import time
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.config import ChatConfig, CopilotMode
+from backend.copilot.config import ChatConfig
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.response_model import StreamError
+from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.trial_cost_context import trial_cost_context
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
@@ -32,7 +35,6 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
@@ -42,6 +44,7 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
+    from backend.copilot.tree import TurnEnvelope
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
@@ -132,70 +135,22 @@ def sync_fail_close_session(
         log.warning(f"sync fail-close mark_session_completed failed: {e}")
 
 
+def taint_for_source_platform(
+    envelope: "TurnEnvelope | None", session: "ChatSession"
+) -> "TurnEnvelope | None":
+    """Mark a turn tainted when its prompt came from a chat platform.
+
+    Those prompts are authored off-platform by someone who need not be the
+    account owner, so anything the turn spawns must inherit the bit. Taint
+    only ever rises, and a turn with no envelope stays that way rather than
+    having one invented for it.
+    """
+    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
+
+
 # ============ Mode Routing ============ #
-
-
-async def resolve_effective_mode(
-    mode: CopilotMode | None,
-    user_id: str | None,
-) -> CopilotMode | None:
-    """Strip ``mode`` when the user is not entitled to the toggle.
-
-    The UI gates the mode toggle behind ``CHAT_MODE_OPTION``; the
-    processor enforces the same gate server-side so an authenticated
-    user cannot bypass the flag by crafting a request directly.
-    """
-    if mode is None:
-        return None
-    allowed = await is_feature_enabled(
-        Flag.CHAT_MODE_OPTION,
-        user_id or "anonymous",
-        default=False,
-    )
-    if not allowed:
-        logger.info(f"Ignoring mode={mode} — CHAT_MODE_OPTION is disabled for user")
-        return None
-    return mode
-
-
-async def resolve_use_sdk_for_mode(
-    mode: CopilotMode | None,
-    user_id: str | None,
-    *,
-    use_claude_code_subscription: bool,
-    config_default: bool,
-    thinking_available: bool = True,
-) -> bool:
-    """Pick the SDK vs baseline path for a single turn.
-
-    Per-request ``mode`` wins whenever it is set (after the
-    ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
-    falls back to the Claude Code subscription override, then the
-    ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
-
-    ``thinking_available`` is the kill-switch for deployments where the
-    SDK transport simply cannot run (today: ``CHAT_USE_LOCAL=true`` —
-    Ollama doesn't speak Anthropic's wire protocol).  When False the
-    baseline path is forced regardless of mode / flags / subscription;
-    an explicit ``mode='extended_thinking'`` request is logged at WARNING
-    so misconfigured deployments are visible without 500s.
-    """
-    if not thinking_available:
-        if mode == "extended_thinking":
-            logger.warning(
-                "Downgrading mode=extended_thinking to fast: SDK is "
-                "unavailable under the current transport (CHAT_USE_LOCAL=true)"
-            )
-        return False
-    if mode == "fast":
-        return False
-    if mode == "extended_thinking":
-        return True
-    return use_claude_code_subscription or await is_feature_enabled(
-        Flag.COPILOT_SDK,
-        user_id or "anonymous",
-        default=config_default,
-    )
 
 
 # ============ Module Entry Points ============ #
@@ -559,9 +514,22 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        cost_context_stack = AsyncExitStack()
 
         try:
             from backend.copilot.model import get_chat_session
+
+            # Executor picked the turn up — replace the route's "Message
+            # received…" status while feature-flag resolution and service
+            # setup run.
+            try:
+                await stream_registry.publish_chunk(
+                    entry.turn_id,
+                    StreamStatus(message="Setting up your environment…"),
+                    session_id=entry.session_id,
+                )
+            except Exception:
+                log.warning("Failed to publish setup status chunk")
 
             session = await get_chat_session(entry.session_id, entry.user_id)
             if session is None:
@@ -601,7 +569,12 @@ class CoPilotProcessor:
                         )
                     )
                 except CodexCredentialBusyError:
-                    raise RuntimeError("codex_credential_busy") from None
+                    # Re-raised as-is rather than flattened into a bare
+                    # RuntimeError. HTTP turns run concurrently, but a brief
+                    # rotating-token refresh or legacy-credential migration
+                    # can still contend; preserving the type gives that
+                    # retryable condition a useful message.
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -622,7 +595,6 @@ class CoPilotProcessor:
                         credential_lease = None
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
-                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
                 log.info("Using Claude SDK with Codex subscription transport")
             else:
                 if entry.llm_credential_id is not None:
@@ -634,15 +606,8 @@ class CoPilotProcessor:
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
-                    effective_mode = None
                 else:
-                    # Enforce server-side feature-flag gate so unauthorised
-                    # users cannot force a mode by crafting the request.
-                    effective_mode = await resolve_effective_mode(
-                        entry.mode, entry.user_id
-                    )
-                    use_sdk = await resolve_use_sdk_for_mode(
-                        effective_mode,
+                    use_sdk = await resolve_use_sdk(
                         entry.user_id,
                         use_claude_code_subscription=(
                             config.use_claude_code_subscription
@@ -652,9 +617,8 @@ class CoPilotProcessor:
                     )
                     # Building-mode sessions are pinned to the SDK engine
                     # (guide-in-prompt + in-turn restart live there). Derived
-                    # from message history — survives stale frontend mode
-                    # pickers. get_chat_session is Redis-cached, so this is
-                    # one cache hit, not a DB round-trip.
+                    # from message history. get_chat_session is Redis-cached,
+                    # so this is one cache hit, not a DB round-trip.
                     if not use_sdk and config.thinking_available:
                         if await _building_mode_forces_sdk(entry.session_id):
                             use_sdk = True
@@ -666,26 +630,28 @@ class CoPilotProcessor:
                         if use_sdk
                         else stream_chat_completion_baseline
                     )
-                    log.info(
-                        f"Using {'SDK' if use_sdk else 'baseline'} service "
-                        f"(mode={effective_mode or 'default'})"
-                    )
+                    log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+
+            await cost_context_stack.enter_async_context(
+                trial_cost_context(entry.user_id)
+            )
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
+            envelope = taint_for_source_platform(entry.envelope, session)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=entry.message or None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
-                mode=effective_mode,
                 model=entry.model,
                 permissions=entry.permissions,
+                envelope=envelope,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id
@@ -767,3 +733,5 @@ class CoPilotProcessor:
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
+                finally:
+                    await cost_context_stack.aclose()
