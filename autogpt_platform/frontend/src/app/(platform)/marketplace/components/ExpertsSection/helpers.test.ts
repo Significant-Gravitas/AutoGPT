@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   getDayOneWorkflow,
   getExpertAccent,
+  getExpertAccessProviders,
   getExpertFirstName,
 } from "./helpers";
 
@@ -54,5 +55,46 @@ describe("getExpertFirstName", () => {
   test("falls back for an empty name", () => {
     expect(getExpertFirstName("")).toBe("Expert");
     expect(getExpertFirstName("   ")).toBe("Expert");
+  });
+});
+
+describe("getExpertAccessProviders", () => {
+  test("dedupes integrations across workflows and drops non-integrations", () => {
+    const first = makeWorkflow({
+      id: "wf-1",
+      chain: [
+        { kind: "integration", provider: "linkedin" },
+        { kind: "ai", provider: null },
+        // A named non-integration step: the access list is what the user has
+        // to connect, so it must not pick this up.
+        { kind: "mcp", provider: "notion" },
+      ],
+    });
+    const second = makeWorkflow({
+      id: "wf-2",
+      chain: [
+        { kind: "integration", provider: "google" },
+        { kind: "integration", provider: "linkedin" },
+      ],
+    });
+
+    expect(getExpertAccessProviders([first, second])).toEqual([
+      "linkedin",
+      "google",
+    ]);
+  });
+
+  test("is empty when no workflow names an integration", () => {
+    expect(getExpertAccessProviders([])).toEqual([]);
+    // A template served before the listing-graph fallback landed has no chain
+    // at all, and the section has to disappear rather than throw.
+    expect(getExpertAccessProviders([makeWorkflow({ id: "wf-1" })])).toEqual(
+      [],
+    );
+    expect(
+      getExpertAccessProviders([
+        makeWorkflow({ id: "wf-2", chain: [{ kind: "ai", provider: null }] }),
+      ]),
+    ).toEqual([]);
   });
 });

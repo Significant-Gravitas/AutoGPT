@@ -147,7 +147,8 @@ export function getExpertAccessProviders(
 ): string[] {
   const providers = workflows
     .flatMap((workflow) => workflow.chain ?? [])
-    .filter((item) => item.kind === "integration" && item.provider)
-    .map((item) => item.provider as string);
+    .flatMap((item) =>
+      item.kind === "integration" && item.provider ? [item.provider] : [],
+    );
   return [...new Set(providers)];
 }
