@@ -633,11 +633,13 @@ class SlackAdapter(WebhookAdapter):
         root_ts, sent = await self._post_chunked(team, channel, text)
         if root_ts is None:
             return None
-        # Unlike Discord, Slack's "thread" ref *is* a real message (the root),
-        # so it stays editable.
+        # `id` is the root message's ts so it can be edited; `channel_id`
+        # carries the encoded target whose thread_ts keeps follow-up sends
+        # threaded under it.
         return PostedRef(
-            id=_encode_target(team, channel, root_ts),
+            id=root_ts,
             url=await self._permalink(team, channel, root_ts),
+            channel_id=_encode_target(team, channel, root_ts),
             chunk_count=sent,
         )
 

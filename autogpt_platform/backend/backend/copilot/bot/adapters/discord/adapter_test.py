@@ -1291,14 +1291,21 @@ class TestProactiveOutput:
         thread = MagicMock(spec=discord.Thread)
         thread.id = 555
         thread.jump_url = "https://discord.com/channels/1/555"
-        thread.send = AsyncMock()
+        body = MagicMock()
+        body.id = 901
+        body.jump_url = "https://discord.com/channels/1/555/901"
+        thread.send = AsyncMock(return_value=body)
         channel.create_thread = AsyncMock(return_value=thread)
         client.get_channel.return_value = channel
 
         ref = await adapter.create_channel_thread("10", "Monday update", "body")
 
         assert ref is not None
-        assert ref.id == "555"
+        # `id` addresses the body message so it can be edited; `channel_id`
+        # is the thread, where the message lives and where follow-ups go.
+        assert ref.id == "901"
+        assert ref.channel_id == "555"
+        assert ref.editable is True
         channel.create_thread.assert_awaited_once()
         thread.send.assert_awaited()
 
@@ -1374,7 +1381,11 @@ class TestProactiveOutput:
         ref = await adapter.create_channel_thread("10", "Monday", "body")
 
         assert ref is not None
+        # The thread exists, so its id must reach the caller (a retry would
+        # duplicate it), but there is no body message to edit.
         assert ref.id == "777"
+        assert ref.channel_id == "777"
+        assert ref.editable is False
 
     @pytest.mark.asyncio
     async def test_edit_channel_message_edits_in_place(self):

@@ -171,16 +171,23 @@ async def create_thread(
         return DeliveryResult(
             ok=False, kind="thread", channel_id=channel_id, error="thread_failed"
         )
+    # The body lives inside the new thread, not the channel it was created
+    # from, so both the edit target and any follow-up post belong there.
+    thread_channel_id = ref.channel_id or channel_id
     await record_sent(
         platform,
-        channel_id,
+        thread_channel_id,
         ref.id,
         user_id,
         chunk_count=ref.chunk_count,
         editable=ref.editable,
     )
     return DeliveryResult(
-        ok=True, kind="thread", channel_id=channel_id, ref_id=ref.id, url=ref.url
+        ok=True,
+        kind="thread",
+        channel_id=thread_channel_id,
+        ref_id=ref.id,
+        url=ref.url,
     )
 
 

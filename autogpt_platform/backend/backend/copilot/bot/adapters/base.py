@@ -130,16 +130,25 @@ class PostedRef(BaseModel):
     surface a clickable link in their confirmation; platforms without
     permalinks leave it ``None``.
 
+    ``id`` is always a *message* reference — the thing ``edit_channel_message``
+    takes. ``channel_id`` is where that message lives when it differs from the
+    channel the caller posted to: creating a thread posts the body inside the
+    new thread, so an edit has to target the thread, not its parent. Follow-up
+    posts use it too, so a thread stays one conversation. ``None`` means "the
+    channel you posted to".
+
     ``chunk_count`` and ``editable`` describe what ``id`` can still be done
     to. A post split across the platform's message cap has ``id`` pointing at
     the *first* chunk only, so editing it would rewrite the opening and leave
-    the rest stale; and some ``id``s are a thread or chat rather than a
-    message (Discord threads, Telegram topics), which no edit call accepts.
-    Both are refused rather than half-applied.
+    the rest stale. ``editable=False`` marks a ref with no message behind it
+    at all — a thread that was created but whose body failed to post — which
+    is surfaced so the caller doesn't retry into a duplicate thread, but
+    cannot be edited. Both are refused rather than half-applied.
     """
 
     id: str
     url: Optional[str] = None
+    channel_id: Optional[str] = None
     chunk_count: int = 1
     editable: bool = True
 

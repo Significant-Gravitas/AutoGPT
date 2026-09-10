@@ -117,9 +117,8 @@ _ERROR_MESSAGES: dict[str, str] = {
         "stale. Post a shorter replacement instead."
     ),
     "edit_unsupported_ref": (
-        "That reference points at a thread or chat rather than a single "
-        "message, so there is nothing to edit. Post a new message into it "
-        "instead."
+        "That thread was created but its opening message never posted, so "
+        "there is nothing to edit. Post into the thread instead."
     ),
 }
 
@@ -231,10 +230,11 @@ class PostToChatPlatformTool(BaseTool):
             "target='dm' only; its channels cannot be posted to yet. Pair "
             "with schedule_followup for recurring posts; call "
             "list_chat_platform_channels if a Discord/Slack channel won't "
-            "resolve. A mode='message' post can later be changed with "
-            "edit_chat_platform_message, passing the channel_id and ref_id "
-            "this tool returns; mode='thread' returns the thread itself, "
-            "which is not editable."
+            "resolve. Whatever this posts can later be changed with "
+            "edit_chat_platform_message using the channel_id and ref_id it "
+            "returns — for mode='thread' those address the body message "
+            "inside the new thread, so posting again with that channel_id "
+            "continues the thread."
         )
 
     @property
@@ -432,10 +432,10 @@ class EditChatPlatformMessageTool(BaseTool):
             "`target`/`platform` it used) along with the new `content` — the "
             "old content is replaced entirely. Only a message this account "
             "itself had the bot post is editable, and only for 30 days — not "
-            "the bot's replies to anyone, not another user's posts, not a "
-            "thread ref, and not a long post that was split across several "
-            "messages. A failure (message too old, deleted, not yours, or the "
-            "platform rejecting the edit) is always reported, never silent."
+            "the bot's replies to anyone, not another user's posts, and not a "
+            "long post that was split across several messages. A failure "
+            "(message too old, deleted, not yours, or the platform rejecting "
+            "the edit) is always reported, never silent."
         )
 
     @property

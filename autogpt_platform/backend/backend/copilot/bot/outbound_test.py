@@ -557,21 +557,60 @@ async def test_deliver_message_records_chunk_count_from_the_adapter(sent_store):
 
 @pytest.mark.asyncio
 async def test_create_thread_records_the_adapters_editable_flag(sent_store):
-    adapter = _adapter(channel_server="g1", thread=PostedRef(id="t1", editable=False))
+    # A thread whose body never posted: the thread id still reaches the
+    # caller so a retry can't duplicate it, but there is nothing to edit.
+    adapter = _adapter(
+        channel_server="g1",
+        thread=PostedRef(id="t1", channel_id="t1", editable=False),
+    )
     await outbound.create_thread(
         adapter, _api(["g1"]), "discord", "user-1", "999888777666555444", "n", "hi"
     )
     result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "t1", "t1", "updated"
+    )
+    assert result.error == "edit_unsupported_ref"
+
+
+@pytest.mark.asyncio
+async def test_thread_body_is_editable_inside_the_new_thread(sent_store):
+    # The body lives in the thread, not the channel it was created from, so
+    # the edit target has to be the thread.
+    adapter = _adapter(
+        channel_server="g1", thread=PostedRef(id="body-1", channel_id="thread-9")
+    )
+    posted = await outbound.create_thread(
+        adapter, _api(["g1"]), "discord", "user-1", "999888777666555444", "n", "hi"
+    )
+    assert posted.ok is True
+    assert posted.channel_id == "thread-9"
+    assert posted.ref_id == "body-1"
+
+    edited = await outbound.edit_message(
         adapter,
         _api(["g1"]),
         "discord",
         "user-1",
         "channel",
-        "999888777666555444",
-        "t1",
+        "thread-9",
+        "body-1",
         "updated",
     )
-    assert result.error == "edit_unsupported_ref"
+    assert edited.ok is True
+    adapter.edit_channel_message.assert_awaited_once_with(
+        "thread-9", "body-1", "updated"
+    )
+
+
+@pytest.mark.asyncio
+async def test_thread_without_its_own_channel_falls_back_to_the_parent(sent_store):
+    # Teams delegates thread creation to a plain post, so its ref carries no
+    # separate channel; the channel posted to is still the right one.
+    adapter = _adapter(channel_server="g1", thread=PostedRef(id="m1"))
+    posted = await outbound.create_thread(
+        adapter, _api(["g1"]), "teams", "user-1", "999888777666555444", "n", "hi"
+    )
+    assert posted.channel_id == "999888777666555444"
 
 
 @pytest.mark.asyncio

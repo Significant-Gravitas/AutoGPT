@@ -532,7 +532,14 @@ class TelegramAdapter(WebhookAdapter):
         posted = await self.post_channel_message(channel_id, f"**{name}**\n\n{text}")
         if posted is None:
             return None
-        return PostedRef(id=channel_id, url=posted.url)
+        # `id` stays the posted message so it can be edited; `channel_id`
+        # carries the chat/topic target that keeps follow-up sends in place.
+        return PostedRef(
+            id=posted.id,
+            url=posted.url,
+            channel_id=channel_id,
+            chunk_count=posted.chunk_count,
+        )
 
     async def edit_channel_message(
         self, channel_id: str, ref_id: str, text: str

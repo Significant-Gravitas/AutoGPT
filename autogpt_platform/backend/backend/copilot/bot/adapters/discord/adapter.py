@@ -358,15 +358,32 @@ class DiscordAdapter(SocketAdapter):
         # The thread now exists on Discord. Surface its ref even if posting the
         # body fails, so the caller reports partial success and doesn't retry
         # into a duplicate thread.
+        first: Optional[discord.Message] = None
+        sent = 0
         try:
-            await self._send_chunked(thread, text)
+            first, sent = await self._send_chunked(thread, text)
         except discord.HTTPException:
             logger.exception(
                 "Thread %s created but posting its content failed", thread.id
             )
-        # The ref is the *thread*, not a message in it, so it is not a valid
-        # target for `edit_channel_message`.
-        return PostedRef(id=str(thread.id), url=thread.jump_url, editable=False)
+        if first is None:
+            # A thread with no body: there is no message to edit, but the
+            # thread id still has to reach the caller.
+            return PostedRef(
+                id=str(thread.id),
+                url=thread.jump_url,
+                channel_id=str(thread.id),
+                editable=False,
+            )
+        # `id` is the body message so it can be edited; `channel_id` is the
+        # thread, both because that is where the message lives and because
+        # follow-up posts belong in the thread rather than its parent.
+        return PostedRef(
+            id=str(first.id),
+            url=first.jump_url,
+            channel_id=str(thread.id),
+            chunk_count=sent,
+        )
 
     async def edit_channel_message(
         self, channel_id: str, ref_id: str, text: str
