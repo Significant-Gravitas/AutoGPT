@@ -22,9 +22,17 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
+from backend.data.db_accessors import (
+    credit_db,
+    review_db,
+    spend_approval_db,
+    user_db,
+    workspace_db,
+)
 from backend.data.execution import ExecutionContext
+from backend.data.expert_spend import add_weekly_spend
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
@@ -38,11 +46,13 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
     BlockOutputResponse,
+    CredentialRejection,
     ErrorResponse,
     InputValidationErrorResponse,
     ReviewRequiredResponse,
@@ -53,7 +63,9 @@ from .models import (
 )
 from .utils import (
     build_missing_credentials_from_field_info,
+    credential_rejection_status,
     match_credentials_to_requirements,
+    sanitize_provider_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,6 +116,36 @@ def get_inputs_from_schema(
     return results
 
 
+def is_picker_field(schema: Any) -> bool:
+    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+
+    The picker attaches hidden credentials to the chosen resource, so a bare
+    ID or URL typed into the chat can never stand in for it.
+    """
+    return isinstance(schema, dict) and (
+        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+    )
+
+
+def get_picker_inputs_from_schema(
+    input_schema: dict[str, Any],
+    exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Inputs a setup card should render: picker-backed fields only.
+
+    Every other input is collected in the chat by the CoPilot asking the
+    user, so the card carries no form for them.
+    """
+    return [
+        entry
+        for entry in get_inputs_from_schema(
+            input_schema, exclude_fields=exclude_fields, input_data=input_data
+        )
+        if is_picker_field(entry)
+    ]
+
+
 async def _charge_block_credits(
     _credit_db: Any,
     *,
@@ -115,12 +157,14 @@ async def _charge_block_credits(
     cost_filter: dict[str, Any],
     synthetic_graph_id: str,
     synthetic_node_id: str,
+    expert_id: str | None = None,
 ) -> None:
     """Charge credits for a block execution and log any billing leak.
 
     Centralised so the normal-path charge and the cancellation-recovery charge
     (see ``execute_block``'s finally) use the same metadata and the same
-    leak-logging contract.
+    leak-logging contract. ``expert_id`` also meters the charge on the
+    expert's spend counters.
     """
     try:
         await _credit_db.spend_credits(
@@ -137,6 +181,8 @@ async def _charge_block_credits(
                 reason="copilot_block_execution",
             ),
         )
+        if expert_id:
+            await add_weekly_spend(expert_id, cost)
     except Exception as e:
         # Block already executed (with possible side effects). Never
         # return ErrorResponse here — the user received output and
@@ -209,8 +255,12 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
+
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
 
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
@@ -289,6 +339,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -382,7 +433,7 @@ async def execute_block(
                     ),
                     requirements={
                         "credentials": [],
-                        "inputs": get_inputs_from_schema(
+                        "inputs": get_picker_inputs_from_schema(
                             input_schema,
                             exclude_fields=credentials_fields,
                             input_data=input_data,
@@ -464,6 +515,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
 
@@ -523,6 +575,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
         finally:
@@ -538,6 +591,21 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        status_code = credential_rejection_status(e)
+        if status_code is not None and matched_credentials:
+            logger.warning(
+                f"Provider rejected a stored credential for block {block.name} "
+                f"with HTTP {status_code}"
+            )
+            return _build_credential_rejected_card(
+                block=block,
+                block_id=block_id,
+                input_data=input_data,
+                matched_credentials=matched_credentials,
+                session_id=session_id,
+                status_code=status_code,
+                exc=e,
+            )
         logger.warning("Block execution failed: %s", e)
         return ErrorResponse(
             message=f"Block execution failed: {e}",
@@ -551,6 +619,67 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         )
+
+
+def _build_credential_rejected_card(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int,
+    exc: BlockError,
+) -> SetupRequirementsResponse:
+    """Setup card for a credential the provider refused mid-execution.
+
+    The rejected row is kept — a 401 is not proof the secret is wrong — so
+    the ``rejection`` field is what stops the card re-offering it as ready.
+    """
+    missing_creds_dict = build_missing_credentials_from_field_info(
+        _resolve_discriminated_credentials(block, input_data), matched_keys=set()
+    )
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    return SetupRequirementsResponse(
+        message=(
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+        ),
+        session_id=session_id,
+        setup_info=SetupInfo(
+            agent_id=block_id,
+            agent_name=block.name,
+            user_readiness=UserReadiness(
+                has_all_credentials=False,
+                missing_credentials=missing_creds_dict,
+                ready_to_run=False,
+            ),
+            requirements={
+                "credentials": list(missing_creds_dict.values()),
+                "inputs": [],
+                "execution_modes": ["immediate"],
+            },
+        ),
+        rejection=CredentialRejection(
+            provider=provider or "unknown",
+            detail=sanitize_provider_message(str(exc)),
+            status_code=status_code,
+            credential_id=rejected.id if rejected else None,
+            credential_title=rejected.title if rejected else None,
+        ),
+    )
 
 
 async def _collect_block_outputs(
@@ -702,6 +831,8 @@ async def prepare_block_for_execution(
             session_id=session_id,
         )
 
+    emit_tool_display_name(block.name)
+
     # LLMs sometimes pass `"credentials": null` instead of omitting the field.
     # Treat null credential fields as absent so the injection path below can
     # populate them, and so _base.validate_data doesn't reject null against a
@@ -753,11 +884,7 @@ async def prepare_block_for_execution(
     picker_fields_missing = [
         f
         for f in required_non_credential_keys - provided_input_keys
-        if isinstance(input_schema.get("properties", {}).get(f), dict)
-        and (
-            input_schema["properties"][f].get("format") == "google-drive-picker"
-            or "auto_credentials" in input_schema["properties"][f]
-        )
+        if is_picker_field(input_schema.get("properties", {}).get(f))
     ]
 
     # validate_only suppresses the setup-card early-return — the caller is
@@ -797,7 +924,7 @@ async def prepare_block_for_execution(
                 ),
                 requirements={
                     "credentials": missing_creds_list,
-                    "inputs": get_inputs_from_schema(
+                    "inputs": get_picker_inputs_from_schema(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,
@@ -929,6 +1056,59 @@ async def check_hitl_review(
         )
 
     return synthetic_node_exec_id, input_data
+
+
+async def check_spend_approval(
+    prep: BlockPreparation, user_id: str, session: ChatSession
+) -> "ReviewRequiredResponse | None":
+    """Park a paid block once the session's expert has reached her spend
+    threshold (SECRT-2599). None means the block may run."""
+    if session.expert_id is None:
+        return None
+    cost, _ = block_usage_cost(
+        prep.block, prep.input_data, use_preflight_estimate=False
+    )
+    if cost <= 0:
+        return None
+    needed = await spend_approval_db().spend_approval_required(
+        user_id, session.expert_id
+    )
+    if needed is None:
+        return None
+    review_id = await spend_approval_db().open_chat_spend_review(
+        user_id=user_id,
+        session_id=session.session_id,
+        needed=needed,
+        block_name=prep.block.name,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+    return ReviewRequiredResponse(
+        message=(
+            f"{needed.headline}. Tell the user, and after they approve "
+            "call run_block again with the same input."
+        ),
+        session_id=session.session_id,
+        block_id=prep.block_id,
+        block_name=prep.block.name,
+        review_id=review_id,
+        graph_exec_id=prep.synthetic_graph_id,
+        input_data=prep.input_data,
+    )
+
+
+async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
+    """The expert whose spend counters a chat block charge lands on; None
+    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
+
+    Narrower than the scope id ``execute_block`` takes: the flag gates who
+    gets metered, never whose file scope a ``workspace://`` input resolves in.
+    """
+    if expert_id is None:
+        return None
+    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
+        return None
+    return expert_id
 
 
 def _resolve_discriminated_credentials(

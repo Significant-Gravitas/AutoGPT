@@ -2,10 +2,15 @@ from datetime import datetime, timezone
 from typing import cast
 
 import pytest
+from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -443,6 +448,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        schedule_id=None,
+        webhook_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -1914,6 +1921,19 @@ def test_make_node_credentials_input_map_excludes_auto_creds(
 
 
 # ============================================================================
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_a_run_with_two_triggers():
+    """A run is started by a schedule or a webhook, never both; recording
+    both would let the home card report the schedule and hide the webhook."""
+    with pytest.raises(ValueError, match="schedule or a webhook"):
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            schedule_id="sched-1",
+            webhook_id="hook-1",
+        )
+
+
 # Admin-bypass paywall: requeue stuck executions for users on NO_TIER must
 # not be blocked by the paywall gate (Sentry bug prediction: admin recovery
 # would otherwise raise UserPaywalledError on the original user's behalf).
@@ -2759,3 +2779,154 @@ async def test_add_graph_execution_records_outcome(mocker):
         verr + 1,
         err + 1,
     )
+
+
+# ============ Spend approval (SECRT-2599) ============ #
+
+
+def _spend_needed():
+    from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+    return SpendApprovalNeeded(
+        expert_id="expert-1", expert_name="Ada", spent=250, threshold=250, window="week"
+    )
+
+
+def _mock_spend_gate(mocker: MockerFixture, needed):
+    required = mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=needed),
+    )
+    park = mocker.patch(
+        "backend.executor.utils._park_for_spend_approval", new=mocker.AsyncMock()
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    return required, park, queue
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_at_threshold_is_parked_unpublished(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    needed = _spend_needed()
+    required, park, queue = _mock_spend_gate(mocker, needed)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    required.assert_awaited_once_with("owner", "expert-1")
+    assert result.status == ExecutionStatus.REVIEW
+    park_kwargs = park.await_args.kwargs
+    assert park_kwargs["graph_exec_id"] == "exec-id"
+    assert park_kwargs["needed"] is needed
+    mock_edb.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_below_threshold_publishes(mocker: MockerFixture):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    _, park, queue = _mock_spend_gate(mocker, None)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    park.assert_not_awaited()
+    assert mock_edb.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()
+    assert result.status == ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"dry_run": True},
+        {"bypass_paywall": True},
+        {"execution_context": ExecutionContext(parent_execution_id="parent-exec")},
+    ],
+    ids=["dry_run", "admin_bypass", "nested_sub_graph"],
+)
+async def test_spend_gate_skips_dry_admin_and_nested_runs(
+    mocker: MockerFixture, extra: dict
+):
+    _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    required, park, queue = _mock_spend_gate(mocker, _spend_needed())
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1", **extra
+    )
+
+    required.assert_not_awaited()
+    park.assert_not_awaited()
+    queue.publish_message.assert_awaited_once()
+
+
+def _mock_parked_resume(mocker: MockerFixture, decision):
+    graph_exec, store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id="expert-1", organization_id="org", team_id="team"
+    )
+    graph_exec.status = ExecutionStatus.REVIEW
+    store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mocker.MagicMock(status=ExecutionStatus.QUEUED)
+    )
+    _mock_expert_personal_tenancy(mocker)
+    mocker.patch(
+        "backend.executor.utils._parked_spend_decision",
+        new=mocker.AsyncMock(return_value=decision),
+    )
+    return graph_exec, store, queue
+
+
+@pytest.mark.asyncio
+async def test_parked_execution_stays_parked_while_waiting(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.WAITING)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result is graph_exec
+    store.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_declined_execution_is_terminated_not_run(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.REJECTED)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result.status == ExecutionStatus.TERMINATED
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.TERMINATED
+    )
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "decision", [ReviewStatus.APPROVED, None], ids=["approved", "hitl"]
+)
+async def test_approved_or_hitl_review_resumes(mocker: MockerFixture, decision):
+    _, store, queue = _mock_parked_resume(mocker, decision)
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()

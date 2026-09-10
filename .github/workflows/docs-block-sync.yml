@@ -10,6 +10,20 @@ on:
       # Block display names come from _CAMELCASE_EXCEPTIONS here; editing it renames blocks.
       - "autogpt_platform/backend/backend/util/text.py"
       - ".github/workflows/docs-block-sync.yml"
+      # The generator renders jsonschema(), which inlines every $ref, so a type
+      # used in any block's schema materialises into the docs. These are the
+      # modules outside blocks/** that supply one.
+      - "autogpt_platform/backend/backend/sdk/**"
+      - "autogpt_platform/backend/backend/data/llm_registry/**"
+      - "autogpt_platform/backend/backend/data/model.py"
+      - "autogpt_platform/backend/backend/data/execution.py"
+      - "autogpt_platform/backend/backend/copilot/permissions.py"
+      - "autogpt_platform/backend/backend/integrations/providers.py"
+      - "autogpt_platform/backend/backend/integrations/ayrshare.py"
+      - "autogpt_platform/backend/backend/util/type.py"
+      - "autogpt_platform/backend/backend/util/file.py"
+      - "autogpt_platform/backend/backend/util/sandbox_files.py"
+      - "autogpt_platform/backend/backend/api/features/store/db.py"
   pull_request:
     branches: [master, dev]
     paths:
@@ -19,6 +33,20 @@ on:
       # Block display names come from _CAMELCASE_EXCEPTIONS here; editing it renames blocks.
       - "autogpt_platform/backend/backend/util/text.py"
       - ".github/workflows/docs-block-sync.yml"
+      # The generator renders jsonschema(), which inlines every $ref, so a type
+      # used in any block's schema materialises into the docs. These are the
+      # modules outside blocks/** that supply one.
+      - "autogpt_platform/backend/backend/sdk/**"
+      - "autogpt_platform/backend/backend/data/llm_registry/**"
+      - "autogpt_platform/backend/backend/data/model.py"
+      - "autogpt_platform/backend/backend/data/execution.py"
+      - "autogpt_platform/backend/backend/copilot/permissions.py"
+      - "autogpt_platform/backend/backend/integrations/providers.py"
+      - "autogpt_platform/backend/backend/integrations/ayrshare.py"
+      - "autogpt_platform/backend/backend/util/type.py"
+      - "autogpt_platform/backend/backend/util/file.py"
+      - "autogpt_platform/backend/backend/util/sandbox_files.py"
+      - "autogpt_platform/backend/backend/api/features/store/db.py"
 
 jobs:
   check-docs-sync:

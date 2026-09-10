@@ -16,7 +16,7 @@ google-cloud-logging = "^3.13.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
 pyjwt = { version = "^2.11.0", extras = ["crypto"] }
-redis = "^6.2.0"
+redis = "^8.1.0"
 
 [tool.poetry.group.dev.dependencies]
 httpx = "^0.28.1"
@@ -40,3 +40,6 @@ extend-select = ["I"]  # sort dependencies
 [tool.pytest.ini_options]
 # Run bare `async def` tests without a per-test marker, matching the backend.
 asyncio_mode = "auto"
+
+[tool.pyright]
+extraPaths = ["../backend"]
