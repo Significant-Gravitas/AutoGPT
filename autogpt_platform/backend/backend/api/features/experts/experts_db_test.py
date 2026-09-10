@@ -3191,6 +3191,22 @@ async def test_hired_workflows_order_by_created_at_then_id(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_template_workflow_chain_comes_from_the_listing_graph(
+    server: SpinTestServer,
+):
+    """A template row has no LibraryAgent, so without the listing fallback the
+    marketplace profile has no chain to build its access list from."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+
+    listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
+
+    workflow = listed.workflows[0]
+    assert workflow.library_agent_id is None
+    assert [(item.kind, item.provider) for item in workflow.chain] == [("input", None)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     """Re-seeding must propagate roster cadence changes onto existing
     template preload rows — the old sync was create-only."""

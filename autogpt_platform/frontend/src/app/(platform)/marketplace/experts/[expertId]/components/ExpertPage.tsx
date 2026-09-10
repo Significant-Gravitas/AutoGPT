@@ -1,6 +1,11 @@
 "use client";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import {
+  getDayOneWorkflow,
+  getExpertAccent,
+  getExpertAccessProviders,
+  getExpertFirstName,
+} from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -11,9 +16,13 @@ import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ReactNode } from "react";
 import { ExpertAbout } from "./ExpertAbout";
+import { ExpertAccess } from "./ExpertAccess";
 import { ExpertComingSoonLabel } from "./ExpertComingSoonLabel";
+import { ExpertDayOne } from "./ExpertDayOne";
 import { ExpertHireActions } from "./ExpertHireActions";
 import { ExpertPageHeader } from "./ExpertPageHeader";
+import { ExpertPlanNote } from "./ExpertPlanNote";
+import { ExpertProtectedRules } from "./ExpertProtectedRules";
 import { ExpertSkills } from "./ExpertSkills";
 import { ExpertWorkflowList } from "./ExpertWorkflowList";
 import { useExpertPage } from "../useExpertPage";
@@ -97,6 +106,7 @@ export function ExpertPage() {
   }
 
   const accent = getExpertAccent(expert.role);
+  const firstName = getExpertFirstName(expert.name);
 
   let actions: ReactNode = <Skeleton className="h-9 w-28 rounded-full" />;
   if (isActionReady) {
@@ -118,6 +128,11 @@ export function ExpertPage() {
       <BackToMarketplaceLink />
       <ExpertPageHeader expert={expert} accent={accent} actions={actions} />
       <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
+        <ExpertDayOne
+          name={firstName}
+          workflow={getDayOneWorkflow(expert.workflows)}
+          accent={accent}
+        />
         <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
         <ExpertSkills skills={expert.skills ?? []} accent={accent} />
         <ExpertWorkflowList
@@ -125,6 +140,18 @@ export function ExpertPage() {
           workflows={expert.workflows}
           accent={accent}
         />
+        <ExpertAccess
+          name={firstName}
+          providers={getExpertAccessProviders(expert.workflows)}
+        />
+        <div className="flex flex-col gap-3">
+          <ExpertPlanNote
+            name={firstName}
+            weeklyBudget={expert.weekly_budget ?? null}
+            accent={accent}
+          />
+          <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
+        </div>
       </div>
 
       {/* The voice pick follows a successful hire when the persona ships

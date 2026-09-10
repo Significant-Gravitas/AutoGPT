@@ -7,7 +7,12 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -66,10 +71,14 @@ const mariaTemplate: Expert = {
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
-  protected_soul_rules: [],
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "The expert asks for approval before acting externally.",
+  ],
   is_template: true,
   source_template_id: null,
   is_archived: false,
+  weekly_budget: 500,
   workflows: [
     {
       id: "wf-1",
@@ -78,6 +87,22 @@ const mariaTemplate: Expert = {
       store_listing_version_id: null,
       library_agent_id: null,
       graph_id: null,
+      chain: [
+        { kind: "integration", provider: "linkedin" },
+        { kind: "ai", provider: null },
+      ],
+    },
+    {
+      id: "wf-2",
+      name: "Automated Blog Writer",
+      description: "Turns a brief into a drafted post.",
+      store_listing_version_id: null,
+      library_agent_id: null,
+      graph_id: null,
+      chain: [
+        { kind: "integration", provider: "linkedin" },
+        { kind: "integration", provider: "google" },
+      ],
     },
   ],
 };
@@ -131,7 +156,11 @@ describe("Marketplace expert page", () => {
     ).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(screen.getByText("Content strategy")).toBeDefined();
-    expect(screen.getByText("LinkedIn Post Generator")).toBeDefined();
+    expect(
+      within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
+        "LinkedIn Post Generator",
+      ),
+    ).toBeDefined();
     expect(
       screen
         .getByRole("link", { name: "Back to marketplace" })
@@ -144,6 +173,100 @@ describe("Marketplace expert page", () => {
     expect(mockRouterPush).toHaveBeenCalledWith(
       `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
     );
+  });
+
+  test("renders the day-one, access, plan and disclosure sections", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    // Day one names the first workflow, which the backend orders
+    // deterministically so the promise does not change between loads.
+    const dayOne = await screen.findByRole("region", {
+      name: "What Maria sets up on day one",
+    });
+    expect(within(dayOne).getByText("LinkedIn Post Generator")).toBeDefined();
+    expect(
+      within(dayOne).getByText(
+        "Create research-driven LinkedIn posts in minutes.",
+      ),
+    ).toBeDefined();
+
+    const access = screen.getByRole("region", {
+      name: "Access Maria will ask for",
+    });
+    expect(within(access).getByText("LinkedIn")).toBeDefined();
+    expect(within(access).getByText("Google")).toBeDefined();
+
+    expect(
+      screen.getByRole("heading", { name: "Included with your plan" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/capped at \$5 a week until you change it/),
+    ).toBeDefined();
+
+    expect(
+      screen.getByText(
+        "The expert discloses that it is AI when acting externally.",
+      ),
+    ).toBeDefined();
+  });
+
+  test("drops the access and day-one sections when the data is absent", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, workflows: [], protected_soul_rules: [] },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /sets up on day one/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: /Access Maria will ask for/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/cannot break/)).toBeNull();
+    // The plan line has no data to be missing, so it always stands.
+    expect(
+      screen.getByRole("heading", { name: "Included with your plan" }),
+    ).toBeDefined();
+  });
+
+  test("waits for the roster before offering to hire an expert already hired", async () => {
+    let releaseRoster = () => {};
+    const rosterHeld = new Promise<void>((resolve) => {
+      releaseRoster = resolve;
+    });
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      http.get("*/api/experts", async () => {
+        await rosterHeld;
+        return HttpResponse.json([hiredMaria]);
+      }),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    // The roster has not answered, so neither action may be shown yet.
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+    expect(screen.queryByText("On your team")).toBeNull();
+
+    releaseRoster();
+
+    expect(await screen.findByText("On your team")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
   });
 
   test("shows the on-your-team state with a way into the chat", async () => {

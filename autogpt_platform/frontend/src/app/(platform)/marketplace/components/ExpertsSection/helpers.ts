@@ -137,3 +137,17 @@ export function getDayOneWorkflow(
 ): ExpertWorkflowRef | null {
   return workflows.find((workflow) => workflow.name?.trim()) ?? null;
 }
+
+/** The integrations named across an expert's workflows, deduped and in the
+ *  order they appear. Each workflow contributes at most three summary blocks,
+ *  so this is what the profile can honestly promise, not every credential a
+ *  run may eventually touch. */
+export function getExpertAccessProviders(
+  workflows: ExpertWorkflowRef[],
+): string[] {
+  const providers = workflows
+    .flatMap((workflow) => workflow.chain ?? [])
+    .filter((item) => item.kind === "integration" && item.provider)
+    .map((item) => item.provider as string);
+  return [...new Set(providers)];
+}

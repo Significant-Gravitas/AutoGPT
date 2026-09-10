@@ -41,9 +41,11 @@ export function useExpertPage({ expertId }: Args) {
     isLoggedIn,
     isHiringOpen,
     // Which header action to show is only decided once LaunchDarkly has
-    // answered: rendering "Coming soon" first would flash the wrong state at
-    // the users who do have hiring.
-    isActionReady: !isUserLoading && ready,
+    // answered and the roster is in: rendering "Coming soon" or a "Hire"
+    // button first would flash the wrong state at users who have hiring, or
+    // have already hired this expert. A disabled roster query never blocks —
+    // isLoading is false unless it is actually fetching.
+    isActionReady: !isUserLoading && ready && !expertsQuery.isLoading,
     isLoading: templatesQuery.isLoading,
     isError: templatesQuery.isError,
     refetch: templatesQuery.refetch,
