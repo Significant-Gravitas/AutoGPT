@@ -1069,8 +1069,7 @@ async def update_skills(
         if folder is not None:
             # Idempotent: also heals a name kept from before skills were
             # owned per expert, which had no copy in the expert's folder.
-            copied = await copy_skill_to_expert(user_id, expert_id, folder)
-            if copied is None:
+            if await copy_skill_to_expert(user_id, expert_id, folder) is None:
                 # Resolved moments ago and gone now. Keeping the name would
                 # leave the row listing a skill the expert cannot read, which
                 # is the one state this whole path exists to prevent.
@@ -1079,7 +1078,6 @@ async def update_skills(
                     f"to expert #{expert_id}; dropping it from the list"
                 )
                 continue
-            canonical = copied
         resolved.append(canonical)
     for name in marketplace:
         if name.lower() not in {r.lower() for r in resolved}:

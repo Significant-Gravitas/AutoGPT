@@ -4019,6 +4019,31 @@ async def test_update_skills_resolves_every_name_before_copying(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_keeps_the_display_name_of_a_skill_already_carried(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """Copying returns the folder slug; a name the expert already carries must
+    not be renamed to it behind the user's back."""
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _slugs("deep-research"))
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied_slug)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.add_expert_skill_name(
+        test_user.id, hired.expert.id, "Deep Research"
+    )
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["Deep Research"]
+    )
+
+    assert updated.skills == ["Deep Research"]
+
+
+async def _copied_slug(user_id, expert_id, name):
+    return name.strip().lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_skills_drops_a_name_whose_source_vanished_before_the_copy(
     server: SpinTestServer, test_user, monkeypatch
 ):
