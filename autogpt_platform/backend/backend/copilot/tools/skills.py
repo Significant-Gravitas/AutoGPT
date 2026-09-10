@@ -540,7 +540,9 @@ async def store_user_skill(
         # because no new slot is consumed.  When the lock FAILED to acquire,
         # the check is no longer atomic, so refuse any write at-or-above the
         # cap defensively (the caller can retry; a Redis blip is rare).
-        existing = await list_user_skills(user_id, expert_id, scope)
+        # No healing here: this call runs inside the per-owner write lock that
+        # the copy would need, so it would stall on itself for every name.
+        existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
         existing_slugs = {s.name for s in existing}
         at_cap = len(existing_slugs) >= MAX_USER_SKILLS
         is_new = name not in existing_slugs
@@ -782,6 +784,8 @@ async def list_user_skills(
     user_id: str,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    *,
+    heal_missing: bool = True,
 ) -> list[ParsedSkill]:
     """Return the skills owned by *expert_id* (personal AutoPilot when ``None``).
 
@@ -796,8 +800,10 @@ async def list_user_skills(
     if cached is not None:
         return cached
     skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
-    if expert_id is not None and await _copy_assigned_skills_not_yet_owned(
-        user_id, expert_id, skills
+    if (
+        heal_missing
+        and expert_id is not None
+        and await _copy_assigned_skills_not_yet_owned(user_id, expert_id, skills)
     ):
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     await _write_skills_cache(user_id, skills, expert_id)

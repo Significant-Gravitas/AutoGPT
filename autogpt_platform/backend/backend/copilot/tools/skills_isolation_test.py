@@ -128,6 +128,32 @@ async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(worl
     assert AUTOPILOT in fake.files
 
 
+async def test_storing_a_skill_does_not_backfill_under_its_own_write_lock(world):
+    """store_skill's cap check lists the owner's skills while holding the
+    per-owner write lock that copying would need, so it must not heal there."""
+    fake, experts = world
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["mine"]
+        )
+    )
+
+    with patch(
+        "backend.copilot.tools.skills.copy_skill_to_expert", new=AsyncMock()
+    ) as copy:
+        result = await StoreSkillTool()._execute(
+            "user-1",
+            _expert_session(),
+            name="fresh",
+            description="a fresh skill",
+            body="steps",
+        )
+
+    assert isinstance(result, StoreSkillResponse)
+    assert "/experts/expert-a/skills/fresh/SKILL.md" in fake.files
+    copy.assert_not_awaited()
+
+
 async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(world):
     """A marketplace attachment has no folder to copy, and a storage blip is
     indistinguishable from one, so the name must survive either way."""
