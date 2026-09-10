@@ -110,7 +110,7 @@ export function ExpertIntegrationGroups({
             type="single"
             collapsible
             defaultValue={group.id}
-            className="w-full overflow-hidden rounded-lg border border-zinc-200 bg-white"
+            className="w-full overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
           >
             <AccordionItem value={group.id} className="border-b-0">
               <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-zinc-500">
