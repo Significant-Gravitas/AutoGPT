@@ -63,6 +63,35 @@ class ReportVerifierTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_clean_secret_scan_accepts_empty_or_omitted_results(self):
+        path = self.report_dir / "trivy-secrets.json"
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["Metadata"] = {"ImageID": "sha256:" + "a" * 64}
+        for results_present in (True, False):
+            with self.subTest(results_present=results_present):
+                if results_present:
+                    report["Results"] = []
+                else:
+                    del report["Results"]
+                path.write_text(json.dumps(report), encoding="utf-8")
+                result = self.run_verifier()
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_empty_secret_results_without_image_metadata_are_rejected(self):
+        path = self.report_dir / "trivy-secrets.json"
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["Results"] = []
+        path.write_text(json.dumps(report), encoding="utf-8")
+        self.assertNotEqual(self.run_verifier().returncode, 0)
+
+    def test_empty_vulnerability_results_are_rejected(self):
+        path = self.report_dir / "trivy-critical.json"
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["Metadata"] = {"ImageID": "sha256:" + "a" * 64}
+        report["Results"] = []
+        path.write_text(json.dumps(report), encoding="utf-8")
+        self.assertNotEqual(self.run_verifier().returncode, 0)
+
     def test_junit_failure_is_rejected_even_when_summary_claims_success(self):
         (self.report_dir / "smoke.xml").write_text(
             '<testsuite tests="1" failures="0" errors="0" skipped="0">'

@@ -7,6 +7,9 @@ on:
       - ".github/workflows/platform-frontend-ci.yml"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
+      - ".github/scripts/validate_cobertura.py"
+      - ".github/scripts/test_validate_cobertura.py"
+      - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
@@ -16,6 +19,9 @@ on:
       - ".github/workflows/platform-frontend-ci.yml"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
+      - ".github/scripts/validate_cobertura.py"
+      - ".github/scripts/test_validate_cobertura.py"
+      - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
@@ -41,6 +47,22 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
+
+      - name: Test coverage report validator
+        run: >-
+          python3 ../../.github/scripts/run_unittest_junit.py
+          --start-directory ../../.github/scripts
+          --pattern test_validate_cobertura.py
+          --suite-name frontend-coverage-validator
+          --output coverage-validator-tests.xml
+
+      - name: Upload coverage validator test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-coverage-validator-tests
+          path: autogpt_platform/frontend/coverage-validator-tests.xml
+          if-no-files-found: error
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -186,13 +208,9 @@ jobs:
 
       - name: Validate coverage report
         if: ${{ always() }}
-        run: |
-          report=coverage/cobertura-coverage.xml
-          if [[ ! -s "$report" ]]; then
-            echo "missing machine-readable report: $report" >&2
-            exit 1
-          fi
-          python3 -c "import xml.etree.ElementTree as ET; ET.parse('$report')"
+        run: >-
+          python3 ../../.github/scripts/validate_cobertura.py
+          coverage/cobertura-coverage.xml
 
       - name: Upload machine-readable test results
         if: ${{ always() }}

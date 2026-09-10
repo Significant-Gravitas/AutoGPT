@@ -128,6 +128,17 @@ class ValidatePlaywrightJSONTests(unittest.TestCase):
             )
             self.assertEqual(report_path.read_text(encoding="utf-8"), original)
 
+    def test_missing_tests_fails_cleanly_and_preserves_original_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "results.json"
+            report = valid_report()
+            del report["suites"][0]["specs"][0]["tests"]
+            original = json.dumps(report)
+            report_path.write_text(original, encoding="utf-8")
+
+            self.assertEqual(main(["--synthesize-invalid", str(report_path)]), 1)
+            self.assertEqual(report_path.read_text(encoding="utf-8"), original)
+
 
 if __name__ == "__main__":
     unittest.main()

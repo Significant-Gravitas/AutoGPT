@@ -7,6 +7,7 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
@@ -16,6 +17,7 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
@@ -83,6 +85,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/fullstack-validator-results"
           poetry run pytest \
             ../../.github/scripts/test_validate_playwright_json.py \
+            ../../.github/scripts/test_e2e_seed_cache_contract.py \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
@@ -257,9 +260,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/e2e_test_data.sql
-          # Hash the inputs that determine the seeded data, not the commit:
-          # a sha-keyed entry can never be restored, only written.
-          key: e2e-test-data-v2-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/backend/data/user.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
+          # Include transitive seed imports, agent fixtures, dependencies and DB config.
+          key: e2e-test-data-v3-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
 
       - name: Set up Platform - Start database
         id: database

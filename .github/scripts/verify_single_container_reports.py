@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -84,7 +85,7 @@ def verify_junit(path: Path) -> None:
 
 def verify_trivy(path: Path, expected_image: str) -> None:
     document = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or "Results" not in document:
+    if not isinstance(document, dict) or "SchemaVersion" not in document:
         raise ValueError(f"{path.name} is not a Trivy JSON report")
     if document.get("SchemaVersion") != 2:
         raise ValueError(f"{path.name} has an unexpected schema version")
@@ -96,9 +97,20 @@ def verify_trivy(path: Path, expected_image: str) -> None:
             f"expected {expected_image!r}"
         )
 
-    results = document["Results"]
-    if not isinstance(results, list) or not results:
+    results = document.get("Results", [])
+    if not isinstance(results, list):
         raise ValueError(f"{path.name} has an invalid Results value")
+    if not results:
+        metadata = document.get("Metadata")
+        image_id = metadata.get("ImageID") if isinstance(metadata, dict) else None
+        if (
+            path.name != "trivy-secrets.json"
+            or not isinstance(image_id, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None
+        ):
+            raise ValueError(
+                f"{path.name} has incomplete scan results or image metadata"
+            )
 
     findings: dict[str, int] = {}
     for result in results:

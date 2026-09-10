@@ -1,3 +1,4 @@
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,18 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 COMMAND_REPORTER = REPOSITORY_ROOT / ".github/scripts/run_command_junit.py"
 UNITTEST_REPORTER = REPOSITORY_ROOT / ".github/scripts/run_unittest_junit.py"
+
+
+class XMLSafeTests(unittest.TestCase):
+    def test_xml_character_range_boundaries(self):
+        xml_safe = runpy.run_path(str(UNITTEST_REPORTER))["xml_safe"]
+        allowed = "\t\n\r\x20\ud7ff\ue000\ufffd\U00010000\U0010ffff"
+        forbidden = "\x00\x08\x0b\x0c\x0e\x1f\ud800\udfff\ufffe\uffff"
+        self.assertEqual(xml_safe(allowed + forbidden), allowed)
+        root = ET.Element("failure")
+        root.text = xml_safe(allowed + forbidden)
+        parsed = ET.fromstring(ET.tostring(root))
+        self.assertEqual(parsed.text, allowed.replace("\r", "\n"))
 
 
 class CommandReporterTests(unittest.TestCase):

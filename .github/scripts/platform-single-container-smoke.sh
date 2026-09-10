@@ -197,7 +197,10 @@ assert_clean_stop() {
   started="${EPOCHREALTIME}"
   docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${CONTAINER_NAME}" >/dev/null
   finished_at="$(docker inspect --format '{{.State.FinishedAt}}' "${CONTAINER_NAME}")"
-  finished_epoch="$(date --date="${finished_at}" +%s.%N)"
+  if ! finished_epoch="$(date --date="${finished_at}" +%s.%N)" || [[ -z "${finished_epoch}" ]]; then
+    echo "invalid container finish timestamp ${reason}: ${finished_at}" >&2
+    return 1
+  fi
   awk -v a="${started}" -v b="${finished_epoch}" 'BEGIN { exit !(b >= a) }' || {
     echo "container finish timestamp precedes the stop request ${reason}" >&2
     return 1
