@@ -129,15 +129,6 @@ export function getExpertFirstName(name: string): string {
   return name.trim().split(/\s+/)[0] || "Expert";
 }
 
-/** The workflow named as what the expert sets up on day one. The backend
- *  orders workflows deterministically, but a dangling ref has a null name,
- *  so take the first one that has copy to show rather than index 0. */
-export function getDayOneWorkflow(
-  workflows: ExpertWorkflowRef[],
-): ExpertWorkflowRef | null {
-  return workflows.find((workflow) => workflow.name?.trim()) ?? null;
-}
-
 /** The integrations an expert's workflows will ask this viewer to connect.
  *
  *  Reads `integration_providers`, never `chain`: the chain is a three-item

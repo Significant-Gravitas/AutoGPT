@@ -95,8 +95,8 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
-# The profile page names the first workflow as what the expert sets up on
-# day one, so the list has to come back the same way every time.
+# Postgres promises no row order without this, so the profile's workflow grid
+# could reshuffle between loads; createdAt keeps the roster's authored order.
 _WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
 
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {

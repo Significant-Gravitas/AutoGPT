@@ -178,27 +178,13 @@ describe("Marketplace expert page", () => {
     );
   });
 
-  test("renders the day-one, access, plan and disclosure sections", async () => {
+  test("renders the services, plan and disclosure sections", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
     );
 
     renderPage();
-
-    // Day one names the first workflow, which the backend orders
-    // deterministically so the promise does not change between loads.
-    const dayOne = await screen.findByRole("region", {
-      name: "What Maria sets up on day one",
-    });
-    expect(within(dayOne).getByText("LinkedIn Post Generator")).toBeDefined();
-    // The Workflows grid below carries the description; repeating it in the
-    // spotlight read as duplication rather than emphasis.
-    expect(
-      within(dayOne).queryByText(
-        "Create research-driven LinkedIn posts in minutes.",
-      ),
-    ).toBeNull();
 
     // Only what the viewer connects: Anthropic, OpenAI and Jina are on the
     // platform's own credentials and must not be asked for.
@@ -221,7 +207,7 @@ describe("Marketplace expert page", () => {
     ).toBeDefined();
   });
 
-  test("drops the access and day-one sections when the data is absent", async () => {
+  test("drops the services section when there is nothing to connect", async () => {
     server.use(
       getListExpertTemplatesMockHandler([
         { ...mariaTemplate, workflows: [], protected_soul_rules: [] },
@@ -234,9 +220,6 @@ describe("Marketplace expert page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
-    expect(
-      screen.queryByRole("region", { name: /sets up on day one/ }),
-    ).toBeNull();
     expect(
       screen.queryByRole("region", { name: /Services Maria can work with/ }),
     ).toBeNull();
