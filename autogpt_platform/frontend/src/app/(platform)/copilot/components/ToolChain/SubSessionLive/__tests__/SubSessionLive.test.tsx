@@ -4,8 +4,8 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SubSessionCard } from "../AgentCards";
-import { ToolResult } from "../ToolResult";
+import { SubSessionCard } from "../../AgentCards";
+import { ToolResult } from "../../ToolResult";
 
 /** Mirrors POLL_CAP_MS in SubSessionLive.tsx — the poll gives up after this.
  *  Kept local so the test states the contract rather than importing it. */

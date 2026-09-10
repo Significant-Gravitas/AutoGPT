@@ -8,7 +8,7 @@ import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
-import { useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { useSubSessionEffectiveStatus } from "./SubSessionLive/useSubSessionEffectiveStatus";
 import { SwapText } from "./SwapText";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
