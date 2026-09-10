@@ -82,6 +82,10 @@ class Flag(str, Enum):
     # retrieval-relevance benefit is measured.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
 
+    # Parks expert work for the user's approval once her credit spend in the
+    # window reaches the approval threshold (SECRT-2599). Off by default.
+    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — LD's per-flag targeting natively
@@ -105,6 +109,11 @@ class Flag(str, Enum):
     # independent briefing kill switch — briefings ship to exactly the
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
+
+    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
+    # browse and install end-to-end: the routes 404 when off, so the dark
+    # launch is not reachable by URL with the shelf hidden. Fail-closed.
+    SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
