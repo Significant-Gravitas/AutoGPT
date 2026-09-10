@@ -7,8 +7,11 @@ pin its retry/give-up contract.
 """
 
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep as original_sleep
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -56,10 +59,10 @@ def test_dispatch_succeeds_first_try():
     assert kwargs["organization_id"] == "org-1"
     assert kwargs["message"] == CONTINUATION_MESSAGE
     assert kwargs["is_user_message"] is False
-    assert kwargs["mode"] == "extended_thinking"
+    assert "mode" not in kwargs
 
 
-def test_dispatch_preserves_codex_transport_for_extended_thinking(
+def test_dispatch_preserves_codex_transport_for_engine_switch(
     mock_chat_session,
 ):
     mock_chat_session.return_value.metadata.llm_auth_provider = "codex"
@@ -71,34 +74,56 @@ def test_dispatch_preserves_codex_transport_for_extended_thinking(
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     kwargs = mock_schedule.call_args.kwargs
-    assert kwargs["mode"] == "extended_thinking"
+    assert "mode" not in kwargs
     assert kwargs["llm_auth_provider"] == "codex"
     assert kwargs["llm_credential_id"] == "cred-codex"
 
 
-def test_dispatch_retries_until_success():
+@pytest.fixture
+def mock_dispatch_sleep():
+    mock_sleep = MagicMock()
+    with patch(
+        "backend.copilot.executor.manager.time", SimpleNamespace(sleep=mock_sleep)
+    ):
+        yield mock_sleep
+
+
+def test_dispatch_sleep_mock_does_not_affect_other_threads(mock_dispatch_sleep):
+    def sleep_in_other_thread():
+        sleeper = time.sleep
+        sleeper(0)
+        return sleeper
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        sleeper = executor.submit(sleep_in_other_thread).result(timeout=5)
+
+    assert sleeper is original_sleep
+    mock_dispatch_sleep.assert_not_called()
+
+
+def test_dispatch_retries_until_success(mock_dispatch_sleep):
     with (
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
             side_effect=[RuntimeError("rmq down"), RuntimeError("rmq down"), None],
         ) as mock_schedule,
-        patch("backend.copilot.executor.manager.time.sleep") as mock_sleep,
     ):
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     assert mock_schedule.await_count == 3
-    assert mock_sleep.call_count == 2
+    assert mock_dispatch_sleep.call_args_list == [call(1), call(2)]
 
 
-def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker():
+def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker(
+    mock_dispatch_sleep,
+):
     with (
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
             side_effect=RuntimeError("rmq down"),
         ) as mock_schedule,
-        patch("backend.copilot.executor.manager.time.sleep"),
         patch(
             "backend.copilot.executor.manager._persist_switch_failure_marker"
         ) as mock_marker,
@@ -106,6 +131,7 @@ def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker():
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     assert mock_schedule.await_count == _SWITCH_DISPATCH_ATTEMPTS
+    assert mock_dispatch_sleep.call_args_list == [call(1), call(2)]
     mock_marker.assert_called_once_with("sess-1")
 
 

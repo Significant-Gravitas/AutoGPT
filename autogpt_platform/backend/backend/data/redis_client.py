@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from collections.abc import AsyncGenerator
+from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from dotenv import load_dotenv
 from redis import Redis
@@ -156,26 +158,64 @@ async def connect_async() -> AsyncRedisClient:
     return c
 
 
-# One AsyncRedisCluster per event loop: the client binds to the loop it was
-# first awaited on, so a module-level singleton breaks across test loops.
-_async_clients: dict[int, AsyncRedisCluster] = {}
+# Async Redis connections bind to the loop where they are first used.
+_async_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedisClient] = (
+    WeakKeyDictionary()
+)
+_async_client_finalizers: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, AsyncGenerator[None, None]
+] = WeakKeyDictionary()
+_async_client_locks: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, ReferenceType[asyncio.Lock]
+] = WeakKeyDictionary()
+
+
+def _get_async_client_lock(loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
+    lock_ref = _async_client_locks.get(loop)
+    lock = lock_ref() if lock_ref is not None else None
+    if lock is None:
+        lock = asyncio.Lock()
+        _async_client_locks[loop] = ref(lock)
+    return lock
 
 
 @conn_retry("AsyncRedis", "Releasing connection")
 async def disconnect_async():
     loop = asyncio.get_running_loop()
-    c = _async_clients.pop(id(loop), None)
-    if c is not None:
-        await c.close()
+    async with _get_async_client_lock(loop):
+        client = _async_clients.pop(loop, None)
+        finalizer = _async_client_finalizers.pop(loop, None)
+        if finalizer is not None:
+            await finalizer.aclose()
+        elif client is not None:
+            await client.close()
 
 
 async def get_redis_async() -> AsyncRedisClient:
     loop = asyncio.get_running_loop()
-    client = _async_clients.get(id(loop))
-    if client is None:
-        client = await connect_async()
-        _async_clients[id(loop)] = client
-    return client
+    async with _get_async_client_lock(loop):
+        client = _async_clients.get(loop)
+        if client is None:
+            client = await connect_async()
+            finalizer = _close_async_client_on_loop_shutdown(client)
+            await anext(finalizer)
+            _async_clients[loop] = client
+            _async_client_finalizers[loop] = finalizer
+        return client
+
+
+async def _close_async_client_on_loop_shutdown(
+    client: AsyncRedisClient,
+) -> AsyncGenerator[None, None]:
+    """Close a loop-owned client during ``loop.shutdown_asyncgens()``."""
+    try:
+        yield
+    finally:
+        loop = asyncio.get_running_loop()
+        if _async_clients.get(loop) is client:
+            _async_clients.pop(loop, None)
+            _async_client_finalizers.pop(loop, None)
+        await client.close()
 
 
 # Sharded pub/sub only delivers on the keyslot-owning shard; subscribers

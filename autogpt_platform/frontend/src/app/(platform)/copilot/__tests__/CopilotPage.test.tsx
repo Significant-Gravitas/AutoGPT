@@ -74,6 +74,15 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     }
     return { data: undefined, isSuccess: false, isError: false };
   },
+  // The provider-limit dialog reads connections to find somewhere to
+  // continue. It only renders on a failure, which this page test never
+  // provokes, so an empty result is the honest stand-in.
+  useGetV2ListChatConnections: () => ({ data: undefined }),
+  getGetV2ListChatConnectionsQueryKey: () => ["chat", "connections"],
+  usePutV2ChangeTheConnectionAnExistingChatRunsOn: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),

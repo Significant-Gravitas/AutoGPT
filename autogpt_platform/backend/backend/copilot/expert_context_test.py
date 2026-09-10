@@ -255,8 +255,8 @@ class TestBuildExpertIdentitySuffix:
         assert "Never invent customer evidence." in result
         assert "<what_ive_learned>" not in result
         assert "Nothing recorded yet." not in result
-        assert "discloses that it is AI" in result
-        assert "External actions require approval" in result
+        for rule in PROTECTED_SOUL_RULES:
+            assert rule and rule in result
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):
@@ -388,6 +388,25 @@ class TestBuildExpertContextExpertSession:
         assert "la-1" in result
         assert "graph-1" in result
         assert "run_agent" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("workflows", [[_workflow()], []])
+    async def test_workflows_block_covers_a_skipped_connection(self, workflows):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(workflows=workflows))
+        mock_db.list_experts = AsyncMock(return_value=[])
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        block = result.split("</expert_workflows>")[0]
+        assert "skips or declines a connection" in block
+        assert "public data allows (research, drafts)" in block
+        assert "workspace file with its sources" in block
+        assert "which one connection would unlock it" in block
+        assert "If public data does not support useful work, say so" in block
+        assert "Never report a workflow as run, or a step as completed" in block
 
     @pytest.mark.asyncio
     async def test_lists_teammates_excluding_self_with_delegation_rule(self):

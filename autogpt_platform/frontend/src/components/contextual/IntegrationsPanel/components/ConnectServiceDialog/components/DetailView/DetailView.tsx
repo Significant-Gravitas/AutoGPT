@@ -1,6 +1,7 @@
 "use client";
 import { motion, useReducedMotion } from "framer-motion";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -23,7 +24,7 @@ const MCP_PROVIDER_ID = "mcp";
 interface Props {
   provider: ConnectableProvider;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 const TAB_PRIORITY: AuthMethod[] = [
