@@ -83,7 +83,7 @@ export function ExpertChatGroup({
           {isAutopilot ? (
             <AutopilotAvatar size={24} />
           ) : isUploadedAvatar(avatarUrl) ? (
-            <Avatar className="h-6 w-6">
+            <Avatar className="h-6 w-6 border border-black">
               <AvatarImage
                 src={avatarUrl ?? undefined}
                 alt={label}

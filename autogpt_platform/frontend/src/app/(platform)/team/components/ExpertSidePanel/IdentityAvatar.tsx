@@ -40,7 +40,7 @@ export function IdentityAvatar({ identity, className, imageSize }: Props) {
     );
   }
   return (
-    <Avatar className={cn("shrink-0", className)}>
+    <Avatar className={cn("shrink-0 border border-black", className)}>
       <AvatarImage
         src={identity.avatarUrl ?? undefined}
         alt={identity.name}

@@ -45,7 +45,7 @@ export function ExpertAvatarButton({ expert }: Props) {
         className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
         {isUploadedAvatar(expert.avatar_url) ? (
-          <Avatar className="size-24 bg-background ring-4 ring-background">
+          <Avatar className="size-24 border border-black bg-background ring-4 ring-background">
             <AvatarImage
               src={expert.avatar_url ?? undefined}
               alt={expert.name}

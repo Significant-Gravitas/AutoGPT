@@ -58,7 +58,7 @@ export function ExpertAvatar({
   }
 
   return (
-    <Avatar className={sizeClass}>
+    <Avatar className={cn("border border-black", sizeClass)}>
       <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
     </Avatar>
