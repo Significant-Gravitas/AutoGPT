@@ -174,12 +174,16 @@ class TestStreamBatchDrafts:
 # -- Native choice buttons: the branch the feature is named after --
 
 
-def _choice_adapter(*, max_options: int = 10, max_len: int = 4096) -> MagicMock:
+def _choice_adapter(
+    *, max_options: int = 10, max_len: int = 4096, max_label: int = 64
+) -> MagicMock:
     adapter = _adapter()
     adapter.platform_name = "telegram"
     adapter.supports_choice_buttons = True
     adapter.max_choice_options = max_options
+    adapter.max_choice_label_length = max_label
     adapter.max_message_length = max_len
+    adapter.localize_markup = lambda text: text
     adapter.send_choice_buttons = AsyncMock(return_value=True)
     return adapter
 
@@ -289,6 +293,44 @@ class TestNativeChoices:
         adapter.supports_choice_buttons = False
 
         await _clarify(adapter, [{"question": "Region?", "options": ["EU", "US"]}])
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_option_longer_than_the_label_cap_uses_text(self):
+        # Native widgets clip labels, so two options sharing a prefix render
+        # identically while each still dispatches its own full text — the
+        # user can't tell which button they're pressing.
+        adapter = _choice_adapter(max_label=10)
+
+        await _clarify(
+            adapter,
+            [{"question": "Pick", "options": ["short", "x" * 40]}],
+        )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_question_measured_after_localization(self):
+        # Adapters localize before sending, and HTML/mrkdwn escaping can push
+        # a question that fitted over the cap — the send then raises.
+        adapter = _choice_adapter(max_len=50)
+        adapter.localize_markup = lambda text: text * 10
+
+        await _clarify(adapter, [{"question": "short one", "options": ["a", "b"]}])
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_list_options_render_as_a_free_text_question(self):
+        # Model-shaped payload: a string here used to be iterated character
+        # by character into one button per letter.
+        adapter = _choice_adapter()
+
+        await _clarify(adapter, [{"question": "Region?", "options": "EU"}])
 
         adapter.send_choice_buttons.assert_not_awaited()
         adapter.send_message.assert_awaited()

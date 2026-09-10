@@ -404,6 +404,10 @@ class TeamsAdapter(WebhookAdapter):
         await self._post(channel_id, activity)
 
     @property
+    def max_choice_label_length(self) -> int:
+        return 60
+
+    @property
     def max_choice_options(self) -> int:
         # An Adaptive Card renders about six actions before Teams collapses
         # the rest into an overflow the user can miss entirely.

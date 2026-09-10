@@ -645,6 +645,12 @@ def _extract_clarification_needed(
         return None
     if parsed.get("type") != "agent_builder_clarification_needed":
         return None
-    if not parsed.get("questions"):
+    # A truthy non-list `questions` (a bare string, say) would be handed on
+    # and then iterated by the renderer, raising TypeError inside the stream
+    # callback — which surfaces as the generic "something went wrong" and
+    # loses the question entirely, the same failure the native-choice
+    # fallback exists to prevent.
+    questions = parsed.get("questions")
+    if not isinstance(questions, list) or not questions:
         return None
     return parsed

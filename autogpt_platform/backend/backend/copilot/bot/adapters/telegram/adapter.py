@@ -440,6 +440,10 @@ class TelegramAdapter(WebhookAdapter):
             await self._client.call("sendMessage", **params)
 
     @property
+    def max_choice_label_length(self) -> int:
+        return 64
+
+    @property
     def supports_choice_buttons(self) -> bool:
         return True
 

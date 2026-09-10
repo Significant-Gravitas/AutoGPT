@@ -608,6 +608,10 @@ class SlackAdapter(WebhookAdapter):
         )
 
     @property
+    def max_choice_label_length(self) -> int:
+        return 75
+
+    @property
     def supports_choice_buttons(self) -> bool:
         return True
 

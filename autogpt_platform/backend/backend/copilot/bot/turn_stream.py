@@ -615,10 +615,17 @@ def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
         return False
     if len(options) > adapter.max_choice_options:
         return False
+    # A clipped label is worse than no button: two options sharing a prefix
+    # render identically while each still dispatches its own full text.
+    if any(len(option) > adapter.max_choice_label_length for option in options):
+        return False
     # Nothing else chunks the question text, and every adapter's send raises
     # past its cap — which, before this check, surfaced as a generic turn
-    # error instead of the numbered text that would have fitted.
-    return len(_native_question_text(text)) <= adapter.max_message_length
+    # error instead of the numbered text that would have fitted. Measure what
+    # actually goes on the wire: each adapter localizes first, and HTML or
+    # mrkdwn escaping can push a question that fitted over the cap.
+    rendered = adapter.localize_markup(_native_question_text(text))
+    return len(rendered) <= adapter.max_message_length
 
 
 def _native_question_text(text: str) -> str:
@@ -665,11 +672,13 @@ async def _send_native_choices(
 
 
 def _question_options(question: dict[str, Any]) -> list[str]:
-    return [
-        str(option).strip()
-        for option in question.get("options") or []
-        if str(option).strip()
-    ]
+    # `options` is model-shaped: a non-list value here would be iterated
+    # character by character (a string) or raise (an int), so anything that
+    # isn't a list means "no options" and the question renders as free text.
+    options = question.get("options")
+    if not isinstance(options, list):
+        return []
+    return [str(option).strip() for option in options if str(option).strip()]
 
 
 def _clarification_message(clarification_output: dict[str, Any]) -> str:

@@ -522,6 +522,19 @@ class TestExtractClarificationNeeded:
         )
         assert _extract_clarification_needed(payload) is None
 
+    def test_non_list_questions_returns_none(self):
+        # A truthy non-list would be passed on and then iterated by the
+        # renderer, raising TypeError inside the stream callback — which the
+        # user sees as the generic error, with the question lost.
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": "Which region?",
+            }
+        )
+        assert _extract_clarification_needed(payload) is None
+
     def test_other_tool_output_returns_none(self):
         payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
         assert _extract_clarification_needed(payload) is None

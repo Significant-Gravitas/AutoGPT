@@ -202,6 +202,18 @@ class PlatformAdapter(ABC):
         ...
 
     @property
+    def max_choice_label_length(self) -> int:
+        """Longest option label this platform's native widget shows in full.
+
+        Past it the widget silently clips, so two options sharing a prefix
+        render identically while still dispatching their own full text — the
+        user cannot tell which button they are pressing. A question with any
+        option over this goes as numbered text instead, which shows all of
+        it. Discord buttons 80, Slack 75, Telegram 64, Teams 60.
+        """
+        return 80
+
+    @property
     def max_choice_options(self) -> int:
         """How many options this platform's native widget renders legibly.
 
