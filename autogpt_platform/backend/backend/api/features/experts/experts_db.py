@@ -49,6 +49,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
     decode_voice_preferences,
 )
+from backend.api.features.experts.roster_skills import skills_for_template
 from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
@@ -62,6 +63,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
+    store_user_skill,
 )
 from backend.data.db import execute_raw_with_schema
 from backend.data.db import prisma as db_client
@@ -742,6 +744,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
+    await _install_roster_skills(expert.id, user_id, template.name)
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1403,6 +1406,42 @@ async def update_soul_fields_if_current(
         data=data,
     )
     return updated == 1
+
+
+async def _install_roster_skills(
+    expert_id: str, user_id: str, template_name: str
+) -> list[str]:
+    """Give a freshly hired roster expert its own copy of the skills the
+    template ships with. Returns the names that failed.
+
+    A template cannot hold skill content itself (no owner, so no
+    workspace), so the files are checked in beside the roster and copied
+    here. Without this a marketplace hire arrives with its personality and
+    none of its capability.
+
+    Never fatal to the hire, matching `_install_preloads`: an expert with
+    two of its three skills is worth more than a failed hire, and the
+    missing one is logged and can be added by hand.
+    """
+    failed: list[str] = []
+    for skill in skills_for_template(template_name):
+        try:
+            await store_user_skill(
+                user_id,
+                name=skill.name,
+                description=skill.description,
+                body=skill.body,
+                triggers=list(skill.triggers),
+                version=skill.version,
+                expert_id=expert_id,
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to install roster skill {skill.name!r} "
+                f"on expert #{expert_id}"
+            )
+            failed.append(skill.name)
+    return failed
 
 
 async def _install_preloads(
