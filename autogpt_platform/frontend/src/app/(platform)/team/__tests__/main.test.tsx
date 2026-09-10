@@ -35,6 +35,20 @@ import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
+vi.mock("@/lib/oauth-popup", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/oauth-popup")>();
+  return {
+    ...actual,
+    preOpenOAuthPopup: () => null,
+    openOAuthPopup: () => ({
+      promise: Promise.resolve({ code: "code", state: "state" }),
+      cleanup: { abort: () => {} },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    }),
+  };
+});
+
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
@@ -1081,6 +1095,115 @@ describe("TeamPage - setup needed card", () => {
         expertId: "expert-maria",
         body: { credential_ids: ["cred-notion"] },
       }),
+    );
+  });
+
+  test("connecting a service clears its row without a reload", async () => {
+    let items = [makeSetupItem()];
+    let granted: string[][] = [];
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      getGetV1ListProvidersMockHandler([
+        { name: "notion", supported_auth_types: ["api_key"] },
+      ]),
+      http.post("/api/proxy/api/integrations/notion/credentials", () =>
+        HttpResponse.json(
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "api_key",
+            title: "Team Notion",
+          },
+          { status: 201 },
+        ),
+      ),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = [...granted, body.credential_ids];
+          items = [];
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByPlaceholderText("My Notion key"),
+      "Team Notion",
+    );
+    await userEvent.type(
+      within(dialog).getByPlaceholderText("sk-..."),
+      "secret-value",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
+    await waitFor(() =>
+      expect(screen.queryByTestId("setup-needed")).toBeNull(),
+    );
+  });
+
+  test("signing in with OAuth clears its row without a reload", async () => {
+    let items = [makeSetupItem({ providers: ["google"] })];
+    let granted: string[][] = [];
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      getGetV1ListProvidersMockHandler([
+        { name: "google", supported_auth_types: ["oauth2"] },
+      ]),
+      http.get("/api/proxy/api/integrations/google/login", () =>
+        HttpResponse.json({
+          login_url: "https://accounts.example/auth",
+          state_token: "state",
+        }),
+      ),
+      http.post("/api/proxy/api/integrations/google/callback", () =>
+        HttpResponse.json({
+          id: "cred-google",
+          provider: "google",
+          type: "oauth2",
+          title: "Work Google",
+        }),
+      ),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = [...granted, body.credential_ids];
+          items = [];
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /OAuth/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual([["cred-google"]]));
+    await waitFor(() =>
+      expect(screen.queryByTestId("setup-needed")).toBeNull(),
     );
   });
 
