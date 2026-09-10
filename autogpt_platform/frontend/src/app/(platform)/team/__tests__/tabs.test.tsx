@@ -82,14 +82,14 @@ beforeEach(() => {
 });
 
 describe("TeamPage tabs", () => {
-  test("opens on Team Overview and offers Pod board", async () => {
+  test("opens on Team Overview without Pod board", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
 
     const overview = await screen.findByRole("tab", { name: "Team Overview" });
     expect(overview.getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tab", { name: "Pod board" })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "Pod board" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "All tasks" })).toBeNull();
   });
 
@@ -108,32 +108,7 @@ describe("TeamPage tabs", () => {
 
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Lee")).toBeDefined();
-    // Pod grouping belongs to the Pod board tab, not the overview grid.
     expect(screen.queryByRole("heading", { name: "Growth" })).toBeNull();
-  });
-
-  test("Pod board tells you how to start when there are no pods and no experts", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    expect(await screen.findByText("No pods yet")).toBeDefined();
-  });
-
-  test("Pod board lists only pods, never an ungrouped bucket", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([maria]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    const board = await screen.findByRole("region", { name: "Pods" });
-    expect(within(board).getByRole("heading", { name: "Pods" })).toBeDefined();
-    expect(within(board).getByText("No pods yet")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Ungrouped" })).toBeNull();
-    expect(within(board).queryByText("Maria")).toBeNull();
   });
 });
 

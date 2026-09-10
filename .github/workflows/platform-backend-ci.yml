@@ -206,9 +206,9 @@ jobs:
     permissions:
       contents: read
     # Each Python leg preserves the complete suite while its four disjoint path
-    # groups run on separate standard runners. This avoids CPU and service
-    # contention without deselecting tests or sharing mutable state between
-    # shards. The timeout remains a hang guard, not a performance budget.
+    # groups run on separate standard runners. The cap is a hang guard, not a
+    # performance budget: on merge_group a cancelled job reads as a failed
+    # check and ejects the PR from the queue, so keep it well above p99.
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -306,12 +306,18 @@ jobs:
         env:
           MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
         run: |
+          # The trial tests' safety guard only accepts localhost:5432/postgres
+          # under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway —
+          # each shard already has its own runner and its own Postgres container.
           case "$MATRIX_TEST_SHARD" in
-            data|copilot|remainder)
-              database_suffix="$MATRIX_TEST_SHARD"
+            data)
+              database_name="postgres"
+              ;;
+            copilot|remainder)
+              database_name="ci_${MATRIX_TEST_SHARD}"
               ;;
             util-executor)
-              database_suffix="util_executor"
+              database_name="ci_util_executor"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -321,7 +327,7 @@ jobs:
 
           {
             echo "TEST_SHARD=$MATRIX_TEST_SHARD"
-            echo "DATABASE_NAME=ci_${database_suffix}"
+            echo "DATABASE_NAME=${database_name}"
             echo "RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}"
             echo "REDIS_PORT=17000"
           } >> "$GITHUB_ENV"
@@ -358,10 +364,13 @@ jobs:
             exit 1
           fi
 
-          docker exec postgres-test createdb -h 127.0.0.1 -U postgres "$DATABASE_NAME"
-          docker exec postgres-test psql -h 127.0.0.1 -U postgres \
-            -v ON_ERROR_STOP=1 -d "$DATABASE_NAME" \
-            -f /docker-entrypoint-initdb.d/00-init.sql
+          # The container's entrypoint already created and initialised `postgres`.
+          if [[ "$DATABASE_NAME" != "postgres" ]]; then
+            docker exec postgres-test createdb -h 127.0.0.1 -U postgres "$DATABASE_NAME"
+            docker exec postgres-test psql -h 127.0.0.1 -U postgres \
+              -v ON_ERROR_STOP=1 -d "$DATABASE_NAME" \
+              -f /docker-entrypoint-initdb.d/00-init.sql
+          fi
 
           if [[ -z "$RABBITMQ_CONTAINER" ]]; then
             echo "RabbitMQ service container was not found" >&2
@@ -535,6 +544,7 @@ jobs:
           JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters"
           REDIS_HOST: localhost
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
+          TRIAL_TEST_DATABASE: "1"
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
@@ -559,16 +569,17 @@ jobs:
         run: >-
           python ../../.github/scripts/validate_junit.py --synthesize-invalid
           --allow-skips-from ../../.github/scripts/backend-allowed-skips.json
-          junit-${{ matrix.test-shard }}.xml
+          "junit-${TEST_SHARD}.xml"
 
       - name: Validate coverage reports
         if: ${{ always() }}
         run: |
-          python - <<'PY'
+          python - "coverage-${TEST_SHARD}.xml" <<'PY'
+          import sys
           from pathlib import Path
           from xml.etree import ElementTree
 
-          report = Path("coverage-${{ matrix.test-shard }}.xml")
+          report = Path(sys.argv[1])
           if not report.is_file() or not report.stat().st_size:
               raise SystemExit(f"Missing or empty report: {report}")
           ElementTree.parse(report)

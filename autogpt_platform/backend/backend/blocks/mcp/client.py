@@ -182,11 +182,21 @@ class MCPClient:
         self,
         server_url: str,
         authorization: str | None = None,
+        follow_redirects: bool = True,
     ):
+        """*follow_redirects* exists for credential verification.
+
+        A cross-host redirect correctly strips the ``Authorization`` header,
+        so the target answers an unauthenticated request — which a caller
+        checking "was this credential accepted?" would misread as a rejection.
+        Such a caller should pass ``False`` and treat the resulting
+        ``MCPClientError`` as "could not verify".
+        """
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
         self.authorization = authorization
+        self.follow_redirects = follow_redirects
         self._request_id = 0
         self._session_id: str | None = None
         self.era: MCPProtocolEra | None = None
@@ -270,7 +280,9 @@ class MCPClient:
             ),
             extra_headers=headers,
         )
-        return await requests.post(self.server_url, json=payload)
+        return await requests.post(
+            self.server_url, json=payload, allow_redirects=self.follow_redirects
+        )
 
     def _decode_reply(self, response: Response, *, strict: bool) -> _Reply:
         """Decode a reply body as JSON or SSE.
@@ -344,7 +356,9 @@ class MCPClient:
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
         )
-        await requests.post(self.server_url, json=notification)
+        await requests.post(
+            self.server_url, json=notification, allow_redirects=self.follow_redirects
+        )
 
     async def _legacy_initialize(self) -> dict[str, Any]:
         result = await self._send_legacy(
@@ -699,6 +713,7 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
         )
         for url in candidates:
             try:
@@ -751,6 +766,7 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
         )
         for url, expected_issuer in candidates:
             try:
@@ -782,7 +798,9 @@ class MCPClient:
                 retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
                 extra_headers=headers,
             )
-            await requests.delete(self.server_url)
+            await requests.delete(
+                self.server_url, allow_redirects=self.follow_redirects
+            )
         except Exception:
             pass
         finally:

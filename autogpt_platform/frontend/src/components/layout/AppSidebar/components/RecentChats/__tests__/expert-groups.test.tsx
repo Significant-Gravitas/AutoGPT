@@ -239,4 +239,39 @@ describe("RecentChats — expert groups", () => {
     expect(screen.getByText("autopilot chat 11")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
+
+  it("links each group header to a new chat, except for fired experts", async () => {
+    const maxExpert: Expert = {
+      ...mariaExpert,
+      id: "expert-max",
+      name: "Max",
+      is_archived: true,
+    };
+    const sessions = [
+      ...makeSessions(1),
+      ...makeSessions(1, mariaExpert.id),
+      ...makeSessions(1, maxExpert.id),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert, maxExpert]),
+    );
+    renderRecentChats();
+
+    const mariaLink = await screen.findByRole("link", {
+      name: "New chat with Maria",
+    });
+    expect(mariaLink.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-maria",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "New chat with Autopilot" })
+        .getAttribute("href"),
+    ).toBe("/copilot");
+    expect(groupHeader("Max")).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: "New chat with Max" }),
+    ).toBeNull();
+  });
 });
