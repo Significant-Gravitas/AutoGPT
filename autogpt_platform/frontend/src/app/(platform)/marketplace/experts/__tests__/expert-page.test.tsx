@@ -209,7 +209,7 @@ describe("Marketplace expert page", () => {
     const access = await screen.findByRole("region", {
       name: "Access Maria will ask for",
     });
-    expect(within(access).getByText("Dataforseo")).toBeDefined();
+    expect(within(access).getByText("DataForSEO")).toBeDefined();
     expect(within(access).queryByText("Anthropic")).toBeNull();
     expect(within(access).queryByText("OpenAI")).toBeNull();
 

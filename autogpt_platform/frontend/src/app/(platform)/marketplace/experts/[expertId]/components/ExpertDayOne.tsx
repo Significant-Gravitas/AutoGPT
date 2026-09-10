@@ -37,8 +37,10 @@ export function ExpertDayOne({ name, workflow, accent }: Props) {
           <div className="break-words text-[15px] font-medium text-zinc-900">
             {workflow.name}
           </div>
+          {/* A listing description is a full marketing page; the spotlight gets
+              the same two lines the workflow cards below it get. */}
           {workflow.description ? (
-            <p className="mt-0.5 text-[13px] leading-5 text-zinc-600">
+            <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-zinc-600">
               {workflow.description}
             </p>
           ) : null}
