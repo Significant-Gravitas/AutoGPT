@@ -101,7 +101,12 @@ class RMFGCreateDFMReportBlock(Block):
     def __init__(self):
         super().__init__(
             id="0d755311-d01c-4cd9-a1cc-196a78590a18",
-            description="Runs an RMFG manufacturability (DFM) check on a configured design",
+            description=(
+                "Runs an RMFG manufacturability (DFM) check on a configured design. A "
+                "blocked finding such as a hole close to a bend can be accepted with "
+                "accepted_risks once the customer agrees; requires_input means a "
+                "material or profile is still missing"
+            ),
             categories=CATEGORIES,
             input_schema=RMFGCreateDFMReportBlock.Input,
             output_schema=RMFGCreateDFMReportBlock.Output,

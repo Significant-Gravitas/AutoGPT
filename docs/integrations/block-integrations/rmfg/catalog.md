@@ -70,7 +70,7 @@ Before adding M4 taps to two holes, the agent lists taps, finds the M4 entry, an
 ## RMFG List Materials
 
 ### What it is
-Lists the sheet-metal materials RMFG can cut and bend
+Lists the sheet-metal stock RMFG can cut and bend, with thickness in mm and inches. Choose the entry closest to a part's detected thickness and pass its id as material_id to quote
 
 ### How it works
 <!-- MANUAL: how_it_works -->

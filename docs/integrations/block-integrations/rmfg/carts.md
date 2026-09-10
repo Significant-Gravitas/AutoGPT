@@ -6,7 +6,7 @@ Blocks that build and update an RMFG cart. A cart is a quoted basket with a webs
 ## RMFG Create Cart
 
 ### What it is
-Creates an RMFG cart with a website checkout link for a configured design
+Creates an RMFG cart with a website checkout link for one or more configured designs, priced live with shipping and tax once an address is set. A cart is not an order; the person pays on the link or Pay Cart charges the saved card after approval
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -18,10 +18,10 @@ Posts the same basket shape as Create Quote to `/v1/carts`, optionally with `shi
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | design_id | Design ID from Analyze Design. | str | Yes |
-| quantity | Completed units of the design. Repeated parts in an assembly are multiplied by their instance count automatically. | int | No |
-| material_id | Sheet-metal stock for every sheet part, from List Materials. Leave empty for tube-only designs or when configuration sets it. | str | No |
+| quantity | Completed units of the design: exactly the number the customer asked for (one part means 1). Repeated parts in an assembly are multiplied by their instance count automatically. | int | No |
+| material_id | Sheet-metal stock for every sheet part, from List Materials. Required for a price: pick the stocked thickness closest to the part's detected thickness and mention the difference. Leave empty only for tube-only designs or when configuration sets it. | str | No |
 | configuration | Full manufacturing configuration: per-part material, tube profile, finish, powder coat, hole operations, welds and accepted risks. A non-empty material_id above overrides defaults.material_id. | ManufacturingConfiguration | No |
-| quantity_options | Up to ten other quantities to price for comparison. | List[int] | No |
+| quantity_options | Up to ten other quantities to price alongside quantity, only when the customer wants a comparison; the main quantity stays as requested. | List[int] | No |
 | additional_items | Further configured designs to price in the same basket. | List[QuoteItemRequest] | No |
 | client_reference_id | Your own reference for this item, echoed back on the result. | str | No |
 | ship_to | Delivery address. Needed for shipping options, tax and API payment. | ShipTo | No |

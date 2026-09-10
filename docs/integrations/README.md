@@ -180,10 +180,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
-| [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG and returns its analyzed parts |
-| [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for a configured design |
+| [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-metal and tube-laser parts, and returns its analyzed parts: the first step before a live quote, cart or order |
+| [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for one or more configured designs, priced live with shipping and tax once an address is set |
 | [RMFG Create DFM Report](block-integrations/rmfg/dfm.md#rmfg-create-dfm-report) | Runs an RMFG manufacturability (DFM) check on a configured design |
-| [RMFG Create Quote](block-integrations/rmfg/quotes.md#rmfg-create-quote) | Gets an RMFG price and manufacturability findings for a configured design |
+| [RMFG Create Quote](block-integrations/rmfg/quotes.md#rmfg-create-quote) | Gets a live price from RMFG, a manufacturer that laser-cuts, bends and ships real sheet-metal and tube parts, plus manufacturability findings |
 | [RMFG Create Review Link](block-integrations/rmfg/review_links.md#rmfg-create-review-link) | Creates an RMFG review link so a person can inspect and adjust a design |
 | [RMFG Get Cart](block-integrations/rmfg/carts.md#rmfg-get-cart) | Fetches an RMFG cart and its latest quote by ID |
 | [RMFG Get DFM Report](block-integrations/rmfg/dfm.md#rmfg-get-dfm-report) | Fetches an RMFG DFM report by ID |
@@ -193,7 +193,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [RMFG Get Review Link](block-integrations/rmfg/review_links.md#rmfg-get-review-link) | Fetches an RMFG review link and the configuration a person saved on it |
 | [RMFG List Finishes](block-integrations/rmfg/catalog.md#rmfg-list-finishes) | Lists the finishes RMFG can apply to sheet or tube parts |
 | [RMFG List Hardware](block-integrations/rmfg/catalog.md#rmfg-list-hardware) | Lists the taps, studs, nuts or standoffs RMFG can install |
-| [RMFG List Materials](block-integrations/rmfg/catalog.md#rmfg-list-materials) | Lists the sheet-metal materials RMFG can cut and bend |
+| [RMFG List Materials](block-integrations/rmfg/catalog.md#rmfg-list-materials) | Lists the sheet-metal stock RMFG can cut and bend, with thickness in mm and inches |
 | [RMFG List Orders](block-integrations/rmfg/orders.md#rmfg-list-orders) | Lists the RMFG account's manufacturing orders |
 | [RMFG List Powder Coat Colors](block-integrations/rmfg/catalog.md#rmfg-list-powder-coat-colors) | Lists the powder-coat colors RMFG offers |
 | [RMFG List Tube Profiles](block-integrations/rmfg/catalog.md#rmfg-list-tube-profiles) | Lists the tube stock profiles RMFG can laser-cut |

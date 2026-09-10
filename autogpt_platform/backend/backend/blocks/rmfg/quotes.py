@@ -104,7 +104,16 @@ class RMFGCreateQuoteBlock(Block):
     def __init__(self):
         super().__init__(
             id="916c21ad-f85e-4a08-be83-3a9bffb83404",
-            description="Gets an RMFG price and manufacturability findings for a configured design",
+            description=(
+                "Gets a live price from RMFG, a manufacturer that laser-cuts, bends and "
+                "ships real sheet-metal and tube parts, plus manufacturability findings. "
+                "Quote with the stocked material closest to the part's detected "
+                "thickness and report any mismatch; quote exactly the quantity the "
+                "customer asked for, and every unique part of a project at its "
+                "required quantity; a requires_input result means a "
+                "selection is missing, blocked means a finding must be resolved or "
+                "accepted"
+            ),
             categories=CATEGORIES,
             input_schema=RMFGCreateQuoteBlock.Input,
             output_schema=RMFGCreateQuoteBlock.Output,

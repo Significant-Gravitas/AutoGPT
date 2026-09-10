@@ -6,7 +6,7 @@ Blocks that check manufacturability (design for manufacturing) of a configured d
 ## RMFG Create DFM Report
 
 ### What it is
-Runs an RMFG manufacturability (DFM) check on a configured design
+Runs an RMFG manufacturability (DFM) check on a configured design. A blocked finding such as a hole close to a bend can be accepted with accepted_risks once the customer agrees; requires_input means a material or profile is still missing
 
 ### How it works
 <!-- MANUAL: how_it_works -->

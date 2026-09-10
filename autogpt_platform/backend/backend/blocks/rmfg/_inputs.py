@@ -25,8 +25,9 @@ class RMFGBasketInput(BlockSchemaInput):
     )
     quantity: int = SchemaField(
         description=(
-            "Completed units of the design. Repeated parts in an assembly are "
-            "multiplied by their instance count automatically."
+            "Completed units of the design: exactly the number the customer asked "
+            "for (one part means 1). Repeated parts in an assembly are multiplied "
+            "by their instance count automatically."
         ),
         default=1,
         ge=1,
@@ -34,7 +35,9 @@ class RMFGBasketInput(BlockSchemaInput):
     material_id: str = SchemaField(
         description=(
             "Sheet-metal stock for every sheet part, from List Materials. "
-            "Leave empty for tube-only designs or when configuration sets it."
+            "Required for a price: pick the stocked thickness closest to the "
+            "part's detected thickness and mention the difference. Leave empty "
+            "only for tube-only designs or when configuration sets it."
         ),
         default="",
         placeholder="mat_...",
@@ -49,7 +52,10 @@ class RMFGBasketInput(BlockSchemaInput):
         advanced=True,
     )
     quantity_options: list[int] = SchemaField(
-        description="Up to ten other quantities to price for comparison.",
+        description=(
+            "Up to ten other quantities to price alongside quantity, only when the "
+            "customer wants a comparison; the main quantity stays as requested."
+        ),
         default_factory=list,
         advanced=True,
     )

@@ -45,7 +45,11 @@ class RMFGListMaterialsBlock(Block):
     def __init__(self):
         super().__init__(
             id="bd3afa7d-607e-4b0e-bd24-201c54fa0ad4",
-            description="Lists the sheet-metal materials RMFG can cut and bend",
+            description=(
+                "Lists the sheet-metal stock RMFG can cut and bend, with thickness in "
+                "mm and inches. Choose the entry closest to a part's detected "
+                "thickness and pass its id as material_id to quote"
+            ),
             categories=CATEGORIES,
             input_schema=RMFGListMaterialsBlock.Input,
             output_schema=RMFGListMaterialsBlock.Output,

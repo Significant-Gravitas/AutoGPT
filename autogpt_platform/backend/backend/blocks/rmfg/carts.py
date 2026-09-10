@@ -126,7 +126,12 @@ class RMFGCreateCartBlock(Block):
     def __init__(self):
         super().__init__(
             id="4302f685-7fab-4396-abbb-f7421f2ad511",
-            description="Creates an RMFG cart with a website checkout link for a configured design",
+            description=(
+                "Creates an RMFG cart with a website checkout link for one or more "
+                "configured designs, priced live with shipping and tax once an "
+                "address is set. A cart is not an order; the person pays on the link "
+                "or Pay Cart charges the saved card after approval"
+            ),
             categories=CATEGORIES,
             input_schema=RMFGCreateCartBlock.Input,
             output_schema=RMFGCreateCartBlock.Output,

@@ -6,7 +6,7 @@ Blocks that upload a STEP file to RMFG for analysis and read the resulting desig
 ## RMFG Analyze Design
 
 ### What it is
-Uploads a STEP file to RMFG and returns its analyzed parts
+Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-metal and tube-laser parts, and returns its analyzed parts: the first step before a live quote, cart or order. Works on a URL, an attached workspace file or a data URI
 
 ### How it works
 <!-- MANUAL: how_it_works -->

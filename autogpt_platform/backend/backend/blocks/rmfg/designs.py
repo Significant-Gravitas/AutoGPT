@@ -98,7 +98,12 @@ class RMFGAnalyzeDesignBlock(Block):
     def __init__(self):
         super().__init__(
             id="bcbee3ee-4ff4-485b-afa8-a57856ab12b6",
-            description="Uploads a STEP file to RMFG and returns its analyzed parts",
+            description=(
+                "Uploads a STEP file to RMFG, a manufacturer that makes and ships real "
+                "sheet-metal and tube-laser parts, and returns its analyzed parts: the "
+                "first step before a live quote, cart or order. Works on a URL, an "
+                "attached workspace file or a data URI"
+            ),
             categories=CATEGORIES,
             input_schema=RMFGAnalyzeDesignBlock.Input,
             output_schema=RMFGAnalyzeDesignBlock.Output,

@@ -6,7 +6,7 @@ Blocks that price a configured design. Quoting runs DFM as well, so one call ret
 ## RMFG Create Quote
 
 ### What it is
-Gets an RMFG price and manufacturability findings for a configured design
+Gets a live price from RMFG, a manufacturer that laser-cuts, bends and ships real sheet-metal and tube parts, plus manufacturability findings. Quote with the stocked material closest to the part's detected thickness and report any mismatch; quote exactly the quantity the customer asked for, and every unique part of a project at its required quantity; a requires_input result means a selection is missing, blocked means a finding must be resolved or accepted
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -18,10 +18,10 @@ Builds an `items[]` basket from the inputs — one design with a quantity and co
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | design_id | Design ID from Analyze Design. | str | Yes |
-| quantity | Completed units of the design. Repeated parts in an assembly are multiplied by their instance count automatically. | int | No |
-| material_id | Sheet-metal stock for every sheet part, from List Materials. Leave empty for tube-only designs or when configuration sets it. | str | No |
+| quantity | Completed units of the design: exactly the number the customer asked for (one part means 1). Repeated parts in an assembly are multiplied by their instance count automatically. | int | No |
+| material_id | Sheet-metal stock for every sheet part, from List Materials. Required for a price: pick the stocked thickness closest to the part's detected thickness and mention the difference. Leave empty only for tube-only designs or when configuration sets it. | str | No |
 | configuration | Full manufacturing configuration: per-part material, tube profile, finish, powder coat, hole operations, welds and accepted risks. A non-empty material_id above overrides defaults.material_id. | ManufacturingConfiguration | No |
-| quantity_options | Up to ten other quantities to price for comparison. | List[int] | No |
+| quantity_options | Up to ten other quantities to price alongside quantity, only when the customer wants a comparison; the main quantity stays as requested. | List[int] | No |
 | additional_items | Further configured designs to price in the same basket. | List[QuoteItemRequest] | No |
 | client_reference_id | Your own reference for this item, echoed back on the result. | str | No |
 | ship_to | Destination, to include delivery options in the quote. | ShipTo | No |
