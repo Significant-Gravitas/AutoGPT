@@ -1,10 +1,4 @@
-import {
-  File01Icon,
-  PlugIcon,
-  RepeatIcon,
-  Robot01Icon,
-  SparklesIcon,
-} from "@hugeicons/core-free-icons";
+import { File01Icon, PlugIcon, RepeatIcon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
@@ -17,11 +11,6 @@ export function getWorkItemIcon(
   if (category === "integration") return PlugIcon;
   if (category === "schedule") return RepeatIcon;
   return File01Icon;
-}
-
-export function getActorIcon(kind: HomeWorkActorKind): IconSvgElement {
-  if (kind === "autopilot") return SparklesIcon;
-  return Robot01Icon;
 }
 
 // The team did the work on someone's behalf; a workflow ran on its own.
@@ -56,7 +45,7 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
       "border-yellow-200 bg-yellow-50 text-yellow-700 shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
   },
   autopilot: {
-    label: "Autopilot",
+    label: "AutoPilot",
     className: "border-zinc-200 bg-white text-zinc-500",
   },
 };
