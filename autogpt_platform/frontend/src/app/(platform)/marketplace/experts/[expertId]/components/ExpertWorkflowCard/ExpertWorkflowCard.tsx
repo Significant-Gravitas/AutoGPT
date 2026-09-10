@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { FlashIcon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
+import { useImageFallback } from "@/hooks/useImageFallback";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
 
 interface Props {
@@ -17,18 +18,20 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
   const { imageUrl, isLoadingImage } = useExpertWorkflowCard(
     workflow.store_listing_version_id,
   );
+  const { showImage, handleImageError } = useImageFallback(imageUrl);
   const name = workflow.name ?? "Unnamed workflow";
 
   return (
     <li className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="relative aspect-[2.17/1] w-full bg-zinc-50">
-        {imageUrl ? (
+        {showImage && imageUrl ? (
           <Image
             src={imageUrl}
             alt={`${name} preview image`}
             fill
             sizes="(min-width: 640px) 360px, 100vw"
             className="object-cover"
+            onError={handleImageError}
           />
         ) : isLoadingImage ? (
           <Skeleton className="absolute inset-0 rounded-none" />

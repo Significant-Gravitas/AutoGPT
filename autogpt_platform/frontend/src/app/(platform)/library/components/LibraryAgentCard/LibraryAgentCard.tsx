@@ -10,6 +10,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { cn } from "@/lib/utils";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
+import { useImageFallback } from "@/hooks/useImageFallback";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
 import { StatusBadge } from "../StatusBadge/StatusBadge";
@@ -35,6 +36,7 @@ export function LibraryAgentCard({
   draggable = true,
 }: Props) {
   const { id, name, image_url } = agent;
+  const { showImage, handleImageError } = useImageFallback(image_url);
   const router = useRouter();
   const { triggerFavoriteAnimation } = useFavoriteAnimation();
 
@@ -99,7 +101,7 @@ export function LibraryAgentCard({
               {name}
             </Text>
 
-            {!image_url ? (
+            {!showImage || !image_url ? (
               <div
                 className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
                   [
@@ -122,6 +124,7 @@ export function LibraryAgentCard({
                 width={107}
                 height={58}
                 className="flex-shrink-0 rounded-small object-cover"
+                onError={handleImageError}
               />
             )}
           </NextLink>

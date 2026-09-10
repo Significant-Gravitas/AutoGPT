@@ -4,6 +4,9 @@ import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status } from "@/components/__legacy__/Status";
+import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 export interface AgentTableCardProps {
   storeAgentSubmission: StoreSubmission;
@@ -29,16 +32,26 @@ export const AgentTableCard = ({
     review_avg_rating: rating,
   } = storeAgentSubmission;
 
+  const { showImage, handleImageError } = useImageFallback(image_urls?.[0]);
+
   return (
     <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
       <div className="flex gap-4">
-        <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
-          <Image
-            src={image_urls?.[0] ?? "/nada.png"}
-            alt={agentName}
-            fill
-            style={{ objectFit: "cover" }}
-          />
+        <div className="relative flex aspect-video w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-neutral-800">
+          {showImage && image_urls?.[0] ? (
+            <Image
+              src={image_urls[0]}
+              alt={agentName}
+              fill
+              style={{ objectFit: "cover" }}
+              onError={handleImageError}
+            />
+          ) : (
+            <Icon
+              icon={ImageNotFound01Icon}
+              className="h-6 w-6 text-zinc-800"
+            />
+          )}
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">

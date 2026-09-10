@@ -7,6 +7,7 @@ import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -31,6 +32,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
   highlightedText,
   ...rest
 }) => {
+  const { showImage, handleImageError } = useImageFallback(image_url);
+
   return (
     <Button
       className={cn(
@@ -40,7 +43,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       {...rest}
     >
-      {image_url && (
+      {showImage && image_url && (
         <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
           <Image
             src={image_url}
@@ -48,6 +51,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             fill
             sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
+            onError={handleImageError}
           />
         </div>
       )}

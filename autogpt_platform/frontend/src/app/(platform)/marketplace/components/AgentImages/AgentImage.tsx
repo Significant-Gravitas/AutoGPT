@@ -1,6 +1,8 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
@@ -15,6 +17,11 @@ export function AgentImages({ images }: AgentImagesProps) {
   const { playingVideoIndex, handlePlay, handlePause } = useAgentImage();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loadedThumbs, setLoadedThumbs] = useState<Set<number>>(new Set());
+  const [failedThumbs, setFailedThumbs] = useState<Set<number>>(new Set());
+
+  function markThumbFailed(index: number) {
+    setFailedThumbs((prev) => new Set(prev).add(index));
+  }
 
   useEffect(() => {
     setSelectedIndex((prev) => Math.max(0, Math.min(prev, images.length - 1)));
@@ -52,10 +59,19 @@ export function AgentImages({ images }: AgentImagesProps) {
                     : "border-zinc-100 opacity-70 hover:opacity-100",
                 )}
               >
-                {(!isVideo || youtubeId) && !loadedThumbs.has(index) && (
-                  <Skeleton className="absolute inset-0 rounded-lg" />
-                )}
-                {youtubeId ? (
+                {(!isVideo || youtubeId) &&
+                  !loadedThumbs.has(index) &&
+                  !failedThumbs.has(index) && (
+                    <Skeleton className="absolute inset-0 rounded-lg" />
+                  )}
+                {failedThumbs.has(index) ? (
+                  <div className="flex h-full w-full items-center justify-center bg-zinc-100">
+                    <Icon
+                      icon={ImageNotFound01Icon}
+                      className="h-5 w-5 text-zinc-400"
+                    />
+                  </div>
+                ) : youtubeId ? (
                   <img
                     src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
                     alt={`Thumbnail ${index + 1}`}
@@ -64,6 +80,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
                     }
+                    onError={() => markThumbFailed(index)}
                   />
                 ) : isVideo ? (
                   <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
@@ -78,6 +95,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
                     }
+                    onError={() => markThumbFailed(index)}
                   />
                 )}
               </button>
