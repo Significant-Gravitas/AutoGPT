@@ -343,6 +343,11 @@ model OnboardingBrainDump {
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
   recommendedProviders Json?
+  /// The team AutoPilot proposes off the back of the dump: {diagnosis,
+  /// experts, raise_suggestion, source}, where every expert is a live
+  /// roster template. Null until its background job writes a result;
+  /// `source="disabled"` records a run the feature flag switched off.
+  recommendedExperts   Json?
 
   @@index([userId])
 }
