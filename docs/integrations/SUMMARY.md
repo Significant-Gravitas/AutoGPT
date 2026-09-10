@@ -119,6 +119,7 @@
 * [Rmfg Catalog](block-integrations/rmfg/catalog.md)
 * [Rmfg Designs](block-integrations/rmfg/designs.md)
 * [Rmfg Dfm](block-integrations/rmfg/dfm.md)
+* [Rmfg Images](block-integrations/rmfg/images.md)
 * [Rmfg Orders](block-integrations/rmfg/orders.md)
 * [Rmfg Pay Cart](block-integrations/rmfg/pay_cart.md)
 * [Rmfg Quotes](block-integrations/rmfg/quotes.md)

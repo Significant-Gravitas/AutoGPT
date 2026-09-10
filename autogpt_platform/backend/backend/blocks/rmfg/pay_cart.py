@@ -5,7 +5,6 @@ so this is a sensitive action that the platform asks a person to approve.
 """
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockOutput,
     BlockSchemaInput,
@@ -18,7 +17,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._inputs import credentials_field
 from ._models_commerce import Cart
 from ._testdata import TEST_CART, TEST_PAID_CART, TEST_SHIPPING_OPTION
-from ._types import CartStatus, PaymentStatus, PaymentType, QuoteStatus
+from ._types import CartStatus, PaymentStatus, PaymentType, QuoteStatus, RMFGCredentials
 from .carts import CATEGORIES, RMFGCartOutput, emit_cart
 
 
@@ -26,7 +25,7 @@ class RMFGPayCartBlock(Block):
     """Charge the account's saved card for a ready cart and place the order."""
 
     class Input(BlockSchemaInput):
-        credentials: CredentialsMetaInput = credentials_field()
+        credentials: CredentialsMetaInput = credentials_field({"payments"})
         cart_id: str = SchemaField(
             description=(
                 "Open cart whose quote is ready and which has a ship_to and "
@@ -100,7 +99,7 @@ class RMFGPayCartBlock(Block):
 
     @staticmethod
     async def pay_cart(
-        credentials: APIKeyCredentials, input_data: Input, idempotency_key: str
+        credentials: RMFGCredentials, input_data: Input, idempotency_key: str
     ) -> Cart:
         return await RMFGClient(credentials).pay_cart(
             input_data.cart_id,
@@ -115,7 +114,7 @@ class RMFGPayCartBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:

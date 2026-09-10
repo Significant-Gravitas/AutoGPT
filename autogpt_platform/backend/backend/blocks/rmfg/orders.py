@@ -3,7 +3,6 @@
 from typing import Optional
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -18,7 +17,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._inputs import credentials_field
 from ._models_commerce import Order, OrderTracking
 from ._testdata import TEST_ORDER
-from ._types import OrderStatus
+from ._types import OrderStatus, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -78,11 +77,11 @@ class RMFGGetOrderBlock(Block):
         )
 
     @staticmethod
-    async def get_order(credentials: APIKeyCredentials, order_id: str) -> Order:
+    async def get_order(credentials: RMFGCredentials, order_id: str) -> Order:
         return await RMFGClient(credentials).get_order(order_id)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         order = await self.get_order(credentials, input_data.order_id)
         yield "order", order
@@ -141,12 +140,12 @@ class RMFGListOrdersBlock(Block):
 
     @staticmethod
     async def list_orders(
-        credentials: APIKeyCredentials, limit: int, cursor: str
+        credentials: RMFGCredentials, limit: int, cursor: str
     ) -> tuple[list[Order], Optional[str]]:
         return await RMFGClient(credentials).list_orders(limit, cursor)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         orders, next_cursor = await self.list_orders(
             credentials, input_data.limit, input_data.cursor

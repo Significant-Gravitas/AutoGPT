@@ -7,7 +7,6 @@ from. Paying through the API lives in ``pay_cart``.
 from typing import Optional
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -23,7 +22,7 @@ from ._inputs import RMFGBasketInput, build_items, credentials_field
 from ._models import ManufacturingReviewWarning, Requirement
 from ._models_commerce import Cart, CartTotals, ShippingOption
 from ._testdata import TEST_CART, TEST_MATERIAL, TEST_SHIP_TO, TEST_SHIPPING_OPTION
-from ._types import CartStatus, QuoteItemRequest, QuoteStatus, ShipTo
+from ._types import CartStatus, QuoteItemRequest, QuoteStatus, RMFGCredentials, ShipTo
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -145,7 +144,7 @@ class RMFGCreateCartBlock(Block):
 
     @staticmethod
     async def create_cart(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         items: list[QuoteItemRequest],
         ship_to: Optional[ShipTo],
         shipping_option_id: str,
@@ -164,7 +163,7 @@ class RMFGCreateCartBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:
@@ -204,11 +203,11 @@ class RMFGGetCartBlock(Block):
         )
 
     @staticmethod
-    async def get_cart(credentials: APIKeyCredentials, cart_id: str) -> Cart:
+    async def get_cart(credentials: RMFGCredentials, cart_id: str) -> Cart:
         return await RMFGClient(credentials).get_cart(cart_id)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         cart = await self.get_cart(credentials, input_data.cart_id)
         async for output in emit_cart(cart):
@@ -264,7 +263,7 @@ class RMFGUpdateCartBlock(Block):
 
     @staticmethod
     async def update_cart(
-        credentials: APIKeyCredentials, input_data: Input, idempotency_key: str
+        credentials: RMFGCredentials, input_data: Input, idempotency_key: str
     ) -> Cart:
         return await RMFGClient(credentials).update_cart(
             input_data.cart_id,
@@ -278,7 +277,7 @@ class RMFGUpdateCartBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:

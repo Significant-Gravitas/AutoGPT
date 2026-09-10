@@ -1,7 +1,6 @@
 """Blocks that evaluate manufacturability (DFM) for a configured design."""
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -16,7 +15,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._inputs import credentials_field
 from ._models import DFMIssue, DFMReport, PartDFM, Requirement
 from ._testdata import TEST_CONFIGURATION, TEST_DFM_ISSUE, TEST_DFM_REPORT
-from ._types import ManufacturabilityStatus, ManufacturingConfiguration
+from ._types import ManufacturabilityStatus, ManufacturingConfiguration, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -129,7 +128,7 @@ class RMFGCreateDFMReportBlock(Block):
 
     @staticmethod
     async def create_report(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         design_id: str,
         configuration: ManufacturingConfiguration,
         generate_production_files: bool,
@@ -143,7 +142,7 @@ class RMFGCreateDFMReportBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:
@@ -196,11 +195,11 @@ class RMFGGetDFMReportBlock(Block):
         )
 
     @staticmethod
-    async def get_report(credentials: APIKeyCredentials, dfm_id: str) -> DFMReport:
+    async def get_report(credentials: RMFGCredentials, dfm_id: str) -> DFMReport:
         return await RMFGClient(credentials).get_dfm_report(dfm_id)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         report = await self.get_report(credentials, input_data.dfm_id)
         async for output in emit_report(report):

@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from pydantic import TypeAdapter
 
-from backend.sdk import APIKeyCredentials, Requests
+from backend.sdk import Requests
 
 from ._http import RMFGError, parse_body, poll
 from ._models import (
@@ -25,11 +25,13 @@ from ._models_commerce import Cart, Order, Quote, ReviewLink
 from ._types import (
     DesignStatus,
     HardwareKind,
+    ImageView,
     ManufacturingConfiguration,
     PaymentType,
     Process,
     QuoteItemRequest,
     QuoteStatus,
+    RMFGCredentials,
     ShipTo,
 )
 
@@ -45,7 +47,7 @@ _JSON_LIST = TypeAdapter(list[dict[str, Any]])
 class RMFGClient:
     """Thin wrapper over the RMFG Manufacturing API v1."""
 
-    def __init__(self, credentials: APIKeyCredentials):
+    def __init__(self, credentials: RMFGCredentials):
         self.base_url = f"{RMFG_API_URL}/v1"
         # 429/5xx are retried by ``Requests`` itself with jittered backoff; the
         # attempt cap keeps a stuck endpoint from consuming the whole block
@@ -54,7 +56,7 @@ class RMFGClient:
             raise_for_status=False,
             retry_max_attempts=5,
             extra_headers={
-                "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+                "Authorization": credentials.auth_header(),
                 "Accept": "application/json",
             },
         )
@@ -154,6 +156,38 @@ class RMFGClient:
             reason = design.error.message if design.error else "unknown error"
             raise RMFGError(200, "design_failed", f"Analysis failed: {reason}")
         return design
+
+    async def get_image(
+        self,
+        design_id: str,
+        part_id: str = "",
+        dfm_id: str = "",
+        view: ImageView = ImageView.ISO,
+        width: int = 0,
+    ) -> tuple[bytes, str]:
+        """Download a rendered picture; returns (bytes, content type).
+
+        Without a part the whole design is drawn. With a DFM report the part
+        is drawn with its configured hole operations marked.
+        """
+        if dfm_id and part_id:
+            path = f"/dfm/{dfm_id}/parts/{part_id}/image"
+        elif part_id:
+            path = f"/designs/{design_id}/parts/{part_id}/image"
+        else:
+            path = f"/designs/{design_id}/image"
+        response = await self.requests.request(
+            "GET",
+            f"{self.base_url}{path}",
+            params={
+                "view": view.value,
+                "format": "png",
+                **({"width": width} if width else {}),
+            },
+        )
+        if not response.ok:
+            parse_body(response)
+        return response.content, response.headers.get("content-type", "image/png")
 
     # --- DFM ---------------------------------------------------------------
 

@@ -17,10 +17,17 @@ from pydantic import TypeAdapter, ValidationError
 from strenum import StrEnum
 
 from backend.data import integrations
-from backend.sdk import APIKeyCredentials, BaseWebhooksManager, Credentials, Requests
+from backend.sdk import (
+    APIKeyCredentials,
+    BaseWebhooksManager,
+    Credentials,
+    OAuth2Credentials,
+    Requests,
+)
 from backend.util.request import Response
 
 from ._http import ErrorEnvelope
+from ._types import RMFGCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +124,10 @@ class RMFGWebhooksManager(BaseWebhooksManager):
         ingress_url: str,
         secret: str,
     ) -> tuple[str, dict]:
-        if not isinstance(credentials, APIKeyCredentials):
-            raise ValueError("RMFG webhook registration requires an API key")
+        if not isinstance(credentials, (APIKeyCredentials, OAuth2Credentials)):
+            raise ValueError(
+                "RMFG webhook registration needs an API key or a connected account"
+            )
         unknown = [event for event in events if event not in EVENT_TYPES]
         if unknown:
             raise ValueError(f"Unknown RMFG events: {', '.join(unknown)}")
@@ -133,9 +142,11 @@ class RMFGWebhooksManager(BaseWebhooksManager):
             },
         )
         if not response.ok:
-            raise ValueError(
-                f"RMFG webhook registration failed: {_error_message(response)}"
-            )
+            message = _error_message(response)
+            if response.status == 403 and isinstance(credentials, OAuth2Credentials):
+                # Webhooks are an opt-in permission on RMFG's approval page.
+                message += ". Reconnect RMFG and allow the webhooks permission"
+            raise ValueError(f"RMFG webhook registration failed: {message}")
         data = response.json()
         # The secret is only returned on creation; without it no delivery
         # could ever be verified, so refuse to keep a half-registered hook.
@@ -148,8 +159,8 @@ class RMFGWebhooksManager(BaseWebhooksManager):
     async def _deregister_webhook(
         self, webhook: integrations.Webhook, credentials: Credentials
     ) -> None:
-        if not isinstance(credentials, APIKeyCredentials):
-            logger.warning("Cannot deregister RMFG webhook: API key required")
+        if not isinstance(credentials, (APIKeyCredentials, OAuth2Credentials)):
+            logger.warning("Cannot deregister RMFG webhook: unsupported credentials")
             return
         if not webhook.provider_webhook_id:
             return
@@ -165,9 +176,9 @@ class RMFGWebhooksManager(BaseWebhooksManager):
             )
 
 
-def _headers(credentials: APIKeyCredentials) -> dict[str, str]:
+def _headers(credentials: RMFGCredentials) -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+        "Authorization": credentials.auth_header(),
         "Content-Type": "application/json",
     }
 

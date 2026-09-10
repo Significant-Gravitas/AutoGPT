@@ -10,11 +10,12 @@ from pydantic import SecretStr
 from backend.blocks.rmfg import _http
 from backend.blocks.rmfg._api import SERVER_WAIT_SECONDS, RMFGClient
 from backend.blocks.rmfg._http import POLL_INITIAL_SECONDS, RMFGError, parse_body
-from backend.blocks.rmfg._models import ResourceError
+from backend.blocks.rmfg._models import Design, Part, ResourceError, absolute_api_url
 from backend.blocks.rmfg._testdata import TEST_DESIGN, TEST_PENDING_DESIGN, TEST_SHIP_TO
 from backend.blocks.rmfg._types import (
     DesignStatus,
     HardwareKind,
+    ImageView,
     ManufacturingConfiguration,
     PaymentType,
     Process,
@@ -383,3 +384,88 @@ class TestOrders:
         )
         _, cursor = await client.list_orders()
         assert cursor is None
+
+
+class TestRelativeUrls:
+    def test_api_paths_get_the_origin(self):
+        assert absolute_api_url("/v1/designs/d/image") == (
+            "https://api.rmfg.com/v1/designs/d/image"
+        )
+
+    def test_absolute_and_empty_values_pass_through(self):
+        assert absolute_api_url("https://www.rmfg.com/review/x") == (
+            "https://www.rmfg.com/review/x"
+        )
+        assert absolute_api_url(None) is None
+        assert absolute_api_url("") == ""
+
+    def test_design_and_part_links_are_absolute_after_validation(self):
+        # The live API returns these as bare paths.
+        design = Design.model_validate(
+            {
+                "id": "d",
+                "status": "ready",
+                "name": "x",
+                "image_url": "/v1/designs/d/image",
+                "parts": [
+                    {
+                        "id": "p",
+                        "name": "p",
+                        "suggested_process": "sheet_metal",
+                        "model_url": "/v1/designs/d/parts/p/model",
+                        "image_url": "/v1/designs/d/parts/p/image",
+                    }
+                ],
+            }
+        )
+        assert design.image_url == "https://api.rmfg.com/v1/designs/d/image"
+        assert design.parts[0].model_url.startswith("https://api.rmfg.com/")
+        assert design.parts[0].image_url == (
+            "https://api.rmfg.com/v1/designs/d/parts/p/image"
+        )
+
+    def test_part_defaults_stay_untouched(self):
+        assert Part().image_url is None
+
+
+class _BytesResponse(_FakeResponse):
+    def __init__(self, status: int, content: bytes, content_type: str):
+        super().__init__(status, payload={})
+        self.content = content
+        self.headers = {"content-type": content_type}
+
+
+class TestImages:
+    async def test_design_image_request(self):
+        client, request = _client_with(_BytesResponse(200, b"PNG", "image/png"))
+
+        content, content_type = await client.get_image("dsn_1")
+
+        assert (content, content_type) == (b"PNG", "image/png")
+        method, url, kwargs = _sent(request)
+        assert (method, url) == ("GET", "https://api.rmfg.com/v1/designs/dsn_1/image")
+        assert kwargs["params"] == {"view": "iso", "format": "png"}
+
+    async def test_part_image_with_view_and_width(self):
+        client, request = _client_with(_BytesResponse(200, b"PNG", "image/png"))
+
+        await client.get_image("dsn_1", part_id="prt_1", view=ImageView.FLAT, width=800)
+
+        _, url, kwargs = _sent(request)
+        assert url.endswith("/v1/designs/dsn_1/parts/prt_1/image")
+        assert kwargs["params"] == {"view": "flat", "format": "png", "width": 800}
+
+    async def test_dfm_part_image_takes_the_dfm_path(self):
+        client, request = _client_with(_BytesResponse(200, b"PNG", "image/png"))
+
+        await client.get_image("dsn_1", part_id="prt_1", dfm_id="dfm_1")
+
+        _, url, _ = _sent(request)
+        assert url.endswith("/v1/dfm/dfm_1/parts/prt_1/image")
+
+    async def test_image_errors_are_rendered(self):
+        client, _ = _client_with(
+            _FakeResponse(404, {"error": {"type": "not_found_error", "message": "no"}})
+        )
+        with pytest.raises(RMFGError, match="no"):
+            await client.get_image("dsn_1")

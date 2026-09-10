@@ -20,7 +20,11 @@ from backend.blocks.rmfg._webhook import (
     _parse_timestamp,
 )
 from backend.data import integrations
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    OAuth2Credentials,
+    UserPasswordCredentials,
+)
 from backend.integrations.providers import ProviderName
 
 SIGNING_SECRET = "whsec_rmfg_test"  # pragma: allowlist secret
@@ -320,17 +324,60 @@ class TestRegistration:
                     "s",
                 )
 
-    async def test_requires_an_api_key(self):
+    async def test_accepts_a_connected_account(self):
         oauth = OAuth2Credentials(
             id="creds_123",
             provider="rmfg",
-            title="RMFG OAuth",
-            access_token=SecretStr("token"),
-            scopes=[],
+            title="RMFG",
+            access_token=SecretStr("rmfg_access"),
+            scopes=["designs", "webhooks"],
         )
-        with pytest.raises(ValueError, match="API key"):
-            await RMFGWebhooksManager()._register_webhook(
+        response = _FakeResponse(201, {"id": "whe_2", "secret": "whsec_oauth"})
+        with patch("backend.blocks.rmfg._webhook.Requests") as requests_cls:
+            requests_cls.return_value.post = AsyncMock(return_value=response)
+
+            endpoint_id, _ = await RMFGWebhooksManager()._register_webhook(
                 oauth, RMFGWebhookType.ACCOUNT, "", ["design_ready"], "https://x", "s"
+            )
+
+            kwargs = requests_cls.return_value.post.await_args.kwargs
+        assert endpoint_id == "whe_2"
+        assert kwargs["headers"]["Authorization"] == "Bearer rmfg_access"
+
+    async def test_forbidden_with_oauth_points_at_the_permission(self):
+        oauth = OAuth2Credentials(
+            id="creds_123",
+            provider="rmfg",
+            title="RMFG",
+            access_token=SecretStr("rmfg_access"),
+            scopes=["designs"],
+        )
+        response = _FakeResponse(
+            403, {"error": {"type": "permission_error", "message": "scope missing"}}
+        )
+        with patch("backend.blocks.rmfg._webhook.Requests") as requests_cls:
+            requests_cls.return_value.post = AsyncMock(return_value=response)
+            with pytest.raises(ValueError, match="allow the webhooks permission"):
+                await RMFGWebhooksManager()._register_webhook(
+                    oauth,
+                    RMFGWebhookType.ACCOUNT,
+                    "",
+                    ["design_ready"],
+                    "https://x",
+                    "s",
+                )
+
+    async def test_rejects_other_credential_types(self):
+        creds = UserPasswordCredentials(
+            id="creds_123",
+            provider="rmfg",
+            title="RMFG",
+            username=SecretStr("u"),
+            password=SecretStr("p"),
+        )
+        with pytest.raises(ValueError, match="API key or a connected account"):
+            await RMFGWebhooksManager()._register_webhook(
+                creds, RMFGWebhookType.ACCOUNT, "", ["design_ready"], "https://x", "s"
             )
 
 

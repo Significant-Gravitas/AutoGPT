@@ -1,6 +1,6 @@
 # Rmfg Catalog
 <!-- MANUAL: file_description -->
-Blocks that read RMFG's catalogs of sheet-metal stock, tube profiles, finishes, powder-coat colors and hardware. Every other RMFG block takes catalog IDs rather than names, so a quoting graph usually starts here.
+Blocks that read RMFG's catalogs of sheet-metal stock, tube profiles, finishes, powder-coat colors and hardware. Every other RMFG block takes catalog IDs rather than names, so a quoting graph usually starts here. All RMFG blocks accept either an API key from rmfg.com/account or a connected account: choose Connect, open the approval link RMFG shows, and confirm the code.
 <!-- END MANUAL -->
 
 ## RMFG List Finishes

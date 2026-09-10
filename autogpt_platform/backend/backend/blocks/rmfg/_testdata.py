@@ -48,6 +48,12 @@ from ._types import (
 # "ISO-10303-21;" — the first line of any STEP file, as a data URI.
 TEST_STEP_DATA_URI = "data:application/step;base64,SVNPLTEwMzAzLTIxOw=="
 
+# A 1x1 transparent PNG.
+TEST_PNG_DATA_URI = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    "AAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
 TEST_MATERIAL = Material(
     id="mat_5052_0125",
     material="5052 Aluminum",

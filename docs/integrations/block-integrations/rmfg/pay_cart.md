@@ -10,7 +10,7 @@ Pays an RMFG cart with the saved card and places a real production order
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Posts to `/v1/carts/{id}/pay` with `card_on_file`, which uses the card saved on the RMFG account page, or with a Stripe PaymentMethod id you manage. Preconditions: the cart is open, its quote is ready, and it has a `ship_to` and `shipping_option_id`; the charge is the cart's `totals.amount_total_cents`. A stable `Idempotency-Key` (defaulting to the node execution ID) makes retries safe: repeating a paid cart returns the existing payment rather than charging twice. A 202 means the outcome is not yet known — `payment_status` is `processing` and `checked_out` is false — so re-read the cart instead of paying again. On success the cart becomes `checked_out` and `order_id` points at the new order.
+Posts to `/v1/carts/{id}/pay` with `card_on_file`, which uses the card saved on the RMFG account page, or with a Stripe PaymentMethod id you manage. A connected RMFG account must have been approved with "Also allow paid orders" (the `payments` permission); an API key pays whenever the account has a saved card. Preconditions: the cart is open, its quote is ready, and it has a `ship_to` and `shipping_option_id`; the charge is the cart's `totals.amount_total_cents`. A stable `Idempotency-Key` (defaulting to the node execution ID) makes retries safe: repeating a paid cart returns the existing payment rather than charging twice. A 202 means the outcome is not yet known — `payment_status` is `processing` and `checked_out` is false — so re-read the cart instead of paying again. On success the cart becomes `checked_out` and `order_id` points at the new order.
 <!-- END MANUAL -->
 
 ### Inputs

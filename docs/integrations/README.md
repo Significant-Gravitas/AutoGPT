@@ -707,3 +707,4 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Compass AI Trigger](block-integrations/compass/triggers.md#compass-ai-trigger) | This block will output the contents of the compass transcription |
 | [RMFG Event Trigger](block-integrations/rmfg/triggers.md#rmfg-event-trigger) | Triggers when an RMFG design, quote, cart or order changes |
+| [RMFG Get Image](block-integrations/rmfg/images.md#rmfg-get-image) | Downloads RMFG's rendered picture of a design or part, with holes and bends labelled |

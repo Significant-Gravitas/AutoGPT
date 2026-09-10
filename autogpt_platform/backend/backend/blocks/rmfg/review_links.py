@@ -1,7 +1,6 @@
 """Blocks that hand a design to a person on rmfg.com and read back their choices."""
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -16,7 +15,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._inputs import credentials_field
 from ._models_commerce import ReviewLink
 from ._testdata import TEST_CONFIGURATION, TEST_REVIEW_LINK
-from ._types import ManufacturingConfiguration
+from ._types import ManufacturingConfiguration, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -100,7 +99,7 @@ class RMFGCreateReviewLinkBlock(Block):
 
     @staticmethod
     async def create_link(
-        credentials: APIKeyCredentials, input_data: Input, idempotency_key: str
+        credentials: RMFGCredentials, input_data: Input, idempotency_key: str
     ) -> ReviewLink:
         return await RMFGClient(credentials).create_review_link(
             input_data.design_id,
@@ -113,7 +112,7 @@ class RMFGCreateReviewLinkBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:
@@ -153,11 +152,11 @@ class RMFGGetReviewLinkBlock(Block):
         )
 
     @staticmethod
-    async def get_link(credentials: APIKeyCredentials, link_id: str) -> ReviewLink:
+    async def get_link(credentials: RMFGCredentials, link_id: str) -> ReviewLink:
         return await RMFGClient(credentials).get_review_link(link_id)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         link = await self.get_link(credentials, input_data.link_id)
         async for output in emit_link(link):

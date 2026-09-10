@@ -3,7 +3,6 @@
 from typing import Optional
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -19,7 +18,7 @@ from ._inputs import RMFGBasketInput, build_items, credentials_field
 from ._models import DFMIssue, Requirement
 from ._models_commerce import QuantityOption, Quote, QuotedDesign, ShippingOption
 from ._testdata import TEST_DFM_ISSUE, TEST_MATERIAL, TEST_QUOTE, TEST_SHIPPING_OPTION
-from ._types import QuoteItemRequest, QuoteStatus, ShipTo
+from ._types import QuoteItemRequest, QuoteStatus, RMFGCredentials, ShipTo
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -135,7 +134,7 @@ class RMFGCreateQuoteBlock(Block):
 
     @staticmethod
     async def create_quote(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         items: list[QuoteItemRequest],
         ship_to: Optional[ShipTo],
         idempotency_key: str,
@@ -152,7 +151,7 @@ class RMFGCreateQuoteBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:
@@ -221,7 +220,7 @@ class RMFGGetQuoteBlock(Block):
 
     @staticmethod
     async def get_quote(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         quote_id: str,
         wait_for_ready: bool,
         timeout_seconds: int,
@@ -233,7 +232,7 @@ class RMFGGetQuoteBlock(Block):
         return await client.wait_for_quote(quote, timeout_seconds)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         quote = await self.get_quote(
             credentials,

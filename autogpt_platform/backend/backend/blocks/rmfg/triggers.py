@@ -44,7 +44,7 @@ class RMFGEventTriggerBlock(Block):
     """Start a graph when a design, quote, cart or order changes at RMFG."""
 
     class Input(BlockSchemaInput):
-        credentials: CredentialsMetaInput = credentials_field()
+        credentials: CredentialsMetaInput = credentials_field({"webhooks"})
 
         class EventsFilter(BaseModel):
             """Lifecycle events RMFG can deliver. Names mirror the API's event types."""

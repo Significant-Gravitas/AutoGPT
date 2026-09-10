@@ -6,9 +6,13 @@ from ._config import rmfg
 from ._types import ManufacturingConfiguration, QuoteItemRequest
 
 
-def credentials_field() -> CredentialsMetaInput:
+def credentials_field(required_scopes: set[str] | None = None) -> CredentialsMetaInput:
     return rmfg.credentials_field(
-        description="RMFG API key, created at rmfg.com/account under API keys."
+        description=(
+            "Connect your RMFG account (approve in the browser) or paste an API "
+            "key from rmfg.com/account."
+        ),
+        required_scopes=required_scopes or set(),
     )
 
 

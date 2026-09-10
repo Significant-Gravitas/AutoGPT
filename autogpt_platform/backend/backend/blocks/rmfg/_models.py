@@ -6,7 +6,7 @@ with fields the platform does not surface, still validates.
 
 from typing import Any, Optional
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
 
 from backend.sdk import BaseModel, Field
 
@@ -16,6 +16,19 @@ from ._types import (
     ManufacturingConfiguration,
     Process,
 )
+
+RMFG_API_URL = "https://api.rmfg.com"
+
+
+def absolute_api_url(value: Optional[str]) -> Optional[str]:
+    """RMFG returns links to its own resources as paths such as ``/v1/...``.
+
+    Downstream blocks and people need a full URL, so prefix the API origin.
+    Website links and other absolute URLs pass through untouched.
+    """
+    if value and value.startswith("/"):
+        return f"{RMFG_API_URL}{value}"
+    return value
 
 
 class Material(BaseModel):
@@ -127,7 +140,13 @@ class Part(BaseModel):
     surface_area_cm2: Optional[float] = None
     cut_length_mm: Optional[float] = None
     model_url: str = ""
+    flat_pattern_model_url: Optional[str] = None
     image_url: Optional[str] = None
+
+    @field_validator("model_url", "flat_pattern_model_url", "image_url")
+    @classmethod
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
+        return absolute_api_url(value)
 
 
 class PartInstance(BaseModel):
@@ -157,6 +176,11 @@ class Design(BaseModel):
     created_at: Optional[str] = None
     error: Optional[ResourceError] = None
 
+    @field_validator("model_url", "image_url")
+    @classmethod
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
+        return absolute_api_url(value)
+
 
 class Requirement(BaseModel):
     """A missing selection or decision that keeps a resource from being ready."""
@@ -167,6 +191,11 @@ class Requirement(BaseModel):
     part_ids: list[str] = Field(default_factory=list)
     field: Optional[str] = None
     allowed_values_url: Optional[str] = None
+
+    @field_validator("allowed_values_url")
+    @classmethod
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
+        return absolute_api_url(value)
 
 
 class DFMIssue(BaseModel):
@@ -250,6 +279,11 @@ class PartDFM(BaseModel):
     capabilities: Optional[PartCapabilities] = None
     image_url: Optional[str] = None
     production_warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("image_url")
+    @classmethod
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
+        return absolute_api_url(value)
 
 
 class DFMReport(BaseModel):

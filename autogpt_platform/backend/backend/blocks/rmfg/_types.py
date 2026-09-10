@@ -7,7 +7,11 @@ Response-side models live in ``_models`` and ``_models_commerce``.
 from enum import Enum
 from typing import Optional
 
-from backend.sdk import BaseModel, Field
+from backend.sdk import APIKeyCredentials, BaseModel, Field, OAuth2Credentials
+
+# An RMFG API key or an OAuth token pair from the device-code connection flow;
+# both are sent as a bearer token.
+RMFGCredentials = APIKeyCredentials | OAuth2Credentials
 
 
 class Process(str, Enum):
@@ -106,6 +110,19 @@ class JointAccess(str, Enum):
     OPEN = "open"
     TIGHT = "tight"
     BLIND = "blind"
+
+
+class ImageView(str, Enum):
+    """Camera angle for rendered design and part pictures."""
+
+    ISO = "iso"
+    TOP = "top"
+    BOTTOM = "bottom"
+    FRONT = "front"
+    BACK = "back"
+    LEFT = "left"
+    RIGHT = "right"
+    FLAT = "flat"
 
 
 class PaymentType(str, Enum):

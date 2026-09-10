@@ -3,7 +3,6 @@
 from typing import Optional
 
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -24,7 +23,7 @@ from ._testdata import (
     TEST_POWDER_COAT_COLOR,
     TEST_TUBE_PROFILE,
 )
-from ._types import HardwareKind, Process
+from ._types import HardwareKind, Process, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -61,11 +60,11 @@ class RMFGListMaterialsBlock(Block):
         )
 
     @staticmethod
-    async def list_materials(credentials: APIKeyCredentials) -> list[Material]:
+    async def list_materials(credentials: RMFGCredentials) -> list[Material]:
         return await RMFGClient(credentials).list_materials()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         materials = await self.list_materials(credentials)
         yield "materials", materials
@@ -108,11 +107,11 @@ class RMFGListTubeProfilesBlock(Block):
         )
 
     @staticmethod
-    async def list_tube_profiles(credentials: APIKeyCredentials) -> list[TubeProfile]:
+    async def list_tube_profiles(credentials: RMFGCredentials) -> list[TubeProfile]:
         return await RMFGClient(credentials).list_tube_profiles()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         profiles = await self.list_tube_profiles(credentials)
         yield "tube_profiles", profiles
@@ -160,12 +159,12 @@ class RMFGListFinishesBlock(Block):
 
     @staticmethod
     async def list_finishes(
-        credentials: APIKeyCredentials, process: Optional[Process]
+        credentials: RMFGCredentials, process: Optional[Process]
     ) -> list[Finish]:
         return await RMFGClient(credentials).list_finishes(process)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         finishes = await self.list_finishes(credentials, input_data.process)
         yield "finishes", finishes
@@ -204,11 +203,11 @@ class RMFGListPowderCoatColorsBlock(Block):
         )
 
     @staticmethod
-    async def list_colors(credentials: APIKeyCredentials) -> list[PowderCoatColor]:
+    async def list_colors(credentials: RMFGCredentials) -> list[PowderCoatColor]:
         return await RMFGClient(credentials).list_powder_coat_colors()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         colors = await self.list_colors(credentials)
         yield "colors", colors
@@ -259,12 +258,12 @@ class RMFGListHardwareBlock(Block):
 
     @staticmethod
     async def list_hardware(
-        credentials: APIKeyCredentials, kind: HardwareKind
+        credentials: RMFGCredentials, kind: HardwareKind
     ) -> list[HardwareOption]:
         return await RMFGClient(credentials).list_hardware(kind)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         options = await self.list_hardware(credentials, input_data.kind)
         yield "options", options

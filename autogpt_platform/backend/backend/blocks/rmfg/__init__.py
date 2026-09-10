@@ -8,6 +8,7 @@ from .catalog import (
 )
 from .designs import RMFGAnalyzeDesignBlock, RMFGGetDesignBlock
 from .dfm import RMFGCreateDFMReportBlock, RMFGGetDFMReportBlock
+from .images import RMFGGetImageBlock
 from .orders import RMFGGetOrderBlock, RMFGListOrdersBlock
 from .pay_cart import RMFGPayCartBlock
 from .quotes import RMFGCreateQuoteBlock, RMFGGetQuoteBlock
@@ -24,6 +25,7 @@ __all__ = [
     "RMFGGetCartBlock",
     "RMFGGetDFMReportBlock",
     "RMFGGetDesignBlock",
+    "RMFGGetImageBlock",
     "RMFGGetOrderBlock",
     "RMFGGetQuoteBlock",
     "RMFGGetReviewLinkBlock",

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from backend.data.execution import ExecutionContext
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -22,7 +21,7 @@ from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._inputs import credentials_field
 from ._models import Design, Part
 from ._testdata import TEST_DESIGN, TEST_PART, TEST_STEP_DATA_URI
-from ._types import DesignStatus
+from ._types import DesignStatus, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.DATA}
 
@@ -141,7 +140,7 @@ class RMFGAnalyzeDesignBlock(Block):
 
     @staticmethod
     async def analyze(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         file_name: str,
         content: bytes,
         idempotency_key: str,
@@ -158,7 +157,7 @@ class RMFGAnalyzeDesignBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         execution_context: ExecutionContext,
         node_exec_id: str = "",
         **kwargs,
@@ -231,7 +230,7 @@ class RMFGGetDesignBlock(Block):
 
     @staticmethod
     async def get_design(
-        credentials: APIKeyCredentials,
+        credentials: RMFGCredentials,
         design_id: str,
         wait_for_ready: bool,
         timeout_seconds: int,
@@ -243,7 +242,7 @@ class RMFGGetDesignBlock(Block):
         return await client.wait_for_design(design, timeout_seconds)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: RMFGCredentials, **kwargs
     ) -> BlockOutput:
         design = await self.get_design(
             credentials,

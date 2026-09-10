@@ -10,7 +10,7 @@ Triggers when an RMFG design, quote, cart or order changes
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Select which events to subscribe to; the platform registers an endpoint at `/v1/webhook-endpoints` for exactly those events and stores the signing secret RMFG returns. Each delivery is verified: the `X-RMFG-Signature` header must match an HMAC-SHA256 of the timestamp and raw body, and stale timestamps are rejected. The event body is `{id, type, created_at, data}`; the block emits the type plus the data object's id, object, status and `status_url`, so the next block can fetch the full resource with Get Design, Get DFM Report, Get Quote, Get Cart or Get Order.
+Select which events to subscribe to; the platform registers an endpoint at `/v1/webhook-endpoints` for exactly those events and stores the signing secret RMFG returns. A connected RMFG account needs the `webhooks` permission from the approval page; an API key can register endpoints directly. Each delivery is verified: the `X-RMFG-Signature` header must match an HMAC-SHA256 of the timestamp and raw body, and stale timestamps are rejected. The event body is `{id, type, created_at, data}`; the block emits the type plus the data object's id, object, status and `status_url`, so the next block can fetch the full resource with Get Design, Get DFM Report, Get Quote, Get Cart or Get Order.
 <!-- END MANUAL -->
 
 ### Inputs

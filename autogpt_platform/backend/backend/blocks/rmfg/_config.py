@@ -8,6 +8,9 @@ rmfg = (
     ProviderBuilder("rmfg")
     .with_description("Sheet-metal and tube-laser manufacturing quotes and orders")
     .with_api_key("RMFG_API_KEY", "RMFG API Key")
+    # Device-code OAuth (RFC 8628) is handled by RMFGDeviceAuthHandler in
+    # backend/integrations/oauth/rmfg.py; it yields ordinary oauth2 tokens.
+    .with_supported_auth_types("oauth2", "device_code")
     .with_webhook_manager(RMFGWebhooksManager)
     .build()
 )
