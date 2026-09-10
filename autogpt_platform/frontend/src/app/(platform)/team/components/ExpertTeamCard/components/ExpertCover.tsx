@@ -65,7 +65,7 @@ export function ExpertCover({ className, color, status, art }: Props) {
           alt=""
           fill
           sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-          className="object-cover opacity-50"
+          className="object-cover opacity-30"
         />
       ) : null}
       {statusStyle ? (
