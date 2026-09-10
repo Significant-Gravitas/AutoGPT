@@ -1096,7 +1096,9 @@ def collect_orphaned_manual_sections(
         if not full_path.exists():
             continue
         file_orphans = find_orphaned_manual_sections(
-            full_path.read_text(encoding="utf-8"), [b.name for b in file_blocks], rename_map
+            full_path.read_text(encoding="utf-8"),
+            [b.name for b in file_blocks],
+            rename_map,
         )
         if file_orphans:
             orphans[str(file_path)] = file_orphans
