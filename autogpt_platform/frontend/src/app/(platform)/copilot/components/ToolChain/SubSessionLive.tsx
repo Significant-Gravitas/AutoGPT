@@ -286,6 +286,7 @@ export function SubSessionPendingCard({
         <ExpertAvatar
           name={expert?.name ?? "Sub-AutoPilot"}
           avatarUrl={expert?.avatarUrl ?? null}
+          color={expert?.color}
           size={28}
         />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">

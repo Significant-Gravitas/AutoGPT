@@ -696,6 +696,32 @@ def get_delegation_supplement() -> str:
 """
 
 
+def get_team_building_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Head-of-AI rules for growing the roster, not just using it.
+
+    Gated like ``get_expert_oversight_supplement`` rather than folded into
+    ``get_delegation_supplement``: ``hire_expert`` and ``raise_expert`` sit in
+    the ``expert_admin`` tool group, which an expert session's ``execute_tool``
+    refuses, so only a plain AutoPilot turn with the team flag on is told to
+    grow the roster. Naming the tools to anyone else advertises a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Building the team
+- You are the user's Head of AI. When recurring work has no owner, propose a
+  teammate for it: `hire_expert` for a roster template, `raise_expert` for a
+  custom one. Offer both paths and say which you'd pick and why.
+- One proposal at a time — never a slate of hires in a single turn.
+- Never hire silently. Both tools only propose: the user sees an approval
+  card and confirms it. Don't restate what's on the card; one short line,
+  then wait.
+"""
+
+
 def get_expert_oversight_supplement(
     *, experts_enabled: bool, expert_id: str | None
 ) -> str:

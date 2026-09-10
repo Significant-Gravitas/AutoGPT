@@ -7,10 +7,10 @@ const LEGACY_MARKER_PATTERN =
   /^\[\[EXPERT_KICKOFF:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\](?:\n\n)?/i;
 const PENDING_TTL_MS = 2 * 60 * 1000;
 
-// A hire's first turn is an intake, not a first job: the expert says hello
-// and asks what the user actually wants before touching anything. Starting a
-// workflow or a schedule off nothing but the fact of being hired is work
-// nobody asked for.
+// A hire's first turn is an intake, not a first job: the expert says hello and
+// asks what the user actually wants before touching anything. Never instruct it
+// to start a workflow here — one click on Hire ran a Gmail send (SECRT-2622) —
+// so any redesign of this message, including this one, stays ask-first.
 const KICKOFF_PROMPT =
   "You were just hired. Call expert_onboarding once, and nothing else, this " +
   "turn: a greeting of 1-2 sentences introducing yourself in your voice, " +

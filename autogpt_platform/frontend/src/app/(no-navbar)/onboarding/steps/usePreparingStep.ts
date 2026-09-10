@@ -51,7 +51,9 @@ export function usePreparingStep({
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
   const isDumpPath = isBrainDumpEnabled && peekIntroPath() === "A";
-  const checklist = isDumpPath ? BRAIN_DUMP_CHECKLIST : GENERIC_CHECKLIST;
+  const checklist: readonly string[] = isDumpPath
+    ? BRAIN_DUMP_CHECKLIST
+    : GENERIC_CHECKLIST;
   const duration = isDumpPath ? BRAIN_DUMP_DURATION_MS : GENERIC_DURATION_MS;
   const stepInterval = duration / checklist.length;
 
