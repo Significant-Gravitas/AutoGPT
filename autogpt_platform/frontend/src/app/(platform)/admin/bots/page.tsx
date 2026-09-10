@@ -9,9 +9,9 @@ function BotsDashboard() {
         <div>
           <h1 className="text-3xl font-bold">Bot Analytics</h1>
           <p className="text-muted-foreground">
-            Usage, reach and reliability across every live Otto bot. No
-            message content or user identity is collected — only aggregate
-            counts and metrics.
+            Usage, reach and reliability across every live Otto bot. No message
+            content or user identity is collected — only aggregate counts and
+            metrics.
           </p>
         </div>
 

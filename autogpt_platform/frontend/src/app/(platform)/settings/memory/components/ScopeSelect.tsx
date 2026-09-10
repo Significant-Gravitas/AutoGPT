@@ -78,9 +78,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         >
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
-            <span className="text-sm font-medium text-textBlack">
-              Otto
-            </span>
+            <span className="text-sm font-medium text-textBlack">Otto</span>
             <span className="text-xs text-zinc-500">
               Your account memory — everything you do together
             </span>

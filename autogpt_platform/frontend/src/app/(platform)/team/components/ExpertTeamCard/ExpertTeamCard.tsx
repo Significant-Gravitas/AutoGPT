@@ -33,6 +33,7 @@ import {
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
+  getExpertCoverArt,
   getExpertRosterStatus,
   getWeeklySpend,
 } from "../../helpers";
@@ -96,7 +97,11 @@ export function ExpertTeamCard({
         aria-label={`View ${expert.name}`}
         className="flex flex-1 flex-col items-center p-2 pb-4"
       >
-        <ExpertCover color={expert.color} status={rosterStatus} />
+        <ExpertCover
+          color={expert.color}
+          status={rosterStatus}
+          art={getExpertCoverArt(expert.avatar_url)}
+        />
 
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">

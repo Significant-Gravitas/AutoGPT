@@ -1,6 +1,9 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { AUTOPILOT_ROLE } from "../../helpers";
-import { AUTOPILOT_AVATAR_URL, AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import {
+  AUTOPILOT_AVATAR_URL,
+  AUTOPILOT_NAME,
+} from "@/components/molecules/AutopilotAvatar/helpers";
 
 export interface ChatTarget {
   expertId: string | null;

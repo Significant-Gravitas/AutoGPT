@@ -10,8 +10,15 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { AUTOPILOT_BLURB, AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../helpers";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import {
+  AUTOPILOT_BLURB,
+  AUTOPILOT_PILL_CLASS,
+  AUTOPILOT_ROLE,
+} from "../helpers";
+import {
+  AUTOPILOT_COVER_URL,
+  AUTOPILOT_NAME,
+} from "@/components/molecules/AutopilotAvatar/helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -38,7 +45,11 @@ export function AutopilotCard({
         aria-label={`View ${AUTOPILOT_NAME}`}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
-        <ExpertCover color={undefined} status="built-in" />
+        <ExpertCover
+          color={undefined}
+          status="built-in"
+          art={AUTOPILOT_COVER_URL}
+        />
 
         <div className="flex w-full items-start gap-3 px-2">
           <AutopilotAvatar

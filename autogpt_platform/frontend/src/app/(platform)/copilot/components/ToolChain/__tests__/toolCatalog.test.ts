@@ -184,9 +184,7 @@ describe("getCatalogLabel", () => {
     const text =
       getCatalogLabel("run_sub_session", { prompt }, "running")?.text ?? "";
 
-    expect(text.startsWith('Delegating to sub-Otto: "Investigate')).toBe(
-      true,
-    );
+    expect(text.startsWith('Delegating to sub-Otto: "Investigate')).toBe(true);
     expect(text.endsWith('…"…')).toBe(true);
   });
 

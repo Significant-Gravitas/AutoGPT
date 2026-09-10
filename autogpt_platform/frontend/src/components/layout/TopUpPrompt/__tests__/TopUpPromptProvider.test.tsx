@@ -109,9 +109,7 @@ describe("TopUpPromptProvider daily auto-opener", () => {
 
     // The dialog body copy mentions Otto, which the banner copy does not,
     // so it unambiguously signals the dialog auto-opened.
-    expect(
-      await screen.findByText(/keep your agents and Otto/i),
-    ).toBeDefined();
+    expect(await screen.findByText(/keep your agents and Otto/i)).toBeDefined();
   });
 
   test("does not auto-open when the modal was already shown today", async () => {

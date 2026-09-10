@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getExpertCoverArt } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
@@ -22,7 +23,11 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
 
   return (
     <header>
-      <ExpertCover className="h-36" color={expert.color} />
+      <ExpertCover
+        className="h-36"
+        color={expert.color}
+        art={getExpertCoverArt(expert.avatar_url)}
+      />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="-mt-12 ml-14 block shrink-0">

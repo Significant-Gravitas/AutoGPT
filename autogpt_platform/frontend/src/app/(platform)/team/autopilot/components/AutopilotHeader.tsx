@@ -6,12 +6,19 @@ import { Tick02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { cn } from "@/lib/utils";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import {
+  AUTOPILOT_COVER_URL,
+  AUTOPILOT_NAME,
+} from "@/components/molecules/AutopilotAvatar/helpers";
 
 export function AutopilotHeader() {
   return (
     <header>
-      <ExpertCover className="h-36" color={undefined} builtIn />
+      <ExpertCover
+        className="h-36"
+        color={undefined}
+        art={AUTOPILOT_COVER_URL}
+      />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <AutopilotAvatar

@@ -236,9 +236,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("Otto Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 
   test("stays hidden and fetches nothing outside the beta", async () => {
@@ -273,8 +271,6 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("Otto Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 });

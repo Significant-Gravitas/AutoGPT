@@ -122,9 +122,7 @@ describe("Library low-credit banner", () => {
 
     // The dialog body copy mentions Otto, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
-    expect(
-      await screen.findByText(/keep your agents and Otto/i),
-    ).toBeDefined();
+    expect(await screen.findByText(/keep your agents and Otto/i)).toBeDefined();
   });
 
   test("hides the banner when the user still has credits", async () => {

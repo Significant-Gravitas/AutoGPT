@@ -22,6 +22,16 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
+/** Cover art shipped with the seeded experts, keyed by the avatar the seed
+ *  gives them. Raised and uploaded-avatar experts get a solid colour. */
+const EXPERT_COVER_ART: Record<string, string> = {
+  "/experts/max.svg": "/experts/covers/max-1.jpg",
+};
+
+export function getExpertCoverArt(avatarUrl: string | null | undefined) {
+  return avatarUrl ? (EXPERT_COVER_ART[avatarUrl] ?? null) : null;
+}
+
 export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 

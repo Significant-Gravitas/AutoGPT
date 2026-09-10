@@ -44,14 +44,12 @@ interface Props {
   className?: string;
   color: string | undefined;
   status?: CoverStatus;
-  /** Show Otto's cover art. Implied by the "built-in" status, so a
-   *  caller that wants the art without the badge sets this instead. */
-  builtIn?: boolean;
+  /** Cover picture drawn over the colour; the colour stays as the fallback. */
+  art?: string | null;
 }
 
-export function ExpertCover({ className, color, status, builtIn }: Props) {
+export function ExpertCover({ className, color, status, art }: Props) {
   const statusStyle = status ? STATUS_STYLES[status] : null;
-  const showArt = builtIn || status === "built-in";
 
   return (
     <div
@@ -61,9 +59,9 @@ export function ExpertCover({ className, color, status, builtIn }: Props) {
         className,
       )}
     >
-      {showArt ? (
+      {art ? (
         <Image
-          src="/experts/covers/otto-1.jpg"
+          src={art}
           alt=""
           fill
           sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"

@@ -368,6 +368,29 @@ describe("TeamPage", () => {
     });
   });
 
+  test("shows the seeded cover art for Max and none for the rest", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        hiredMaria,
+        {
+          ...hiredMaria,
+          id: "expert-max",
+          name: "Max",
+          avatar_url: "/experts/max.svg",
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const max = await screen.findByRole("link", { name: "View Max" });
+    expect(
+      max.querySelector('img[src="/experts/covers/max-1.jpg"]'),
+    ).not.toBeNull();
+    const maria = screen.getByRole("link", { name: "View Maria" });
+    expect(maria.querySelector('img[src^="/experts/covers/"]')).toBeNull();
+  });
+
   test("shows no integrations item on a card with none granted", async () => {
     server.use(
       getListExpertsMockHandler([

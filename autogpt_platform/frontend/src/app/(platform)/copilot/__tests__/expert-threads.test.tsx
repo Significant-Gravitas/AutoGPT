@@ -895,9 +895,7 @@ describe("recipient picker", () => {
     await waitFor(() =>
       expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
     );
-    expect(screen.getByTestId("picker-recipient").textContent).toBe(
-      "Otto",
-    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe("Otto");
   });
 
   it("clears an archived expert recipient after identities load", async () => {
@@ -926,8 +924,6 @@ describe("recipient picker", () => {
     await waitFor(() =>
       expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
     );
-    expect(screen.getByTestId("picker-recipient").textContent).toBe(
-      "Otto",
-    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe("Otto");
   });
 });

@@ -60,8 +60,8 @@ export function NotificationBanner() {
     <Alert variant="warning" icon={BellRing} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          Enable browser notifications to know when Otto finishes working,
-          even when you switch tabs.
+          Enable browser notifications to know when Otto finishes working, even
+          when you switch tabs.
         </AlertDescription>
         <Button variant="primary" size="small" onClick={handleEnable}>
           Enable
