@@ -663,6 +663,123 @@ class TestRunBlockInputValidation:
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_carries_no_plain_inputs(self):
+        """A connect card is only a connect card: the block's ordinary inputs
+        are collected in chat, so the setup card must not ship a form for
+        them alongside the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="github-search-id",
+            name="GitHub Search Issues",
+            input_properties={
+                "term": {"type": "string"},
+                "limit": {"type": "integer", "default": 10, "advanced": True},
+            },
+            required_fields=["term"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"github"}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "term",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="github-search-id",
+                input_data={"term": "login bug"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+        assert response.setup_info.requirements["inputs"] == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_keeps_picker_inputs(self):
+        """Picker-backed fields are the one input the chat cannot supply, so
+        they stay on the card next to the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"google"}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "spreadsheet",
+            "range",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        names = [i["name"] for i in response.setup_info.requirements["inputs"]]
+        assert names == ["spreadsheet"]
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
@@ -1242,6 +1359,123 @@ class TestExecuteBlockUserTimezoneAccessor:
         assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
 
 
+class TestExecuteBlockCredentialRejection:
+    """A provider that refuses a stored credential mid-run must produce the
+    reconnect card, not a bare "Block execution failed"."""
+
+    @staticmethod
+    def _block(exc: Exception):
+        from backend.data.model import CredentialsFieldInfo
+
+        block = MagicMock()
+        block.name = "AyrsharePostBlock"
+        block.id = "ayrshare-block-id"
+        block.input_schema = MagicMock()
+        block.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
+        block.input_schema.get_credentials_fields.return_value = {"credentials": object}
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": ["ayrshare"],
+                    "credentials_types": ["api_key"],
+                    "is_auto_credential": False,
+                },
+                by_alias=True,
+            )
+        }
+        block.input_schema.get_required_fields.return_value = {"credentials"}
+
+        async def _fail(_input, **_kwargs):
+            raise exc
+            yield  # pragma: no cover -- keeps this an async generator
+
+        block.execute = _fail
+        return block
+
+    @staticmethod
+    async def _run(exc: Exception):
+        from backend.copilot.tools.helpers import execute_block
+        from backend.data.model import CredentialsMetaInput
+
+        cred_meta = CredentialsMetaInput(
+            id="cred-1",
+            title="Work Ayrshare key",
+            provider="ayrshare",  # type: ignore[arg-type]
+            type="api_key",
+        )
+        stored = MagicMock()
+        stored.provider = "ayrshare"
+        stored.type = "api_key"
+
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(return_value=stored)
+
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+
+        with (
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.acquire_auto_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+        ):
+            return await execute_block(
+                block=TestExecuteBlockCredentialRejection._block(exc),
+                block_id="ayrshare-block-id",
+                input_data={},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials={"credentials": cred_meta},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provider_401_returns_a_card_naming_the_credential(self):
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        from .models import SetupRequirementsResponse
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        response = await self._run(wrapped)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.provider == "ayrshare"
+        assert response.rejection.status_code == 401
+        assert response.rejection.credential_id == "cred-1"
+        assert "sk-live-abc" not in response.rejection.detail
+        assert "Work Ayrshare key" in response.message
+        # The picker must be offered again, or there is no way back.
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_non_auth_block_failure_still_returns_an_error(self):
+        from backend.util.exceptions import BlockExecutionError
+
+        response = await self._run(
+            BlockExecutionError("bad input", "AyrsharePostBlock", "block-id")
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "Block execution failed" in response.message
+
+
 class TestExecuteBlockExpertAttribution:
     """A block run from an expert chat must carry the expert on its execution
     context, so ``workspace://`` inputs resolve inside that expert's scope."""
@@ -1312,3 +1546,146 @@ class _StubCreditDB:
 
     async def spend_credits(self, **kwargs):
         return None
+
+
+class TestSpendApproval:
+    """Seam B of SECRT-2599: a paid block in an expert's chat waits for the
+    user once she has reached her spend threshold."""
+
+    @staticmethod
+    def _needed():
+        from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+        return SpendApprovalNeeded(
+            expert_id="expert-1",
+            expert_name="Ada",
+            spent=250,
+            threshold=250,
+            window="week",
+        )
+
+    @staticmethod
+    def _paid_block():
+        block = make_mock_block_with_schema(
+            block_id="paid-block",
+            name="Paid Block",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+        block.executed = False
+
+        async def execute(input_data, **kwargs):
+            block.executed = True
+            yield "response", "ok"
+
+        block.execute = execute
+        return block
+
+    @staticmethod
+    def _patches(block, gate, *, cost: int = 5, flag: bool = True):
+        credit = MagicMock(
+            get_credits=AsyncMock(return_value=1_000), spend_credits=AsyncMock()
+        )
+        workspace = MagicMock(
+            get_or_create_workspace=AsyncMock(return_value=MagicMock(id="ws"))
+        )
+        return [
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(cost, {}),
+            ),
+            patch("backend.copilot.tools.helpers.spend_approval_db", return_value=gate),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.is_feature_enabled",
+                AsyncMock(return_value=flag),
+            ),
+        ]
+
+    async def _run(self, session, block, gate, **kw):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            for p in self._patches(block, gate, **kw):
+                stack.enter_context(p)
+            return await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="paid-block",
+                input_data={"prompt": "hi"},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_at_threshold_parks_a_paid_block(self):
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        gate = MagicMock(
+            spend_approval_required=AsyncMock(return_value=self._needed()),
+            open_chat_spend_review=AsyncMock(
+                return_value="copilot-node-expert-spend:expert-1:abcd1234"
+            ),
+        )
+
+        response = await self._run(session, block, gate)
+
+        assert isinstance(response, ReviewRequiredResponse)
+        assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
+        assert response.graph_exec_id.startswith("copilot-session-")
+        assert not block.executed
+        gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
+        assert (
+            gate.open_chat_spend_review.await_args.kwargs["block_name"] == "Paid Block"
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("expert_id,cost", [(None, 5), ("expert-1", 0)])
+    async def test_plain_sessions_and_free_blocks_are_not_gated(self, expert_id, cost):
+        session = make_session(user_id=_TEST_USER_ID, expert_id=expert_id)
+        block = self._paid_block()
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=self._needed()))
+
+        response = await self._run(session, block, gate, cost=cost)
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        gate.spend_approval_required.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("flag", [True, False])
+    async def test_below_threshold_meters_only_with_the_flag_but_always_scopes(
+        self, flag
+    ):
+        """The flag gates who is metered, never whose file scope the block
+        runs in — ``workspace://`` inputs resolve against the session's expert
+        either way."""
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        captured: dict[str, object] = {}
+
+        async def execute(input_data, **kwargs):
+            block.executed = True
+            captured["ctx"] = kwargs["execution_context"]
+            yield "response", "ok"
+
+        block.execute = execute
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=None))
+
+        with patch(
+            "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
+        ) as add_spend:
+            response = await self._run(session, block, gate, flag=flag)
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        assert captured["ctx"].expert_id == "expert-1"
+        if flag:
+            add_spend.assert_awaited_once_with("expert-1", 5)
+        else:
+            add_spend.assert_not_awaited()

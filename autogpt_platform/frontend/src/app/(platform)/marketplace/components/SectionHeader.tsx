@@ -8,6 +8,7 @@ interface Props {
   eyebrowIcon?: ReactNode;
   title: string;
   titleIcon?: ReactNode;
+  titleId?: string;
   subtitle?: string;
   action?: { label: string; href: string };
 }
@@ -17,6 +18,7 @@ export function SectionHeader({
   eyebrowIcon,
   title,
   titleIcon,
+  titleId,
   subtitle,
   action,
 }: Props) {
@@ -29,7 +31,10 @@ export function SectionHeader({
             {eyebrow}
           </div>
         ) : null}
-        <h2 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
+        <h2
+          id={titleId}
+          className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900"
+        >
           {titleIcon}
           {title}
         </h2>

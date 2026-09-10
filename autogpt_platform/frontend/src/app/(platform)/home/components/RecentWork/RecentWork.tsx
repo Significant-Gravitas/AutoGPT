@@ -6,6 +6,7 @@ import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRec
 import { Text } from "@/components/atoms/Text/Text";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
+import { BriefingByline } from "./components/BriefingByline";
 import { WorkGroup } from "./components/WorkGroup";
 import { splitGroupsBySection } from "./helpers";
 
@@ -15,7 +16,7 @@ interface Props {
 }
 
 /** One card for what the agents did this week: the team (each expert and
- *  Autopilot) first, then the workflows that ran on their own. */
+ *  AutoPilot) first, then the workflows that ran on their own. */
 export function RecentWork({ dashboard, className }: Props) {
   const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
@@ -64,15 +65,7 @@ export function RecentWork({ dashboard, className }: Props) {
         />
       ) : (
         <div className="divide-y divide-zinc-200">
-          {briefing.narrative ? (
-            <Text
-              variant="body"
-              tone="secondary"
-              className="text-pretty px-4 py-3 leading-5"
-            >
-              {briefing.narrative}
-            </Text>
-          ) : null}
+          {briefing.narrative ? <BriefingByline briefing={briefing} /> : null}
           {[...team, ...workflows].map((group) => (
             <WorkGroup
               key={groupKey(group)}

@@ -828,3 +828,74 @@ class TestCallerNameFraming:
         )
 
         assert "from a teammate," in mock_turn.await_args.kwargs["message"]
+
+
+@pytest.mark.asyncio
+class TestRefusedDelegationCleanup:
+    """A delegation refused after its session row exists would otherwise show
+    the teammate an empty thread for work that never started."""
+
+    async def test_a_refused_delegation_deletes_the_thread_it_opened(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        deleted = AsyncMock()
+        # The helper is defined in run_sub_session, so the binding it calls
+        # lives there, not in the module under test.
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        mock_turn.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        deleted.assert_awaited_once_with("inner-1", "alice")
+
+    async def test_a_refused_delegation_returns_no_handle_to_the_deleted_thread(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_turn.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "inner-1" not in result.model_dump_json()
+
+    async def test_a_refused_resume_keeps_the_prior_thread(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        caller = _session(expert_id="expert-a")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            wait_for_result=0,
+        )
+        mock_turn.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="one more thing",
+            delegated_session_id="inner-1",
+        )
+
+        deleted.assert_not_awaited()
