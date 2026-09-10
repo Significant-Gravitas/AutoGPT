@@ -102,10 +102,6 @@ vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
 }));
 
-vi.mock("../steps/WelcomeStep", () => ({
-  WelcomeStep: () => <div data-testid="step-welcome" />,
-}));
-
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => <div data-testid="step-role" />,
 }));
@@ -324,11 +320,11 @@ function finalizeReturns(response: {
 }
 
 function stepDots(container: HTMLElement) {
-  return container.querySelectorAll("div.h-2.rounded-full").length;
+  return container.querySelectorAll("div.h-1\\.5.rounded-full").length;
 }
 
 function progressWidth(container: HTMLElement) {
-  const bar = container.querySelector<HTMLElement>("div.bg-purple-400");
+  const bar = container.querySelector<HTMLElement>("div.bg-zinc-900");
   return bar?.style.width ?? null;
 }
 
@@ -850,16 +846,14 @@ describe("onboarding step map integrity", () => {
   it("keeps the step constants identical regardless of the brain-dump flag", () => {
     expect(PAYWALL_FIRST_STEPS).toEqual({
       subscription: 1,
-      welcome: 2,
-      role: 3,
-      painPoints: 4,
-      preparing: 5,
-    });
-    expect(NO_PAYWALL_STEPS).toEqual({
-      welcome: 1,
       role: 2,
       painPoints: 3,
       preparing: 4,
+    });
+    expect(NO_PAYWALL_STEPS).toEqual({
+      role: 1,
+      painPoints: 2,
+      preparing: 3,
     });
   });
 
@@ -884,8 +878,8 @@ describe("onboarding step map integrity", () => {
     const onWidth = progressWidth(on.container);
     const onUrl = routerReplace.mock.calls.map((c) => c[0]);
 
-    expect(offDots).toBe(3);
-    expect(offWidth).toBe("75%");
+    expect(offDots).toBe(2);
+    expect(offWidth).toBe(`${(2 / 3) * 100}%`);
     expect(onDots).toBe(offDots);
     expect(onWidth).toBe(offWidth);
     expect(onUrl).toEqual(offUrl);
