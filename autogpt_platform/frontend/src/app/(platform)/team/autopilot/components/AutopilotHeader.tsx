@@ -7,6 +7,7 @@ import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCo
 import { cn } from "@/lib/utils";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 import {
+  AUTOPILOT_COVER_COLOR,
   AUTOPILOT_COVER_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
@@ -16,7 +17,7 @@ export function AutopilotHeader() {
     <header>
       <ExpertCover
         className="h-36"
-        color={undefined}
+        color={AUTOPILOT_COVER_COLOR}
         art={AUTOPILOT_COVER_URL}
       />
 

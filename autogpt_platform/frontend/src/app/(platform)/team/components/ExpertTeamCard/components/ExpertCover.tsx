@@ -44,7 +44,7 @@ interface Props {
   className?: string;
   color: string | undefined;
   status?: CoverStatus;
-  /** Cover picture drawn over the colour; the colour stays as the fallback. */
+  /** Cover picture washed over the colour, so the pastel shows through. */
   art?: string | null;
 }
 
@@ -65,7 +65,7 @@ export function ExpertCover({ className, color, status, art }: Props) {
           alt=""
           fill
           sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-          className="object-cover"
+          className="object-cover opacity-50"
         />
       ) : null}
       {statusStyle ? (

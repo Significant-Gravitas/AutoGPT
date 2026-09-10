@@ -33,7 +33,7 @@ import {
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
-  getExpertCoverArt,
+  getExpertCover,
   getExpertRosterStatus,
   getWeeklySpend,
 } from "../../helpers";
@@ -61,6 +61,7 @@ export function ExpertTeamCard({
   const accent = getRaisedExpertAccent(expert.role, expert.color);
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
+  const cover = getExpertCover(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
@@ -98,9 +99,9 @@ export function ExpertTeamCard({
         className="flex flex-1 flex-col items-center p-2 pb-4"
       >
         <ExpertCover
-          color={expert.color}
+          color={cover.color}
           status={rosterStatus}
-          art={getExpertCoverArt(expert.avatar_url)}
+          art={cover.art}
         />
 
         <div className="flex w-full items-start gap-3 px-2">

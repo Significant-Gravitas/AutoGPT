@@ -22,14 +22,21 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
-/** Cover art shipped with the seeded experts, keyed by the avatar the seed
- *  gives them. Raised and uploaded-avatar experts get a solid colour. */
-const EXPERT_COVER_ART: Record<string, string> = {
-  "/experts/max.svg": "/experts/covers/max-1.jpg",
+/** Cover art and palette colour shipped with the seeded experts, keyed by
+ *  the avatar the seed gives them. Seeded experts carry no colour of their
+ *  own, so the picture's pastel fills in; an expert's own colour still wins. */
+const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
+  "/experts/max.svg": {
+    art: "/experts/covers/max-1.jpg",
+    color: "fuchsia-300",
+  },
 };
 
-export function getExpertCoverArt(avatarUrl: string | null | undefined) {
-  return avatarUrl ? (EXPERT_COVER_ART[avatarUrl] ?? null) : null;
+export function getExpertCover(expert: Pick<Expert, "avatar_url" | "color">) {
+  const seeded = expert.avatar_url
+    ? SEEDED_COVERS[expert.avatar_url]
+    : undefined;
+  return { art: seeded?.art ?? null, color: expert.color || seeded?.color };
 }
 
 export const AUTOPILOT_BLURB =

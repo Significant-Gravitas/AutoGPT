@@ -16,6 +16,7 @@ import {
   AUTOPILOT_ROLE,
 } from "../helpers";
 import {
+  AUTOPILOT_COVER_COLOR,
   AUTOPILOT_COVER_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
@@ -46,7 +47,7 @@ export function AutopilotCard({
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
         <ExpertCover
-          color={undefined}
+          color={AUTOPILOT_COVER_COLOR}
           status="built-in"
           art={AUTOPILOT_COVER_URL}
         />
