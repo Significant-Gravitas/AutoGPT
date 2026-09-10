@@ -453,6 +453,63 @@ async def test_choice_click_resolves_posts_confirmation_and_dispatches(app_id):
 
 
 @pytest.mark.asyncio
+async def test_choice_click_in_a_channel_is_dispatched_as_mentioned(app_id):
+    """An Action.Submit carries no mention entities, so deriving
+    `bot_mentioned` from the activity yields False — and in a *channel* the
+    handler's `if not ctx.bot_mentioned: return` then silently drops the
+    turn, after the ack has already told the user their answer was accepted.
+    Every other adapter forces it True on a click.
+    """
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(
+        text="",
+        value={"qans_token": "abcdef012345", "qans_index": 1},
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        channelData={"team": {"id": "19:team@thread.tacv2", "name": "Eng"}},
+    )
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value="EU"),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, _ = adapter._on_message_callback.await_args.args
+    assert ctx.bot_mentioned is True
+    assert ctx.text == "EU"
+
+
+@pytest.mark.asyncio
+async def test_choice_click_dispatches_even_if_the_ack_post_fails(app_id):
+    # The token is consumed before the ack, so a Connector error here would
+    # otherwise lose the answer entirely.
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(side_effect=RuntimeError("connector"))
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="", value={"qans_token": "abcdef012345", "qans_index": 1})
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value="EU"),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_teams_caps_choice_options_below_the_shared_default(app_id):
+    # An Adaptive Card renders ~6 actions; the rest silently vanish.
+    adapter = TeamsAdapter(MagicMock())
+    assert adapter.max_choice_options == 6
+
+
+@pytest.mark.asyncio
 async def test_choice_click_expired_token_posts_notice_and_does_not_dispatch(app_id):
     api = MagicMock()
     adapter = TeamsAdapter(api)

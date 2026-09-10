@@ -132,6 +132,9 @@ class DiscordAdapter(SocketAdapter):
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
+        # Choice buttons are stateless and outlive this process, so their
+        # click handler is registered once here rather than per sent message.
+        choice_ui.register_choice_handler(self._client, self, callback)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -204,9 +207,7 @@ class DiscordAdapter(SocketAdapter):
             return False
         if self._on_message_callback is None:
             return False
-        view = choice_ui.build_choice_view(
-            self, self._on_message_callback, token, options
-        )
+        view = choice_ui.build_choice_view(token, options)
         await channel.send(text, view=view, tts=False)
         return True
 

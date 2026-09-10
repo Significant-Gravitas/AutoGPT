@@ -247,14 +247,30 @@ class TeamsAdapter(WebhookAdapter):
                 conversation_id, {"type": "message", "text": _EXPIRED_NOTICE}
             )
             return
-        await self._post(
-            conversation_id,
-            {"type": "message", "text": f"✅ You answered: {option}"},
-        )
+        # The token is already consumed, so the answer exists only here. The
+        # ack is cosmetic; a Connector error must not cost the user the turn.
+        try:
+            await self._post(
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": self.localize_markup(f"✅ You answered: {option}"),
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to acknowledge Teams choice click; continuing the turn"
+            )
         if self._on_message_callback is None:
             return
+        # `bot_mentioned=True` explicitly, as every other adapter does on a
+        # click. An Action.Submit carries no mention entities, so deriving it
+        # from the activity yields False, and in a *channel* the turn is then
+        # dropped by the handler's `if not ctx.bot_mentioned: return` — after
+        # the ack above has already told the user their answer was accepted.
         ctx = await self._build_context({**activity, "text": option})
         if ctx is not None:
+            ctx.bot_mentioned = True
             await self._on_message_callback(ctx, self)
 
     async def _is_duplicate_activity(self, activity: dict[str, Any]) -> bool:
@@ -386,6 +402,12 @@ class TeamsAdapter(WebhookAdapter):
             "attachments": [_link_card(link_label, link_url)],
         }
         await self._post(channel_id, activity)
+
+    @property
+    def max_choice_options(self) -> int:
+        # An Adaptive Card renders about six actions before Teams collapses
+        # the rest into an overflow the user can miss entirely.
+        return 6
 
     @property
     def supports_choice_buttons(self) -> bool:

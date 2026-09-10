@@ -15,6 +15,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
     _mention_queries,
     _resolve_mentions,
 )
+from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
 from backend.copilot.bot.turn_stream import _clarification_message
 
 
@@ -395,7 +396,17 @@ class TestSendMethods:
         args, kwargs = channel.send.await_args
         assert args == ("❓ Which region?",)
         view = kwargs["view"]
-        assert [b.label for b in view.children] == ["US", "EU"]
+        # Each child is a DynamicItem wrapping the Button, so the label lives
+        # on `.item`; `custom_id` proxies through.
+        buttons = [cast(_ChoiceButton, child) for child in view.children]
+        assert [b.item.label for b in buttons] == ["US", "EU"]
+        # Stateless, like the other three adapters: everything needed to
+        # resolve a click rides in the custom_id, so a button posted before a
+        # deploy still works after it. A random discord.py-generated id plus
+        # an in-memory view would go dead on restart and on View.timeout,
+        # giving "This interaction failed" while the token stays live.
+        assert [b.custom_id for b in buttons] == ["qans:tok:0", "qans:tok:1"]
+        assert view.timeout is None
 
     @pytest.mark.asyncio
     async def test_send_choice_buttons_returns_false_without_message_callback(self):

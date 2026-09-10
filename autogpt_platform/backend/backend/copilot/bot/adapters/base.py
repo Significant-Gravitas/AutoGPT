@@ -202,6 +202,18 @@ class PlatformAdapter(ABC):
         ...
 
     @property
+    def max_choice_options(self) -> int:
+        """How many options this platform's native widget renders legibly.
+
+        `base` documents that an adapter decides whether `options` fits its
+        native widget, so the number belongs here rather than as one
+        platform-blind constant in the caller: Teams' Adaptive Cards render
+        roughly six actions and silently drop the tail, while Discord rows,
+        Slack action blocks and Telegram keyboards take the full ten.
+        """
+        return 10
+
+    @property
     def supports_choice_buttons(self) -> bool:
         """Whether `send_choice_buttons` can render native option buttons.
 

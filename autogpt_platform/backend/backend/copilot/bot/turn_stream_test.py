@@ -169,3 +169,126 @@ class TestStreamBatchDrafts:
         adapter.send_stream_draft.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == "Hello world"
+
+
+# -- Native choice buttons: the branch the feature is named after --
+
+
+def _choice_adapter(*, max_options: int = 10, max_len: int = 4096) -> MagicMock:
+    adapter = _adapter()
+    adapter.platform_name = "telegram"
+    adapter.supports_choice_buttons = True
+    adapter.max_choice_options = max_options
+    adapter.max_message_length = max_len
+    adapter.send_choice_buttons = AsyncMock(return_value=True)
+    return adapter
+
+
+def _patch_choices():
+    return patch(
+        f"{_MODULE}.choices",
+        new=MagicMock(
+            store_choice=AsyncMock(return_value="tok"),
+            clear_choice=AsyncMock(),
+        ),
+    )
+
+
+async def _clarify(adapter, questions):
+    from .turn_stream import _send_clarification
+
+    with _patch_choices() as choices_mock:
+        await _send_clarification(adapter, "42", _ctx(), {"questions": questions})
+    return choices_mock
+
+
+class TestNativeChoices:
+    @pytest.mark.asyncio
+    async def test_sends_native_buttons_and_no_text(self):
+        adapter = _choice_adapter()
+        await _clarify(adapter, [{"question": "Region?", "options": ["EU", "US"]}])
+
+        adapter.send_choice_buttons.assert_awaited_once()
+        assert adapter.send_choice_buttons.await_args.args[1] == "❓ Region?"
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_adapter_returning_false_falls_back_to_text(self):
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(return_value=False)
+
+        choices_mock = await _clarify(
+            adapter, [{"question": "Region?", "options": ["EU", "US"]}]
+        )
+
+        adapter.send_message.assert_awaited()
+        choices_mock.clear_choice.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_adapter_raising_falls_back_to_text(self):
+        # Telegram and Teams have no non-raising failure path, so a 429 used
+        # to escape into the caller's generic handler: the user got "AutoGPT
+        # ran into an error" and the question was delivered in no form.
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(side_effect=RuntimeError("429"))
+
+        choices_mock = await _clarify(
+            adapter, [{"question": "Region?", "options": ["EU", "US"]}]
+        )
+
+        adapter.send_message.assert_awaited()
+        assert "Region?" in adapter.send_message.await_args.args[1]
+        choices_mock.clear_choice.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_too_many_options_for_this_platform_uses_text(self):
+        adapter = _choice_adapter(max_options=6)
+
+        await _clarify(
+            adapter,
+            [{"question": "Pick", "options": [f"o{i}" for i in range(7)]}],
+        )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_question_over_the_message_cap_uses_text(self):
+        # Nothing chunks the native question text, and the send raises past
+        # the cap — the numbered text fits because it chunks.
+        adapter = _choice_adapter(max_len=50)
+
+        await _clarify(adapter, [{"question": "x" * 200, "options": ["a", "b"]}])
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mixed_payload_goes_all_text_to_keep_order(self):
+        # Natives post per-question while text is batched afterwards, so a
+        # mixed payload would arrive Q1, Q3, Q2 and the user would answer
+        # against the wrong numbering.
+        adapter = _choice_adapter()
+
+        await _clarify(
+            adapter,
+            [
+                {"question": "Q1", "options": ["a", "b"]},
+                {"question": "Q2 free text"},
+                {"question": "Q3", "options": ["c", "d"]},
+            ],
+        )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        sent = "".join(c.args[1] for c in adapter.send_message.await_args_list)
+        assert sent.index("Q1") < sent.index("Q2") < sent.index("Q3")
+
+    @pytest.mark.asyncio
+    async def test_unsupported_adapter_still_uses_text(self):
+        adapter = _choice_adapter()
+        adapter.supports_choice_buttons = False
+
+        await _clarify(adapter, [{"question": "Region?", "options": ["EU", "US"]}])
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()

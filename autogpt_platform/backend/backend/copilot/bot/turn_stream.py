@@ -573,58 +573,95 @@ def _setup_required_message(setup_output: dict[str, Any]) -> str:
     )
 
 
-# Discord ActionRows/Slack actions blocks/Telegram inline keyboards/Teams
-# Adaptive Cards all stay readable well under this; past it a tap-target
-# picker turns into a wall of buttons, so plain numbered text reads better.
-MAX_NATIVE_CHOICE_OPTIONS = 10
-
-
 async def _send_clarification(
     adapter: PlatformAdapter,
     target_id: str,
     ctx: MessageContext,
     clarification_output: dict[str, Any],
 ) -> None:
-    """Send each question as native choice buttons/select where the adapter
-    supports it and the option count fits; batch everything else (free-text
-    questions, too many options, unsupported adapters) as the existing
-    numbered-text rendering, chunked to the adapter's message cap.
-    """
-    text_only: list[Any] = []
-    for question in clarification_output.get("questions") or []:
-        if not isinstance(question, dict):
-            text_only.append(question)
-            continue
-        text = str(question.get("question") or "").strip()
-        options = _question_options(question)
-        fits_native = (
-            adapter.supports_choice_buttons
-            and text
-            and options
-            and len(options) <= MAX_NATIVE_CHOICE_OPTIONS
-        )
-        if not fits_native:
-            text_only.append(question)
-            continue
-        token = await choices.store_choice(adapter.platform_name, options)
-        sent = await adapter.send_choice_buttons(
-            target_id,
-            f"❓ {text}",
-            options,
-            token,
-            mentionable_users=ctx.mentionable_users,
-        )
-        if not sent:
-            await choices.clear_choice(adapter.platform_name, token)
-            text_only.append(question)
+    """Send the questions as native choice buttons/select, or as the existing
+    numbered-text rendering chunked to the adapter's message cap.
 
-    if not text_only:
+    All-or-nothing per payload. Native sends happen one question at a time
+    while text questions are batched into a single numbered message, so
+    mixing the two in one payload would deliver them out of order (Q1, Q3,
+    then Q2) and the user would answer against the wrong numbering. If any
+    question can't go native, the whole payload goes as text — which is
+    ordered, and is the rendering that already worked.
+    """
+    questions = list(clarification_output.get("questions") or [])
+    if questions and all(_fits_native(adapter, q) for q in questions):
+        if await _send_native_choices(adapter, target_id, ctx, questions):
+            return
+        # A native send failed part-way; fall through and render the whole
+        # payload as text so no question is silently lost.
+
+    if not questions:
         return
-    message = _clarification_message({**clarification_output, "questions": text_only})
+    message = _clarification_message(clarification_output)
     for chunk in iter_chunks(message, adapter.chunk_flush_at):
         await adapter.send_message(
             target_id, chunk, mentionable_users=ctx.mentionable_users
         )
+
+
+def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
+    """Whether ``question`` can be rendered as this adapter's native widget."""
+    if not isinstance(question, dict):
+        return False
+    text = str(question.get("question") or "").strip()
+    options = _question_options(question)
+    if not adapter.supports_choice_buttons or not text or not options:
+        return False
+    if len(options) > adapter.max_choice_options:
+        return False
+    # Nothing else chunks the question text, and every adapter's send raises
+    # past its cap — which, before this check, surfaced as a generic turn
+    # error instead of the numbered text that would have fitted.
+    return len(_native_question_text(text)) <= adapter.max_message_length
+
+
+def _native_question_text(text: str) -> str:
+    return f"❓ {text}"
+
+
+async def _send_native_choices(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    questions: list[Any],
+) -> bool:
+    """Send every question as native choice buttons; False if any didn't land.
+
+    An adapter may either return False or raise (Telegram and Teams have no
+    non-raising failure path at all). Both must mean "fall back to text": an
+    exception here escapes into the caller's generic handler, which reports
+    "AutoGPT ran into an error", abandons the half-consumed turn, and leaves
+    the choice token alive for its full TTL — with the question delivered in
+    no form at all, not even as numbered text.
+    """
+    for question in questions:
+        options = _question_options(question)
+        text = str(question.get("question") or "").strip()
+        token = await choices.store_choice(adapter.platform_name, options)
+        try:
+            sent = await adapter.send_choice_buttons(
+                target_id,
+                _native_question_text(text),
+                options,
+                token,
+                mentionable_users=ctx.mentionable_users,
+            )
+        except Exception:
+            logger.exception(
+                "%s rejected native choice buttons; falling back to text",
+                adapter.platform_name,
+            )
+            sent = False
+        if not sent:
+            await choices.clear_choice(adapter.platform_name, token)
+            return False
+    return True
 
 
 def _question_options(question: dict[str, Any]) -> list[str]:

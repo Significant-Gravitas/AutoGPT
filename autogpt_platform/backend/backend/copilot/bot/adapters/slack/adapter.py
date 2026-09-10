@@ -272,12 +272,25 @@ class SlackAdapter(WebhookAdapter):
             return
         message_ts = (payload.get("container") or {}).get("message_ts")
         if client and channel_id and message_ts:
-            await client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                text=f"✅ You answered: {option}",
-                blocks=[],
-            )
+            # `resolve_choice` already consumed the token, so the answer now
+            # exists only in this call. The ack is cosmetic and the turn is
+            # not: a `message_not_found`/`ratelimited` here must not abort
+            # the dispatch and lose the answer with nothing logged.
+            try:
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    # The option text is model-authored, so it goes through
+                    # the same escaper as every other Slack send — otherwise
+                    # an option containing `<!channel>` pings the workspace,
+                    # bypassing the mentionable_users allowlist.
+                    text=self.localize_markup(f"✅ You answered: {option}"),
+                    blocks=[],
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to acknowledge Slack choice click; continuing the turn"
+                )
         if self._on_message_callback is None:
             return
         ctx = await self._context_from_block_action(payload, option)
