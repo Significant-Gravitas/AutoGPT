@@ -42,10 +42,11 @@ export default function OnboardingPage() {
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  // Back is hidden on the first step and while the current step is
-  // mid-flight (brain dump processing) — there is nothing coherent to go
-  // back to.
-  const firstContentStep = isPaymentEnabled ? 2 : 1;
+  // Back is hidden on the first content step (never back into the paywall)
+  // and while the current step is mid-flight (brain dump processing) — there
+  // is nothing coherent to go back to. Read from the layout so it tracks
+  // buildStepLayout rather than a hardcoded position.
+  const firstContentStep = steps.team ?? steps.role;
   const showBack =
     currentStep > firstContentStep && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
