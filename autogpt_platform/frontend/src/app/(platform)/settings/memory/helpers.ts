@@ -34,3 +34,10 @@ export function formatWhen(createdAt: string | null | undefined) {
   if (Number.isNaN(parsed.getTime())) return "";
   return formatDistanceToNow(parsed, { addSuffix: true });
 }
+
+/** The Soul drawer links here with ?expert=<id>. An id the caller no longer
+ *  owns is left to the page's active-expert fallback rather than checked here. */
+export function readExpertScopeFromUrl() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("expert");
+}

@@ -16,10 +16,19 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { getActiveExperts, getScopeName, RECENT_FACTS_LIMIT } from "./helpers";
+import {
+  getActiveExperts,
+  getScopeName,
+  readExpertScopeFromUrl,
+  RECENT_FACTS_LIMIT,
+} from "./helpers";
 
 export function useMemoryPage() {
-  const [scopeExpertID, setScopeExpertID] = useState<string | null>(null);
+  // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
+  // the link opens on that expert. Read once — the dropdown owns it after.
+  const [scopeExpertID, setScopeExpertID] = useState<string | null>(
+    readExpertScopeFromUrl,
+  );
   const queryClient = useQueryClient();
 
   // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay

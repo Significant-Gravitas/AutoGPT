@@ -108,6 +108,7 @@ function mockHappyPath() {
 
 beforeEach(() => {
   resetCopilotChatRegistry();
+  window.history.replaceState({}, "", "/settings/memory");
 });
 
 describe("Settings memory page", () => {
@@ -252,6 +253,67 @@ describe("Settings memory page", () => {
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Erase memory" })).toBeDefined();
     expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
+  });
+
+  it("opens on an expert's scope when linked with ?expert=", async () => {
+    const maria = {
+      ...getListExpertsResponseMock200()[0],
+      id: "expert-maria",
+      name: "Maria",
+      role: "Growth Marketer",
+      avatar_url: null,
+      is_archived: false,
+    };
+    const expertFactRequests: string[] = [];
+    server.use(
+      getListExpertsMockHandler200([maria]),
+      getListMyMemoryFactsMockHandler200(FACTS),
+      getGetMyExpertMemoryOverviewMockHandler200({
+        expert_id: "expert-maria",
+        facts: 12,
+        entities: 8,
+        episodes: 3,
+      }),
+      getListMyExpertMemoryFactsMockHandler200((info) => {
+        expertFactRequests.push(String(info.params.expertId));
+        return {
+          expert_id: "expert-maria",
+          items: [
+            {
+              uuid: "edge-m1",
+              fact: "Q4 campaign brief is due Friday",
+              name: "due",
+              source: "Campaign",
+              target: "Friday",
+              created_at: "2026-08-17T00:00:00Z",
+            },
+          ],
+        };
+      }),
+    );
+    window.history.replaceState({}, "", "/settings/memory?expert=expert-maria");
+
+    render(<SettingsMemoryPage />);
+
+    expect(
+      await screen.findByText("Q4 campaign brief is due Friday"),
+    ).toBeDefined();
+    expect(expertFactRequests).toEqual(["expert-maria"]);
+    expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
+  });
+
+  it("falls back to AutoPilot when ?expert= names an expert the caller no longer has", async () => {
+    mockHappyPath();
+    window.history.replaceState({}, "", "/settings/memory?expert=expert-gone");
+
+    render(<SettingsMemoryPage />);
+
+    expect(
+      await screen.findByText("Runs a DTC candle brand called Emberline"),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "View my summary" }),
+    ).toBeDefined();
   });
 
   it("opens the summary chat in-pane and auto-sends the seeded prompt", async () => {
