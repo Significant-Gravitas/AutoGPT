@@ -36,6 +36,8 @@ vi.mock("@/lib/oauth-popup", () => ({
   OAUTH_ERROR_FLOW_TIMED_OUT: "OAuth flow timed out",
   OAUTH_ERROR_POPUP_BLOCKED:
     "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.",
+  OAUTH_ERROR_POPUP_BLOCKED_NO_TAB:
+    "Popup blocked. Allow popups for this site and retry.",
 }));
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
