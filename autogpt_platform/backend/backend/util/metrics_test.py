@@ -12,9 +12,14 @@ from __future__ import annotations
 import json
 import sys
 
+import sentry_sdk
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.utils import event_from_exception
 
+# Imported at module scope on purpose: AppProcess calls sentry_init() in its
+# class body, so the guard has to hold at collection time, not just in a test.
+import backend.util.process
+from backend.util import metrics
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -312,3 +317,56 @@ def test_falkordb_teardown_signatures_cover_known_patterns() -> None:
     graphiti FalkorDB driver docstring pairs together."""
     expected = {"buffer is closed", "connection closed by server"}
     assert expected == set(_FALKORDB_TEARDOWN_SIGNATURES)
+
+
+# ---------- pytest runs must not reach Sentry ----------
+
+_FAKE_DSN = "https://key@o1.ingest.us.sentry.io/1"
+
+
+def _spy_on_sentry_init(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+    monkeypatch.setattr(metrics, "_sentry_init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(metrics.settings.secrets, "sentry_dsn", _FAKE_DSN)
+    return calls
+
+
+def test_no_sentry_client_is_active_under_pytest() -> None:
+    """End-to-end. AppProcess runs sentry_init() in its class body, so this
+    module's import above is what a live client here would have come from."""
+    assert backend.util.process.AppProcess
+    assert sentry_sdk.get_client().is_active() is False
+
+
+def test_sentry_init_skipped_at_collection_time(monkeypatch) -> None:
+    """pytest only sets PYTEST_CURRENT_TEST once a test item runs, so the
+    import-time call that AppProcess makes is covered by sys.modules alone."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls == []
+
+
+def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    assert calls[0]["dsn"] == _FAKE_DSN
+
+
+def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
+    """A spawned service subprocess does not inherit sys.modules, but does
+    inherit PYTEST_CURRENT_TEST from the environment."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "backend/util/metrics_test.py::t (call)")
+
+    metrics.sentry_init()
+
+    assert calls == []

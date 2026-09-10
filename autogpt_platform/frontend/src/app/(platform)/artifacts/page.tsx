@@ -71,7 +71,12 @@ export default function ArtifactsPage() {
     isLoadingMore,
     loadMore,
   } = useArtifactsPage();
-  const { folders, isLoading: isFoldersLoading } = useArtifactsFolders();
+  const {
+    folders,
+    isLoading: isFoldersLoading,
+    isError: isFoldersError,
+    error: foldersError,
+  } = useArtifactsFolders();
   const { activeExperts, expertsById } = useExpertMap();
 
   const isSearching = searchTerm.length > 0;
@@ -192,8 +197,8 @@ export default function ArtifactsPage() {
         <ArtifactsList
           files={files}
           isLoading={isListLoading}
-          isError={isError}
-          error={error}
+          isError={isError || (showFolders && isFoldersError)}
+          error={isError ? error : showFolders ? foldersError : undefined}
           emptyState={getEmptyState({
             hasSearchTerm: isSearching,
             isInFolder,

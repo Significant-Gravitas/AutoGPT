@@ -12,6 +12,8 @@ interface SearchFilterChipsProps {
   totalCount?: number;
   agentsCount?: number;
   creatorsCount?: number;
+  /** Omitted where skills are not searchable, which drops the chip. */
+  skillsCount?: number;
   onFilterChange?: (value: string) => void;
 }
 
@@ -19,6 +21,7 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   totalCount = 10,
   agentsCount = 8,
   creatorsCount = 2,
+  skillsCount,
   onFilterChange,
 }) => {
   const [selected, setSelected] = React.useState("all");
@@ -26,13 +29,15 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   const filters: FilterOption[] = [
     { label: "All", count: totalCount, value: "all" },
     { label: "Agents", count: agentsCount, value: "agents" },
+    ...(skillsCount === undefined
+      ? []
+      : [{ label: "Skills", count: skillsCount, value: "skills" }]),
     { label: "Creators", count: creatorsCount, value: "creators" },
   ];
 
   const handleFilterClick = (value: string) => {
     setSelected(value);
     onFilterChange?.(value);
-    console.log(`Filter selected: ${value}`);
   };
 
   return (
