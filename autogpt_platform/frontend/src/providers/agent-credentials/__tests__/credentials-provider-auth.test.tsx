@@ -37,6 +37,7 @@ import CredentialsProvider, {
   CredentialsProvidersContext,
   mergePendingCredentials,
 } from "../credentials-provider";
+import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
 
 const queryClient = new QueryClient();
 
@@ -348,9 +349,15 @@ describe("CredentialsProvider device-auth upserts", () => {
   it("keeps the server's copy of a credential it has caught up on", () => {
     // The pending copy is a snapshot from the moment of the upsert; once the
     // server returns the id, its copy carries any change made since.
+    const pendingCopy: CredentialsMetaResponse = {
+      id: "cred-device",
+      provider: "stripe_link",
+      type: "oauth2",
+      title: "Device Auth Credential",
+    };
     const merged = mergePendingCredentials(
-      [{ ...deviceCred, title: "Renamed elsewhere" }] as never,
-      [deviceCred] as never,
+      [{ ...pendingCopy, title: "Renamed elsewhere" }],
+      [pendingCopy],
     );
 
     expect(merged).toHaveLength(1);
