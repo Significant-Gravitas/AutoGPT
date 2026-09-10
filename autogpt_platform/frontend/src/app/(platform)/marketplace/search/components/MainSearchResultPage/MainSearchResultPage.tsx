@@ -46,11 +46,15 @@ export const MainSearchResultPage = ({
     isSkillsHubEnabled,
     isAgentsLoading,
     isCreatorsLoading,
+    isExpertsLoading,
     isAgentsError,
     isCreatorsError,
   } = useMainSearchResultPage({ searchTerm, sort });
 
-  const isLoading = isAgentsLoading || isCreatorsLoading;
+  // Experts gate the skeleton too: without it a roster still in flight reads
+  // as zero results, and a search matching only an expert says "No results
+  // found" before the card arrives.
+  const isLoading = isAgentsLoading || isCreatorsLoading || isExpertsLoading;
   const hasError = isAgentsError || isCreatorsError;
 
   if (isLoading) {

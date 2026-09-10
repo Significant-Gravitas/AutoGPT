@@ -18,7 +18,9 @@ export function ExpertsSection({ category }: Props) {
   if (isError || (!isLoading && templates.length === 0)) {
     // Under a category filter an empty shelf means "no experts in this
     // category", so the whole section goes rather than inviting a raise.
-    if (category) return null;
+    // Only on a successful empty response: a failed request is not an answer
+    // about the category, and still deserves the fallback below.
+    if (!isError && category) return null;
     // Raising an expert needs no roster templates, so the second door
     // stays open even when the template list is empty or failed to load.
     // It needs an account, though, so visitors get nothing here.

@@ -101,7 +101,11 @@ export const useMainSearchResultPage = ({
       },
     );
 
-  const { templates: experts, hiredTemplateIds } = useExpertsSection({
+  const {
+    templates: experts,
+    hiredTemplateIds,
+    isLoading: isExpertsLoading,
+  } = useExpertsSection({
     searchQuery: searchTerm,
     enabled: isExpertsVisible,
   });
@@ -178,6 +182,7 @@ export const useMainSearchResultPage = ({
     isAgentsLoading,
     isCreatorsLoading,
     isSkillsLoading,
+    isExpertsLoading: isExpertsVisible && isExpertsLoading,
     isAgentsError,
     isCreatorsError,
   };

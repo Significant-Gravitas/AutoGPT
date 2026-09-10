@@ -11,7 +11,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { HttpResponse, http } from "msw";
+import { HttpResponse, delay, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSearchResultPage";
@@ -157,6 +157,49 @@ describe("Experts in marketplace search", () => {
     await screen.findByText(/Showing results for/);
     await waitFor(() => expect(searchedTerms).toContain("nothing"));
     expect(screen.queryByRole("heading", { name: "Experts" })).toBeNull();
+  });
+
+  test("a roster still in flight shows the skeleton, not 'No results found'", async () => {
+    server.use(
+      http.get("/api/proxy/api/experts/templates", async () => {
+        await delay(3000);
+        return HttpResponse.json([maria]);
+      }),
+      getGetV2ListStoreAgentsMockHandler({
+        agents: [],
+        pagination: {
+          current_page: 1,
+          total_items: 0,
+          total_pages: 0,
+          page_size: 20,
+        },
+      }),
+      getGetV2ListStoreCreatorsMockHandler({
+        creators: [],
+        pagination: {
+          current_page: 1,
+          total_items: 0,
+          total_pages: 0,
+          page_size: 20,
+        },
+      }),
+    );
+
+    render(<MainSearchResultPage searchTerm="Maria" sort="runs" />);
+
+    // Agents and creators resolve empty immediately while the roster is still
+    // in flight. `waitFor` cannot catch the resulting flash of the empty state
+    // — it retries until the roster lands and the flash is gone — so sample
+    // every tick until Maria appears and assert it was never painted.
+    let sawEmptyState = false;
+    for (let i = 0; i < 80; i++) {
+      if (screen.queryByText("No results found")) sawEmptyState = true;
+      if (screen.queryByRole("heading", { name: "Experts" })) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    expect(sawEmptyState).toBe(false);
+    expect(screen.getByRole("heading", { name: "Experts" })).toBeDefined();
   });
 
   test("asks for no experts and offers no chip outside the beta", async () => {

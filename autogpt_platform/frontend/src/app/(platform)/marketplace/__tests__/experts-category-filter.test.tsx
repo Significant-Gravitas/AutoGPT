@@ -183,6 +183,25 @@ describe("Marketplace category filter over experts", () => {
     // invitation to raise an expert.
     expect(screen.queryByText(/raise your own expert/i)).toBeNull();
   });
+
+  test("a failed roster request under a category still offers the raise link", async () => {
+    server.use(
+      http.get("/api/proxy/api/experts/templates", ({ request }) => {
+        const category = new URL(request.url).searchParams.get("category");
+        // Unfiltered succeeds so the page renders; the filtered fetch fails.
+        return category
+          ? new HttpResponse(null, { status: 500 })
+          : HttpResponse.json(ROSTER);
+      }),
+    );
+    render(<MainMarkeplacePage />);
+    await screen.findByRole("link", { name: /Maria/ });
+
+    await userEvent.click(await findCategoryChip("Sales"));
+
+    // A failure is not an answer about the category, so the section stays.
+    expect(await screen.findByText(/raise your own expert/i)).toBeDefined();
+  });
 });
 
 async function findCategoryChip(name: string) {
