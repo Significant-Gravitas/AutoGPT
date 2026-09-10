@@ -74,14 +74,16 @@ function ProviderLogo({ provider }: LogoProps) {
     );
   }
   return (
-    <Image
-      src={`/integrations/${provider}.png`}
-      alt={name}
-      width={20}
-      height={20}
-      loading="lazy"
-      className="size-5 shrink-0 rounded-full bg-white object-cover ring-1 ring-zinc-200"
-      onError={() => setIsBroken(true)}
-    />
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white p-[3px] ring-1 ring-zinc-200">
+      <Image
+        src={`/integrations/${provider}.png`}
+        alt={name}
+        width={14}
+        height={14}
+        loading="lazy"
+        className="size-full object-contain"
+        onError={() => setIsBroken(true)}
+      />
+    </span>
   );
 }
