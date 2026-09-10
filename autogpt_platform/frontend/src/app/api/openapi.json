@@ -6504,6 +6504,32 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/setup": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Setup Items",
+        "description": "What still stands between each expert's scheduled workflows and a schedule.",
+        "operationId": "list_expert_setup_items",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertSetupItem" },
+                  "type": "array",
+                  "title": "Response List Expert Setup Items"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/templates": {
       "get": {
         "tags": ["v2", "experts", "experts"],
@@ -20856,6 +20882,52 @@
         ],
         "title": "ExpertRun",
         "description": "One expert-attributed execution, for the /team Work surface."
+      },
+      "ExpertSetupItem": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "workflow_id": { "type": "string", "title": "Workflow Id" },
+          "workflow_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Workflow Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": ["connect", "allow", "workflow"],
+            "title": "Resolution"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "workflow_id",
+          "workflow_name",
+          "library_agent_id",
+          "providers",
+          "resolution"
+        ],
+        "title": "ExpertSetupItem",
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {

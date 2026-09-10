@@ -4,6 +4,7 @@ import {
   getGetExpertDetachPreviewMockHandler,
   getListExpertCredentialsMockHandler,
   getListExpertPodsMockHandler,
+  getListExpertSetupItemsMockHandler,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -14,7 +15,9 @@ import {
   getGetV2ListLibraryAgentsMockHandler200,
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
+import { getGetV1ListProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -89,6 +92,8 @@ beforeEach(() => {
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
     getListExpertCredentialsMockHandler([]),
+    getListExpertSetupItemsMockHandler([]),
+    getGetV1ListProvidersMockHandler([]),
     getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
   );
 });
@@ -231,7 +236,8 @@ describe("TeamPage", () => {
     const card = screen.getByRole("link", { name: "View Maria" });
     expect(within(card).getByText("Idle")).toBeDefined();
     expect(getStatValue(card, "Workflows")).toBe("2");
-    expect(getStatValue(card, "Skills")).toBe("0");
+    // Empty totals are left off the meta line.
+    expect(within(card).queryByText("Skills")).toBeNull();
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
   });
@@ -324,7 +330,7 @@ describe("TeamPage", () => {
     expect(getStatValue(card, "Schedules")).toBe("1");
   });
 
-  test("marks scheduled workflows without a schedule as needing setup", async () => {
+  test("does not badge a card for a workflow without a schedule", async () => {
     const needsSetupMaria: Expert = {
       ...hiredMaria,
       workflows: [
@@ -340,8 +346,9 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText(/1 needs setup/)).toBeDefined();
-    expect(screen.getByText("Needs you")).toBeDefined();
+    // The Setup needed card above the roster owns that state now.
+    expect(screen.queryByText(/needs setup/i)).toBeNull();
+    expect(screen.queryByText("Needs you")).toBeNull();
   });
 
   test("marks an expert with an active run as working", async () => {
@@ -959,5 +966,146 @@ describe("TeamPage", () => {
 
     const card = await screen.findByRole("link", { name: "View Maria" });
     expect(within(card).queryByText(/needs setup/i)).toBeNull();
+  });
+});
+
+function makeSetupItem(
+  overrides: Partial<ExpertSetupItem> = {},
+): ExpertSetupItem {
+  return {
+    expert_id: "expert-maria",
+    expert_name: "Maria",
+    expert_avatar_url: null,
+    workflow_id: "wf-1",
+    workflow_name: "SEO Audit",
+    library_agent_id: "lib-1",
+    providers: ["notion"],
+    resolution: "connect",
+    credential_id: null,
+    ...overrides,
+  };
+}
+
+describe("TeamPage - setup needed card", () => {
+  test("stays hidden when nothing needs setup", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.queryByTestId("setup-needed")).toBeNull();
+  });
+
+  test("lists each missing connection with the expert and workflow", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem(),
+        makeSetupItem({
+          workflow_id: "wf-2",
+          workflow_name: "Weekly digest",
+          providers: ["github"],
+          resolution: "allow",
+          credential_id: "cred-github",
+        }),
+        makeSetupItem({
+          workflow_id: "wf-3",
+          workflow_name: "Newsletter",
+          providers: [],
+          resolution: "workflow",
+        }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        { name: "notion", supported_auth_types: ["api_key"] },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(within(card).getByText("Setup needed (3)")).toBeDefined();
+    expect(within(card).getByText("Notion for Maria")).toBeDefined();
+    expect(
+      within(card).getByText("SEO Audit needs it to run on schedule."),
+    ).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Connect" })).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Allow" })).toBeDefined();
+    expect(
+      within(card)
+        .getByRole("link", { name: "Open workflow" })
+        .getAttribute("href"),
+    ).toBe("/library/agents/lib-1");
+  });
+
+  test("a provider the user cannot connect is explained instead of offered", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({ providers: ["some_platform_only_provider"] }),
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(within(card).getByText("Needs a platform key")).toBeDefined();
+    expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
+  test("Allow grants the existing credential to that expert", async () => {
+    let granted: {
+      expertId: string;
+      body: { credential_ids: string[] };
+    } | null = null;
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({ resolution: "allow", credential_id: "cred-notion" }),
+      ]),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        async ({ params, request }) => {
+          granted = {
+            expertId: String(params.expertId),
+            body: (await request.json()) as { credential_ids: string[] },
+          };
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Allow" }));
+
+    await waitFor(() =>
+      expect(granted).toEqual({
+        expertId: "expert-maria",
+        body: { credential_ids: ["cred-notion"] },
+      }),
+    );
+  });
+
+  test("Connect opens the connect dialog on that provider", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([makeSetupItem()]),
+      getGetV1ListProvidersMockHandler([
+        { name: "notion", supported_auth_types: ["api_key"] },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    // Straight to the provider's step: the picker gives way to it once the
+    // provider list has loaded, so wait for the picker heading to go.
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByText("Connect a service for Maria"),
+      ).toBeNull(),
+    );
+    expect(within(dialog).getByRole("button", { name: "Back" })).toBeDefined();
+    expect(within(dialog).getAllByText(/Notion/).length).toBeGreaterThan(0);
   });
 });
