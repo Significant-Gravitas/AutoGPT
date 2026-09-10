@@ -12,8 +12,8 @@ export function ExpertAccess({ name, providers }: Props) {
 
   return (
     <ExpertSection
-      title={`Access ${name} will ask for`}
-      description={`Connect these when ${name} first needs them — nothing is shared until you do.`}
+      title={`Services ${name} can work with`}
+      description={`${name} will ask you to connect these the first time they are needed — nothing is shared until you do.`}
     >
       <ul className="flex flex-wrap gap-2">
         {providers.map((provider) => (

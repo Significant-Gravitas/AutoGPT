@@ -203,7 +203,7 @@ describe("Marketplace expert page", () => {
     // Only what the viewer connects: Anthropic, OpenAI and Jina are on the
     // platform's own credentials and must not be asked for.
     const access = await screen.findByRole("region", {
-      name: "Access Maria will ask for",
+      name: "Services Maria can work with",
     });
     expect(within(access).getByText("DataForSEO")).toBeDefined();
     expect(within(access).queryByText("Anthropic")).toBeNull();
@@ -238,7 +238,7 @@ describe("Marketplace expert page", () => {
       screen.queryByRole("region", { name: /sets up on day one/ }),
     ).toBeNull();
     expect(
-      screen.queryByRole("region", { name: /Access Maria will ask for/ }),
+      screen.queryByRole("region", { name: /Services Maria can work with/ }),
     ).toBeNull();
     expect(screen.queryByText(/cannot break/)).toBeNull();
     // The plan line has no data to be missing, so it always stands.
