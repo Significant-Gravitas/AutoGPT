@@ -14,7 +14,12 @@ export function ExpertProtectedRules({ rules }: Props) {
   return (
     <section className="rounded-xl bg-zinc-50 px-4 py-3.5">
       <h2 className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
+        <Icon
+          icon={LockIcon}
+          size={16}
+          aria-hidden="true"
+          className="text-zinc-500"
+        />
         Rules this expert cannot break
       </h2>
       <ul className="mt-2 space-y-1.5">
@@ -26,6 +31,7 @@ export function ExpertProtectedRules({ rules }: Props) {
             <Icon
               icon={LockIcon}
               size={14}
+              aria-hidden="true"
               className="mt-0.5 shrink-0 text-zinc-400"
             />
             <span>{rule}</span>

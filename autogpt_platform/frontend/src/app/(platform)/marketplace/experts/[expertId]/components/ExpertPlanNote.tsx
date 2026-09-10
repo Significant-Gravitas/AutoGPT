@@ -16,9 +16,10 @@ export function ExpertPlanNote({ name, weeklyBudget, accent }: Props) {
       <Icon
         icon={SparklesIcon}
         size={16}
+        aria-hidden="true"
         className={cn("mt-0.5 shrink-0", accent.icon)}
       />
-      <div>
+      <div className="min-w-0">
         <h2 className="text-sm font-medium text-zinc-900">
           Included with your plan
         </h2>

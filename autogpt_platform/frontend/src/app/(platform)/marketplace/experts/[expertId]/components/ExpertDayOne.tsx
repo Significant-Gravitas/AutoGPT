@@ -26,10 +26,15 @@ export function ExpertDayOne({ name, workflow, accent }: Props) {
         )}
       >
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-inset ring-zinc-200/70">
-          <Icon icon={FlashIcon} size={16} className={accent.icon} />
+          <Icon
+            icon={FlashIcon}
+            size={16}
+            aria-hidden="true"
+            className={accent.icon}
+          />
         </span>
         <div className="min-w-0">
-          <div className="text-[15px] font-medium text-zinc-900">
+          <div className="break-words text-[15px] font-medium text-zinc-900">
             {workflow.name}
           </div>
           {workflow.description ? (

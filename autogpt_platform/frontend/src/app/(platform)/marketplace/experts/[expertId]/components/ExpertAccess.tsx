@@ -19,13 +19,13 @@ export function ExpertAccess({ name, providers }: Props) {
         {providers.map((provider) => (
           <li
             key={provider}
-            className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm text-zinc-700 ring-1 ring-inset ring-zinc-200/80"
+            className="flex min-w-0 items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm text-zinc-700 ring-1 ring-inset ring-zinc-200/80"
           >
             <IntegrationLogo
               provider={provider}
               alt={formatProviderName(provider)}
             />
-            {formatProviderName(provider)}
+            <span className="truncate">{formatProviderName(provider)}</span>
           </li>
         ))}
       </ul>
