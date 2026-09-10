@@ -51,6 +51,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
+from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
@@ -1274,6 +1275,16 @@ async def _install_preloads(
     if any(p.scheduleCron for p in preloads):
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+    # Rows first, schedules second: creating a schedule resolves credentials
+    # scoped to the expert, which seeds its allow-list from the workflows
+    # installed so far. Interleaving would freeze that list after the first one.
+    installed: list[
+        tuple[
+            prisma.models.ExpertWorkflow,
+            prisma.models.ExpertWorkflow,
+            library_model.LibraryAgent,
+        ]
+    ] = []
     for preload in preloads:
         if preload.storeListingVersionId is None:
             continue
@@ -1300,18 +1311,21 @@ async def _install_preloads(
                 else preload.storeListingVersionId
             )
             continue
-        if preload.scheduleCron:
-            listing = preload.StoreListingVersion
-            await scheduling.create_workflow_schedule(
-                workflow_row_id=row.id,
-                expert_id=expert_id,
-                user_id=user_id,
-                cron=preload.scheduleCron,
-                graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
-                name=listing.name if listing else "Expert workflow",
-                user_timezone=user_timezone or "UTC",
-            )
+        installed.append((row, preload, library_agent))
+    for row, preload, library_agent in installed:
+        if not preload.scheduleCron:
+            continue
+        listing = preload.StoreListingVersion
+        await scheduling.create_workflow_schedule(
+            workflow_row_id=row.id,
+            expert_id=expert_id,
+            user_id=user_id,
+            cron=preload.scheduleCron,
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=listing.name if listing else "Expert workflow",
+            user_timezone=user_timezone or "UTC",
+        )
     return failed
 
 
