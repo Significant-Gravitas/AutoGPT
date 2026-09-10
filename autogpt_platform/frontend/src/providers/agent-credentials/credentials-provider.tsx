@@ -78,25 +78,6 @@ export const CredentialsProvidersContext =
  * in the sidebar.  Pure so it can be exercised directly in tests without
  * dragging in React state machinery.
  */
-/**
- * Fold credentials minted outside a list response into a freshly-loaded list.
- *
- * `loadCredentials` publishes whatever `listCredentials()` returned. A request
- * already in flight when a credential is created captured the state *before*
- * it existed, so publishing that response unmodified drops the new credential
- * and `useCredentialsInput` then reports it as removed. Anything upserted
- * since is merged back in, newest wins on id.
- */
-export function mergePendingCredentials(
-  loaded: CredentialsMetaResponse[],
-  pending: CredentialsMetaResponse[] | undefined,
-): CredentialsMetaResponse[] {
-  if (!pending?.length) return loaded;
-  const byId = new Map(loaded.map((c) => [c.id, c]));
-  for (const credential of pending) byId.set(credential.id, credential);
-  return [...byId.values()];
-}
-
 export function upsertProviderCredentials(
   prev: CredentialsProvidersContextType | null,
   provider: CredentialsProviderName,
@@ -121,6 +102,21 @@ export function upsertProviderCredentials(
 }
 
 /**
+ * Append credentials a freshly-loaded list does not carry yet: a
+ * `listCredentials()` request already in flight when one is created predates
+ * it, and publishing that response unmodified drops it. An id the list does
+ * carry needs no pending copy: the caller retires it in the same pass.
+ */
+export function mergePendingCredentials(
+  loaded: CredentialsMetaResponse[],
+  pending: CredentialsMetaResponse[] | undefined,
+): CredentialsMetaResponse[] {
+  if (!pending?.length) return loaded;
+  const loadedIds = new Set(loaded.map((c) => c.id));
+  return [...loaded, ...pending.filter((c) => !loadedIds.has(c.id))];
+}
+
+/**
  * Imperative actions on the credentials context.  Split out so the data
  * context can stay read-only for consumers that only render the list —
  * components that need to re-fetch after a side effect (e.g. Ayrshare
@@ -129,13 +125,9 @@ export function upsertProviderCredentials(
 export const CredentialsActionsContext = createContext<{
   reload: () => void;
   /**
-   * Add a just-created credential to the store without waiting for a re-fetch.
-   *
-   * The OAuth path gets this for free because `oAuthCallback` upserts the
-   * credential it returns. Flows that mint a credential outside this provider
-   * — device authorization polls the backend directly — must call this, or the
-   * store stays stale and `useCredentialsInput` reports the brand-new
-   * credential as *removed* and deselects it.
+   * Add a just-created credential without waiting for a re-fetch. A flow that
+   * mints one outside this provider (device auth polls the backend directly)
+   * must call this, or `useCredentialsInput` reports it as *removed*.
    */
   upsert: (
     provider: CredentialsProviderName,
@@ -159,21 +151,13 @@ export default function CredentialsProvider({
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
 
-  // Credentials minted outside a list response, kept until a load returns
-  // them. Two races make this necessary: `loadCredentials` can publish `null`
-  // (still-loading) before the upsert lands, which makes
-  // `upsertProviderCredentials` a silent no-op; and a `listCredentials()`
-  // already in flight can resolve afterwards with a list that predates the
-  // credential and overwrite it. Either way the user is told their brand-new
-  // connection was removed.
+  // Held until a load returns them: the store can still be null when the upsert
+  // lands, and an in-flight list can resolve with a list that predates it.
   const pendingUpsertsRef = useRef<
     Partial<Record<CredentialsProviderName, CredentialsMetaResponse[]>>
   >({});
-  // Monotonic id for list requests. Two can overlap, and the older one may
-  // resolve last carrying a response that predates an upsert — retiring the
-  // pending entry on the newer response would leave nothing to re-merge, so
-  // the stale publish would drop the credential again. Only the newest
-  // request may publish or retire.
+  // Only the newest list request may publish or retire; an older one can
+  // resolve last with a response that predates an upsert.
   const loadGenerationRef = useRef(0);
 
   const upsertCredentials = useCallback(
@@ -196,25 +180,21 @@ export default function CredentialsProvider({
   );
 
   /**
-   * Upsert a credential straight off the API. The generated model marks
-   * several fields nullable where the store's model uses `undefined`, so
-   * normalise here rather than widening the store or making every caller do it.
+   * Upsert a credential straight off the API. The generated model marks several
+   * fields nullable where the store's model uses `undefined`.
    */
-  const upsertFromApi = useCallback(
-    (
-      provider: CredentialsProviderName,
-      credentials: GeneratedCredentialsMetaResponse,
-    ) => {
-      upsertCredentials(provider, {
-        ...credentials,
-        title: credentials.title ?? undefined,
-        scopes: credentials.scopes ?? undefined,
-        username: credentials.username ?? undefined,
-        host: credentials.host ?? undefined,
-      } as CredentialsMetaResponse);
-    },
-    [upsertCredentials],
-  );
+  function upsertFromApi(
+    provider: CredentialsProviderName,
+    credentials: GeneratedCredentialsMetaResponse,
+  ) {
+    upsertCredentials(provider, {
+      ...credentials,
+      title: credentials.title ?? undefined,
+      scopes: credentials.scopes ?? undefined,
+      username: credentials.username ?? undefined,
+      host: credentials.host ?? undefined,
+    } as CredentialsMetaResponse);
+  }
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
   const oAuthCallback = useCallback(
@@ -344,9 +324,8 @@ export default function CredentialsProvider({
         // A list request that started before the delete would otherwise
         // resolve afterwards with the deleted credential and republish it.
         loadGenerationRef.current += 1;
-        // Drop any pending copy first. A credential deleted while still
-        // pending would otherwise be merged straight back into the picker by
-        // the next load.
+        // A credential deleted while still pending would otherwise be merged
+        // straight back into the picker by the next load.
         const pendingForProvider = pendingUpsertsRef.current[provider];
         if (pendingForProvider?.length) {
           const kept = pendingForProvider.filter(
@@ -382,9 +361,8 @@ export default function CredentialsProvider({
 
   const loadCredentials = useCallback(() => {
     if (!isLoggedIn) {
-      // Pending upserts belong to the session that made them. Left in place
-      // they would be merged into the *next* user's list on the same mounted
-      // provider, exposing the previous account's credential metadata.
+      // Left in place these would be merged into the *next* user's list,
+      // exposing the previous account's credential metadata.
       pendingUpsertsRef.current = {};
       // Retire any in-flight request so its response cannot publish over the
       // logged-out state.
@@ -415,9 +393,8 @@ export default function CredentialsProvider({
     api
       .listCredentials()
       .then((response) => {
-        // A newer request has since started; this response is stale. Publishing
-        // it would overwrite fresher state, and retiring pending entries from
-        // it would strand credentials the newer response has not returned yet.
+        // Stale: publishing would overwrite fresher state, and retiring from
+        // it would strand credentials the newer response has not returned.
         if (generation !== loadGenerationRef.current) return;
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
@@ -436,20 +413,21 @@ export default function CredentialsProvider({
             providerNames.map((provider) => {
               const loaded = credentialsByProvider[provider] ?? [];
               const pending = pendingUpsertsRef.current[provider];
+              // One predicate drives both the merge and the retirement: an id
+              // the server returned is caught up, so its pending copy is
+              // neither merged in nor kept.
+              const loadedIds = new Set(
+                loaded.map((c: CredentialsMetaResponse) => c.id),
+              );
+              const stillPending = pending?.filter(
+                (c: CredentialsMetaResponse) => !loadedIds.has(c.id),
+              );
               const providerCredentials = mergePendingCredentials(
                 loaded,
-                pending,
+                stillPending,
               );
               if (pending?.length) {
-                // Retire the ones the server now returns; keep any it has not
-                // caught up on yet.
-                const loadedIds = new Set(
-                  loaded.map((c: CredentialsMetaResponse) => c.id),
-                );
-                const stillPending = pending.filter(
-                  (c: CredentialsMetaResponse) => !loadedIds.has(c.id),
-                );
-                if (stillPending.length) {
+                if (stillPending?.length) {
                   pendingUpsertsRef.current[provider] = stillPending;
                 } else {
                   delete pendingUpsertsRef.current[provider];
