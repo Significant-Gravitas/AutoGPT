@@ -15,10 +15,15 @@ export function EmptyTeamState() {
         work alongside Autopilot.
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button as="NextLink" href="/marketplace" variant="primary" size="xs">
+        <Button
+          as="NextLink"
+          href="/marketplace"
+          variant="primary"
+          size="small"
+        >
           Browse the marketplace
         </Button>
-        <Button as="NextLink" href="/raise" variant="secondary" size="xs">
+        <Button as="NextLink" href="/raise" variant="secondary" size="small">
           Raise your own
         </Button>
       </div>

@@ -1,9 +1,20 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+import {
+  BubbleChatIcon,
+  Calendar03Icon,
+  FlashIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
+import {
+  AUTOPILOT_BLURB,
+  AUTOPILOT_PILL_CLASS,
+  AUTOPILOT_ROLE,
+} from "../helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -23,7 +34,7 @@ export function AutopilotCard({
   return (
     <section
       aria-label="Autopilot"
-      className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white"
+      className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
     >
       <Link
         href="/team/autopilot"
@@ -46,7 +57,15 @@ export function AutopilotCard({
           >
             Autopilot
           </Text>
-          <Text variant="body" tone="muted">
+          <Text
+            variant="small-medium"
+            as="span"
+            className={cn(
+              "inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
+              AUTOPILOT_PILL_CLASS,
+            )}
+          >
+            <Icon icon={SparklesIcon} size={12} />
             {AUTOPILOT_ROLE}
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
@@ -54,11 +73,26 @@ export function AutopilotCard({
           </Text>
         </div>
 
-        <div className="w-full px-2">
+        <div className="w-full px-2 pl-5">
           <CardStats className="mt-3 w-full">
-            <CardStat label="Schedules">{scheduleCount}</CardStat>
-            <CardStat label="Skills">{skillCount}</CardStat>
-            <CardStat label="Workflows">{workflowCount}</CardStat>
+            <CardStat
+              icon={Calendar03Icon}
+              label="Schedules"
+              singular="schedule"
+              count={scheduleCount}
+            />
+            <CardStat
+              icon={SparklesIcon}
+              label="Skills"
+              singular="skill"
+              count={skillCount}
+            />
+            <CardStat
+              icon={FlashIcon}
+              label="Workflows"
+              singular="workflow"
+              count={workflowCount}
+            />
           </CardStats>
         </div>
       </Link>
@@ -66,7 +100,7 @@ export function AutopilotCard({
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           variant="secondary"
-          size="xs"
+          size="small"
           className="flex-1"
           leadingIcon={BubbleChatIcon}
           onClick={onChat}
