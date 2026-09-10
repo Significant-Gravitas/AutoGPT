@@ -236,6 +236,14 @@ def render_expert_workflows_block(expert: Expert) -> str:
         f"workflow's purpose, prefer running it with `run_agent` using the "
         f"IDs below over building something new:\n"
         f"{workflow_lines}\n"
+        # The skip comes after the kickoff message's ask, so the rule lives in
+        # session context, which every later turn sees, not in that message.
+        f"If the user skips or declines a connection a workflow needs, do the "
+        f"part of the job public data allows (research, drafts) and save it as "
+        f"a workspace file with its sources; say what stays blocked and which "
+        f"one connection would unlock it. If public data does not support "
+        f"useful work, say so. Never report a workflow as run, or a step as "
+        f"completed, when it was blocked or failed.\n"
         f"</expert_workflows>\n\n"
     )
 

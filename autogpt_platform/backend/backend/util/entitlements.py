@@ -39,6 +39,7 @@ ENTITLEMENT_POLICIES: Mapping[Entitlement, EntitlementPolicy] = MappingProxyType
 
 _TIER_ORDER = (
     SubscriptionTier.NO_TIER,
+    SubscriptionTier.TRIAL,
     SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
     SubscriptionTier.MAX,

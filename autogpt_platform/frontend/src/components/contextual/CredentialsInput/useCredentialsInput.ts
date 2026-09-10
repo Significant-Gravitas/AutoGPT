@@ -309,7 +309,7 @@ export function useCredentialsInput({
 
       // Exchange code for tokens via the provider (updates credential cache)
       const credentialResult = isMCP
-        ? await mcpOAuthCallback(result.code, state_token)
+        ? await mcpOAuthCallback(result.code, state_token, result.iss)
         : await oAuthCallback(result.code, result.state);
 
       // Check if the credential's scopes match the required scopes (skip for MCP)
