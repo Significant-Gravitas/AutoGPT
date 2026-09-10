@@ -52,10 +52,9 @@ export function ExpertCover({ className, color, status, art }: Props) {
         <Image
           src={art}
           alt=""
-          width={2172}
-          height={724}
+          fill
           sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-          className="absolute inset-x-0 top-1/2 h-auto w-full -translate-y-1/2 opacity-30"
+          className="object-contain opacity-30"
         />
       ) : null}
       {statusStyle ? (
