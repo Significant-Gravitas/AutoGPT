@@ -706,7 +706,9 @@ def test_get_expert_returns_expert(
 
     assert response.status_code == 200
     assert response.json()["id"] == "expert-1"
-    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
+    mock_get.assert_awaited_once_with(
+        test_user_id, "expert-1", include_credentials=True
+    )
 
 
 def test_list_expert_identities_returns_lifetime_roster_projection(

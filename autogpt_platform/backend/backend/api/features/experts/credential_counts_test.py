@@ -109,3 +109,47 @@ async def test_roster_includes_providers_only_when_metrics_are_requested(
         counts.assert_awaited_once_with("owner-1", [row])
     else:
         counts.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("include_credentials", [True, False])
+@pytest.mark.parametrize("count_error", [False, True])
+async def test_single_expert_includes_providers_only_when_asked(
+    include_credentials, count_error
+):
+    row = prisma.models.Expert.model_construct(id="expert-1", ownerUserId="owner-1")
+    client = SimpleNamespace(find_first=AsyncMock(return_value=row))
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=client),
+        patch.object(experts_db, "_latest_runs", new=AsyncMock(return_value={})),
+        patch.object(experts_db, "get_weekly_spend", new=AsyncMock(return_value=0)),
+        patch.object(
+            experts_db, "_to_model", return_value=Expert.model_construct(id=row.id)
+        ),
+        patch.object(
+            experts_db,
+            "expert_credential_providers",
+            new=AsyncMock(
+                return_value={row.id: ["github", "github", "notion"]},
+                side_effect=(
+                    RuntimeError("credentials unavailable") if count_error else None
+                ),
+            ),
+        ) as counts,
+    ):
+        expert = await experts_db.get_expert(
+            "owner-1", row.id, include_credentials=include_credentials
+        )
+
+    assert expert is not None
+    assert client.find_first.await_args.kwargs["where"]["ownerUserId"] == "owner-1"
+    has_credentials = include_credentials and not count_error
+    # The expert page header shows the same logos as the team card.
+    assert expert.credential_count == (3 if has_credentials else 0)
+    assert expert.credential_providers == (
+        ["github", "notion"] if has_credentials else []
+    )
+    if include_credentials:
+        counts.assert_awaited_once_with("owner-1", [row])
+    else:
+        counts.assert_not_awaited()
