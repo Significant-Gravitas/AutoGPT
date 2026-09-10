@@ -74,17 +74,17 @@ async def create_workflow_schedule(
     """
     try:
         graph = await _load_workflow_graph(user_id, graph_id, graph_version)
-        if graph is not None and (missing := unsatisfied_required_inputs(graph)):
-            logger.info(
-                f"Schedule for expert #{expert_id} workflow #{workflow_row_id} "
-                f"not created (needs input): {', '.join(missing)}"
+        input_credentials: dict[str, CredentialsMetaInput] = {}
+        if graph is not None:
+            if missing := unsatisfied_required_inputs(graph):
+                logger.info(
+                    f"Schedule for expert #{expert_id} workflow #{workflow_row_id} "
+                    f"not created (needs input): {', '.join(missing)}"
+                )
+                return False
+            input_credentials = await _resolve_workflow_credentials(
+                user_id, expert_id, graph
             )
-            return False
-        input_credentials = (
-            await _resolve_workflow_credentials(user_id, expert_id, graph)
-            if graph is not None
-            else {}
-        )
         schedule = await get_scheduler_client().add_execution_schedule(
             user_id=user_id,
             graph_id=graph_id,
