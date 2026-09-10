@@ -272,8 +272,8 @@ export function useFlagStatus<T extends Flag>(
 }
 
 // ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
-// deliberately stays that way — it is what the provider and 75 test files
-// stub. This is the same question asked of whichever vendor is configured.
+// deliberately stays that way — it is what the provider and the flag test
+// mocks stub. This is the same question asked of whichever vendor is configured.
 function areFeatureFlagsEnabled() {
   switch (FLAG_BACKEND) {
     case "posthog":
