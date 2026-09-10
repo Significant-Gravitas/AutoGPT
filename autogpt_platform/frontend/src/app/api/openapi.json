@@ -28358,7 +28358,13 @@
       "StoreSubmissionEditRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -28416,7 +28422,13 @@
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"

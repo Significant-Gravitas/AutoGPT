@@ -22,6 +22,7 @@ import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import { SUB_HEADING_MAX } from "./helpers";
 import {
   Album01Icon,
   AlertCircleIcon,
@@ -223,16 +224,23 @@ export function AgentInfoStep({
                     control={form.control}
                     name="subheader"
                     render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Subheader"
-                        labelTooltip="One-sentence tagline displayed under the title."
-                        type="text"
-                        placeholder="A concise tagline for your agent"
-                        error={form.formState.errors.subheader?.message}
-                        {...field}
-                      />
+                      <CharCountedTextarea
+                        max={SUB_HEADING_MAX}
+                        value={field.value ?? ""}
+                      >
+                        <Input
+                          id={field.name}
+                          labelVariant="body"
+                          label="Tagline"
+                          labelTooltip="Shown under the agent name and as the one-line subtitle on preview cards, so keep it to a single short line."
+                          type="text"
+                          placeholder="Find decision-makers at any company in seconds"
+                          hint="Say what the agent does for the user, starting with a verb."
+                          error={form.formState.errors.subheader?.message}
+                          required
+                          {...field}
+                        />
+                      </CharCountedTextarea>
                     )}
                   />
                 </div>
