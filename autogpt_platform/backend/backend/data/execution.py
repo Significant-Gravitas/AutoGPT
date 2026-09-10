@@ -180,6 +180,7 @@ VALID_STATUS_TRANSITIONS = {
     ],
     ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
+        ExecutionStatus.INCOMPLETE,  # Parked for spend approval, never published
     ],
 }
 

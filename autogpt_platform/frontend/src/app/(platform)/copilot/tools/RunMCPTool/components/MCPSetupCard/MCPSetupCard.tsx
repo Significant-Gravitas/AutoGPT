@@ -31,6 +31,7 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
+import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -62,6 +63,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const serverUrl = output.setup_info.agent_id;
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
+  const rejection = output.rejection ?? null;
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -81,7 +83,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
+  const {
+    data: liveCredsRes,
+    isFetchedAfterMount: liveCredsFetched,
+    isError: liveCredsError,
+  } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       // No staleTime — when this card mounts (e.g. immediately after the
@@ -94,12 +100,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       refetchOnMount: "always",
     },
   });
-  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
-  // while loading or after a network/auth failure (``select`` returned
-  // ``null``).  Treating an unknown live state as ``false`` would override
-  // a still-valid persisted snapshot — see review for the
-  // initiallyConnected=false + 5xx race that surfaces a bare Connect
-  // button despite an existing cred.
+  // Tri-state, because "we don't know yet" must fall back to the persisted
+  // snapshot rather than to disconnected. Unknown covers: this mount's fetch
+  // hasn't landed (React Query keeps serving the previous cache until it
+  // does, and that cache still lists rows the backend just invalidated), the
+  // refetch settled but errored (stale data is still served), and a non-200
+  // that ``select`` mapped to null.
+  //
+  // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
+  // app-wide, so ``isFetching`` also goes true on window focus and on every
+  // credential mutation elsewhere, blanking a genuinely connected card.
   const liveCredential = !Array.isArray(liveCredsRes)
     ? null
     : liveCredsRes.find(
@@ -108,9 +118,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : Boolean(liveCredential);
+  const liveHasCred: boolean | "unknown" =
+    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
     liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
 
@@ -147,7 +158,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   //      back to the persisted ``initiallyConnected`` snapshot rather
   //      than defaulting to disconnected.
   const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
-  const connected = !forceDisconnected && (localConnected || liveSays);
+  // A rejected credential never counts as connected, whatever a stale cred
+  // list says — only a sign-in completed in this card does.
+  const connected =
+    !forceDisconnected && (localConnected || (!rejection && liveSays));
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
@@ -425,6 +439,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     <div className="mt-2 grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
+      {rejection && <CredentialRejectionNotice rejection={rejection} />}
+
       <div className="rounded-2xl border bg-background p-4">
         <Button
           variant="primary"
@@ -488,7 +504,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onClick={() => handleManualToken()}
                 disabled={loading || !manualToken.trim()}
               >
-                Use Token
+                {loading ? "Verifying…" : "Use Token"}
               </Button>
             </div>
           </div>

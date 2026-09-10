@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -9,6 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
@@ -23,6 +24,12 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => true,
   useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
+
+// The generated default answers with random experts, which would render
+// random filter tabs on the page under test.
+beforeEach(() => {
+  server.use(getListExpertIdentitiesMockHandler([]));
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
