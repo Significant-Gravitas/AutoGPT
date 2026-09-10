@@ -259,6 +259,7 @@ async def test_create_store_submission(mocker):
         graph_version=1,
         slug="test-agent",
         name="Test Agent",
+        sub_heading="Find test agents fast",
         description="Test description",
     )
 
@@ -1070,6 +1071,7 @@ async def test_edit_store_submission_blocks_cross_org(mocker):
             user_id="user-1",
             store_listing_version_id="slv-1",
             name="New Name",
+            sub_heading="Find test agents fast",
             organization_id="org-A",
         )
     mock_client.update.assert_not_called()
