@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
@@ -63,7 +64,6 @@ from backend.copilot.tools.skills import (
     find_user_skill_slugs,
     get_default_skill_with_body,
 )
-from backend.data.db import execute_raw_with_schema
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
@@ -1088,9 +1088,9 @@ async def update_skills(
         # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
         await remove_expert_skill_name(user_id, expert_id, dropped)
-    # Per-name atomic writes, not one full-array set: the expert can append to
-    # its own row with store_skill while the copies above run, and a blind
-    # overwrite computed from the pre-copy read would silently drop that.
+    # Per-name writes that each re-read the row, not one set computed up front:
+    # the expert can append to its own row with store_skill while the copies
+    # above run, and an overwrite from the pre-copy read would silently drop it.
     for name in resolved:
         await add_expert_skill_name(user_id, expert_id, name)
     expert = await get_expert(user_id, expert_id)
@@ -1143,30 +1143,52 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 
 
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Record a skill the expert now owns.
-
-    A single atomic array update, so concurrent stores never overwrite each
-    other's names; idempotent and case-insensitive."""
-    await execute_raw_with_schema(
-        'UPDATE {schema_prefix}"Expert" SET "skills" = array_append("skills", $1) '
-        'WHERE "id" = $2 AND "ownerUserId" = $3 AND "isTemplate" = false '
-        'AND "isArchived" = false '
-        'AND NOT EXISTS (SELECT 1 FROM unnest("skills") s WHERE lower(s) = lower($1))',
-        name,
-        expert_id,
-        user_id,
+    """Record a skill the expert now owns; idempotent and case-insensitive."""
+    await _rewrite_skill_names(
+        {
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        lambda names: (
+            names if name.lower() in {n.lower() for n in names} else [*names, name]
+        ),
     )
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Forget a skill the expert no longer owns (atomic, case-insensitive)."""
-    await execute_raw_with_schema(
-        'UPDATE {schema_prefix}"Expert" SET "skills" = '
-        'ARRAY(SELECT s FROM unnest("skills") s WHERE lower(s) <> lower($1)) '
-        'WHERE "id" = $2 AND "ownerUserId" = $3',
-        name,
-        expert_id,
-        user_id,
+    """Forget a skill the expert no longer owns (case-insensitive)."""
+    await _rewrite_skill_names(
+        {"id": expert_id, "ownerUserId": user_id},
+        lambda names: [n for n in names if n.lower() != name.lower()],
+    )
+
+
+_SKILL_NAME_WRITE_ATTEMPTS = 5
+
+
+async def _rewrite_skill_names(
+    where: prisma.types.ExpertWhereInput,
+    rewrite: Callable[[list[str]], list[str]],
+) -> None:
+    """Compare-and-swap the row's skill list. store_skill can append to it
+    while update_skills runs, so a write that lands after the read fails the
+    ``equals`` guard and is re-read rather than overwritten."""
+    for _ in range(_SKILL_NAME_WRITE_ATTEMPTS):
+        row = await prisma.models.Expert.prisma().find_first(where=where)
+        if row is None:
+            return
+        names = rewrite(row.skills)
+        if names == row.skills:
+            return
+        if await prisma.models.Expert.prisma().update_many(
+            where={**where, "skills": {"equals": row.skills}},
+            data={"skills": {"set": names}},
+        ):
+            return
+    raise RuntimeError(
+        f"Expert #{where.get('id')}'s skill list kept changing under the write"
     )
 
 

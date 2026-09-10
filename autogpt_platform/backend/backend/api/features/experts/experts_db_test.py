@@ -4130,3 +4130,45 @@ async def test_expert_skill_names_add_and_remove_atomically(
     row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
     assert row is not None
     assert "alpha" not in {s.lower() for s in row.skills}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("operation", ["add", "remove"])
+async def test_expert_skill_name_write_keeps_an_append_that_lands_mid_write(
+    server: SpinTestServer, test_user, operation
+):
+    """store_skill can append to the row between this write's read and its
+    update; the update must retry against the new list, never overwrite it."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "stale")
+    real = prisma.models.Expert.prisma()
+    raced: list[bool] = []
+
+    async def read_then_race(**kwargs):
+        row = await real.find_first(**kwargs)
+        if not raced:
+            raced.append(True)
+            await real.update(
+                where={"id": expert_id}, data={"skills": {"push": ["from-the-chat"]}}
+            )
+        return row
+
+    manager = SimpleNamespace(find_first=read_then_race, update_many=real.update_many)
+    with patch.object(prisma.models.Expert, "prisma", return_value=manager):
+        if operation == "add":
+            await experts_db.add_expert_skill_name(
+                test_user.id, expert_id, "from-the-ui"
+            )
+        else:
+            await experts_db.remove_expert_skill_name(test_user.id, expert_id, "stale")
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None and raced
+    names = {s.lower() for s in row.skills}
+    assert "from-the-chat" in names
+    if operation == "add":
+        assert "from-the-ui" in names
+    else:
+        assert "stale" not in names
