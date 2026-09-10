@@ -18,9 +18,12 @@ from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
+from backend.data.model import CredentialsMetaInput
+from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError, NotFoundError
 from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -55,12 +58,16 @@ async def create_workflow_schedule(
     """Create the attributed schedule for an expert workflow and record its
     id on the ExpertWorkflow row.
 
+    The graph's credential inputs are filled from what the expert may use.
     Failure is non-fatal and expected for agents that need credentials the
     user hasn't connected yet: the cadence stays on the row with a null
     ``scheduleId``, surfacing the workflow as "needs setup" instead of
     silently dropping the roster's intent.
     """
     try:
+        input_credentials = await _resolve_workflow_credentials(
+            user_id, expert_id, graph_id, graph_version
+        )
         schedule = await get_scheduler_client().add_execution_schedule(
             user_id=user_id,
             graph_id=graph_id,
@@ -68,7 +75,7 @@ async def create_workflow_schedule(
             name=name,
             cron=cron,
             input_data={},
-            input_credentials={},
+            input_credentials=input_credentials,
             user_timezone=user_timezone,
             expert_id=expert_id,
         )
@@ -101,6 +108,60 @@ async def create_workflow_schedule(
         await _delete_schedule_best_effort(schedule.id, user_id, expert_id)
         return False
     return True
+
+
+async def _resolve_workflow_credentials(
+    user_id: str, expert_id: str, graph_id: str, graph_version: int
+) -> dict[str, CredentialsMetaInput]:
+    """The graph's credential inputs, filled from the expert's allow-list.
+
+    Partial on purpose: a field nothing matches is left out, and the scheduler
+    then rejects the schedule for the same reason a run would, which is what
+    keeps the workflow in "needs setup".
+    """
+    # Imported here: the matcher lives beside the executor, which imports this
+    # package at module load.
+    from backend.copilot.tools.utils import match_user_credentials_to_graph
+    from backend.data.graph import get_graph
+
+    graph = await get_graph(graph_id, graph_version, user_id, include_subgraphs=True)
+    if graph is None:
+        return {}
+    matched, _missing = await match_user_credentials_to_graph(user_id, graph, expert_id)
+    return matched
+
+
+async def create_pending_workflow_schedules(user_id: str, expert_id: str) -> int:
+    """Retry schedule creation for the expert's workflows still missing one.
+
+    Called after a credential grant, the usual thing that unblocks them.
+    Returns how many schedules were created.
+    """
+    rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+        where={"expertId": expert_id, "scheduleId": None},
+        include={"LibraryAgent": True, "StoreListingVersion": True},
+    )
+    pending = [row for row in rows if row.scheduleCron and row.LibraryAgent]
+    if not pending:
+        return 0
+    user = await get_user_by_id(user_id)
+    user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+    created = 0
+    for row in pending:
+        library_agent = row.LibraryAgent
+        assert library_agent is not None and row.scheduleCron is not None
+        listing = row.StoreListingVersion
+        created += await create_workflow_schedule(
+            workflow_row_id=row.id,
+            expert_id=expert_id,
+            user_id=user_id,
+            cron=row.scheduleCron,
+            graph_id=library_agent.agentGraphId,
+            graph_version=library_agent.agentGraphVersion,
+            name=listing.name if listing else "Expert workflow",
+            user_timezone=user_timezone,
+        )
+    return created
 
 
 async def delete_workflow_schedule(

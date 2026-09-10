@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -22,6 +23,8 @@ const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
+  /** The roster has not settled yet for an expert-scoped session. */
+  isResolvingExpertIdentity?: boolean;
   readOnly: boolean;
   /** Powers the chip's file/run counters and its click-through to the
    *  session activity card. Without it the chip is a passive label. */
@@ -45,13 +48,19 @@ interface Props {
  *  the expert's integration logos sit beside it with their own popover. */
 export function ThreadHeader({
   expertIdentity,
+  isResolvingExpertIdentity = false,
   readOnly,
   sessionId = null,
   canOpenActivity = false,
   hasFloatingControls = false,
 }: Props) {
+  // While the roster loads, the chip shows a quiet placeholder rather than
+  // AutoPilot's identity, which would be wrong for an expert session.
+  const isResolving = isResolvingExpertIdentity && !expertIdentity;
   const name = expertIdentity?.name ?? "AutoPilot";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
+  // Assistive tech gets a loading identity too, not Autopilot's.
+  const identityLabel = isResolving ? "Loading expert" : `${name}, ${role}`;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   // Only the copilot chat mounts the activity card. The builder and memory
   // panels pass a live sessionId and aren't read-only, so without the host's
@@ -90,12 +99,17 @@ export function ThreadHeader({
         name={name}
         avatarUrl={expertIdentity?.avatarUrl ?? null}
         color={expertIdentity?.color}
-        isAutopilot={!expertIdentity}
+        isAutopilot={!expertIdentity && !isResolving}
+        isLoading={isResolving}
         size="sm"
       />
-      <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
-        {name}
-      </span>
+      {isResolving ? (
+        <Skeleton className="h-3.5 w-16 rounded" />
+      ) : (
+        <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
+          {name}
+        </span>
+      )}
       {counters.map(({ icon, count, noun }) => (
         <span
           key={noun}
@@ -129,8 +143,8 @@ export function ThreadHeader({
                     type="button"
                     aria-label={
                       spokenCounts
-                        ? `${name}, ${role}. ${spokenCounts}. Open session activity`
-                        : `${name}, ${role}. Open session activity`
+                        ? `${identityLabel}. ${spokenCounts}. Open session activity`
+                        : `${identityLabel}. Open session activity`
                     }
                     onClick={() => toggleContextPanelTab("files")}
                     className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
@@ -144,19 +158,23 @@ export function ThreadHeader({
                   // get the role at all.
                   <div
                     tabIndex={0}
-                    aria-label={`${name} — ${role}`}
+                    aria-label={
+                      isResolving ? identityLabel : `${name} — ${role}`
+                    }
                     className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
                   >
                     {chipContent}
                   </div>
                 )}
               </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="bg-zinc-900 text-zinc-50 outline-none"
-              >
-                {role}
-              </TooltipContent>
+              {isResolving ? null : (
+                <TooltipContent
+                  side="bottom"
+                  className="bg-zinc-900 text-zinc-50 outline-none"
+                >
+                  {role}
+                </TooltipContent>
+              )}
             </Tooltip>
           </TooltipProvider>
           {showIntegrations && (
