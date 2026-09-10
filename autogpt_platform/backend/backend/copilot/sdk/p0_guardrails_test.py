@@ -7,6 +7,10 @@ from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import is_transient_api_error
+from backend.copilot.model import ChatSession
+from backend.copilot.response_model import StreamCompactionProgress
+from backend.copilot.sdk.compaction import CompactionTracker
+from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -55,7 +59,7 @@ class TestResolveFallbackModel:
         Anthropic vendors stay routable.  Anthropic slugs are passed
         through unchanged in this mode (PR #12878)."""
         cfg = _make_config(
-            claude_agent_fallback_model="anthropic/claude-sonnet-4-20250514",
+            claude_agent_fallback_model="anthropic/claude-sonnet-4-6",
             use_openrouter=True,
             api_key="sk-test",
             base_url="https://openrouter.ai/api/v1",
@@ -65,7 +69,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
-        assert result == "anthropic/claude-sonnet-4-20250514"
+        assert result == "anthropic/claude-sonnet-4-6"
 
     def test_dots_replaced_for_direct_anthropic(self):
         """Direct Anthropic requires hyphen-separated versions."""
@@ -850,6 +854,39 @@ class TestEphemeralEventTypesConstant:
         from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
         assert StreamHeartbeat in _EPHEMERAL_EVENT_TYPES
+
+    def test_compaction_progress_is_in_ephemeral_types(self):
+        """SDK-internal compaction emits progress phases inside the attempt
+        loop, alongside the tool-row events that are already exempt.  Counting
+        them would make a transient failure after a compaction unretryable.
+        """
+        assert StreamCompactionProgress in _EPHEMERAL_EVENT_TYPES, (
+            "StreamCompactionProgress must be in _EPHEMERAL_EVENT_TYPES — a "
+            "cosmetic progress phase must not suppress the transient retry"
+        )
+
+    def test_every_compaction_row_event_is_ephemeral(self):
+        """The whole compaction row — open, close and progress — is cosmetic.
+
+        Guards the class of bug where a new compaction event type is added to
+        the stream but not exempted here.
+        """
+        tracker = CompactionTracker()
+        session = ChatSession.new(user_id="test-user", dry_run=False)
+        events = [
+            *tracker.emit_pre_query_start(),
+            *tracker.emit_pre_query_end(session, None),
+        ]
+        assert events
+        non_ephemeral = [
+            type(e).__name__
+            for e in events
+            if not isinstance(e, _EPHEMERAL_EVENT_TYPES)
+        ]
+        assert not non_ephemeral, (
+            f"compaction emits non-ephemeral event(s) {non_ephemeral} — they "
+            "would be counted toward events_yielded and block transient retries"
+        )
 
     def test_is_a_tuple(self):
         """isinstance() requires a tuple (not a list) as second argument."""

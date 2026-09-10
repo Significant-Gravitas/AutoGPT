@@ -2,10 +2,12 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -23,8 +25,10 @@ from .db import (
     create_user_link_token,
     delete_server_link,
     delete_user_link,
+    fetch_workspace_artifact,
     get_link_token_info,
     get_link_token_status,
+    refresh_server_link_name,
     resolve_server_link,
     resolve_user_link,
 )
@@ -511,3 +515,127 @@ class TestCleanupExpired:
             mock_model.prisma.return_value.delete_many = AsyncMock(return_value=0)
             count = await cleanup_expired_platform_link_tokens()
         assert count == 0
+
+
+# ── Refresh server-link display name ───────────────────────────────────
+
+
+class TestRefreshServerLinkName:
+    @pytest.mark.asyncio
+    async def test_no_op_when_name_blank(self):
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock()
+            await refresh_server_link_name("DISCORD", "g1", "")
+        mock_model.prisma.return_value.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_filter_matches_null_rows_and_differing_rows(self):
+        """The filter MUST include both NULL serverName rows and rows whose
+        serverName differs. `{not: 'x'}` alone excludes NULLs (SQL: NULL != 'x'
+        is NULL, not true), which was leaving legacy backfills stuck. The
+        bug surfaced as servers showing as their ID forever on the Bots page."""
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock()
+            await refresh_server_link_name("DISCORD", "g1", "AutoGPT HQ")
+
+        update_many = mock_model.prisma.return_value.update_many
+        update_many.assert_awaited_once()
+        await_args = update_many.await_args
+        assert await_args is not None
+        where = await_args.kwargs["where"]
+        assert where["platform"] == "DISCORD"
+        assert where["platformServerId"] == "g1"
+        # OR clause must cover the NULL case explicitly.
+        assert {"serverName": None} in where["OR"]
+        assert {"serverName": {"not": "AutoGPT HQ"}} in where["OR"]
+
+    @pytest.mark.asyncio
+    async def test_swallows_db_errors(self):
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock(
+                side_effect=RuntimeError("db down")
+            )
+            # Must not raise.
+            await refresh_server_link_name("DISCORD", "g1", "x")
+
+
+# ── Fetch workspace artifact: expert file scope ─────────────────────
+
+
+def _artifact_patches(*, expert_id: str | None, manager: MagicMock):
+    session = SimpleNamespace(user_id="user-1", expert_id=expert_id)
+    file = SimpleNamespace(name="report.txt", mime_type="text/plain", size_bytes=10)
+    return (
+        patch(
+            "backend.platform_linking.db.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace",
+            new=AsyncMock(return_value=SimpleNamespace(id="ws-1")),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace_file",
+            new=AsyncMock(return_value=file),
+        ),
+        patch("backend.platform_linking.db.WorkspaceManager", return_value=manager),
+    )
+
+
+class TestFetchWorkspaceArtifactExpertScope:
+    @pytest.mark.asyncio
+    async def test_expert_session_cannot_fetch_a_file_outside_its_scope(self):
+        scope = WorkspaceScope(expert_id="expert-a", session_ids=["older"])
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(
+            side_effect=WorkspaceAccessDeniedError("denied")
+        )
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id="expert-a", manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(return_value=scope),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is None
+        resolve_mock.assert_awaited_once_with("user-1", "expert-a")
+        manager_cls.assert_called_once_with(
+            user_id="user-1",
+            workspace_id="ws-1",
+            session_id="sess-1",
+            scope=scope.with_session("sess-1"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_personal_session_keeps_owner_access(self):
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(return_value=b"data")
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id=None, manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is not None
+        assert result.content == b"data"
+        resolve_mock.assert_not_awaited()
+        manager_cls.assert_called_once_with(
+            user_id="user-1", workspace_id="ws-1", session_id="sess-1", scope=None
+        )

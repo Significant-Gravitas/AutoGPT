@@ -82,6 +82,7 @@ export function LlmModelField(props: FieldProps) {
 
       <LlmModelPicker
         models={models}
+        selectedName={selectedName}
         selectedModel={selectedModel}
         recommendedModel={recommendedModel}
         onSelect={(value) => onChange(value, fieldPathId?.path)}

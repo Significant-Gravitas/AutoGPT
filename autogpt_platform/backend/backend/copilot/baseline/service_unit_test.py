@@ -12,23 +12,33 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
+    _apply_skills_cache_breakpoint,
     _baseline_conversation_updater,
     _baseline_llm_caller,
+    _baseline_tool_executor,
     _BaselineStreamState,
+    _begin_baseline_tool_round,
     _budget_exhausted_notice_text,
     _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
     _build_natural_finish_empty_fallback_events,
     _compress_session_messages,
+    _enqueue_graphiti_turn,
+    _fetch_graphiti_context,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
     _natural_finish_empty_notice_text,
+    _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
+    stream_chat_completion_baseline,
 )
-from backend.copilot.model import ChatMessage
+from backend.copilot.context import get_execution_context, set_execution_context
+from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
     StreamReasoningDelta,
     StreamReasoningEnd,
@@ -36,11 +46,99 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolOutputAvailable,
 )
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+
+
+@pytest.mark.asyncio
+async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    identity_mock = AsyncMock(
+        side_effect=ExpertSessionUnavailableError(
+            "The expert for this session no longer exists or is archived."
+        )
+    )
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=identity_mock,
+        ),
+        pytest.raises(ExpertSessionUnavailableError),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message="private prompt",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
+
+    identity_mock.assert_awaited_once_with(
+        "user-1", "expert-1", organization_id=None, team_id=None
+    )
+    assert session.messages == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    fetch_mock = AsyncMock(return_value="expert context")
+
+    with patch(
+        "backend.copilot.baseline.service.fetch_warm_context",
+        new=fetch_mock,
+    ):
+        context = await _fetch_graphiti_context(
+            "user-1",
+            session,
+            "first prompt",
+        )
+
+    assert context == "expert context"
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "first prompt",
+        expert_id="expert-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    enqueue_mock = AsyncMock()
+
+    with patch(
+        "backend.copilot.baseline.service.enqueue_conversation_turn",
+        new=enqueue_mock,
+    ):
+        await _enqueue_graphiti_turn(
+            "user-1",
+            session,
+            "session-1",
+            "private prompt",
+            "private response",
+        )
+
+    enqueue_mock.assert_awaited_once_with(
+        "user-1",
+        "session-1",
+        "private prompt",
+        assistant_msg="private response",
+        expert_id="expert-1",
+    )
 
 
 class TestBaselineStreamState:
@@ -146,6 +244,46 @@ class TestBaselineConversationUpdater:
         assert messages[1]["role"] == "tool"
         assert messages[1]["tool_call_id"] == "tc_1"
         assert messages[1]["content"] == "Found result"
+
+    def test_stamps_model_and_routing_source_on_persisted_assistant(self):
+        """The persisted assistant ChatMessage (state.session_messages) must
+        carry the turn's model and routing_source so product-intelligence can
+        segment quality by model/layer — stamped from the stream state. Tool
+        rows stay unstamped (model is None)."""
+        messages: list = []
+        builder = self._make_transcript_builder()
+        state = _BaselineStreamState(
+            model="anthropic/claude-sonnet-4-6", routing_source="ld"
+        )
+        response = LLMLoopResponse(
+            response_text="searching",
+            tool_calls=[LLMToolCall(id="tc_1", name="search", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        tool_results = [
+            ToolCallResult(tool_call_id="tc_1", tool_name="search", content="ok"),
+        ]
+        _begin_baseline_tool_round(state, response)
+        for result in tool_results:
+            state.tool_persistence.record_result(result)
+
+        _baseline_conversation_updater(
+            messages,
+            response,
+            tool_results=tool_results,
+            transcript_builder=builder,
+            model="anthropic/claude-sonnet-4-6",
+            state=state,
+        )
+
+        persisted = [m for m in state.session_messages if m.role == "assistant"]
+        assert len(persisted) == 1
+        assert persisted[0].model == "anthropic/claude-sonnet-4-6"
+        assert persisted[0].routing_source == "ld"
+        tool_rows = [m for m in state.session_messages if m.role == "tool"]
+        assert tool_rows and tool_rows[0].model is None
 
         # Transcript: user + assistant(tool_use) + user(tool_result)
         assert builder.entry_count == 3
@@ -1122,6 +1260,9 @@ class TestMidLoopPendingFlushOrdering:
             ),
         ]
         openai_messages: list = []
+        _begin_baseline_tool_round(state, response)
+        for result in tool_results:
+            state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             openai_messages,
             response,
@@ -1157,6 +1298,9 @@ class TestMidLoopPendingFlushOrdering:
                 tool_call_id="tc_2", tool_name="calc", content="calc output"
             ),
         ]
+        _begin_baseline_tool_round(state, response2)
+        for result in tool_results2:
+            state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             openai_messages,
             response2,
@@ -1223,14 +1367,15 @@ class TestMidLoopPendingFlushOrdering:
             prompt_tokens=0,
             completion_tokens=0,
         )
+        result = ToolCallResult(
+            tool_call_id="tc_1", tool_name="search", content="result"
+        )
+        _begin_baseline_tool_round(state, response1)
+        state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             [],
             response1,
-            tool_results=[
-                ToolCallResult(
-                    tool_call_id="tc_1", tool_name="search", content="result"
-                )
-            ],
+            tool_results=[result],
             transcript_builder=builder,
             state=state,
             model="test-model",
@@ -2031,9 +2176,22 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        # Pin the OpenRouter transport so ``extra_body`` is always built:
+        # ``openrouter_active`` needs a non-empty ``api_key``, which on fork-PR
+        # CI is absent (secrets — incl. ``OPENAI_API_KEY`` — aren't exposed),
+        # flipping the transport to ``direct_anthropic`` and dropping
+        # ``extra_body`` entirely. Without this the assertion KeyErrors in CI.
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2170,6 +2328,10 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
+        # Pin the OpenRouter transport so ``extra_body`` is always built (and
+        # the kill switch's suppression is observable on a populated dict) —
+        # fork-PR CI has no LLM creds, which would otherwise drop the transport
+        # to direct_anthropic and omit ``extra_body``, KeyErroring the assert.
         with (
             patch(
                 "backend.copilot.baseline.service._get_main_client",
@@ -2178,6 +2340,12 @@ class TestBaselineReasoningStreaming:
             patch(
                 "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
                 0,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
             ),
         ):
             await _baseline_llm_caller(
@@ -2574,3 +2742,367 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
 
         # OR mode: no usage.cost in chunk → cost_usd stays None (expected).
         assert state.cost_usd is None
+
+
+class TestSplitUserMessageAfterSkillsBlock:
+    """Per-user cache breakpoint at the ``</available_skills>`` boundary.
+
+    The skill index is stable per-user across turns, so caching its bytes
+    separately from the user's variable typed text lifts cache hit rate
+    on the otherwise-re-tokenised prefix.
+    """
+
+    def test_returns_none_when_no_skills_block(self):
+        assert _split_user_message_after_skills_block("hello world") is None
+
+    def test_splits_at_skills_block_boundary(self):
+        content = (
+            "<available_skills>\n"
+            "- name: foo — bar\n"
+            "</available_skills>\n\n"
+            "actual user typing"
+        )
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert len(blocks) == 2
+        # Prefix carries the cacheable static skill index.
+        assert blocks[0]["type"] == "text"
+        assert "<available_skills>" in blocks[0]["text"]
+        assert blocks[0]["cache_control"]["type"] == "ephemeral"
+        # Suffix is the variable user typing — no cache_control.
+        assert blocks[1] == {"type": "text", "text": "actual user typing"}
+
+    def test_skills_block_with_preceding_blocks_included_in_prefix(self):
+        """When ``<memory_context>`` / ``<env_context>`` etc. precede the
+        skills block, they ride along in the cacheable prefix — they're
+        also stable per-user-per-session and a separate breakpoint would
+        waste one of Anthropic's four available cache slots."""
+        content = (
+            "<memory_context>\nremember\n</memory_context>\n\n"
+            "<available_skills>\n- name: foo — bar\n</available_skills>\n\n"
+            "typing"
+        )
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert "<memory_context>" in blocks[0]["text"]
+        assert "<available_skills>" in blocks[0]["text"]
+        assert blocks[1]["text"] == "typing"
+
+    def test_empty_suffix_drops_trailing_block(self):
+        """Anthropic 400s on zero-length text blocks — when the user
+        typed nothing after the auto-injected skills index, the trailing
+        block must be omitted, not emitted empty."""
+        content = "<available_skills>\nx\n</available_skills>\n\n"
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert len(blocks) == 1
+        assert blocks[0]["cache_control"]["type"] == "ephemeral"
+
+
+class TestApplySkillsCacheBreakpoint:
+    def test_first_user_message_with_skills_block_is_split(self):
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {
+                "role": "user",
+                "content": (
+                    "<available_skills>\n- name: a — b\n</available_skills>\n\nhi"
+                ),
+            },
+            {"role": "assistant", "content": "ok"},
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # System and assistant pass through untouched.
+        assert out[0] == msgs[0]
+        assert out[2] == msgs[2]
+        # User message becomes a content-block list with the cache marker
+        # on the static prefix.
+        assert isinstance(out[1]["content"], list)
+        assert out[1]["content"][0]["cache_control"]["type"] == "ephemeral"
+
+    def test_no_skills_block_leaves_messages_untouched(self):
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # No breakpoint applied — user content stays a plain string.
+        assert out[1]["content"] == "hi"
+
+    def test_only_first_user_message_is_split(self):
+        """Later user turns never carry ``<available_skills>`` (it's
+        only injected on the first turn), and even if a later message
+        did contain it the helper should split the *first* match and
+        stop — Anthropic's cache budget is four breakpoints total."""
+        msgs = [
+            {
+                "role": "user",
+                "content": "<available_skills>\nx\n</available_skills>\n\nhi",
+            },
+            {"role": "assistant", "content": "ok"},
+            {
+                "role": "user",
+                "content": "<available_skills>\ny\n</available_skills>\n\nhi2",
+            },
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # First user split; later user message left as a plain string.
+        assert isinstance(out[0]["content"], list)
+        assert isinstance(out[2]["content"], str)
+
+    def test_pre_blocked_user_content_is_left_alone(self):
+        """If a caller already converted the user content to a block
+        list, do not double-mark.  Anthropic 400s on the same cache
+        marker twice on adjacent blocks."""
+        msgs = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "pre-blocked"}],
+            }
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        assert out[0]["content"] == [{"type": "text", "text": "pre-blocked"}]
+
+    def test_no_skills_block_preserves_dict_identity(self):
+        """When no user message carries an ``<available_skills>`` block,
+        every input dict must be returned by-reference so the memoised
+        ``cached_system_message`` reference in ``_baseline_llm_caller``
+        keeps its identity across rounds."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr_msg = {"role": "user", "content": "hi"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr_msg])
+        assert out[0] is sys_msg
+        assert out[1] is usr_msg
+
+    def test_skills_block_only_modifies_target_message(self):
+        """Only the one user message that needs the breakpoint is
+        shallow-copied; siblings (system, assistant, later user turns)
+        keep their original dict identity."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr1 = {
+            "role": "user",
+            "content": "<available_skills>\n- a\n</available_skills>\n\nhi",
+        }
+        ast = {"role": "assistant", "content": "ok"}
+        usr2 = {"role": "user", "content": "follow-up"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr1, ast, usr2])
+        assert out[0] is sys_msg
+        assert out[1] is not usr1  # target — gets shallow-copied
+        assert out[2] is ast
+        assert out[3] is usr2
+
+
+class _StopAfterExpertsGate(Exception):
+    """Raised by a mocked ``build_builder_system_prompt_suffix`` to abort
+    ``stream_chat_completion_baseline`` immediately after it resolves
+    ``experts_enabled`` — before any LLM call would be attempted."""
+
+
+async def _run_baseline_until_experts_gate(
+    *, user_id: str | None, hire_experts_enabled: bool
+) -> AsyncMock:
+    """Drive the real generator up to (and one statement past) the
+    hire-experts flag check, with every other I/O dependency stubbed out.
+
+    Returns the ``is_feature_enabled`` mock so callers can assert whether
+    (and how) it was called.
+    """
+    session = ChatSession.new("owner-1", dry_run=False)
+    session.title = "already titled"  # skip the async title-generation task
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=hire_experts_enabled),
+        ) as is_feature_enabled_mock,
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(side_effect=_StopAfterExpertsGate),
+        ),
+        pytest.raises(_StopAfterExpertsGate),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message=None,
+            user_id=user_id,
+            session=session,
+        ):
+            pass
+
+    return is_feature_enabled_mock
+
+
+class _StopAtAttachments(Exception):
+    """Raised by a mocked ``_prepare_baseline_attachments`` to abort
+    ``stream_chat_completion_baseline`` the moment the attachment step runs."""
+
+
+@pytest.mark.asyncio
+async def test_execution_context_is_set_before_attachments_are_prepared() -> None:
+    """Attachment resolution derives the expert's file scope from the execution
+    context, so the context must already name the session when it runs."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.title = "already titled"
+    seen: list[tuple[str | None, ChatSession | None]] = []
+
+    async def capture(*_args: object, **_kwargs: object) -> None:
+        seen.append(get_execution_context())
+        raise _StopAtAttachments
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.extract_context_messages",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._compress_session_messages",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._prepare_baseline_attachments",
+            new=AsyncMock(side_effect=capture),
+        ),
+        pytest.raises(_StopAtAttachments),
+    ):
+        try:
+            async for _ in stream_chat_completion_baseline(
+                session_id=session.session_id,
+                message=None,
+                is_user_message=False,
+                user_id="user-1",
+                session=session,
+                file_ids=["file-1"],
+            ):
+                pass
+        finally:
+            set_execution_context(None, None)
+
+    assert seen == [("user-1", session)]
+
+
+class TestBaselineExpertsFlagGuard:
+    """``experts_enabled = bool(user_id) and await is_feature_enabled(...)``:
+    an anonymous turn (``user_id=None``) must fail closed WITHOUT resolving
+    the flag at all — a bare ``await is_feature_enabled(...)`` would await
+    None as a positional arg and/or silently enable the team surface for
+    turns with no user."""
+
+    @pytest.mark.asyncio
+    async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
+        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
+            user_id=None, hire_experts_enabled=True
+        )
+        is_feature_enabled_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_authenticated_turn_resolves_the_hire_experts_flag(self) -> None:
+        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
+            user_id="user-1", hire_experts_enabled=True
+        )
+        is_feature_enabled_mock.assert_awaited_once()
+
+
+class TestBaselineToolExecutorForwardsDisabledGroups:
+    """``_baseline_tool_executor`` must forward its ``disabled_groups`` to
+    ``execute_tool`` — that's the only thing making the schema-hiding filter
+    an actual enforcement boundary for the baseline engine."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_groups_reach_execute_tool(self) -> None:
+        session = ChatSession.new("user-1", dry_run=False)
+        state = _BaselineStreamState()
+        tool_call = LLMToolCall(id="call-1", name="hire_expert", arguments="{}")
+
+        with patch(
+            "backend.copilot.baseline.service.execute_tool",
+            new=AsyncMock(
+                return_value=StreamToolOutputAvailable(
+                    toolCallId="call-1",
+                    toolName="hire_expert",
+                    output="{}",
+                    success=False,
+                )
+            ),
+        ) as execute_mock:
+            await _baseline_tool_executor(
+                tool_call,
+                tools=[],
+                state=state,
+                user_id="user-1",
+                session=session,
+                disabled_groups=["expert_admin"],
+            )
+
+        assert execute_mock.await_args.kwargs["disabled_groups"] == ["expert_admin"]

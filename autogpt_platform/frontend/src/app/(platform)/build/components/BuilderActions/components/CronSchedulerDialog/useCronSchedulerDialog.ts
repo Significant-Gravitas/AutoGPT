@@ -2,6 +2,8 @@ import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoi
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
 
@@ -19,6 +21,7 @@ export const useCronSchedulerDialog = ({
   defaultCronExpression?: string;
 }) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
 
@@ -41,6 +44,7 @@ export const useCronSchedulerDialog = ({
               title: "Schedule created",
               description: "Schedule created successfully",
             });
+            invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },
         onError: (error) => {

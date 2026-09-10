@@ -41,7 +41,113 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
 # AutoPilot can inspect/manage them).
-_CHAR_BUDGET = 35_500
+# Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
+# of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
+# explicit "ends your turn" caveat, and an example wake-up message.
+# Bumped 36500 -> 37000 for the schedule_followup `session_id` override
+# parameter — lets the model target a different conversation owned by
+# the same user (parent autopilot → sub-session followups). The parameter
+# description spends ~170 chars on the ownership-rejection semantics so
+# the model doesn't try to wake up other users' sessions.
+# Bumped 37000 -> 38500 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop.  Descriptions are already trimmed to the minimum
+# viable copy; the bump absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+# Bumped 38500 -> 39000 for the schedule_followup ``session_id=null``
+# sentinel — its description spends ~170 chars explaining the "fire
+# into a fresh chat" semantics so the model picks the right value
+# (null vs omit vs target_session_id) for autopilot-style flows.
+# Bumped 39000 -> 39500 for the create-time library-similarity gate:
+# find_library_agent's new ``for_creation`` and ``goal_summary``
+# parameters and create_agent's ``library_check_ack`` bypass — the
+# extra ~270 chars on CI (env-flagged tool registrations push CI
+# higher than local) carry the LLM-decision-critical copy for
+# "search the library before building new" + "user-confirmed bypass".
+# Bumped 39500 -> 40500 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+# Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
+# the full merged tool set (webhook-trigger + preset lifecycle + docs/building
+# tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
+# Bumped 47800 -> 51500 for OPEN-3188: the five agent-graph tools (create/edit/
+# customize/validate/fix) replaced their bare ``{"type": "object"}`` agent_json
+# with a structured schema (nodes/links/...) and gained an agent_json_ref string
+# param. The structure is what stops constrained decoders collapsing the graph to
+# ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
+# Merged registry measures 50915 chars (incl. find_library_agent's
+# write_graph_to); ~580 headroom for wording tweaks.
+# Includes the two-step Soul edit flow (update_expert_soul preview +
+# confirm_expert_soul_update); registry measures ~52.2k chars locally, with
+# ~800 headroom for CI env deltas and wording tweaks.
+# Bumped 53000 -> 54_000 for the copilot tool-chain UI: ``ask_question`` is back
+# in TOOL_REGISTRY as a first-class tool (docked clarifying-question flow), so
+# its schema counts again on top of the Soul edit flow. Merged registry measures
+# 53349 chars; ~650 headroom for CI env deltas and wording tweaks.
+# Bumped 54_000 -> 59_000 for the expert team tools: delegate_to_expert plus
+# the confirm-gated hire/raise pair, their shared confirm, and handoff_to_expert.
+# No single session sees them all (hire/raise/confirm and handoff/soul gate on
+# opposite sides of session.expert_id), but the registry total counts every
+# tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
+# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# same confirm gate) and raise_expert's color palette enum + persona-name
+# guidance. Merged registry measures 59625 chars; ~1.4k headroom.
+# Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
+# nine tools grew 50-400 chars each with no single PR at fault, dev reached
+# 60,984, and the next PR to add anything was ejected from the merge queue.
+# Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
+# PRs add 1,763) rather than against whatever sits on dev today, because each
+# branch's CI only ever sees its own delta. Registry measures 62,747 with all
+# ten merged; 2,253 headroom.
+# list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
+# under 65_000 without a bump of their own; merged registry measures 62,694.
+# Bumped 65_000 -> 67_651 on 2026-09-09: dev's 62,747 plus the six expert PRs
+# then in flight, which add 4,903 between them and blow the old ceiling by 2,650
+# while each branch's own CI, measuring only its own delta, stays green.
+# Measured per branch, not estimated:
+#     #14443 fix-expert-credential-grant-paths  +3,744
+#     #14207 multi-expert-teams                   +981
+#     #11220 input-blocks-alongside-trigger       +178
+#     #14244 agent-collab-architecture              +0
+#     #14209 autopilot-auto-mode-v2                 +0
+#     #14432 secrt-2593-publish                     +0
+# There is NO margin on top, deliberately. This limit is a brake: it exists to
+# make every increase in what AutoPilot pays per turn a decision someone took,
+# so slack for growth nobody has measured is the one thing it must not carry.
+# The assertion below is a strict <, so the ceiling is the measured total plus
+# one — 67,651 admits exactly that aggregate and nothing beyond it.
+# The next tool that does not fit raises this line itself, with its own measured
+# number and its own row above.
+#
+# ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
+# both look correct: each one's CI only measures its own delta against dev, while
+# the budget has to cover what every in-flight PR adds together. Taking the
+# incoming side lowers a ceiling that has already ejected a green PR.
+#
+# Measure it the way this test does — one json.dumps over the whole list —
+# not by summing per-tool lengths, which misses ~142 chars of array
+# separators and overstates the headroom.
+_CHAR_BUDGET = 67_651
 
 
 @pytest.fixture(scope="module")
@@ -85,9 +191,18 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
+            # ``anyOf`` is the JSON-Schema-compliant way to model a
+            # nullable / union-typed parameter (e.g. ``session_id`` may
+            # be ``string`` or ``null`` for the fresh-chat sentinel).
+            # Accept either a top-level ``type`` OR an ``anyOf`` whose
+            # branches each carry their own ``type``.
+            has_type = "type" in prop_def or (
+                isinstance(prop_def.get("anyOf"), list)
+                and all(isinstance(b, dict) and "type" in b for b in prop_def["anyOf"])
+            )
             assert (
-                "type" in prop_def
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+                has_type
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"

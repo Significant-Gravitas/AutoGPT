@@ -1,13 +1,13 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  type getV2ListSessionsResponse,
-} from "@/app/api/__generated__/endpoints/chat/chat";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import {
+  flattenSessions,
+  SESSION_LIST_QUERY_KEY,
+  type SessionListInfiniteData,
+} from "./useSessionList";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
 const TITLE_POLL_MAX_ATTEMPTS = 5;
-const SESSION_LIST_LIMIT = 50;
 
 interface Args {
   sessionId: string | null;
@@ -38,29 +38,25 @@ export function useSessionTitlePoll({
 
     if (!wasActive || !isNowReady || !sessionId || isReconnecting) return;
 
-    queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey({ limit: SESSION_LIST_LIMIT }),
-    });
+    queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
 
     const sid = sessionId;
     let attempts = 0;
     clearInterval(titlePollRef.current);
     titlePollRef.current = setInterval(() => {
-      const data = queryClient.getQueryData<getV2ListSessionsResponse>(
-        getGetV2ListSessionsQueryKey({ limit: SESSION_LIST_LIMIT }),
+      const data = queryClient.getQueryData<SessionListInfiniteData>(
+        SESSION_LIST_QUERY_KEY,
       );
-      const hasTitle =
-        data?.status === 200 &&
-        data.data.sessions.some((s) => s.id === sid && s.title);
+      const hasTitle = flattenSessions(data).some(
+        (s) => s.id === sid && s.title,
+      );
       if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
         clearInterval(titlePollRef.current);
         titlePollRef.current = undefined;
         return;
       }
       attempts += 1;
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey({ limit: SESSION_LIST_LIMIT }),
-      });
+      queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
     }, TITLE_POLL_INTERVAL_MS);
   }, [status, sessionId, isReconnecting, queryClient]);
 

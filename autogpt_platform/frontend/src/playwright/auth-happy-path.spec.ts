@@ -4,6 +4,7 @@ import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import {
   completeOnboardingWizard,
+  dismissConnectStepIfPresent,
   skipOnboardingIfPresent,
 } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
@@ -15,6 +16,8 @@ test("auth happy path: user can sign up with a fresh account", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
+  // A self-host build opens on the connect step; Welcome is behind it.
+  await dismissConnectStepIfPresent(page);
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
 });
 
@@ -25,6 +28,8 @@ test("auth happy path: user can sign up, enter the app, and log out", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
+  // A self-host build opens on the connect step; Welcome is behind it.
+  await dismissConnectStepIfPresent(page);
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
 
   await skipOnboardingIfPresent(page, "/marketplace");
@@ -137,19 +142,20 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
 
   expect(consoleErrors).toHaveLength(0);
 
-  // Prove the auth token is actually gone, not just the UI hidden. Supabase
-  // overwrites the cookie on signout with an empty value + past expiry
+  // Prove the auth token is actually gone, not just the UI hidden. Sign-out
+  // may overwrite the session cookie with an empty value + past expiry
   // rather than deleting it. An assertion that is silently skipped when the
   // cookie is missing under the expected name would hide a real regression,
-  // so we assert on every non-empty sb-*auth-token* cookie explicitly.
+  // so we assert on every better-auth.session_token cookie explicitly
+  // (including the `__Secure-` prefixed variant).
   const cookiesAfterLogout = await context.cookies();
-  const authCookies = cookiesAfterLogout.filter(
-    (c) => c.name.startsWith("sb-") && c.name.includes("auth-token"),
+  const authCookies = cookiesAfterLogout.filter((c) =>
+    c.name.includes("better-auth.session_token"),
   );
   for (const cookie of authCookies) {
     expect(
       cookie.value,
-      `supabase auth cookie ${cookie.name} must be empty after logout`,
+      `auth session cookie ${cookie.name} must be empty after logout`,
     ).toBe("");
   }
 

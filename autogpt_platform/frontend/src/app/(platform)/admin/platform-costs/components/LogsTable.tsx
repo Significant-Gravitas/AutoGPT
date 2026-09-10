@@ -1,6 +1,7 @@
 import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
 import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import { formatDuration, formatMicrodollars, formatTokens } from "../helpers";
+import { ExecutionPathBadge } from "./ExecutionPathBadge";
 import { TrackingBadge } from "./TrackingBadge";
 
 function formatLogDate(value: unknown): string {
@@ -58,6 +59,12 @@ function LogsTable({
                 Provider
               </th>
               <th scope="col" className="px-3 py-3">
+                Path
+              </th>
+              <th scope="col" className="px-3 py-3">
+                Source
+              </th>
+              <th scope="col" className="px-3 py-3">
                 Type
               </th>
               <th scope="col" className="px-3 py-3">
@@ -94,6 +101,12 @@ function LogsTable({
                   {log.block_name}
                 </td>
                 <td className="px-3 py-2 text-xs">{log.provider}</td>
+                <td className="px-3 py-2 text-xs">
+                  <ExecutionPathBadge executionPath={log.execution_path} />
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">
+                  {log.source || "—"}
+                </td>
                 <td className="px-3 py-2 text-xs">
                   <TrackingBadge trackingType={log.tracking_type} />
                 </td>
@@ -145,7 +158,7 @@ function LogsTable({
             {logs.length === 0 && (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={13}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No logs found

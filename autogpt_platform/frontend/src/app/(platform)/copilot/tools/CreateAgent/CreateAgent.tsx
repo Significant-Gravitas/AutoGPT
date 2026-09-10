@@ -9,11 +9,9 @@ import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
@@ -44,23 +42,14 @@ interface Props {
 function getAccordionMeta(output: CreateAgentToolOutput | null) {
   const icon = <AccordionIcon />;
 
-  if (!output) {
-    return {
-      icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
-
-  if (isAgentPreviewOutput(output)) {
+  if (output && isAgentPreviewOutput(output)) {
     return {
       icon,
       title: output.agent_name,
       description: `${output.node_count} block${output.node_count === 1 ? "" : "s"}`,
     };
   }
-  if (isSuggestedGoalOutput(output)) {
+  if (output && isSuggestedGoalOutput(output)) {
     return {
       icon,
       title: "Goal needs refinement",
@@ -83,10 +72,6 @@ export function CreateAgentTool({ part }: Props) {
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
   const isOperating = !output;
-
-  // Show accordion for operating state and successful outputs, but not for errors
-  // (errors are shown inline so they get replaced when retrying)
-  const hasExpandableContent = !isError;
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
@@ -124,42 +109,35 @@ export function CreateAgentTool({ part }: Props) {
         />
       )}
 
-      {hasExpandableContent && !(output && isAgentSavedOutput(output)) && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
+      {output &&
+        !isError &&
+        (isAgentPreviewOutput(output) || isSuggestedGoalOutput(output)) && (
+          <ToolAccordion {...getAccordionMeta(output)}>
+            {isAgentPreviewOutput(output) && (
+              <ContentGrid>
+                <ContentMessage>{output.message}</ContentMessage>
+                {output.description?.trim() && (
+                  <ContentCardDescription>
+                    {output.description}
+                  </ContentCardDescription>
+                )}
+                <ContentCodeBlock>
+                  {truncateText(formatMaybeJson(output.agent_json), 1600)}
+                </ContentCodeBlock>
+              </ContentGrid>
+            )}
 
-          {output && isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
-
-          {output && isSuggestedGoalOutput(output) && (
-            <SuggestedGoalCard
-              message={output.message}
-              suggestedGoal={output.suggested_goal}
-              reason={output.reason}
-              goalType={output.goal_type ?? "vague"}
-              onUseSuggestedGoal={handleUseSuggestedGoal}
-            />
-          )}
-        </ToolAccordion>
-      )}
+            {isSuggestedGoalOutput(output) && (
+              <SuggestedGoalCard
+                message={output.message}
+                suggestedGoal={output.suggested_goal}
+                reason={output.reason}
+                goalType={output.goal_type ?? "vague"}
+                onUseSuggestedGoal={handleUseSuggestedGoal}
+              />
+            )}
+          </ToolAccordion>
+        )}
 
       {output && isAgentSavedOutput(output) && (
         <AgentSavedCard

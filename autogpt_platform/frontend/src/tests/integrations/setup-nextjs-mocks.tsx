@@ -59,5 +59,6 @@ export const mockNextjsModules = () => {
         {children}
       </a>
     ),
+    useLinkStatus: () => ({ pending: false }),
   }));
 };

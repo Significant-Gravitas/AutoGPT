@@ -9,6 +9,7 @@ export function toDisplayName(provider: unknown): string {
     d_id: "D-ID",
     e2b: "E2B",
     llama_api: "Llama API",
+    codex: "OpenAI",
     open_router: "Open Router",
     smtp: "SMTP",
     revid: "Rev.ID",

@@ -55,7 +55,8 @@ describe("push-sw getNotificationConfig", () => {
       type: "copilot_completion",
       event: "session_completed",
     });
-    expect(config.title).toBe("AutoPilot is ready");
+    expect(config.title).toBe("AutoGPT");
+    expect(config.body).toBe("Task completed");
     expect(config.url).toBe("/copilot");
   });
 
@@ -64,7 +65,8 @@ describe("push-sw getNotificationConfig", () => {
       type: "copilot_completion",
       event: "session_failed",
     });
-    expect(config.title).toBe("AutoPilot session failed");
+    expect(config.title).toBe("AutoGPT");
+    expect(config.body).toBe("Task failed");
   });
 
   it("falls back to generic notification for unknown type", () => {

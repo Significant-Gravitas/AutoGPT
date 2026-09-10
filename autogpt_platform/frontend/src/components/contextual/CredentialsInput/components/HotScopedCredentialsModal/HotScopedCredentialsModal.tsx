@@ -18,7 +18,6 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { getHostFromUrl } from "@/lib/utils/url";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   addHeaderPairToList,
@@ -29,6 +28,8 @@ import {
   updateHeaderPairInList,
   type HeaderPair,
 } from "../../helpers";
+import { Delete02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
@@ -265,7 +266,7 @@ export function HostScopedCredentialsModal({
                     onClick={() => removeHeaderPair(index)}
                     disabled={headerPairs.length === 1}
                   >
-                    <TrashIcon className="size-4" /> Remove
+                    <Icon icon={Delete02Icon} className="size-4" /> Remove
                   </Button>
                 </div>
               ))}
@@ -276,7 +277,8 @@ export function HostScopedCredentialsModal({
                 size="small"
                 onClick={addHeaderPair}
               >
-                <PlusIcon className="size-4" /> Add Another Header
+                <Icon icon={PlusSignIcon} className="size-4" /> Add Another
+                Header
               </Button>
             </div>
 

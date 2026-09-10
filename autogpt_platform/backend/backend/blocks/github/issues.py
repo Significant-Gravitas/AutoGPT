@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 from urllib.parse import urlparse
 
 from typing_extensions import TypedDict
@@ -12,7 +13,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-from ._api import convert_comment_url_to_api_endpoint, get_api
+from ._api import convert_comment_url_to_api_endpoint, get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -231,6 +232,19 @@ class GithubListCommentsBlock(Block):
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
         )
+        limit: int = SchemaField(
+            description="Maximum number of comments to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        since: str = SchemaField(
+            description="Only include comments updated after the given "
+            "ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         class CommentItem(TypedDict):
@@ -294,7 +308,7 @@ class GithubListCommentsBlock(Block):
 
     @staticmethod
     async def list_comments(
-        credentials: GithubCredentials, issue_url: str
+        credentials: GithubCredentials, issue_url: str, limit: int, since: str
     ) -> list[Output.CommentItem]:
         parsed_url = urlparse(issue_url)
         path_parts = parsed_url.path.strip("/").split("/")
@@ -310,8 +324,12 @@ class GithubListCommentsBlock(Block):
 
         # Set convert_urls=False since we're already providing an API URL
         api = get_api(credentials, convert_urls=False)
-        response = await api.get(api_url)
-        comments = response.json()
+        comments = await get_paginated(
+            api,
+            api_url,
+            limit=limit,
+            params={"since": since} if since else None,
+        )
         parsed_comments: list[GithubListCommentsBlock.Output.CommentItem] = [
             {
                 "id": comment["id"],
@@ -333,6 +351,8 @@ class GithubListCommentsBlock(Block):
         comments = await self.list_comments(
             credentials,
             input_data.issue_url,
+            input_data.limit,
+            input_data.since,
         )
         for comment in comments:
             yield "comment", comment
@@ -494,6 +514,65 @@ class GithubListIssuesBlock(Block):
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
+        state: Literal["open", "closed", "all"] = SchemaField(
+            description="Only include issues in this state",
+            default="open",
+        )
+        include_pull_requests: bool = SchemaField(
+            description="Whether to also include pull requests in the results. "
+            "The GitHub API considers every pull request an issue.",
+            default=False,
+        )
+        labels: list[str] = SchemaField(
+            description="Only include issues that have all of these labels",
+            default_factory=list,
+        )
+        limit: int = SchemaField(
+            description="Maximum number of issues to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        assignee: str = SchemaField(
+            description="Only include issues assigned to this user. "
+            "Use 'none' for unassigned issues, or '*' for issues with any assignee.",
+            default="",
+            advanced=True,
+        )
+        creator: str = SchemaField(
+            description="Only include issues created by this user",
+            default="",
+            advanced=True,
+        )
+        mentioned: str = SchemaField(
+            description="Only include issues in which this user is mentioned",
+            default="",
+            advanced=True,
+        )
+        milestone: str = SchemaField(
+            description="Only include issues in this milestone, by milestone number. "
+            "Use 'none' for issues without a milestone, "
+            "or '*' for issues with any milestone.",
+            default="",
+            advanced=True,
+        )
+        sort: Literal["created", "updated", "comments"] = SchemaField(
+            description="What to sort the issues by",
+            default="created",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction",
+            default="desc",
+            advanced=True,
+        )
+        since: str = SchemaField(
+            description="Only include issues updated after the given "
+            "ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         class IssueItem(TypedDict):
@@ -549,12 +628,40 @@ class GithubListIssuesBlock(Block):
 
     @staticmethod
     async def list_issues(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.IssueItem]:
         api = get_api(credentials)
-        issues_url = repo_url + "/issues"
-        response = await api.get(issues_url)
-        data = response.json()
+        params = {
+            "state": input_data.state,
+            "sort": input_data.sort,
+            "direction": input_data.direction,
+        }
+        if input_data.labels:
+            params["labels"] = ",".join(input_data.labels)
+        if input_data.assignee:
+            params["assignee"] = input_data.assignee
+        if input_data.creator:
+            params["creator"] = input_data.creator
+        if input_data.mentioned:
+            params["mentioned"] = input_data.mentioned
+        if input_data.milestone:
+            params["milestone"] = input_data.milestone
+        if input_data.since:
+            params["since"] = input_data.since
+
+        data = await get_paginated(
+            api,
+            input_data.repo_url + "/issues",
+            limit=input_data.limit,
+            params=params,
+            # The issues endpoint also returns pull requests, marked by the
+            # presence of a "pull_request" key
+            keep=(
+                None
+                if input_data.include_pull_requests
+                else (lambda issue: "pull_request" not in issue)
+            ),
+        )
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
         ]
@@ -567,10 +674,7 @@ class GithubListIssuesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        issues = await self.list_issues(
-            credentials,
-            input_data.repo_url,
-        )
+        issues = await self.list_issues(credentials, input_data)
         yield "issues", issues
         for issue in issues:
             yield "issue", issue

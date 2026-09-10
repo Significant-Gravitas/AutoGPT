@@ -6,8 +6,6 @@ import mimetypes
 import os
 from typing import Any, Optional
 
-from pydantic import BaseModel
-
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
@@ -15,15 +13,19 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.activity_event import ActivityEventDraft
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData
 
 logger = logging.getLogger(__name__)
 
@@ -255,16 +257,6 @@ async def _resolve_file(
     return file_info.id, file_info
 
 
-class WorkspaceFileInfoData(BaseModel):
-    """Data model for workspace file information (not a response itself)."""
-
-    file_id: str
-    name: str
-    path: str
-    mime_type: str
-    size_bytes: int
-
-
 class WorkspaceFileListResponse(ToolResponseBase):
     """Response containing list of workspace files."""
 
@@ -436,7 +428,11 @@ class ListWorkspaceFilesTool(BaseTool):
                 },
                 "include_all_sessions": {
                     "type": "boolean",
-                    "description": "Include files from all sessions (default: false).",
+                    "description": (
+                        "Include files from all sessions (default: false). "
+                        "Expert chats only ever see files from their own "
+                        "conversations and ones they delegated."
+                    ),
                 },
             },
             "required": [],
@@ -498,6 +494,10 @@ class ListWorkspaceFilesTool(BaseTool):
                 message="\n".join(lines),
                 session_id=session_id,
             )
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
@@ -524,7 +524,9 @@ class ReadWorkspaceFileTool(BaseTool):
             "Small text/image files return inline; large/binary return metadata+URL. "
             "Use save_to_path to copy to working dir for processing. "
             "Use offset/length for paginated reads. "
-            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
+            "Paths scoped to current session; use /sessions/<id>/... for "
+            "cross-session access (expert chats can read their own "
+            "conversations and ones they delegated)."
         )
 
     @property
@@ -598,9 +600,40 @@ class ReadWorkspaceFileTool(BaseTool):
                 # read it directly instead of failing.  The model sometimes
                 # calls read_workspace_file for these paths by mistake.
                 sdk_cwd = get_sdk_cwd()
+                # Relative SDK-tool-result shorthand must short-circuit
+                # *before* the ``is_allowed_local_path`` fallback: when
+                # ``sdk_cwd`` is set, the shorthand resolves under it and
+                # passes the allow check, but the file doesn't actually
+                # exist at that resolved path → ``_read_local_tool_result``
+                # returns a generic "Path not allowed" and the redirect
+                # branch below never runs. Catch relative shorthands here
+                # so the model sees the helpful redirect on the first try.
+                # Absolute SDK paths still take the local-read path below
+                # (legit fallback for ``read_workspace_file`` with an
+                # absolute SDK tool-results path).
+                if (
+                    path
+                    and not os.path.isabs(path)
+                    and not path.startswith("~")
+                    and looks_like_sdk_tool_result_path(path)
+                ):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
+                    )
                 if path and is_allowed_local_path(path, sdk_cwd):
                     return _read_local_tool_result(
                         path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
+                # Path looks like SDK tool-results but isn't reachable
+                # via the local-read path either (e.g. absolute SDK path
+                # not under sdk_cwd) — redirect to read_tool_result /
+                # @@agptfile rather than returning a generic
+                # "Path not allowed".
+                if path and looks_like_sdk_tool_result_path(path):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
                     )
                 return resolved
             target_file_id, file_info = resolved
@@ -703,6 +736,10 @@ class ReadWorkspaceFileTool(BaseTool):
             )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
@@ -710,6 +747,33 @@ class ReadWorkspaceFileTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+
+# Paths under ``/skills/`` are managed by the skills registry — the
+# ``store_skill`` / ``delete_skill`` tools enforce frontmatter validation,
+# the per-user cap, name regex, and content sanitisation. Allowing plain
+# write_workspace_file / delete_workspace_file there would bypass all of
+# that and let the model accidentally (or maliciously) corrupt the
+# registry. Reads stay open so the model can still inspect sibling
+# references inside a skill bundle.
+_SKILLS_REGISTRY_PREFIX = "skills/"
+_SKILLS_REGISTRY_ERROR = (
+    "Path is managed by the skills registry; use store_skill / "
+    "delete_skill instead. (read_workspace_file can still read "
+    "sibling files inside a skill bundle.)"
+)
+
+
+def _path_under_skills_registry(path: str | None) -> bool:
+    """Return ``True`` when *path* normalises to a location under
+    the skills-registry folder (``/skills/...`` or ``skills/...``,
+    case-insensitive)."""
+    if not path:
+        return False
+    # Strip leading slashes + whitespace, lower-case so case variants
+    # (``Skills/foo``) cannot bypass the check.
+    normalised = path.strip().lstrip("/").lower()
+    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
 
 
 class WriteWorkspaceFileTool(BaseTool):
@@ -725,7 +789,9 @@ class WriteWorkspaceFileTool(BaseTool):
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
             f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
-            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
+            "Paths scoped to current session; use /sessions/<id>/... for "
+            "cross-session access (expert chats are limited to their own "
+            "conversations)."
         )
 
     @property
@@ -768,6 +834,26 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceWriteResponse):
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.updated" if kwargs.get("overwrite") else "file.created",
+            title=result.name,
+            object_id=result.file_id,
+            data={
+                "path": result.path,
+                "mime_type": result.mime_type,
+                "size_bytes": result.size_bytes,
+            },
+        )
 
     async def _execute(
         self,
@@ -814,6 +900,14 @@ class WriteWorkspaceFileTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a filename", session_id=session_id
             )
+
+        # Block writes to the skills registry folder — they would bypass
+        # store_skill's validation (cap, body limits, name regex,
+        # sanitisation of server-injected tags).  Either an explicit
+        # ``path`` or a ``filename`` defaulting to ``skills/...`` count.
+        candidate_path = path if path is not None else f"/{filename}"
+        if _path_under_skills_registry(candidate_path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
 
         source_path_arg: str | None = source_path
         content_text: str | None = content
@@ -900,6 +994,10 @@ class WriteWorkspaceFileTool(BaseTool):
         except VirusScanError as e:
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
             return ErrorResponse(message=str(e), session_id=session_id)
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except ValueError as e:
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
@@ -950,6 +1048,21 @@ class DeleteWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceDeleteResponse) or not result.success:
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.deleted",
+            title=kwargs.get("path") or "Workspace file",
+            object_id=result.file_id,
+        )
+
     async def _execute(
         self,
         user_id: str | None,
@@ -968,12 +1081,29 @@ class DeleteWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path", session_id=session_id
             )
 
+        # Reject deletes targeting the skills registry by path up-front.
+        # file_id targets are checked AFTER resolution below, since the
+        # path is only known once the file is looked up.
+        if _path_under_skills_registry(path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
             target_file_id, file_info = resolved
+
+            # Fail closed: if the resolved file has no ``path`` attribute the
+            # workspace shape has drifted and we cannot verify the ACL, so
+            # refuse to delete rather than fall through with ``None``.
+            resolved_path = getattr(file_info, "path", None)
+            if not isinstance(resolved_path, str) or _path_under_skills_registry(
+                resolved_path
+            ):
+                return ErrorResponse(
+                    message=_SKILLS_REGISTRY_ERROR, session_id=session_id
+                )
 
             if not await manager.delete_file(target_file_id):
                 return ErrorResponse(
@@ -987,6 +1117,10 @@ class DeleteWorkspaceFileTool(BaseTool):
                     f"({file_info.size_bytes:,} bytes)"
                 ),
                 session_id=session_id,
+            )
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
             )
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)

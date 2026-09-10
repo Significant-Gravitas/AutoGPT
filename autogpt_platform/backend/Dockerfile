@@ -63,10 +63,14 @@ WORKDIR /app/autogpt_platform/backend
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+# libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
+# Node (copied from the builder, which had it via build-essential) dynamically
+# links libatomic.so.1 — without it `node` exits 127 and migrate crash-loops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
     python3-pip \
     ca-certificates \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from builder (needed for Prisma CLI)
@@ -87,6 +91,14 @@ COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
 
+FROM debian:13-slim AS docs-filter
+# The copilot docs tools read markdown only — strip everything else
+# (images, scripts, configs) so no unused or untrusted files ship in the
+# server image or its layer history.
+COPY docs /docs
+RUN find /docs -type f ! -name '*.md' ! -name '*.mdx' -delete \
+    && find /docs -type d -empty -delete
+
 FROM debian:13-slim AS server
 
 WORKDIR /app
@@ -106,6 +118,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     tree \
     bubblewrap \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
@@ -147,9 +160,9 @@ ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
 
-# Copy backend code + docs (for Copilot docs search)
+# Copy backend code + docs (markdown only — see docs-filter stage)
 COPY autogpt_platform/backend ./
-COPY docs /app/docs
+COPY --from=docs-filter /docs /app/docs
 # Install the project package to create entry point scripts in .venv/bin/
 # (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
 RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \

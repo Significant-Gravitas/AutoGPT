@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import React, {
   KeyboardEvent,
   useCallback,
@@ -6,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { isKey } from "@/lib/keyboard";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -37,6 +39,16 @@ export function useVoiceRecording({
   const isRecordingRef = useRef(false);
 
   const [isSupported, setIsSupported] = useState(false);
+  // Sending the draft as transcription context ships with the brain-dump
+  // experience (Path B records a dump on top of AutoPilot's intro text).
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
+  isBrainDumpEnabledRef.current = isBrainDumpEnabled;
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     setIsSupported(
@@ -83,6 +95,10 @@ export function useVoiceRecording({
       try {
         const formData = new FormData();
         formData.append("audio", audioBlob);
+        const draft = valueRef.current.trim();
+        if (isBrainDumpEnabledRef.current && draft) {
+          formData.append("context", draft);
+        }
 
         const response = await fetch("/api/transcribe", {
           method: "POST",
@@ -217,7 +233,7 @@ export function useVoiceRecording({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // Allow space to toggle recording (start when empty, stop when recording)
-      if (event.key === " " && !isTranscribing) {
+      if (isKey(event, " ") && !isTranscribing) {
         if (isRecordingRef.current) {
           // Stop recording on space
           event.preventDefault();

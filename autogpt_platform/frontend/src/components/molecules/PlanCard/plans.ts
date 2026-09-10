@@ -135,9 +135,9 @@ export const PLAN_METADATA: Record<
       "Help drive the roadmap for new features",
     ],
     cta: "Upgrade to Max",
-    highlighted: true,
-    badge: "Best value",
-    buttonVariant: "primary",
+    highlighted: false,
+    badge: null,
+    buttonVariant: "secondary",
   },
   BUSINESS: {
     key: PLAN_KEYS.BUSINESS,

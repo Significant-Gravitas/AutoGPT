@@ -20,7 +20,8 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
-from backend.util.clients import get_openai_client
+from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.exceptions import ExecutionFailureReason
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
 
@@ -38,16 +39,38 @@ _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 _MAX_JSON_RETRIES = 3
 _MAX_OUTPUT_TOKENS = 150
 
+# Sentinel for ``generate_activity_status_for_execution.model_name``. The
+# parameter defaults to this for cloud routing. Under the local transport
+# we only override to ``ChatConfig.title_model`` when the caller didn't
+# supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
+# uses for ``title_model`` / ``simulation_model``.
+_DEFAULT_MODEL_NAME = "gpt-4o-mini"
+INSUFFICIENT_BALANCE_GUIDANCE = "Please make more credits available and try again."
+INSUFFICIENT_BALANCE_SUMMARY = (
+    "This run couldn't complete because there weren't enough credits available. "
+    f"{INSUFFICIENT_BALANCE_GUIDANCE}"
+)
+ENTITLEMENT_REQUIRED_GUIDANCE = (
+    "Upgrade the plan, or switch the step to an option your plan includes."
+)
+ENTITLEMENT_REQUIRED_SUMMARY = (
+    "This run couldn't complete because it used a feature the current plan "
+    f"doesn't include. {ENTITLEMENT_REQUIRED_GUIDANCE}"
+)
+
 
 # Default system prompt template for activity status generation
 DEFAULT_SYSTEM_PROMPT = """You are an AI assistant analyzing what an agent execution accomplished and whether it worked correctly. 
 You need to provide both a user-friendly summary AND a correctness assessment.
 
 FOR THE ACTIVITY STATUS:
-- Write from the user's perspective about what they accomplished, NOT about technical execution details
+- Describe what was accomplished as a neutral outcome, NOT about technical execution details
+- NEVER write in the first person: no 'I', 'I used', 'I calculated', 'It seems like I', 'It looks like I'
+- Do not address the user as 'you' and do not hedge with 'It seems like' or 'It looks like'
+- Lead with the result itself, e.g. 'Added 2 and 3 and produced 5.' or 'Release notes were generated covering the latest updates.'
 - Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps
 - Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc.
-- Keep it to 3 sentences maximum. Be conversational and human-friendly
+- Keep it to 3 sentences maximum. Be plain and human-friendly
 
 FOR THE CORRECTNESS SCORE:
 - Provide a score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose
@@ -117,11 +140,11 @@ INTENTION-BASED EVALUATION:
 - Match the outputs to the stated intention, not just technical completion
 
 PROVIDE:
-activity_status: 1-3 sentences about what the user accomplished, such as:
-- 'I analyzed your resume and provided detailed feedback for the IT industry.'
-- 'I couldn't complete the task because critical steps failed to produce any results.'
-- 'I failed to generate the content you requested due to missing API access.'
-- 'I extracted key information from your documents and organized it into a summary.'
+activity_status: 1-3 sentences describing the outcome, never in the first person, such as:
+- 'Analyzed the resume and provided detailed feedback for the IT industry.'
+- 'The task could not be completed because critical steps failed to produce any results.'
+- 'Content generation failed due to missing API access.'
+- 'Key information was extracted from the documents and organized into a summary.'
 - 'The task failed because the blog post creation step didn't produce any output.'
 
 correctness_score: A float score from 0.0 to 1.0 based on how well the intended purpose was achieved:
@@ -190,6 +213,34 @@ def _truncate_uuid(uuid_str: str) -> str:
     return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
 
 
+def _get_deterministic_failure_response(
+    execution_stats: GraphExecutionStats,
+    execution_status: ExecutionStatus | None,
+) -> ActivityStatusResponse | None:
+    """
+    Check if the execution failed for an obvious, deterministic reason
+    that doesn't require LLM analysis.
+
+    Returns a static ActivityStatusResponse if matched, None otherwise.
+    """
+    if execution_status != ExecutionStatus.FAILED:
+        return None
+
+    if execution_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE:
+        return {
+            "activity_status": INSUFFICIENT_BALANCE_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    if execution_stats.failure_reason == ExecutionFailureReason.ENTITLEMENT_REQUIRED:
+        return {
+            "activity_status": ENTITLEMENT_REQUIRED_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    return None
+
+
 async def generate_activity_status_for_execution(
     graph_exec_id: str,
     graph_id: str,
@@ -198,17 +249,17 @@ async def generate_activity_status_for_execution(
     db_client: "DatabaseManagerAsyncClient",
     user_id: str,
     execution_status: ExecutionStatus | None = None,
-    model_name: str = "gpt-4o-mini",
+    model_name: str = _DEFAULT_MODEL_NAME,
     skip_feature_flag: bool = False,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     user_prompt: str = DEFAULT_USER_PROMPT,
     skip_existing: bool = True,
 ) -> ActivityStatusResponse | None:
     """
-    Generate an AI-based activity status summary and correctness assessment for a graph execution.
+    Generate an activity status summary and correctness assessment for a graph execution.
 
-    This function handles all the data collection and AI generation logic,
-    keeping the manager integration simple.
+    Deterministic terminal failures return a static result. Other executions use
+    the configured LLM after the required execution data is collected.
 
     Args:
         graph_exec_id: The graph execution ID
@@ -225,8 +276,8 @@ async def generate_activity_status_for_execution(
         skip_existing: Whether to skip if activity_status and correctness_score already exist
 
     Returns:
-        AI-generated activity status response with activity_status and correctness_status,
-        or None if feature is disabled or skipped
+        Activity status response with activity_status and correctness_score, or
+        None if generation is disabled or skipped
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
     if not skip_feature_flag and not await is_feature_enabled(
@@ -235,7 +286,7 @@ async def generate_activity_status_for_execution(
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
-    # Check if we should skip existing data (for admin regeneration option)
+    # Check if we should skip existing data (for admin regeneration option).
     if (
         skip_existing
         and execution_stats.activity_status
@@ -249,15 +300,32 @@ async def generate_activity_status_for_execution(
             "correctness_score": execution_stats.correctness_score,
         }
 
-    # Acquire an OpenRouter-backed OpenAI client. Activity-status generation is
-    # only meaningful when we can record real USD cost in PlatformCostLog;
-    # without OpenRouter the upstream platform cost would be tokens-only, so
-    # we skip rather than fall back to direct-OpenAI which produces no
-    # provider_cost. Same gating pattern as backend/executor/simulator.py.
+    # Check for deterministic failures that don't need LLM analysis.
+    deterministic_result = _get_deterministic_failure_response(
+        execution_stats, execution_status
+    )
+    if deterministic_result is not None:
+        logger.info(
+            f"Skipping LLM analysis for {graph_exec_id}: deterministic failure detected"
+        )
+        return deterministic_result
+
+    # Acquire an OpenRouter-backed (or local-transport) OpenAI client.
+    # Activity-status generation under OpenRouter is only meaningful when we
+    # can record real USD cost in PlatformCostLog; without OpenRouter the
+    # upstream platform cost would be tokens-only, so we skip rather than
+    # fall back to direct-OpenAI which produces no provider_cost. Under
+    # ``CHAT_USE_LOCAL=true`` the helper instead returns a client pointed at
+    # the operator's Ollama / vLLM / LiteLLM endpoint and we generate the
+    # status off the local model — there's no provider_cost field on
+    # local-stack usage chunks but the status itself is still useful.
+    # ``None`` means neither path is configured, in which case skip.
+    # Same gating pattern as backend/executor/simulator.py.
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
         logger.debug(
-            "OpenRouter API key not configured, skipping activity status generation"
+            "No LLM client configured (OpenRouter or local) — "
+            "skipping activity status generation"
         )
         return None
 
@@ -312,10 +380,50 @@ async def generate_activity_status_for_execution(
             f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(messages, indent=2)}"
         )
 
-        # Model values arriving without a provider prefix (e.g. "gpt-4o-mini")
-        # need to be remapped to OpenRouter's namespaced form. Already-prefixed
-        # values (e.g. "openai/gpt-4o-mini", "anthropic/claude-...") pass through.
-        or_model = model_name if "/" in model_name else f"openai/{model_name}"
+        # Under the local OpenAI-compat transport (CHAT_USE_LOCAL=true) the
+        # client is pointed at Ollama / vLLM / LiteLLM, not OpenRouter:
+        #
+        # - The hardcoded ``gpt-4o-mini`` default is meaningless against a
+        #   local server, and the ``openai/`` prefix coercion would mangle
+        #   bare Ollama tags (``qwen3:0.6b`` → ``openai/qwen3:0.6b``) into
+        #   404s. Use ``ChatConfig.title_model`` instead — it auto-derives
+        #   from the operator's chosen ``fast_standard_model`` under
+        #   ``use_local`` and is already shaped for the local backend.
+        # - ``extra_body={"usage": {"include": True}}`` is OpenRouter's
+        #   piggybacked-cost extension; local backends don't implement it
+        #   and may reject the request body. Local sends an empty
+        #   ``extra_body`` instead — the backend's own launched context
+        #   window (e.g. OLLAMA_CONTEXT_LENGTH) governs, read back at
+        #   runtime by ``local_context_probe`` for compaction.
+        #
+        # Same gating pattern as ``backend/copilot/baseline/service.py`` and
+        # ``backend/executor/simulator.py`` — keep the three in sync.
+        from backend.copilot.sdk.env import config as chat_cfg
+
+        is_local_transport = chat_cfg.transport.name == "local"
+        if is_local_transport:
+            # Only auto-override to ``chat_cfg.title_model`` when the caller
+            # left ``model_name`` at its cloud-routing default. An explicit
+            # caller-supplied value (e.g. an admin reroute or a test) wins
+            # — we mustn't silently discard it. Same pattern
+            # ``ChatConfig._apply_local_aux_models`` uses for the field defaults.
+            or_model = (
+                chat_cfg.title_model
+                if model_name == _DEFAULT_MODEL_NAME
+                else model_name
+            )
+            extra_body: dict[str, Any] = {}
+        else:
+            # Model values arriving without a provider prefix (e.g. "gpt-4o-mini")
+            # need to be remapped to OpenRouter's namespaced form. Already-prefixed
+            # values (e.g. "openai/gpt-4o-mini", "anthropic/claude-...") pass through.
+            or_model = model_name if "/" in model_name else f"openai/{model_name}"
+            # Shallow-copy the module-level constant rather than sharing
+            # the reference. The OpenAI SDK treats ``extra_body`` as opaque
+            # pass-through, but if any intermediate layer ever mutates it
+            # the shared constant would leak across coroutines. Mirrors the
+            # defensive ``dict(...)`` ``baseline/service.py`` already uses.
+            extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
 
         # Track the most recent attempt's usage so we can persist cost even
         # when every retry fails — the API calls were billed regardless of
@@ -330,7 +438,7 @@ async def generate_activity_status_for_execution(
                     messages=messages,
                     max_tokens=_MAX_OUTPUT_TOKENS,
                     response_format={"type": "json_object"},
-                    extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
+                    extra_body=extra_body,
                 )
                 last_usage = response.usage
                 if not response.choices:
@@ -374,6 +482,11 @@ async def generate_activity_status_for_execution(
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             model_name=or_model,
+            # This helper routes through ``get_openai_client(prefer_openrouter=True)``,
+            # so a non-local call physically hits OpenRouter regardless of the chat
+            # transport identity — label it accordingly (not ``cost_log_provider``,
+            # which would mislabel subscription / direct_anthropic as ``anthropic``).
+            provider=openrouter_helper_cost_provider(),
             db_client=db_client,
         )
 
@@ -431,6 +544,7 @@ def _persist_activity_status_cost(
     graph_exec_id: str,
     graph_id: str,
     model_name: str,
+    provider: str,
     db_client: "DatabaseManagerAsyncClient",
 ) -> None:
     """Schedule a PlatformCostLog entry for the activity-status LLM call.
@@ -468,14 +582,17 @@ def _persist_activity_status_cost(
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
                 block_name="activity_status_generator",
-                provider="open_router",
+                provider=provider,
                 cost_microdollars=cost_microdollars,
                 input_tokens=input_tokens or None,
                 output_tokens=output_tokens or None,
                 model=model_name,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={"source": "activity_status_generator"},
+                metadata={
+                    "source": "activity_status_generator",
+                    "execution_path": "sync",
+                },
             ),
         )
     except Exception:

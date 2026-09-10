@@ -20,18 +20,18 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 
-  console.debug("OAuth callback received:", { code, state });
-
   const message: OAuthPopupResultMessage =
     code && state
       ? { message_type: "oauth_popup_result", success: true, code, state }
       : {
           message_type: "oauth_popup_result",
           success: false,
-          message: `Incomplete query: ${searchParams.toString()}`,
+          // Echo back `state` when present so the originating page's
+          // state-keyed listeners route the failure to the right flow
+          // instead of timing out silently.
+          ...(state ? { state } : {}),
+          message: "OAuth callback is missing its code or state",
         };
-
-  console.debug("Sending message to opener:", message);
 
   // Emit via three channels so the result reaches the originating page
   // regardless of how the OAuth flow was opened:

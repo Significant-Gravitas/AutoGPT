@@ -16,6 +16,11 @@ from prisma.errors import UniqueViolationError
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
+from backend.data.workspace_scope import (
+    EXPERT_FILE_ACCESS_DENIED,
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+)
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -48,7 +53,11 @@ class WorkspaceManager:
     """
 
     def __init__(
-        self, user_id: str, workspace_id: str, session_id: Optional[str] = None
+        self,
+        user_id: str,
+        workspace_id: str,
+        session_id: Optional[str] = None,
+        scope: Optional[WorkspaceScope] = None,
     ):
         """
         Initialize WorkspaceManager.
@@ -57,12 +66,45 @@ class WorkspaceManager:
             user_id: The user's ID
             workspace_id: The workspace ID
             session_id: Optional session ID for session-scoped file access
+            scope: Resolved grants for an expert session. ``None`` means the
+                account owner is acting and every file in the workspace is
+                reachable. When set, every operation — by path or by file ID,
+                including listings and counts — is confined to the scope.
         """
         self.user_id = user_id
         self.workspace_id = workspace_id
         self.session_id = session_id
+        self.scope = scope
         # Session path prefix for file isolation
         self.session_path = f"/sessions/{session_id}" if session_id else ""
+
+    def _authorize_path(self, path: str, *, write: bool = False) -> None:
+        if self.scope is not None and not self.scope.allows_path(path, write=write):
+            logger.warning(
+                "Workspace access denied for expert %s (write=%s): %s",
+                self.scope.expert_id,
+                write,
+                path,
+            )
+            raise WorkspaceAccessDeniedError(EXPERT_FILE_ACCESS_DENIED)
+
+    def _authorize_file(self, file: WorkspaceFile, *, write: bool = False) -> None:
+        self._authorize_path(file.path, write=write)
+
+    def _allowed_prefixes(
+        self, requested: Optional[list[str]] = None
+    ) -> Optional[list[str]]:
+        """Prefixes a listing may span: the scope's, narrowed to ``requested``.
+
+        A requested prefix survives only if it lies inside a scope prefix, so
+        this argument can narrow an expert's reach but never widen it.
+        """
+        if self.scope is None:
+            return requested
+        allowed = self.scope.read_prefixes
+        if requested is None:
+            return allowed
+        return [p for p in requested if any(p.startswith(a) for a in allowed)]
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -137,6 +179,7 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
         if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
@@ -161,6 +204,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
@@ -218,6 +262,7 @@ class WorkspaceManager:
 
         # Resolve path with session prefix
         path = self._resolve_path(path)
+        self._authorize_path(path, write=True)
 
         # Enforce per-user workspace storage quota (tier-based).
         # For overwrites, subtract the existing file's size so replacing a file
@@ -326,6 +371,21 @@ class WorkspaceManager:
             f"at path {path}, size={len(content)} bytes"
         )
 
+        # Fire-and-forget: index this file in the hybrid-search store so
+        # the user can find it from /search/global by name. No-ops cheaply
+        # when the existing embedding's text is unchanged.
+        try:
+            from backend.api.features.workspace.embeddings import (
+                schedule_workspace_file_embedding,
+            )
+
+            schedule_workspace_file_embedding(
+                file_id=file.id, user_id=self.user_id, name=file.name, path=file.path
+            )
+        except Exception as e:
+            # Embedding is purely a search-quality concern — never block writes.
+            logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
+
         return file
 
     async def list_files(
@@ -334,6 +394,13 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
+        name_contains: Optional[str] = None,
+        path_not_starts_with: Optional[str] = None,
+        metadata_equals: Optional[dict] = None,
+        metadata_not_equals: Optional[dict] = None,
+        folder_id: Optional[str] = None,
+        root_only: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -347,6 +414,20 @@ class WorkspaceManager:
             offset: Number of files to skip
             include_all_sessions: If True, list files from all sessions.
                                   If False (default), only list current session's files.
+            name_contains: Case-insensitive substring filter on the file name.
+            path_not_starts_with: Optional path prefix to exclude from results.
+                Generic path filter; origin-based filtering for the Artifacts
+                page is handled separately via ``metadata_equals`` /
+                ``metadata_not_equals``.
+            metadata_equals: Match files whose ``metadata`` equals this object
+                exactly (Artifacts "Uploaded" filter).
+            metadata_not_equals: Match files whose ``metadata`` does not equal
+                this object (Artifacts "Generated" filter).
+            folder_id: If set, only return files in this folder.
+            root_only: If True, only return root-level files (folderId IS NULL).
+            allowed_path_prefixes: Only list files under these prefixes. When
+                the manager carries a scope the prefixes are intersected with
+                it (see :meth:`_allowed_prefixes`).
 
         Returns:
             List of WorkspaceFile instances
@@ -357,8 +438,15 @@ class WorkspaceManager:
         return await db.list_workspace_files(
             workspace_id=self.workspace_id,
             path_prefix=effective_path,
+            path_not_starts_with=path_not_starts_with,
             limit=limit,
             offset=offset,
+            name_contains=name_contains,
+            metadata_equals=metadata_equals,
+            metadata_not_equals=metadata_not_equals,
+            folder_id=folder_id,
+            root_only=root_only,
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -375,6 +463,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             return False
+        self._authorize_file(file, write=True)
 
         # Delete from storage
         storage = await get_workspace_storage()
@@ -386,6 +475,21 @@ class WorkspaceManager:
 
         # Soft-delete database record
         result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
+
+        # Best-effort cleanup of the search index so deleted files don't
+        # keep showing up in /search/global hits.
+        if result is not None:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=file_id, user_id=self.user_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete file embedding for {file_id}: {e}")
+
         return result is not None
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:
@@ -406,6 +510,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.get_download_url(file.storage_path, expires_in)
@@ -418,10 +523,20 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            WorkspaceFile instance or None
+            WorkspaceFile instance, or None when no such file exists.
+
+        Raises:
+            WorkspaceAccessDeniedError: the file exists but lies outside this
+                manager's scope. Deliberately not folded into ``None`` so an
+                expert sees "access denied" rather than "not found" for a
+                file it cannot reach; every caller either surfaces it as such
+                or treats it like any other failure to read the file.
         """
         db = workspace_db()
-        return await db.get_workspace_file(file_id, self.workspace_id)
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is not None:
+            self._authorize_file(file)
+        return file
 
     async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
@@ -438,12 +553,14 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
 
     async def get_file_count(
         self,
         path: Optional[str] = None,
         include_all_sessions: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> int:
         """
         Get number of files in workspace.
@@ -463,5 +580,7 @@ class WorkspaceManager:
         db = workspace_db()
 
         return await db.count_workspace_files(
-            self.workspace_id, path_prefix=effective_path
+            self.workspace_id,
+            path_prefix=effective_path,
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )

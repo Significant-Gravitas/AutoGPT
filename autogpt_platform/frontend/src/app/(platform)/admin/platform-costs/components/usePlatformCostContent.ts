@@ -24,6 +24,8 @@ interface InitialSearchParams {
   block_name?: string;
   tracking_type?: string;
   graph_exec_id?: string;
+  execution_path?: string;
+  source?: string;
   page?: string;
   tab?: string;
 }
@@ -46,6 +48,9 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     urlParams.get("tracking_type") || searchParams.tracking_type || "";
   const executionIDFilter =
     urlParams.get("graph_exec_id") || searchParams.graph_exec_id || "";
+  const executionPathFilter =
+    urlParams.get("execution_path") || searchParams.execution_path || "";
+  const sourceFilter = urlParams.get("source") || searchParams.source || "";
 
   const [startInput, setStartInput] = useState(toLocalInput(startDate));
   const [endInput, setEndInput] = useState(toLocalInput(endDate));
@@ -55,6 +60,9 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
   const [blockInput, setBlockInput] = useState(blockFilter);
   const [typeInput, setTypeInput] = useState(typeFilter);
   const [executionIDInput, setExecutionIDInput] = useState(executionIDFilter);
+  const [executionPathInput, setExecutionPathInput] =
+    useState(executionPathFilter);
+  const [sourceInput, setSourceInput] = useState(sourceFilter);
   const [rateOverrides, setRateOverrides] = useState<Record<string, number>>(
     {},
   );
@@ -72,6 +80,8 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     block_name: blockFilter || undefined,
     tracking_type: typeFilter || undefined,
     graph_exec_id: executionIDFilter || undefined,
+    execution_path: executionPathFilter || undefined,
+    source: sourceFilter || undefined,
   };
 
   const {
@@ -121,6 +131,8 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
       block_name: blockInput,
       tracking_type: typeInput,
       graph_exec_id: executionIDInput,
+      execution_path: executionPathInput,
+      source: sourceInput,
       page: "1",
     });
   }
@@ -193,6 +205,10 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     setTypeInput,
     executionIDInput,
     setExecutionIDInput,
+    executionPathInput,
+    setExecutionPathInput,
+    sourceInput,
+    setSourceInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,

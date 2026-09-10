@@ -5,12 +5,20 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { ShareIcon } from "@phosphor-icons/react";
 import { usePublishToMarketplace } from "./usePublishToMarketplace";
+import { Share01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
+interface Props {
+  flowID: string | null;
+  flowVersion: number | null;
+}
+
+export function PublishToMarketplace({ flowID, flowVersion }: Props) {
   const { handlePublishToMarketplace, publishState, handleStateChange } =
-    usePublishToMarketplace({ flowID });
+    usePublishToMarketplace({ flowID, flowVersion });
+
+  const isDisabled = !flowID || flowVersion === null;
 
   return (
     <>
@@ -20,9 +28,9 @@ export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
             variant="outline"
             size="icon"
             onClick={handlePublishToMarketplace}
-            disabled={!flowID}
+            disabled={isDisabled}
           >
-            <ShareIcon className="size-4" />
+            <Icon icon={Share01Icon} className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>Publish to Marketplace</TooltipContent>
@@ -32,8 +40,9 @@ export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
         targetState={publishState}
         onStateChange={handleStateChange}
         preSelectedAgentId={flowID || undefined}
+        preSelectedAgentVersion={flowVersion ?? undefined}
         showTrigger={false}
       />
     </>
   );
-};
+}

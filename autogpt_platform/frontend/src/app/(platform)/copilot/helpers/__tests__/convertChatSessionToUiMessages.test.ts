@@ -8,6 +8,42 @@ import {
 const SESSION_ID = "sess-test";
 
 describe("convertChatSessionMessagesToUiMessages", () => {
+  it("keeps a run-post as its own bubble carrying run metadata", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Earlier turn.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "I just finished a run.",
+          sequence: 1,
+          metadata: {
+            kind: "expert_run",
+            execution_id: "exec-1",
+            graph_id: "graph-1",
+            output_type: "table",
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // The run-post is not folded into the preceding assistant bubble.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does not attach metadata to legacy assistant messages", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "assistant", content: "Plain reply.", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].metadata).toBeUndefined();
+  });
+
   it("does not drop user messages with null content", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,
@@ -59,6 +95,21 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].role).toBe("user");
+  });
+
+  it("preserves persisted kickoff metadata on the hydrated UI message", () => {
+    const metadata = {
+      hidden: true,
+      kind: "expert_kickoff",
+      expert_id: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+    };
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "kickoff", sequence: 0, metadata }],
+      { isComplete: true },
+    );
+
+    expect(result.messages[0].metadata).toEqual(metadata);
   });
 
   it("attaches a reasoning row between user/assistant to the surrounding assistant bubble", () => {
@@ -340,6 +391,29 @@ describe("concatWithAssistantMerge", () => {
     expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
   });
 
+  it("does NOT absorb a run-post WorkCard into the preceding assistant bubble", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "plain reply")];
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 3, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const result = concatWithAssistantMerge(a, [runPost]);
+    expect(result).toHaveLength(2);
+    expect(result[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does NOT let a run-post WorkCard absorb the following assistant bubble", () => {
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 2, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const b = [uiAssistant(SESSION_ID, 3, "plain reply")];
+    const result = concatWithAssistantMerge([runPost], b);
+    expect(result).toHaveLength(2);
+    expect(result[0].metadata).toMatchObject({ kind: "expert_run" });
+    expect(result[1].metadata).toBeUndefined();
+  });
+
   it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
     const a = [uiUser(SESSION_ID, 4, "follow up")];
     const b = [uiAssistant(SESSION_ID, 5, "got it")];
@@ -419,5 +493,131 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
 
     const stats = result.stats.get(result.messages[0].id);
     expect(stats?.isLatestUserMessage).toBe(true);
+  });
+
+  describe("orphan TodoWrite recovery", () => {
+    const todos = [
+      { content: "Step 1", activeForm: "Doing step 1", status: "completed" },
+      { content: "Step 2", activeForm: "Doing step 2", status: "completed" },
+    ];
+
+    function findTodoPart(result: {
+      messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    }) {
+      return result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-TodoWrite");
+    }
+
+    it("recovers an orphan result from the backend `todos` field", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoPart = findTodoPart(result);
+      expect(todoPart).toBeDefined();
+      expect(
+        (todoPart as { input: { todos: unknown[] } }).input.todos,
+      ).toHaveLength(2);
+    });
+
+    it("ignores an orphan result missing a `todos` array", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", newTodos: todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      expect(findTodoPart(result)).toBeUndefined();
+    });
+
+    it("does not duplicate when a whitespace-padded tool_call_id matches a consumed id", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "on it",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: {
+                  name: "TodoWrite",
+                  arguments: JSON.stringify({ todos }),
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoParts = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.filter((p) => p.type === "tool-TodoWrite");
+      expect(todoParts).toHaveLength(1);
+    });
+  });
+
+  describe("tool output matching", () => {
+    it("attaches an output whose tool_call_id is whitespace-padded", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "running a tool",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: { name: "SomeTool", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ ok: true }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: false },
+      );
+
+      const toolPart = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-SomeTool") as
+        | { state: string; output: unknown }
+        | undefined;
+
+      expect(toolPart?.state).toBe("output-available");
+      expect(toolPart?.output).toEqual({ ok: true });
+    });
   });
 });

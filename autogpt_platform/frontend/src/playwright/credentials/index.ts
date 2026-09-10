@@ -15,11 +15,9 @@ export const TEST_AGENT_DATA = {
   name: "E2E Calculator Agent",
   description:
     "A deterministic marketplace agent built from Calculator and Agent Output blocks for frontend E2E coverage.",
-  image_urls: [
-    "https://picsum.photos/seed/e2e-marketplace-1/200/300",
-    "https://picsum.photos/seed/e2e-marketplace-2/200/301",
-    "https://picsum.photos/seed/e2e-marketplace-3/200/302",
-  ],
+  // Seed with no images so cards render their solid-color fallback. Avoids
+  // the external picsum.photos dependency that intermittently 504'd in CI.
+  image_urls: [] as string[],
   video_url: "https://www.youtube.com/watch?v=test123",
   sub_heading: "A deterministic calculator agent for PR E2E coverage",
   categories: ["test", "demo", "frontend"],

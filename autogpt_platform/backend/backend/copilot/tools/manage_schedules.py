@@ -1,12 +1,14 @@
-"""Tools for listing and deleting agent execution schedules."""
+"""Tools for listing and deleting scheduled jobs (agent runs + copilot turns)."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -16,16 +18,29 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 
+def _is_in_session_scope(
+    job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
+) -> bool:
+    return job.expert_id == session.expert_id
+
+
 class ScheduleSummary(BaseModel):
-    """Summary of a single schedule."""
+    """Summary of a single schedule (either a graph run or copilot turn)."""
 
     schedule_id: str
+    kind: Literal["graph", "copilot_turn"]
     name: str
-    cron: str
     timezone: str
     next_run_time: str
-    graph_id: str
-    graph_version: int
+    # Either cron (recurring) or run_at (one-shot) is populated, never both.
+    cron: str | None = None
+    run_at: str | None = None
+    # Populated for kind="graph".
+    graph_id: str | None = None
+    graph_version: int | None = None
+    # Populated for kind="copilot_turn".
+    session_id: str | None = None
+    message: str | None = None
 
 
 class ScheduleListResponse(ToolResponseBase):
@@ -33,6 +48,34 @@ class ScheduleListResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.SCHEDULE_LIST
     schedules: list[ScheduleSummary]
+
+
+def _to_summary(
+    job: GraphExecutionJobInfo | CopilotTurnJobInfo,
+) -> ScheduleSummary:
+    if isinstance(job, GraphExecutionJobInfo):
+        return ScheduleSummary(
+            schedule_id=job.id,
+            kind="graph",
+            name=job.name,
+            timezone=job.timezone,
+            next_run_time=job.next_run_time,
+            cron=job.cron,
+            graph_id=job.graph_id,
+            graph_version=job.graph_version,
+        )
+    run_at_str = job.run_at.isoformat() if job.run_at else None
+    return ScheduleSummary(
+        schedule_id=job.id,
+        kind="copilot_turn",
+        name=job.name,
+        timezone=job.timezone,
+        next_run_time=job.next_run_time,
+        cron=job.cron,
+        run_at=run_at_str,
+        session_id=job.session_id,
+        message=job.message,
+    )
 
 
 class ScheduleDeletedResponse(ToolResponseBase):
@@ -43,11 +86,12 @@ class ScheduleDeletedResponse(ToolResponseBase):
 
 
 class ListSchedulesTool(BaseTool):
-    """List the user's existing scheduled agent executions.
+    """List the user's existing scheduled jobs.
 
-    Use this to find a schedule before deleting it, or to show the user
-    which schedules they currently have set up. Optionally filter by
-    graph_id to list schedules for a specific agent.
+    Includes both scheduled agent runs (``kind="graph"``) and scheduled
+    copilot turn follow-ups (``kind="copilot_turn"``).  Use this to find
+    a schedule before deleting it, or to show the user which schedules
+    they currently have set up. Optionally filter by graph_id.
     """
 
     @property
@@ -56,7 +100,11 @@ class ListSchedulesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List agent run schedules. Use before delete_schedule."
+        return (
+            "List the user's scheduled jobs (agent runs and copilot "
+            "follow-ups). Use before delete_schedule. Pending follow-ups "
+            "for this session are already summarised in <session_context>."
+        )
 
     @property
     def requires_auth(self) -> bool:
@@ -116,16 +164,7 @@ class ListSchedulesTool(BaseTool):
         )
 
         schedules = [
-            ScheduleSummary(
-                schedule_id=job.id,
-                name=job.name,
-                cron=job.cron,
-                timezone=job.timezone,
-                next_run_time=job.next_run_time,
-                graph_id=job.graph_id,
-                graph_version=job.graph_version,
-            )
-            for job in jobs
+            _to_summary(job) for job in jobs if _is_in_session_scope(job, session)
         ]
 
         message = (
@@ -141,7 +180,7 @@ class ListSchedulesTool(BaseTool):
 
 
 class DeleteScheduleTool(BaseTool):
-    """Delete an agent run schedule.
+    """Delete a scheduled job (agent run or copilot follow-up).
 
     Use list_schedules first to find the schedule_id.
     """
@@ -152,7 +191,11 @@ class DeleteScheduleTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Delete an agent run schedule by schedule_id."
+        return (
+            "Delete a scheduled job (agent run or copilot follow-up) by "
+            "schedule_id. For 'cancel that' on a follow-up listed in "
+            "<session_context>, look up its schedule_id via list_schedules."
+        )
 
     @property
     def requires_auth(self) -> bool:
@@ -170,6 +213,21 @@ class DeleteScheduleTool(BaseTool):
             },
             "required": ["schedule_id"],
         }
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, ScheduleDeletedResponse):
+            return None
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.deleted",
+            title="Removed a schedule",
+            schedule_id=result.schedule_id,
+        )
 
     async def _execute(
         self,
@@ -193,8 +251,29 @@ class DeleteScheduleTool(BaseTool):
                 session_id=session_id,
             )
 
+        scheduler = get_scheduler_client()
+        # include_paused: a paused expert schedule or fired one-shot must
+        # still be deletable — the default listing hides them.
+        jobs = await scheduler.get_execution_schedules(
+            user_id=user_id, include_paused=True
+        )
+        current = next(
+            (
+                job
+                for job in jobs
+                if job.id == schedule_id and _is_in_session_scope(job, session)
+            ),
+            None,
+        )
+        if current is None:
+            return ErrorResponse(
+                message=f"Schedule '{schedule_id}' not found.",
+                error="schedule_not_found",
+                session_id=session_id,
+            )
+
         try:
-            await get_scheduler_client().delete_schedule(
+            await scheduler.delete_schedule(
                 schedule_id=schedule_id,
                 user_id=user_id,
             )

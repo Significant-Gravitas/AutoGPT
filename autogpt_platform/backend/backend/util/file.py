@@ -16,8 +16,11 @@ from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
+MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
+
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
+    from backend.data.workspace_scope import WorkspaceScope
 
 
 class WorkspaceUri(BaseModel):
@@ -114,11 +117,39 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
+async def _expert_workspace_scope(
+    execution_context: "ExecutionContext",
+) -> "WorkspaceScope | None":
+    """Confine blocks an expert runs from its chat to the expert's own files.
+
+    Mirrors the copilot tools: a block run inside an expert's conversation can
+    only resolve ``workspace://`` references inside that expert's
+    conversations. Expert-attributed runs without a session (schedules,
+    webhooks, presets) write their outputs at the workspace root, so they
+    keep the owner's full workspace until they get a folder of their own.
+    Runs without expert attribution keep it too.
+    """
+    if (
+        not execution_context.expert_id
+        or not execution_context.session_id
+        or not execution_context.user_id
+    ):
+        return None
+    # Import here to avoid circular import (see store_media_file)
+    from backend.data.db_accessors import workspace_db
+
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        execution_context.user_id, execution_context.expert_id
+    )
+    return scope.with_session(execution_context.session_id)
+
+
 async def store_media_file(
     file: MediaFileType,
     execution_context: "ExecutionContext",
     *,
     return_format: MediaReturnFormat,
+    organization_id: str | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
@@ -157,14 +188,16 @@ async def store_media_file(
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
         workspace_manager = WorkspaceManager(
-            user_id, execution_context.workspace_id, execution_context.session_id
+            user_id,
+            execution_context.workspace_id,
+            execution_context.session_id,
+            scope=await _expert_workspace_scope(execution_context),
         )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Security fix: Add disk space limits to prevent DoS
-    MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
     MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
 
     # Check total disk usage in base_path

@@ -75,6 +75,21 @@ async def get_cost_logs(
     block_name: str | None = Query(None),
     tracking_type: str | None = Query(None),
     graph_exec_id: str | None = Query(None),
+    execution_path: str | None = Query(
+        None,
+        description=(
+            "Filter on metadata.execution_path (e.g. 'anthropic_batch', "
+            "'sync_baseline', 'flex'). Lets admins narrow rows to a single "
+            "dispatch mode for cost-savings audits."
+        ),
+    ),
+    source: str | None = Query(
+        None,
+        description=(
+            "Filter on metadata.source (e.g. 'dream_pass', 'copilot'). "
+            "Distinguishes background/system spend from interactive."
+        ),
+    ),
 ):
     logger.info("Admin %s fetching platform cost logs", admin_user_id)
     logs, total = await get_platform_cost_logs(
@@ -88,6 +103,8 @@ async def get_cost_logs(
         block_name=block_name,
         tracking_type=tracking_type,
         graph_exec_id=graph_exec_id,
+        execution_path=execution_path,
+        source=source,
     )
     total_pages = (total + page_size - 1) // page_size
     return PlatformCostLogsResponse(
@@ -122,6 +139,8 @@ async def export_cost_logs(
     block_name: str | None = Query(None),
     tracking_type: str | None = Query(None),
     graph_exec_id: str | None = Query(None),
+    execution_path: str | None = Query(None),
+    source: str | None = Query(None),
 ):
     logger.info("Admin %s exporting platform cost logs", admin_user_id)
     logs, truncated = await get_platform_cost_logs_for_export(
@@ -133,6 +152,8 @@ async def export_cost_logs(
         block_name=block_name,
         tracking_type=tracking_type,
         graph_exec_id=graph_exec_id,
+        execution_path=execution_path,
+        source=source,
     )
     return PlatformCostExportResponse(
         logs=logs,

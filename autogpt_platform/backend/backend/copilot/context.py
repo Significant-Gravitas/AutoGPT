@@ -12,12 +12,14 @@ from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
@@ -52,6 +54,12 @@ _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
     "_current_permissions", default=None
 )
 
+# The running turn's tree envelope. Spawn tools derive a child's envelope
+# from this — never from a session row — so a child can only ever narrow it.
+_current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
+    "_current_envelope", default=None
+)
+
 
 def encode_cwd_for_cli(cwd: str) -> str:
     """Encode a working directory path the same way the Claude CLI does.
@@ -69,10 +77,11 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 
 def set_execution_context(
     user_id: str | None,
-    session: ChatSession,
+    session: ChatSession | None,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -81,6 +90,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -91,6 +101,11 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
+
+
+def get_current_envelope() -> "TurnEnvelope | None":
+    """The running turn's tree envelope; None outside an executor turn."""
+    return _current_envelope.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
@@ -157,6 +172,101 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
+# Anchored matches for host-side SDK tool-result paths. Used by
+# wrong-tool detectors (bash_exec, read_workspace_file) to redirect the
+# model to ``read_tool_result`` / ``@@agptfile:`` rather than letting it
+# bounce off ``Permission denied`` repeatedly.
+#
+# Two shapes are matched:
+#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
+#
+# The shorthand branch requires the SDK's actual ID prefix so a user
+# repo that happens to use a ``tool-outputs/`` directory name does NOT
+# trigger a false redirect on legitimate paths like
+# ``my-pipeline/tool-outputs/data.json``.
+_SDK_TOOL_RESULT_RE = re.compile(
+    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
+    r"[\w-]+\.json"
+    r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
+    re.IGNORECASE,
+)
+
+
+def looks_like_sdk_tool_result_path(text: str) -> bool:
+    """Return True if *text* references a host-side SDK tool-result file.
+
+    Anchored regex match — avoids false positives on user paths that
+    happen to contain a ``tool-outputs/`` directory by requiring either
+    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
+    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    """
+    if not text:
+        return False
+    return _SDK_TOOL_RESULT_RE.search(text) is not None
+
+
+# Shell separators used by ``_extract_offending_segment`` to bound the
+# path-like token that triggered the redirect. Quotes are included so a
+# quoted SDK path inside a command (e.g. ``cat "/root/.claude/..."``)
+# extracts the path without the surrounding quotes.
+_SHELL_TOKEN_DELIMS = frozenset(" |;&<>'\"\n\t`()")
+
+
+def _extract_offending_segment(text: str) -> str:
+    """Return the path-shaped token in *text* that tripped a redirect hint.
+
+    Uses the regex match position as the anchor (so false positives like
+    ``my-pipeline/tool-outputs/data.json`` never reach this path) and
+    walks outward to shell-token delimiters to capture the full
+    surrounding path (handles ``--file=/path/...`` and quoted paths).
+    Falls back to the first whitespace-separated token so callers that
+    pass an isolated path (e.g. ``read_workspace_file``) still echo
+    cleanly.
+    """
+    match = _SDK_TOOL_RESULT_RE.search(text)
+    if match:
+        # Walk outward from the matched span to shell-token boundaries
+        # so we capture the full path token, not just the regex hit
+        # (which excludes the leading slash on the absolute branch).
+        end = match.end()
+        while end < len(text) and text[end] not in _SHELL_TOKEN_DELIMS:
+            end += 1
+        start = match.start()
+        # Skip any leading delimiter the regex consumed (e.g. the space
+        # before "/root/.claude/...").
+        while start < end and text[start] in _SHELL_TOKEN_DELIMS:
+            start += 1
+        while start > 0 and text[start - 1] not in _SHELL_TOKEN_DELIMS:
+            start -= 1
+        return text[start:end]
+    stripped = text.strip()
+    return stripped.split()[0] if stripped else ""
+
+
+def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
+    """User-facing redirect message for wrong-tool access to SDK tool-results.
+
+    Names the two right ways to get at the bytes so the model doesn't
+    burn another turn retrying with yet another wrong tool, and quotes
+    the *actual* matched SDK path (not just ``bash``/``cat``) so the
+    model knows which fragment of its command tripped the redirect.
+    """
+    fragment = _extract_offending_segment(path_or_command) if path_or_command else ""
+    return (
+        "This path lives in the Claude Agent SDK's host-side "
+        "tool-results directory, which is not mounted into the bash "
+        "sandbox / workspace storage. Use one of:\n"
+        "  - `read_tool_result(file_path=...)` for direct reads "
+        "(supports offset/limit; auto-unwraps the MCP envelope).\n"
+        "  - `@@agptfile:<absolute-path>[<start>-<end>]` inside another "
+        "tool's argument to inline a slice of the file's content "
+        '(e.g. `bash_exec(command="echo @@agptfile:/root/.claude/'
+        'projects/.../result.json[1-200] | jq .field")`).\n'
+        f"Offending fragment: {fragment!r}"
+    )
+
+
 def resolve_sandbox_path(path: str) -> str:
     """Normalise *path* to an absolute sandbox path under an allowed directory.
 
@@ -174,15 +284,43 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
+async def current_workspace_scope(
+    user_id: str, session_id: str
+) -> WorkspaceScope | None:
+    """Resolve the file grants for the turn currently executing.
+
+    The scope derives from the server-resolved session the executor placed
+    in the execution context — never from a session or expert ID a tool
+    argument names. Personal AutoPilot turns are unrestricted: the account
+    owner is acting. Without an executing session nobody can be attributed,
+    so access fails closed to ``session_id`` alone.
+    """
+    _, session = get_execution_context()
+    if session is None:
+        return WorkspaceScope(session_ids=[session_id])
+    if session.user_id != user_id:
+        raise WorkspaceAccessDeniedError(
+            "Workspace access denied: the executing session belongs to another user."
+        )
+    if session.expert_id is None:
+        return None
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        user_id, session.expert_id
+    )
+    return scope.with_session(session.session_id)
+
+
 async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
     """Create a session-scoped :class:`WorkspaceManager`.
 
     Placed here (rather than in ``tools/workspace_files``) so that modules
     like ``sdk/file_ref`` can import it without triggering the heavy
-    ``tools/__init__`` import chain.
+    ``tools/__init__`` import chain. Expert turns get a manager confined to
+    the expert's resolved scope (see :func:`current_workspace_scope`).
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    scope = await current_workspace_scope(user_id, session_id)
+    return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:

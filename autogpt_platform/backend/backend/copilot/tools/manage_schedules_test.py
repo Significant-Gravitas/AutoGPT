@@ -1,5 +1,6 @@
 """Tests for ListSchedulesTool and DeleteScheduleTool."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,11 +12,49 @@ from backend.copilot.tools.manage_schedules import (
     ScheduleListResponse,
 )
 from backend.copilot.tools.models import ErrorResponse
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from ._test_data import make_session
 
 _USER = "test-user-schedules"
 _SCHEDULES_PATH = "backend.copilot.tools.manage_schedules"
+
+
+def _make_graph_info(
+    *, schedule_id: str = "sched-1", expert_id: str | None = None
+) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        schedule_id=schedule_id,
+        user_id=_USER,
+        graph_id="graph-1",
+        graph_version=1,
+        agent_name="My Schedule",
+        cron="*/5 * * * *",
+        input_data={"input": "data"},
+        input_credentials={},
+        id=schedule_id,
+        name="My Schedule",
+        next_run_time="2026-04-13T12:00:00",
+        timezone="UTC",
+        expert_id=expert_id,
+    )
+
+
+def _make_copilot_info(
+    *, schedule_id: str = "cop-1", expert_id: str | None = None
+) -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        schedule_id=schedule_id,
+        user_id=_USER,
+        session_id="session-xyz",
+        message="check CI on PR #999",
+        run_at=datetime(2026, 5, 22, 19, 0, tzinfo=timezone.utc),
+        id=schedule_id,
+        name="copilot turn (session session-)",
+        next_run_time="2026-05-22T19:00:00+00:00",
+        timezone="UTC",
+        expert_id=expert_id,
+    )
 
 
 @pytest.fixture
@@ -44,17 +83,9 @@ async def test_list_schedules_no_auth(list_tool, session):
 
 
 @pytest.mark.asyncio
-async def test_list_schedules_returns_results(list_tool, session):
-    mock_job = MagicMock(spec=[])
-    mock_job.id = "sched-1"
-    mock_job.name = "My Schedule"
-    mock_job.cron = "*/5 * * * *"
-    mock_job.timezone = "UTC"
-    mock_job.next_run_time = "2026-04-13T12:00:00"
-    mock_job.graph_id = "graph-1"
-    mock_job.graph_version = 1
+async def test_list_schedules_returns_graph_kind(list_tool, session):
     mock_client = AsyncMock()
-    mock_client.get_execution_schedules = AsyncMock(return_value=[mock_job])
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
 
     with patch(
         f"{_SCHEDULES_PATH}.get_scheduler_client",
@@ -64,8 +95,55 @@ async def test_list_schedules_returns_results(list_tool, session):
 
     assert isinstance(result, ScheduleListResponse)
     assert len(result.schedules) == 1
-    assert result.schedules[0].schedule_id == "sched-1"
-    assert result.schedules[0].cron == "*/5 * * * *"
+    summary = result.schedules[0]
+    assert summary.schedule_id == "sched-1"
+    assert summary.kind == "graph"
+    assert summary.cron == "*/5 * * * *"
+    assert summary.graph_id == "graph-1"
+    assert summary.graph_version == 1
+    assert summary.session_id is None
+    assert summary.message is None
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_returns_copilot_turn_kind(list_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_copilot_info()])
+
+    with patch(
+        f"{_SCHEDULES_PATH}.get_scheduler_client",
+        return_value=mock_client,
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert len(result.schedules) == 1
+    summary = result.schedules[0]
+    assert summary.schedule_id == "cop-1"
+    assert summary.kind == "copilot_turn"
+    assert summary.session_id == "session-xyz"
+    assert summary.message == "check CI on PR #999"
+    assert summary.run_at == "2026-05-22T19:00:00+00:00"
+    assert summary.graph_id is None
+    assert summary.graph_version is None
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_returns_mixed_kinds(list_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(), _make_copilot_info()]
+    )
+
+    with patch(
+        f"{_SCHEDULES_PATH}.get_scheduler_client",
+        return_value=mock_client,
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert len(result.schedules) == 2
+    assert {s.kind for s in result.schedules} == {"graph", "copilot_turn"}
 
 
 @pytest.mark.asyncio
@@ -132,6 +210,31 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
     assert result.error == "library_agent_not_found"
 
 
+@pytest.mark.parametrize(
+    ("session_expert_id", "expected_id"),
+    [(None, "autopilot"), ("expert-a", "expert-a-job"), ("expert-b", "expert-b-job")],
+)
+@pytest.mark.asyncio
+async def test_list_schedules_only_returns_current_persona_scope(
+    list_tool, session_expert_id, expected_id
+):
+    scoped_session = make_session(_USER, expert_id=session_expert_id)
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _make_graph_info(schedule_id="autopilot", expert_id=None),
+            _make_graph_info(schedule_id="expert-a-job", expert_id="expert-a"),
+            _make_copilot_info(schedule_id="expert-b-job", expert_id="expert-b"),
+        ]
+    )
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=scoped_session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [schedule.schedule_id for schedule in result.schedules] == [expected_id]
+
+
 # ── DeleteScheduleTool ─────────────────────────────────────────────
 
 
@@ -152,6 +255,7 @@ async def test_delete_schedule_missing_id(delete_tool, session):
 @pytest.mark.asyncio
 async def test_delete_schedule_success(delete_tool, session):
     mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock()
 
     with patch(
@@ -176,6 +280,7 @@ async def test_delete_schedule_not_found(delete_tool, session):
     from backend.util.exceptions import NotFoundError
 
     mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock(side_effect=NotFoundError("Job not found"))
 
     with patch(
@@ -197,6 +302,7 @@ async def test_delete_schedule_not_authorized(delete_tool, session):
     from backend.util.exceptions import NotAuthorizedError
 
     mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock(
         side_effect=NotAuthorizedError("wrong user")
     )
@@ -213,3 +319,59 @@ async def test_delete_schedule_not_authorized(delete_tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "not_authorized"
+
+
+@pytest.mark.parametrize(
+    ("session_expert_id", "target_expert_id"),
+    [
+        (None, "expert-a"),
+        ("expert-a", None),
+        ("expert-a", "expert-b"),
+        ("expert-b", "expert-a"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_delete_schedule_refuses_cross_persona_job(
+    delete_tool, session_expert_id, target_expert_id
+):
+    scoped_session = make_session(_USER, expert_id=session_expert_id)
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _make_graph_info(schedule_id="foreign-job", expert_id=target_expert_id)
+        ]
+    )
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER,
+            session=scoped_session,
+            schedule_id="foreign-job",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "schedule_not_found"
+    mock_client.delete_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_schedule_allows_same_expert_job(delete_tool):
+    scoped_session = make_session(_USER, expert_id="expert-a")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER,
+            session=scoped_session,
+            schedule_id="expert-job",
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
+    mock_client.delete_schedule.assert_awaited_once_with(
+        schedule_id="expert-job", user_id=_USER
+    )

@@ -6,6 +6,13 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
+  // tag preview deployments as previews rather than as production.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
+  // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
+  poweredByHeader: false,
   productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
@@ -60,7 +67,6 @@ const nextConfig = {
       "storage.googleapis.com",
 
       "ideogram.ai", // for generated images
-      "picsum.photos", // for placeholder images
       "example.com", // for local test data images
     ],
     remotePatterns: [
@@ -84,6 +90,57 @@ const nextConfig = {
   // Vercel has its own deployment mechanism and doesn't need standalone mode
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
+  // Baseline security response headers applied to every route. Defined here
+  // (rather than in the Sentry options) so they apply on all build paths.
+  // Self-hosted Next.js fonts are served with `Access-Control-Allow-Origin: *`.
+  // They are only loaded by our own (same-origin) pages, so scope CORS to our
+  // own origin instead of "*" to resolve the CASA "overly permissive CORS"
+  // finding without affecting how the fonts load.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Enables Sentry browser JS self-profiling.
+          { key: "Document-Policy", value: "js-profiling" },
+        ],
+      },
+      // Self-hosted Next.js fonts are served from `/_next/static/media/`.
+      // `Access-Control-Allow-Origin` only accepts a single value, so we use
+      // `has` matchers on the request `Origin` header to echo back the
+      // requesting origin when it belongs to one of our known deployments.
+      {
+        source: "/_next/static/media/:path*",
+        has: [
+          { type: "header", key: "Origin", value: "https://platform.agpt.co" },
+        ],
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://platform.agpt.co",
+          },
+        ],
+      },
+      {
+        source: "/_next/static/media/:path*",
+        has: [
+          {
+            type: "header",
+            key: "Origin",
+            value: "https://dev-builder.agpt.co",
+          },
+        ],
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://dev-builder.agpt.co",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // Only run the Sentry webpack plugin when we can actually upload source maps
@@ -103,11 +160,6 @@ export default skipSentryPlugin
 
       org: "significant-gravitas",
       project: "builder",
-
-      // Expose Vercel env to the client
-      env: {
-        NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
-      },
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,
@@ -149,18 +201,4 @@ export default skipSentryPlugin
       // https://docs.sentry.io/product/crons/
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
-
-      async headers() {
-        return [
-          {
-            source: "/:path*",
-            headers: [
-              {
-                key: "Document-Policy",
-                value: "js-profiling",
-              },
-            ],
-          },
-        ];
-      },
     });

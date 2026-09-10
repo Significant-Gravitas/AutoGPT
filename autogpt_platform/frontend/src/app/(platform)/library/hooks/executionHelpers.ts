@@ -3,6 +3,14 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 
 export const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
 
+// Shared scheduled-predicate used by fleet summary, sitrep, status-map, and the
+// list filter so the four call sites stay in lockstep. Only the current user's
+// actual schedule (`is_scheduled`) counts — `recommended_schedule_cron` is a
+// creator-defined suggestion shared by every user, not an active schedule.
+export function isAgentScheduled(agent: { is_scheduled?: boolean }): boolean {
+  return !!agent.is_scheduled;
+}
+
 export function isActive(status: string): boolean {
   return (
     status === AgentExecutionStatus.RUNNING ||

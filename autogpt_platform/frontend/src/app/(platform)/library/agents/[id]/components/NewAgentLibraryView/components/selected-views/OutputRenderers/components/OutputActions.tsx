@@ -1,11 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckIcon, CopyIcon, DownloadIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { OutputRenderer, OutputMetadata } from "../types";
 import { downloadOutputs } from "../utils/download";
 import { cn } from "@/lib/utils";
+import {
+  Copy01Icon,
+  Download04Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface OutputActionsProps {
   items: Array<{
@@ -74,9 +79,10 @@ export function OutputActions({
         className={cn(isPrimary ? "min-w-0" : "")}
       >
         {copied ? (
-          <CheckIcon className="size-4 text-green-600" />
+          <Icon icon={Tick02Icon} className="size-4 text-green-600" />
         ) : (
-          <CopyIcon
+          <Icon
+            icon={Copy01Icon}
             className={cn(
               "size-4",
               isPrimary ? "text-white" : "text-neutral-500",
@@ -93,7 +99,8 @@ export function OutputActions({
         aria-label="Download outputs"
         className={cn(isPrimary ? "min-w-0" : "")}
       >
-        <DownloadIcon
+        <Icon
+          icon={Download04Icon}
           className={cn(
             "size-4",
             isPrimary ? "text-white" : "text-neutral-500",

@@ -8,6 +8,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
+// Mock the auth hook — toggle logged-in vs logged-out per test.
+let mockIsLoggedIn = true;
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: mockIsLoggedIn }),
+}));
+
 // Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
 let mockIsPaymentEnabled: boolean | undefined = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -21,8 +27,19 @@ let mockSubscriptionResult: {
   data: MockSubscription | null | undefined;
   isLoading: boolean;
 } = { data: null, isLoading: false };
+let subscriptionQueryEnabled: boolean | undefined;
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  useGetSubscriptionStatus: () => mockSubscriptionResult,
+  useGetSubscriptionStatus: (options: { query?: { enabled?: boolean } }) => {
+    subscriptionQueryEnabled = options.query?.enabled;
+    return mockSubscriptionResult;
+  },
+}));
+
+// Mock environment — default to cloud so the gate logic is exercised; flip to
+// local per test to assert the local-dev bypass.
+let mockIsLocal = false;
+vi.mock("@/services/environment", () => ({
+  environment: { isLocal: () => mockIsLocal },
 }));
 
 // Mock PaywallModal — actual rendering depends on Radix portals + the full
@@ -38,8 +55,11 @@ import { PaywallGate } from "../PaywallGate";
 describe("PaywallGate", () => {
   beforeEach(() => {
     mockPathname = "/build";
+    mockIsLoggedIn = true;
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
+    subscriptionQueryEnabled = undefined;
+    mockIsLocal = false;
   });
 
   it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
@@ -64,6 +84,33 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+  });
+
+  it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
+    mockIsPaymentEnabled = true;
+    mockIsLoggedIn = false;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(subscriptionQueryEnabled).toBe(false);
+  });
+
+  it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
+    mockIsPaymentEnabled = true;
+    mockIsLocal = true;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
   it("does not render modal when paid cohort + tier is PRO/MAX/BUSINESS", () => {

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlparse
 
-if TYPE_CHECKING:
-    from backend.data.model import OAuth2Credentials
+from backend.data.model import OAuth2Credentials
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,17 @@ def normalize_mcp_url(url: str) -> str:
     Strips leading/trailing whitespace and a single trailing slash so that
     ``https://mcp.example.com/`` and ``https://mcp.example.com`` resolve to
     the same stored credential.
+
+    A URL with no scheme gets ``https://``. That is the user omitting a scheme
+    rather than asking for cleartext — but the reason it belongs *here* is
+    matching, not politeness: the credential is stored under this value and
+    every lookup re-derives it from user input through this same function, so
+    the default has to be applied in one place or storage and lookup disagree.
     """
-    return url.strip().rstrip("/")
+    url = url.strip().rstrip("/")
+    if url and "://" not in url:
+        url = f"https://{url}"
+    return url
 
 
 def server_host(server_url: str) -> str:
@@ -34,6 +44,34 @@ def server_host(server_url: str) -> str:
         return parsed.hostname or server_url
     except Exception:
         return server_url
+
+
+def is_manual_mcp_credential(credentials: OAuth2Credentials) -> bool:
+    """Whether an MCP credential was pasted by the user rather than obtained via OAuth.
+
+    Manual credentials are ``OAuth2Credentials`` rows with no refresh token and
+    no OAuth client metadata, so they must not be refreshed or rewritten as if
+    they were OAuth grants.
+    """
+    metadata = credentials.metadata or {}
+    return (
+        credentials.refresh_token is None
+        and not metadata.get("mcp_token_url")
+        and not metadata.get("mcp_client_id")
+    )
+
+
+def mcp_authorization_header(credentials: OAuth2Credentials) -> str:
+    """Build the Authorization value for a *stored* MCP credential.
+
+    Reads the scheme from metadata and never re-parses the secret.  Rows with
+    ``mcp_auth_scheme`` hold a canonical ``"<Scheme> <credential>"``; older
+    rows hold a bare token that was always sent as Bearer.
+    """
+    token = credentials.access_token.get_secret_value()
+    if (credentials.metadata or {}).get("mcp_auth_scheme"):
+        return token
+    return f"Bearer {token}"
 
 
 def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
@@ -71,6 +109,41 @@ def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     return output_parts or None
 
 
+async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
+    """Delete a stored MCP credential that the server just rejected.
+
+    Called from the copilot's ``run_mcp_tool`` path when an MCP server
+    returns 401/403 with a credential we *do* have on file — meaning the
+    token was revoked or expired server-side without our local
+    ``access_token_expires_at`` knowing.  Removing the dead row prevents
+    ``auto_lookup_mcp_credential`` from feeding the same stale token back
+    on the next attempt and lets the user re-auth cleanly via the setup
+    card.  Failures are swallowed (best-effort) — the worst case is a
+    second loop through the same code path, which still surfaces the
+    setup card.
+    """
+    try:
+        mgr = IntegrationCredentialsManager()
+        # Go through ``mgr.delete`` (not ``store.delete_creds_by_id``) so the
+        # per-credential lock + ``_invoke_creds_changed_hook`` fire — the hook
+        # evicts any cached provider token for the user.
+        await mgr.delete(user_id, credential_id)
+        logger.info("Invalidated stale MCP credential %s", credential_id)
+    except ValueError:
+        # ``mgr.delete`` raises ``ValueError`` when the credential is
+        # already gone (e.g. the user deleted it manually in Settings
+        # between the ``auto_lookup_mcp_credential`` call and now).  Not
+        # a problem — the goal was "this row should not exist" and it
+        # doesn't.  Demote to debug so we don't spam warnings on retries.
+        logger.debug("MCP credential %s already gone during invalidate", credential_id)
+    except Exception:
+        logger.warning(
+            "Failed to invalidate stale MCP credential %s",
+            credential_id,
+            exc_info=True,
+        )
+
+
 async def auto_lookup_mcp_credential(
     user_id: str, server_url: str
 ) -> OAuth2Credentials | None:
@@ -80,36 +153,40 @@ async def auto_lookup_mcp_credential(
     so the comparison with ``mcp_server_url`` in credential metadata matches.
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
-    if needed, or ``None`` when no match is found.
-    """
-    from backend.data.model import OAuth2Credentials
-    from backend.integrations.creds_manager import IntegrationCredentialsManager
-    from backend.integrations.providers import ProviderName
+    if it can expire and needs it, or ``None`` when no match is found.
 
+    A failed refresh also yields ``None``, deliberately. Returning the stale
+    access token instead would earn a 401 from the server, and the caller
+    treats a 401 on a credential it *has* as proof the token is dead — so a
+    transient outage at the provider's token endpoint would delete a row whose
+    refresh token is still perfectly good.
+    """
     try:
         mgr = IntegrationCredentialsManager()
         mcp_creds = await mgr.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        # Collect all matching credentials and pick the best one.
-        # Primary sort: latest access_token_expires_at (tokens with expiry
-        # are preferred over non-expiring ones).  Secondary sort: last in
-        # iteration order, which corresponds to the most recently created
-        # row — this acts as a tiebreaker when multiple bearer tokens have
-        # no expiry (e.g. after a failed old-credential cleanup).
+
+        # Best match: a manually pasted credential outranks an OAuth row, then
+        # the latest expiry, then the last row in iteration order.
+        def rank(cred: OAuth2Credentials) -> tuple[int, float]:
+            return (
+                1 if is_manual_mcp_credential(cred) else 0,
+                cred.access_token_expires_at or 0,
+            )
+
         best: OAuth2Credentials | None = None
         for cred in mcp_creds:
             if (
                 isinstance(cred, OAuth2Credentials)
                 and (cred.metadata or {}).get("mcp_server_url") == server_url
             ):
-                if best is None or (
-                    (cred.access_token_expires_at or 0)
-                    >= (best.access_token_expires_at or 0)
-                ):
+                if best is None or rank(cred) >= rank(best):
                     best = cred
-        if best:
+        # Manual credentials have no token endpoint to refresh against.
+        if best and not is_manual_mcp_credential(best):
             best = await mgr.refresh_if_needed(user_id, best)
+        if best:
             logger.info("Auto-resolved MCP credential %s for %s", best.id, server_url)
         return best
     except Exception:

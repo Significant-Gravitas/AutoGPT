@@ -1,11 +1,13 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { X } from "@phosphor-icons/react";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
-import { drawerStyles, modalStyles } from "./styles";
+import { compactStyles, drawerStyles, modalStyles } from "./styles";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -18,12 +20,21 @@ interface Props extends BaseProps {
 export function DrawerWrap({
   children,
   title,
+  variant,
   testId,
   handleClose,
   isForceOpen,
+  className,
 }: Props) {
-  const accessibleTitle = title ?? "Dialog";
+  const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
+  const isCompact = variant === "compact";
+
+  // Mirrors DialogWrap: below the lg breakpoint the same <Dialog> renders as a
+  // drawer, and Escape has to behave identically in both.
+  function handleEscapeKeyDown(event: KeyboardEvent) {
+    if (isForceOpen || isComposingEvent(event)) event.preventDefault();
+  }
 
   const closeBtn = (
     <Button
@@ -32,7 +43,7 @@ export function DrawerWrap({
       onClick={handleClose}
       className="!focus-visible:ring-0 p-0"
     >
-      <X width="1.5rem" />
+      <Icon icon={Cancel01Icon} width={isCompact ? "1.25rem" : "1.5rem"} />
     </Button>
   );
 
@@ -41,17 +52,29 @@ export function DrawerWrap({
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
         aria-describedby={undefined}
-        className={drawerStyles.content}
+        className={cn(
+          drawerStyles.content,
+          isCompact && compactStyles.drawerContent,
+          className,
+        )}
         data-testid={testId}
+        onEscapeKeyDown={handleEscapeKeyDown}
         onInteractOutside={handleClose}
       >
         <div
-          className={`flex w-full shrink-0 items-center justify-between ${
-            hasVisibleTitle ? "pb-6" : "pb-0"
-          }`}
+          className={cn(
+            "flex w-full shrink-0 items-center justify-between",
+            hasVisibleTitle
+              ? isCompact
+                ? compactStyles.header
+                : "pb-6"
+              : "pb-0",
+          )}
         >
           {hasVisibleTitle ? (
-            <Drawer.Title className={drawerStyles.title}>
+            <Drawer.Title
+              className={isCompact ? compactStyles.title : drawerStyles.title}
+            >
               {accessibleTitle}
             </Drawer.Title>
           ) : (

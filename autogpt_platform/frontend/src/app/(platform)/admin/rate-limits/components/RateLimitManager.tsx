@@ -11,6 +11,7 @@ export function RateLimitManager() {
     searchResults,
     selectedUser,
     rateLimitData,
+    tierMultipliers,
     handleSearch,
     handleSelectUser,
     handleReset,
@@ -79,6 +80,7 @@ export function RateLimitManager() {
           data={rateLimitData}
           onReset={handleReset}
           onTierChange={handleTierChange}
+          tierMultipliers={tierMultipliers}
         />
       )}
     </div>

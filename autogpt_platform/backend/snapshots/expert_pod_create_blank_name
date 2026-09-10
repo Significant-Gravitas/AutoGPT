@@ -1,0 +1,16 @@
+{
+  "detail": [
+    {
+      "ctx": {
+        "error": {}
+      },
+      "input": "   ",
+      "loc": [
+        "body",
+        "name"
+      ],
+      "msg": "Value error, Pod name must not be blank",
+      "type": "value_error"
+    }
+  ]
+}

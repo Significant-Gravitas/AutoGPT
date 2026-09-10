@@ -1,16 +1,24 @@
 "use client";
-
-import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { PainPointsStep } from "./steps/PainPointsStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
+import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
 import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
-import { useOnboardingWizardStore } from "./store";
+import {
+  PAYWALL_FIRST_STEPS,
+  SELF_HOST_STEPS,
+  useOnboardingWizardStore,
+} from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export default function OnboardingPage() {
   const {
@@ -18,22 +26,45 @@ export default function OnboardingPage() {
     isLoading,
     handlePreparingComplete,
     isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    isBrainDumpEnabled,
+    steps,
     preparingStep,
     totalSteps,
+    trialConfirmation,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
+  const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
-  if (isLoading) return null;
+  if (isLoading)
+    return !trialConfirmation.ready ? (
+      <Text variant="body" role="status">
+        Confirming your trial and card setup…
+      </Text>
+    ) : null;
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  const showBack = currentStep > 1 && currentStep <= totalSteps;
+  // Back is hidden on Welcome (the first profile step): going back from there
+  // when payments are on would return the user to the paywall they already
+  // paid through and let them re-trigger checkout. Also hidden while the
+  // current step is mid-flight (brain dump processing) — there is nothing
+  // coherent to go back to.
+  const showBack =
+    currentStep > steps.welcome && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {trialConfirmation.error ? (
+        <ErrorCard
+          context="your trial"
+          responseError={{ message: trialConfirmation.error }}
+          onRetry={trialConfirmation.retry}
+        />
+      ) : null}
       {showProgressBar && (
         <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
       )}
@@ -44,18 +75,27 @@ export default function OnboardingPage() {
           onClick={prevStep}
           className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <CaretLeftIcon size={16} />
+          <Icon icon={ArrowLeft01Icon} size={16} />
           Back
         </button>
       )}
 
       <div className="flex flex-1 items-center pb-8 pt-16">
-        {currentStep === 1 && <WelcomeStep />}
-        {currentStep === 2 && <RoleStep />}
-        {currentStep === 3 && <PainPointsStep />}
-        {isPaymentEnabled && currentStep === 4 && <SubscriptionStep />}
+        {isPaymentEnabled &&
+          currentStep === PAYWALL_FIRST_STEPS.subscription && (
+            <SubscriptionStep />
+          )}
+        {isSelfHostConnectEnabled &&
+          currentStep === SELF_HOST_STEPS.connect && <ConnectStep />}
+        {currentStep === steps.welcome && <WelcomeStep />}
+        {currentStep === steps.role && <RoleStep />}
+        {currentStep === steps.painPoints &&
+          (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            isBrainDumpEnabled={isBrainDumpEnabled}
+          />
         )}
       </div>
 
@@ -70,7 +110,7 @@ export default function OnboardingPage() {
           href="/logout"
           className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <SignOutIcon size={16} />
+          <Icon icon={Logout03Icon} size={16} />
           Log out
         </Link>
       )}
