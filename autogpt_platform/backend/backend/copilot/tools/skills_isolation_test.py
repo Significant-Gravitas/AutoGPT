@@ -20,6 +20,7 @@ from backend.copilot.tools.skills import (
     StoreSkillTool,
     build_skills_context,
     copy_skill_to_expert,
+    find_user_skill_slugs,
     render_skill_markdown,
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
@@ -72,6 +73,39 @@ def _expert_session(expert_id: str = "expert-a") -> ChatSession:
 
 def _personal_session() -> ChatSession:
     return ChatSession.new("user-1", dry_run=False)
+
+
+async def test_library_lookup_resolves_by_folder_and_by_frontmatter_name(world):
+    """Only a hand-written skill can be listed under a name that differs from
+    its folder, and it is the one case that costs a read."""
+    fake, _ = world
+    fake.files["/skills/deep-research/SKILL.md"] = _skill("Deep Research")
+
+    found = await find_user_skill_slugs(
+        "user-1", ["mine", "Deep Research", "never-stored"]
+    )
+
+    assert found["mine"] == "mine"
+    assert found["deep research"] == "deep-research"
+    assert "never-stored" not in found
+
+
+async def test_library_lookup_skips_the_read_for_a_folder_carrying_metadata(world):
+    """The store-time metadata means folder == name, so the index never pays a
+    fetch to learn a name it already has."""
+    fake, _ = world
+    fake.metadata[AUTOPILOT] = {"kind": "copilot_skill", "description": "mine"}
+    reads: list[str] = []
+    original = fake.read_file
+
+    async def _counted(path: str) -> bytes:
+        reads.append(path)
+        return await original(path)
+
+    fake.read_file = _counted
+
+    assert await find_user_skill_slugs("user-1", ["absent"]) == {}
+    assert reads == []
 
 
 async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(world):
