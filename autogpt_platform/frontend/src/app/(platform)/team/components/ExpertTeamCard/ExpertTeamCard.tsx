@@ -192,7 +192,7 @@ export function ExpertTeamCard({
           <Text
             variant="body"
             tone="muted"
-            className="mt-1 line-clamp-3 min-h-[3lh]"
+            className="mt-1 line-clamp-2 min-h-[2lh]"
           >
             {blurb}
           </Text>
