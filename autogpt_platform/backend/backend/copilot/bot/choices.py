@@ -17,8 +17,9 @@ but "this question has expired".
 
 import json
 import uuid
-from dataclasses import dataclass
 from typing import Optional
+
+from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
 
@@ -26,8 +27,7 @@ CHOICE_TTL = 3600  # 1 hour -- long enough to answer, short enough that a
 # stale button reliably reports "expired" instead of silently misfiring.
 
 
-@dataclass(frozen=True)
-class ResolvedChoice:
+class ResolvedChoice(BaseModel):
     """Outcome of a click on a choice button.
 
     ``text`` is the chosen option, or ``None`` when the token is expired,
