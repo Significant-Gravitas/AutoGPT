@@ -191,10 +191,32 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(
-      expertGroup.querySelector('svg[aria-label="AutoGPT Logo"]'),
-    ).not.toBe(null);
+    expect(expertGroup.querySelector('svg[data-testid="bot-avatar"]')).not.toBe(
+      null,
+    );
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
+  });
+
+  it("colours a generated sidebar avatar with the expert's owner token", async () => {
+    const novaExpert: Expert = {
+      ...mariaExpert,
+      id: "expert-nova",
+      name: "Nova",
+      avatar_url: null,
+      color: "violet-300",
+    };
+    const sessions = makeSessions(2, novaExpert.id);
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([novaExpert]),
+    );
+    renderRecentChats();
+
+    const expertGroup = await screen.findByRole("button", {
+      name: "Nova chats",
+    });
+    const avatar = expertGroup.querySelector('svg[data-testid="bot-avatar"]');
+    expect(avatar?.getAttribute("data-avatar")?.split(".")[1]).toBe("lavender");
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

@@ -3,12 +3,18 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  AUTOPILOT_AVATAR,
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 import { cn } from "@/lib/utils";
 
 interface Props {
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
   isAutopilot?: boolean;
   /** Identity still loading: a muted grey circle, no stand-in identity. */
   isLoading?: boolean;
@@ -18,6 +24,7 @@ interface Props {
 export function ExpertAvatar({
   name,
   avatarUrl,
+  color,
   isAutopilot,
   isLoading,
   size,
@@ -36,18 +43,31 @@ export function ExpertAvatar({
 
   if (isAutopilot && !avatarUrl) {
     return (
-      <AutopilotAvatar
+      <BotAvatar
+        config={AUTOPILOT_AVATAR}
         size={isSmall ? 24 : 36}
-        className={isSmall ? undefined : "rounded-xl"}
+        animated={!isSmall}
+        showBadge={false}
+        title={name}
+      />
+    );
+  }
+
+  if (!isUploadedAvatar(avatarUrl)) {
+    return (
+      <BotAvatar
+        config={expertAvatarConfig({ name, avatarUrl, color })}
+        size={isSmall ? 24 : 36}
+        animated={!isSmall}
+        showBadge={false}
+        title={name}
       />
     );
   }
 
   return (
     <Avatar className={sizeClass}>
-      {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
-      {/* The fallback seeds a generated avatar off the name, and also covers
-          an avatar URL that fails to load. */}
+      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
     </Avatar>
   );

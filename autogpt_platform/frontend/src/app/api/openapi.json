@@ -11295,6 +11295,30 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/recommended-experts": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Experts",
+        "description": "The team AutoPilot proposes: who to hire first, and the raise door.\n\nWritten by a background job beside the greeting one; a plain read\nhere, with the deterministic fallback filled in for takes the job\nnever ran on. ``ready=false`` means keep polling. ``team`` is null\nwhen the expert-team feature is off for this user.",
+        "operationId": "get_brain_dump_recommended_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedExpertsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/recommended-providers": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -20735,6 +20759,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
           "role": { "type": "string", "title": "Role" },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },
@@ -20756,6 +20784,36 @@
         "required": ["id", "name", "created_at"],
         "title": "ExpertPod",
         "description": "A named group of hired experts, scoped to the owner."
+      },
+      "ExpertRecommendations": {
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "title": "Diagnosis",
+            "default": ""
+          },
+          "experts": {
+            "items": { "$ref": "#/components/schemas/RecommendedExpert" },
+            "type": "array",
+            "title": "Experts",
+            "default": []
+          },
+          "raise_suggestion": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RaiseSuggestion" },
+              { "type": "null" }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["llm", "fallback", "disabled"],
+            "title": "Source",
+            "default": "fallback"
+          }
+        },
+        "type": "object",
+        "title": "ExpertRecommendations",
+        "description": "The team AutoPilot proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
       "ExpertRun": {
         "properties": {
@@ -22990,6 +23048,17 @@
           "transcript": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript"
+          },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          },
+          "team_pending": {
+            "type": "boolean",
+            "title": "Team Pending",
+            "default": false
           }
         },
         "type": "object",
@@ -26304,6 +26373,16 @@
         "title": "RaiseResult",
         "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
       },
+      "RaiseSuggestion": {
+        "properties": {
+          "role": { "type": "string", "title": "Role" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["role"],
+        "title": "RaiseSuggestion",
+        "description": "The \"raise your own\" door, prefilled for a gap the roster can't fill.\n\n``role`` is one of the ``/raise`` wizard's role ids so the link can\nseed the draft; a suggestion naming anything else is dropped."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -26445,6 +26524,43 @@
         "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
+      "RecommendedExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "reason": { "type": "string", "title": "Reason", "default": "" },
+          "workflow_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Workflow Names",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "name", "role"],
+        "title": "RecommendedExpert",
+        "description": "One roster template AutoPilot suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
+      },
+      "RecommendedExpertsResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedExpertsResponse",
+        "description": "The team section's content, polled by the onboarding loading screen.\n\n``ready`` is false only while the background job is still running.\n``team`` is null when the feature is off — a team with no experts is\na real answer, so the client cannot use emptiness to tell them apart."
       },
       "RecommendedProvider": {
         "properties": {

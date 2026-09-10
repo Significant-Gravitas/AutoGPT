@@ -22,7 +22,13 @@ export function SoulDrawer({ expert, onClose }: Props) {
   return (
     <ExpertSidePanel
       identity={
-        expert ? { name: expert.name, avatarUrl: expert.avatar_url } : null
+        expert
+          ? {
+              name: expert.name,
+              avatarUrl: expert.avatar_url,
+              color: expert.color,
+            }
+          : null
       }
       title={expert ? `${expert.name}'s Soul` : ""}
       panelId="soul"
