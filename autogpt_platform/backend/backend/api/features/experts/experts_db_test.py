@@ -18,6 +18,7 @@ import pytest
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import (
+    ExpertDayOneItem,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     HireResult,
@@ -2745,6 +2746,31 @@ def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
     assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
 
 
+def test_roster_day_one_is_marias_three_rows_and_hidden_for_the_rest():
+    day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
+
+    assert [(item.title, item.timing) for item in day_one["Maria"]] == [
+        ("Social listening on your brand", "first scan · 1 hr"),
+        ("Morning briefing, in your Slack", "tomorrow · 9 AM"),
+        ("Two-week content calendar", "day 1"),
+    ]
+    # Max's and Frankie's rows are the roster owner's to write.
+    assert day_one["Max"] == []
+    assert day_one["Frankie"] == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
+    maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
+    too_many = maria.copy()
+    too_many["day_one"] = [*maria["day_one"], maria["day_one"][0]]
+
+    with patch.object(prisma.models.Expert, "prisma") as expert_client:
+        with pytest.raises(pydantic.ValidationError):
+            await seed._upsert_template(too_many)
+    expert_client.assert_not_called()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     server: SpinTestServer,
@@ -2767,6 +2793,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     for entry in seed.ROSTER:
         expected_versions = {expected[p["slug"]] for p in entry["preloads"]}
         assert len(expected_versions) == len(entry["preloads"])
+        assert templates[entry["name"]].day_one == entry["day_one"]
         assert {
             w.store_listing_version_id for w in templates[entry["name"]].workflows
         } == expected_versions
@@ -2782,6 +2809,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     assert frankie_crons == ["40 7 * * *"]
     for name in ("Maria", "Max"):
         assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    assert all(result.expert.day_one == [] for result in results.values())
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3288,9 +3316,13 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
+        "day_one": [ExpertDayOneItem(title="Social listening on your brand")],
         "preloads": [],
     }
     refreshed_template = await seed._upsert_template(entry)
+    assert refreshed_template.dayOne == [
+        {"title": "Social listening on your brand", "description": "", "timing": ""}
+    ]
     assert await seed._backfill_hired_copies(refreshed_template) == 1
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
@@ -3301,6 +3333,8 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+    # Day one stays on the template; the backfill must not copy it onto hires.
+    assert refreshed.day_one == []
 
 
 # ─── Pods ──────────────────────────────────────────────────────────────
