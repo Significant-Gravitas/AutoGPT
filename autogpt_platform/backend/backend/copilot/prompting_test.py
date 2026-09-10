@@ -94,7 +94,7 @@ class TestGraphitiMemoryScope:
         result = prompting.get_graphiti_supplement()
 
         assert "scoped to the assistant running this session" in result
-        assert "AutoPilot uses the user's personal memory" in result
+        assert "Otto uses the user's personal memory" in result
         assert "each hired expert uses its own separate memory" in result
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
@@ -103,7 +103,7 @@ class TestGraphitiMemoryScope:
 
 class TestExpertOversightSupplement:
     """The chat-reading tools are in the ``expert_admin`` group, so only an
-    Autopilot session with the team flag on can call them — a turn that
+    Otto session with the team flag on can call them — a turn that
     cannot must not be told about them."""
 
     def test_an_autopilot_turn_with_the_flag_on_names_both_tools(self):

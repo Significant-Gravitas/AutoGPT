@@ -113,7 +113,7 @@ export function RecentChats() {
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
                   label={
-                    group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
+                    group.expertId ? (expert?.name ?? "Expert") : "Otto"
                   }
                   avatarUrl={expert?.avatarUrl ?? null}
                   color={expert?.color ?? null}

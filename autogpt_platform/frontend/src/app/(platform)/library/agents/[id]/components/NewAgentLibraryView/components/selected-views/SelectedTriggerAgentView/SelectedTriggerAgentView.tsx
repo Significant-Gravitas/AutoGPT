@@ -110,7 +110,7 @@ export function SelectedTriggerAgentView({
                     >
                       This schedule is running version {schedule.graph_version}{" "}
                       of the trigger agent, but the latest version is{" "}
-                      {triggerAgent.graph_version}. Ask AutoPilot to recreate
+                      {triggerAgent.graph_version}. Ask Otto to recreate
                       the schedule to pick up your latest edits.
                     </Text>
                   )}

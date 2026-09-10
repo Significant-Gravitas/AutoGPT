@@ -509,7 +509,7 @@ class TestTerminalResponse:
     async def test_response_names_the_new_owner(self, roster, mock_turn, mock_sessions):
         r = await self._handoff()
         assert r.expert is not None and r.expert.name == "Bea"
-        assert "Sub-AutoPilot" not in r.message
+        assert "Sub-Otto" not in r.message
         assert "Bea owns this now" in r.message
 
     @pytest.mark.asyncio

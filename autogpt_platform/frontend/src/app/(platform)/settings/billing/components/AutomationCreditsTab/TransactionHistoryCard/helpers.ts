@@ -20,7 +20,7 @@ export function activityName(transaction: Transaction): string {
   if (transaction.activity_type === "agent_run")
     return transaction.agent_name || "Agent unavailable";
   if (transaction.activity_type === "copilot_tools")
-    return "Autopilot tool use";
+    return "Otto tool use";
   if (transaction.activity_type === "block_usage") return "Direct block usage";
   if (transaction.transaction_type === "USAGE")
     return transaction.description || "Credit usage";

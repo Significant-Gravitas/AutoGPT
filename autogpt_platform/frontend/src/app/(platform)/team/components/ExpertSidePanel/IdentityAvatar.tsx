@@ -3,13 +3,13 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import {
   expertAvatarConfig,
   isUploadedAvatar,
 } from "@/components/molecules/BotAvatar/helpers";
 import { cn } from "@/lib/utils";
-import { AUTOPILOT_AVATAR_BG_CLASS, AUTOPILOT_AVATAR_URL } from "../../helpers";
 
 export interface PanelIdentity {
   name: string;
@@ -25,10 +25,10 @@ interface Props {
 }
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
-  const avatarUrl = identity.isAutopilot
-    ? AUTOPILOT_AVATAR_URL
-    : identity.avatarUrl;
-  if (!isUploadedAvatar(avatarUrl)) {
+  if (identity.isAutopilot) {
+    return <AutopilotAvatar size={imageSize} className={className} />;
+  }
+  if (!isUploadedAvatar(identity.avatarUrl)) {
     return (
       <BotAvatar
         config={expertAvatarConfig(identity)}
@@ -42,11 +42,10 @@ export function IdentityAvatar({ identity, className, imageSize }: Props) {
   return (
     <Avatar className={cn("shrink-0", className)}>
       <AvatarImage
-        src={avatarUrl ?? undefined}
+        src={identity.avatarUrl ?? undefined}
         alt={identity.name}
         width={imageSize}
         height={imageSize}
-        className={cn(identity.isAutopilot && AUTOPILOT_AVATAR_BG_CLASS)}
       />
       <AvatarFallback>{identity.name}</AvatarFallback>
     </Avatar>

@@ -127,7 +127,7 @@ class TestBuildExpertIdentitySuffix:
         assert "Maria" in result
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
-        assert "never present yourself as AutoPilot" in result
+        assert "never present yourself as Otto" in result
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):

@@ -3,7 +3,7 @@
 Two layers with different prompt weights:
 
 - ``build_expert_identity_suffix()`` → ``<expert_identity>`` (the latest Soul,
-  with precedence over the AutoPilot base identity). Appended to the SYSTEM
+  with precedence over the Otto base identity). Appended to the SYSTEM
   prompt on every turn by both engines, so edits affect existing sessions
   while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
@@ -14,7 +14,7 @@ Two layers with different prompt weights:
 
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
-``ExpertSessionUnavailableError`` instead of silently running as AutoPilot.
+``ExpertSessionUnavailableError`` instead of silently running as Otto.
 Plain-session team context and expert workflow context still degrade to ``""``.
 
 Returned strings carry their own separators so callers can concatenate
@@ -112,10 +112,10 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
-        f"The base instructions above describe AutoPilot, the platform "
+        f"The base instructions above describe Otto, the platform "
         f"engine you run on. All platform capabilities and tools remain "
         f"available to you, but you always speak and act as {name}: "
-        f"never present yourself as AutoPilot, and if asked who you are, "
+        f"never present yourself as Otto, and if asked who you are, "
         f"you are {name}.\n"
         f"</expert_identity>"
     )
@@ -257,7 +257,7 @@ async def _team_context(
     """Roster block for the first user message.
 
     Plain sessions may delegate to a listed expert or suggest opening their
-    thread, but must disclose it — AutoPilot speaks for the platform, so
+    thread, but must disclose it — Otto speaks for the platform, so
     silently answering as (or handing work to) an expert would misattribute
     the work. Expert sessions get the teammate list minus themselves plus the
     ``delegate_to_expert`` rule: a colleague passing work to a colleague is

@@ -1,8 +1,4 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,14 +10,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import {
-  AUTOPILOT_AVATAR_BG_CLASS,
-  AUTOPILOT_AVATAR_URL,
-  AUTOPILOT_BLURB,
-  AUTOPILOT_NAME,
-  AUTOPILOT_PILL_CLASS,
-  AUTOPILOT_ROLE,
-} from "../helpers";
+import { AUTOPILOT_BLURB, AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../helpers";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -51,18 +41,10 @@ export function AutopilotCard({
         <ExpertCover color={undefined} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <Avatar className="relative z-10 -mt-12 ml-1 size-[5.5rem] shrink-0 rounded-full border border-black ring-4 ring-white">
-            <AvatarImage
-              src={AUTOPILOT_AVATAR_URL}
-              alt={AUTOPILOT_NAME}
-              width={88}
-              height={88}
-              className={AUTOPILOT_AVATAR_BG_CLASS}
-            />
-            <AvatarFallback className="grain-overlay">
-              {AUTOPILOT_NAME}
-            </AvatarFallback>
-          </Avatar>
+          <AutopilotAvatar
+            size={88}
+            className="relative z-10 -mt-12 ml-1 ring-4 ring-white"
+          />
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">

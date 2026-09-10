@@ -38,7 +38,7 @@ interface CapabilityCard {
 
 const CARDS: CapabilityCard[] = [
   {
-    title: "Meet AutoPilot.",
+    title: "Meet Otto.",
     body: "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
     icon: SparklesIcon,
   },
@@ -134,7 +134,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           data-testid="onboarding-welcome-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Welcome to AutoPilot"
+          aria-label="Welcome to Otto"
         >
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.97, maxWidth: "26rem" }}
@@ -273,7 +273,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                               size="small"
                               onClick={handleNext}
                             >
-                              {isLastCard ? "Meet AutoPilot" : "Next"}
+                              {isLastCard ? "Meet Otto" : "Next"}
                             </Button>
                           </div>
                         </div>

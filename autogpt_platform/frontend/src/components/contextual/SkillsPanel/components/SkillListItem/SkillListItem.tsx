@@ -195,7 +195,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete the skill <strong>{skill.name}</strong>? Your AutoPilot
+              Delete the skill <strong>{skill.name}</strong>? Your Otto
               will forget this procedure and can re-distill it later if needed.
             </Text>
             <Dialog.Footer>

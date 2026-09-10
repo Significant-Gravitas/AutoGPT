@@ -20,12 +20,6 @@ interface PodGroup {
   experts: Expert[];
 }
 
-export const AUTOPILOT_NAME = "Otto";
-
-export const AUTOPILOT_AVATAR_URL = "/experts/otto.svg";
-
-export const AUTOPILOT_AVATAR_BG_CLASS = "bg-cyan-100";
-
 export const AUTOPILOT_ROLE = "Head of AI";
 
 export const AUTOPILOT_BLURB =
@@ -34,7 +28,7 @@ export const AUTOPILOT_BLURB =
 export const AUTOPILOT_PILL_CLASS =
   "border border-zinc-200 bg-zinc-50 text-zinc-700";
 
-/** Autopilot owns whatever no hired expert does: every library workflow that
+/** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
  *  page's cards can render it. A schedule on the same graph gives it its cron. */
 export function getAutopilotWorkflows(
@@ -69,7 +63,7 @@ export function getAutopilotWorkflows(
     });
 }
 
-/** Library skills no hired expert has claimed; Autopilot falls back to these. */
+/** Library skills no hired expert has claimed; Otto falls back to these. */
 export function getAutopilotSkills(
   experts: Expert[],
   librarySkills: CopilotSkillInfo[],
@@ -310,7 +304,7 @@ interface AutopilotSummaryArgs {
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
 }
 
-/** Autopilot works across the whole team, so its card counts the team's
+/** Otto works across the whole team, so its card counts the team's
  *  totals. Skills are de-duplicated — two experts who can both write copy is
  *  one skill on the team, not two. */
 export function getAutopilotSummary({

@@ -40,7 +40,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # (list_schedules, delete_schedule) needed by the trigger-agent flow.
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
-# AutoPilot can inspect/manage them).
+# Otto can inspect/manage them).
 # Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
 # of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
 # explicit "ends your turn" caveat, and an example wake-up message.
@@ -81,7 +81,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # trigger setup without inventing URLs or auto-picking credentials.
 # Bumped 42500 -> 45000 for the preset-management tools (list_presets /
 # update_preset / delete_preset) that complete the /presets lifecycle for
-# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# Otto. Adds ~1.6k chars: three tool skeletons plus the "is_active
 # pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
 # copy the model needs to manage triggers without re-running setup.
 # Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
@@ -109,7 +109,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # No single session sees them all (hire/raise/confirm and handoff/soul gate on
 # opposite sides of session.expert_id), but the registry total counts every
 # tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
-# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# Bumped 59_000 -> 61_000 for update_expert (the Otto-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
 # Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
@@ -132,7 +132,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     #14209 autopilot-auto-mode-v2                 +0
 #     #14432 secrt-2593-publish                     +0
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
-# make every increase in what AutoPilot pays per turn a decision someone took,
+# make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
 # The assertion below is a strict <, so the ceiling is the measured total plus
 # one — 67,651 admits exactly that aggregate and nothing beyond it.

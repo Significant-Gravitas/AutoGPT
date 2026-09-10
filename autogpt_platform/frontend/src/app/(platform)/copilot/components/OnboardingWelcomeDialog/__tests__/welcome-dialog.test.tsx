@@ -73,7 +73,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
   it("renders the first card with its position in the deck and no way back", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
 
-    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+    expect(await screen.findByText("Meet Otto.")).toBeDefined();
     expect(
       screen.getByText(
         "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
@@ -99,7 +99,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
 
-    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+    expect(await screen.findByText("Meet Otto.")).toBeDefined();
     expect(screen.getByText("1 of 4")).toBeDefined();
   });
 
@@ -109,7 +109,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
     render(<OnboardingWelcomeDialog isOpen={false} onClose={vi.fn()} />);
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText("Meet AutoPilot.")).toBeNull();
+    expect(screen.queryByText("Meet Otto.")).toBeNull();
     expect(steps).toEqual([]);
   });
 });
@@ -123,7 +123,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const user = await advanceToCard(3);
 
     expect(await screen.findByText("It remembers everything.")).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Meet AutoPilot" }));
+    await user.click(screen.getByRole("button", { name: "Meet Otto" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
@@ -154,7 +154,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    await screen.findByText("Meet AutoPilot.");
+    await screen.findByText("Meet Otto.");
 
     await userEvent.keyboard("{Escape}");
 
@@ -169,7 +169,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     recordCompletedSteps(500);
 
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    await screen.findByText("Meet AutoPilot.");
+    await screen.findByText("Meet Otto.");
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
 

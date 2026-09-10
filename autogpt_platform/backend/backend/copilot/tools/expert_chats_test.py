@@ -1,9 +1,9 @@
-"""Tests for list_expert_chats / read_expert_chat (Autopilot reads an expert's chats).
+"""Tests for list_expert_chats / read_expert_chat (Otto reads an expert's chats).
 
 The capability is one-directional and read-only, so what is tested here is
 mostly what the tools refuse: an expert session never sees them and is turned
 away if it names one anyway, another user's chat is indistinguishable from one
-that does not exist, and a chat outside the listing's scope (Autopilot's own,
+that does not exist, and a chat outside the listing's scope (Otto's own,
 a dream artifact) cannot be reached by id. The rest pins the paging contract —
 the character cap drops rows from the OLD end so the cursor it reports brings
 them back.
@@ -37,7 +37,7 @@ _NOW = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
 
 
 def _caller(session_id: str = "s1", expert_id: str | None = None) -> MagicMock:
-    """The Autopilot session the tool is called from."""
+    """The Otto session the tool is called from."""
     session = MagicMock()
     session.session_id = session_id
     session.expert_id = expert_id
@@ -162,7 +162,7 @@ async def _list(db: _FakeChatDB, **kwargs):
 
 
 class TestGating:
-    """Autopilot-only: the tools ride the ``expert_admin`` group, which the
+    """Otto-only: the tools ride the ``expert_admin`` group, which the
     engines disable for every expert session."""
 
     def test_both_tools_are_in_the_autopilot_only_group(self) -> None:

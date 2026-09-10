@@ -14,9 +14,9 @@ import {
   TooltipPortal,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import {
-  AUTOPILOT_AVATAR,
   expertAvatarConfig,
   isUploadedAvatar,
 } from "@/components/molecules/BotAvatar/helpers";
@@ -80,7 +80,9 @@ export function ExpertChatGroup({
           aria-label={`${label} chats`}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900"
         >
-          {isUploadedAvatar(avatarUrl) ? (
+          {isAutopilot ? (
+            <AutopilotAvatar size={24} />
+          ) : isUploadedAvatar(avatarUrl) ? (
             <Avatar className="h-6 w-6">
               <AvatarImage
                 src={avatarUrl ?? undefined}
@@ -92,11 +94,7 @@ export function ExpertChatGroup({
             </Avatar>
           ) : (
             <BotAvatar
-              config={
-                isAutopilot
-                  ? AUTOPILOT_AVATAR
-                  : expertAvatarConfig({ name: label, avatarUrl, color })
-              }
+              config={expertAvatarConfig({ name: label, avatarUrl, color })}
               size={24}
               animated={false}
               showBadge={false}

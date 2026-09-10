@@ -19,8 +19,8 @@ export function extractToolName(part: ToolUIPart): string {
 // Specific-case labels for tools whose auto-formatted name reads awkwardly
 // alongside a "Running …" prefix (e.g. avoid "Running Run sub session").
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  run_sub_session: "Sub-AutoPilot",
-  get_sub_session_result: "Sub-AutoPilot result",
+  run_sub_session: "Sub-Otto",
+  get_sub_session_result: "Sub-Otto result",
   delegate_to_expert: "Teammate delegation",
   handoff_to_expert: "Teammate hand-off",
   hire_expert: "Expert hire preview",

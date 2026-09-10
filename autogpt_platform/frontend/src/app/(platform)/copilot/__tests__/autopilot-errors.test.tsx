@@ -74,7 +74,7 @@ afterEach(() => {
   flagState.experts = false;
 });
 
-describe("AutoPilot streaming — error paths", () => {
+describe("Otto streaming — error paths", () => {
   it("surfaces an SSE error chunk to the user", async () => {
     const chunks: UIMessageChunk[] = [
       { type: "start", messageId: "msg-1" },

@@ -14,7 +14,7 @@ const GENERIC_CHECKLIST = [
 // opens on an empty "Recommended" section.
 const BRAIN_DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing AutoPilot on your work",
+  "Briefing Otto on your work",
   "Building your space",
   "Finding tools for your work",
 ] as const;

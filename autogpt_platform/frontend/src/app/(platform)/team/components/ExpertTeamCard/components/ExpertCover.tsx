@@ -44,7 +44,7 @@ interface Props {
   className?: string;
   color: string | undefined;
   status?: CoverStatus;
-  /** Show Autopilot's cover art. Implied by the "built-in" status, so a
+  /** Show Otto's cover art. Implied by the "built-in" status, so a
    *  caller that wants the art without the badge sets this instead. */
   builtIn?: boolean;
 }

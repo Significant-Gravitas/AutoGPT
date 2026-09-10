@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
@@ -18,17 +19,6 @@ interface Props {
   scopeExpertID: string | null;
   experts: Expert[];
   onSelect: (expertID: string | null) => void;
-}
-
-function AutoPilotAvatar({ size }: { size: number }) {
-  return (
-    <div
-      style={{ width: size, height: size }}
-      className="flex shrink-0 items-center justify-center rounded-full bg-violet-600 font-semibold text-white"
-    >
-      <span style={{ fontSize: size * 0.45 }}>A</span>
-    </div>
-  );
 }
 
 function ScopeCheck({ selected }: { selected: boolean }) {
@@ -66,10 +56,10 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
               size={24}
             />
           ) : (
-            <AutoPilotAvatar size={24} />
+            <AutopilotAvatar size={24} />
           )}
           <span className="min-w-0 truncate">
-            {selectedExpert?.name ?? "AutoPilot"}
+            {selectedExpert?.name ?? "Otto"}
           </span>
           <Icon
             icon={ArrowDown01Icon}
@@ -86,10 +76,10 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"
           onSelect={() => onSelect(null)}
         >
-          <AutoPilotAvatar size={28} />
+          <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
             <span className="text-sm font-medium text-textBlack">
-              AutoPilot
+              Otto
             </span>
             <span className="text-xs text-zinc-500">
               Your account memory — everything you do together

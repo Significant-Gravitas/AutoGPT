@@ -197,7 +197,7 @@ const scheduledMaria: Expert = {
 };
 
 describe("TeamPage", () => {
-  test("renders the Autopilot card first", async () => {
+  test("renders the Otto card first", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
@@ -252,7 +252,7 @@ describe("TeamPage", () => {
     expect(link.getAttribute("href")).toBe("/team/expert-maria");
   });
 
-  test("opens an inline chat from the expert and Autopilot cards", async () => {
+  test("opens an inline chat from the expert and Otto cards", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),

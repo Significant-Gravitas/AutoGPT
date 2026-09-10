@@ -91,7 +91,7 @@ test("renders restored conversation messages instantly after reload", async () =
   expect(
     visible.some((text) =>
       text.includes(
-        "Hello, I'm Autopilot. I'll help you raise your own expert.",
+        "Hello, I'm Otto. I'll help you raise your own expert.",
       ),
     ),
   ).toBe(true);

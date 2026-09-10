@@ -155,7 +155,7 @@ export function FollowupListItem({ followup }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete this scheduled follow-up? AutoPilot will not send the
+              Delete this scheduled follow-up? Otto will not send the
               message and you can recreate it from chat if needed.
             </Text>
             <Dialog.Footer>

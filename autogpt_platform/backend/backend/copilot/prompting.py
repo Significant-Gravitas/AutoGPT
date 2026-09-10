@@ -249,7 +249,7 @@ ONE more `TodoWrite` reflecting the true end state of every item:
   frontend's Progress sidebar renders the latest snapshot as the
   authoritative state — leaving items `in_progress` makes the UI look
   like work is still happening after you've already declared "done", which
-  is a documented source of user confusion ("Autopilot said it finished
+  is a documented source of user confusion ("Otto said it finished
   but the sidebar still shows step 3 spinning").
 - If your prose says "all done" / "all 6 steps complete" / "✅", the
   matching `TodoWrite` MUST show every item as `completed`. Text and
@@ -699,7 +699,7 @@ def get_delegation_supplement() -> str:
 def get_expert_oversight_supplement(
     *, experts_enabled: bool, expert_id: str | None
 ) -> str:
-    """Chat-reading rules, for an Autopilot session with the team flag on.
+    """Chat-reading rules, for an Otto session with the team flag on.
 
     Gated here rather than at the call sites so the condition lives with
     the text it admits. It cannot ride ``get_delegation_supplement``, which
@@ -726,7 +726,7 @@ def get_graphiti_supplement() -> str:
     return """
 
 ## Memory System (Graphiti)
-You have access to persistent temporal memory tools scoped to the assistant running this session. AutoPilot uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
+You have access to persistent temporal memory tools scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
 **You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
@@ -748,7 +748,7 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 ### MEMORY RULES:
 - Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
 - Never fabricate memories. Only persist what the user actually said.
-- Memory is private and isolated to the current assistant. AutoPilot and hired experts cannot read each other's memories.
+- Memory is private and isolated to the current assistant. Otto and hired experts cannot read each other's memories.
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """

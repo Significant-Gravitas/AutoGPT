@@ -128,7 +128,7 @@ describe("TeamRoster toolbar", () => {
     // Matches Lee on role, not name.
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
-    // Autopilot is pinned, but steps aside once the roster is narrowed.
+    // Otto is pinned, but steps aside once the roster is narrowed.
     expect(screen.queryByText("Otto")).toBeNull();
   });
 
@@ -239,7 +239,7 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  test("links its body to the Autopilot page", async () => {
+  test("links its body to the Otto page", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);

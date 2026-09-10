@@ -128,7 +128,7 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-/** A schedule nobody on the team owns, which Autopilot must not claim. */
+/** A schedule nobody on the team owns, which Otto must not claim. */
 const straySchedule: GraphExecutionJobInfo = {
   ...mariaSchedule,
   id: "sched-stray",
@@ -153,7 +153,7 @@ function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
   } as unknown as LibraryAgent;
 }
 
-/** Maria owns this one, so it is hers and not Autopilot's. */
+/** Maria owns this one, so it is hers and not Otto's. */
 const mariasAgent = makeLibraryAgent({
   id: "lib-1",
   graph_id: "graph-1",
@@ -213,7 +213,7 @@ async function openTab(name: string) {
 }
 
 describe("AutopilotPage", () => {
-  test("renders the Autopilot profile with a chat link and a way back", async () => {
+  test("renders the Otto profile with a chat link and a way back", async () => {
     render(<AutopilotPage />);
 
     expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
@@ -242,7 +242,7 @@ describe("AutopilotPage", () => {
     expect(within(list).queryByText("Nobody's Job")).toBeNull();
   });
 
-  test("lists the library workflows no expert owns as Autopilot's", async () => {
+  test("lists the library workflows no expert owns as Otto's", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Otto" });
 
@@ -255,7 +255,7 @@ describe("AutopilotPage", () => {
     ).toEqual(["Inbox Triage", "Nobody's Job"]);
     // The stray schedule's graph gives its workflow a cadence.
     expect(within(rows[1]).getByText(/Every day at 07:40/)).toBeDefined();
-    // Maria's Content Calendar is hers, not Autopilot's.
+    // Maria's Content Calendar is hers, not Otto's.
     expect(screen.queryByText("Content Calendar")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Install workflow" }),
@@ -267,7 +267,7 @@ describe("AutopilotPage", () => {
     ).toContain("/copilot?autosubmit=true");
   });
 
-  test("keeps loading library pages so a second-page workflow still counts as Autopilot's", async () => {
+  test("keeps loading library pages so a second-page workflow still counts as Otto's", async () => {
     const pagesRequested: string[] = [];
     server.use(
       getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
@@ -294,7 +294,7 @@ describe("AutopilotPage", () => {
     expect(pagesRequested).toEqual(["1", "2"]);
   });
 
-  test("lists the library skills no expert has claimed as Autopilot's", async () => {
+  test("lists the library skills no expert has claimed as Otto's", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Otto" });
 

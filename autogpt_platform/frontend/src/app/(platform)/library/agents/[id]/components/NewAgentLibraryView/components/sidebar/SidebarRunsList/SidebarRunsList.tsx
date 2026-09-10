@@ -273,7 +273,7 @@ export function SidebarRunsList({
                     No triggers set up
                   </Text>
                   <Text variant="body" className="!text-zinc-500">
-                    Ask AutoPilot to set up a trigger for this agent (e.g.
+                    Ask Otto to set up a trigger for this agent (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>
