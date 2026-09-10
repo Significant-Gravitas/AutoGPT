@@ -91,7 +91,8 @@ architecture instead of the repository Actions cache, except on pull requests,
 which do not read or write registry caches. Manual dispatches read and update a
 branch-specific cache, with the trusted `dev` cache as a read-only fallback.
 Only a push to `dev` writes the trusted cache used by release builds.
-The generated E2E seed-data cache is keyed to the exact commit under test. Warm
+The generated E2E seed-data cache is keyed to the files that determine the
+seeded data, so it restores across commits that do not change them. Warm
 caches may avoid repeated dependency downloads, seed generation, or cache
 export, but they never bypass tests, linting, type checks, coverage collection, image builds, image
 smoke tests, or security scans.

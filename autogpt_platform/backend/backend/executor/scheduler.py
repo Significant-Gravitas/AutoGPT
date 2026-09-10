@@ -1889,6 +1889,8 @@ class Scheduler(AppService):
                 id="ensure_embeddings_coverage",
                 trigger="interval",
                 hours=6,
+                # Due now rather than called inline below: run_service() is what
+                # starts the event loop uvicorn binds the RPC port on.
                 next_run_time=datetime.now(timezone.utc)
                 + timedelta(
                     hours=0 if config.scheduler_startup_embedding_backfill else 6

@@ -41,6 +41,9 @@ jobs:
 
       - name: Run overlap detection
         if: ${{ !cancelled() }}
+        # `Check PR Status` has no allowlist, so a failure on the PR path would
+        # block the merge queue on a report that only informs contributors.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
