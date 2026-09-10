@@ -53,8 +53,11 @@ async def test_lists_live_credential_providers_in_one_owner_scoped_batch():
         assert call.args[0] == "owner-1"
         assert call.args[1].ownerUserId == "owner-1"
     credentials.assert_awaited_once_with("owner-1")
+    # A fixed order is what makes "first-seen" mean the same thing on every
+    # load, so the card's logos do not reshuffle.
     grant_query.assert_awaited_once_with(
-        where={"expertId": {"in": ["expert-1", "expert-2"]}}
+        where={"expertId": {"in": ["expert-1", "expert-2"]}},
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
 
 

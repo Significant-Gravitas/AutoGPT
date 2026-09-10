@@ -17,11 +17,14 @@ interface Props {
 }
 
 /** The services an expert can reach, as the logos the connections dialog
- *  uses. Past three, a "+N more" names the rest on hover. */
+ *  uses. Past three, a "+N more" names the rest on hover; it sits inside the
+ *  card link, so it is not focusable itself and the names are also given to
+ *  screen readers inline. */
 export function IntegrationIcons({ providers }: Props) {
   if (providers.length === 0) return null;
   const shown = providers.slice(0, VISIBLE_LOGOS);
   const hidden = providers.slice(VISIBLE_LOGOS);
+  const hiddenNames = hidden.map(formatProviderName).join(", ");
 
   return (
     <ul aria-label="Integrations" className="flex items-center gap-1.5">
@@ -34,19 +37,16 @@ export function IntegrationIcons({ providers }: Props) {
         <li className="flex">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={0} className="cursor-default rounded-sm">
-                <Text
-                  variant="body-medium"
-                  as="span"
-                  className="whitespace-nowrap !text-zinc-800"
-                >
-                  +{hidden.length} more
-                </Text>
-              </span>
+              <Text
+                variant="body-medium"
+                as="span"
+                className="cursor-default whitespace-nowrap !text-zinc-800"
+              >
+                +{hidden.length} more
+                <span className="sr-only">: {hiddenNames}</span>
+              </Text>
             </TooltipTrigger>
-            <TooltipContent>
-              {hidden.map(formatProviderName).join(", ")}
-            </TooltipContent>
+            <TooltipContent>{hiddenNames}</TooltipContent>
           </Tooltip>
         </li>
       ) : null}

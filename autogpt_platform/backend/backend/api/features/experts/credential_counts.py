@@ -25,7 +25,9 @@ async def expert_credential_providers(
     await asyncio.gather(*(seed(expert) for expert in owned))
     grants, credentials = await asyncio.gather(
         prisma.models.ExpertCredential.prisma().find_many(
-            where={"expertId": {"in": [expert.id for expert in owned]}}
+            where={"expertId": {"in": [expert.id for expert in owned]}},
+            # Grant order is what "first-seen" means for the card's logos.
+            order=[{"createdAt": "asc"}, {"id": "asc"}],
         ),
         _user_credentials(user_id),
     )

@@ -338,10 +338,14 @@ describe("TeamPage", () => {
     // The roster response already carries the providers; no per-card fetch.
     expect(credentialRequests).not.toHaveBeenCalled();
 
-    await user.hover(within(integrations).getByText("+2 more"));
+    // Inside the card link nothing may take focus, so the names ride along
+    // as screen-reader text and the tooltip is the pointer affordance.
+    const more = within(integrations).getByText("+2 more");
+    expect(more.getAttribute("tabindex")).toBeNull();
+    expect(more.textContent).toContain("Notion, Slack");
+    await user.hover(more);
     const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip.textContent).toContain("Notion");
-    expect(tooltip.textContent).toContain("Slack");
+    expect(tooltip.textContent).toContain("Notion, Slack");
   });
 
   test("shows no integrations item on a card with none granted", async () => {
