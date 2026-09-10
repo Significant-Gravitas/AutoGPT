@@ -212,6 +212,7 @@ export default function OnboardingProvider({
         }
 
         if (error instanceof DOMException && error.name === "AbortError") {
+          hasInitialized.current = false;
           return;
         }
 

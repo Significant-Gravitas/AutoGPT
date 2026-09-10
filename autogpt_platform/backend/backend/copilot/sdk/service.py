@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
+    from ..tree import TurnEnvelope
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -53,6 +54,8 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -114,6 +117,7 @@ from ..permissions import (
 )
 from ..prompting import (
     get_delegation_supplement,
+    get_expert_oversight_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -139,6 +143,7 @@ from ..response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
@@ -201,6 +206,11 @@ from .tool_adapter import (
     reset_tool_failure_counters,
     set_execution_context,
     wait_for_stash,
+)
+from .tool_display import (
+    SDKToolDisplayBridge,
+    stamp_tool_display_name,
+    strip_display_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,7 +276,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     static_cap = config.claude_agent_max_budget_usd
     if not user_id:
         return static_cap
-    daily_limit, weekly_limit, _ = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
@@ -284,6 +294,8 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
         weekly_cost_limit=weekly_limit,
         floor_usd=-1.0,
     )
+    if tier == "TRIAL":
+        return resolve_trial_sdk_budget(static_cap, remaining)
     if remaining < 0 or remaining == float("inf"):
         return static_cap
     return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
@@ -376,7 +388,17 @@ async def _consume_sdk_until_done(
     fires a synthetic re-prompt and invokes this again for the second
     pass — bounded to one re-prompt per turn.
     """
-    async for sdk_msg in _iter_sdk_messages(client, wake=ctx.compaction.hook_fired):
+    async for sdk_msg in _iter_sdk_messages(
+        client,
+        wake=ctx.compaction.hook_fired,
+        tool_display_wake=ctx.tool_display.ready if ctx.tool_display else None,
+    ):
+        for display in ctx.tool_display.drain() if ctx.tool_display else []:
+            dispatched = _dispatch_response(
+                display, acc, ctx, state, False, ctx.log_prefix
+            )
+            if dispatched is not None:
+                yield dispatched
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()
@@ -1141,6 +1163,7 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 # ``None`` when ``events_yielded > 0``.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
+    StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
     StreamStartStep,
@@ -1370,6 +1393,7 @@ class _StreamContext:
     # failed: by the time a provider failure reaches this layer it is CLI
     # text, and the gateway holds the last point at which it was typed.
     codex_gateway: "CodexAnthropicGateway | None" = None
+    tool_display: SDKToolDisplayBridge | None = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1402,11 +1426,18 @@ _COMPACTION_HEADROOM_TOKENS: int = 20_000
 def _compaction_target_tokens(model: str) -> int:
     """Compaction target consistent with the CLI's autocompact threshold.
 
-    Mirrors the bundled CLI's ``i6_()`` formula for autocompact:
+    Mirrors the bundled CLI's formula for autocompact:
     ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
     so post-compaction context sits comfortably below the CLI's trigger and
     a follow-up assistant message doesn't immediately re-trigger.
     Floors at 10K to preserve at least some history budget.
+
+    Deliberately a *different* window from the one the CLI subprocess is
+    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
+    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
+    this path feeds our own estimate-based compressor, which needs that
+    margin.  The 20K headroom absorbs the max-output reserve the CLI also
+    subtracts and this formula does not.
     """
     from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
 
@@ -1414,7 +1445,7 @@ def _compaction_target_tokens(model: str) -> int:
     if window is None:
         return DEFAULT_TOKEN_THRESHOLD
     pct = config.claude_agent_autocompact_pct_override
-    cli_buffer = 13_000  # E88 in the bundled CLI
+    cli_buffer = 13_000  # the CLI's own summary buffer
     if pct > 0 and not _is_moonshot_model(model):
         cli_threshold = min(window * pct // 100, window - cli_buffer)
     else:
@@ -1665,6 +1696,7 @@ async def _apply_building_mode_restart(
     sdk_options: "ClaudeAgentOptions",
     base_system_prompt: str,
     delegation_supplement: str,
+    oversight_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1693,14 +1725,16 @@ async def _apply_building_mode_restart(
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
-    # Same supplement order as the main assembly. The delegation tools stay
-    # registered across a restart (registration happens once, before it), so
-    # dropping their disclosure rules here would leave the model able to
-    # delegate silently for the rest of the turn.
+    # Same supplement order as the main assembly. The delegation and
+    # chat-reading tools stay registered across a restart (registration happens
+    # once, before it), so dropping their disclosure rules here would leave the
+    # model able to delegate, or read a teammate's chats, silently for the rest
+    # of the turn.
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
+        + oversight_supplement
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -2000,6 +2034,7 @@ async def _safe_close_sdk_client(
 async def _iter_sdk_messages(
     client: ClaudeSDKClient,
     wake: asyncio.Event | None = None,
+    tool_display_wake: asyncio.Event | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield SDK messages with heartbeat-based timeouts.
 
@@ -2025,7 +2060,7 @@ async def _iter_sdk_messages(
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
-    wake_task: asyncio.Task[Any] | None = None
+    wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
     async def _next_msg() -> Any:
         """Await the next SDK message, wrapped for use with `asyncio.Task`."""
@@ -2036,10 +2071,10 @@ async def _iter_sdk_messages(
             if pending_task is None:
                 pending_task = asyncio.create_task(_next_msg())
             waiters: set[asyncio.Task[Any]] = {pending_task}
-            if wake is not None:
-                if wake_task is None:
-                    wake_task = asyncio.create_task(wake.wait())
-                waiters.add(wake_task)
+            for event in (wake, tool_display_wake):
+                if event is not None and event not in wake_tasks.values():
+                    wake_tasks[asyncio.create_task(event.wait())] = event
+            waiters.update(wake_tasks)
 
             done, _ = await asyncio.wait(
                 waiters,
@@ -2047,12 +2082,13 @@ async def _iter_sdk_messages(
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            if wake is not None and wake_task in done:
+            completed_wakes = [task for task in wake_tasks if task in done]
+            if completed_wakes:
                 # Woken: hand the sentinel over BEFORE any message that
                 # landed in the same tick, or the row the hook announced
                 # would be closed by the very message meant to follow it.
-                wake_task = None
-                wake.clear()
+                for task in completed_wakes:
+                    wake_tasks.pop(task).clear()
                 yield None
                 continue
 
@@ -2066,7 +2102,7 @@ async def _iter_sdk_messages(
             except StopAsyncIteration:
                 return
     finally:
-        for task in (pending_task, wake_task):
+        for task in (pending_task, *wake_tasks):
             if task is not None and not task.done():
                 task.cancel()
                 try:
@@ -2385,8 +2421,8 @@ def _build_system_prompt_value(
     prompt cache.  Our custom *system_prompt* is appended after the preset.
 
     Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
-    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.248 at
+    ``claude-agent-sdk >= 0.2.146``, so the pin in ``pyproject.toml`` is
     the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
@@ -2700,7 +2736,7 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                     "type": "tool_use",
                     "id": block.id,
                     "name": block.name,
-                    "input": block.input,
+                    "input": strip_display_token(block.input),
                 }
             )
         elif isinstance(block, ToolResultBlock):
@@ -2759,7 +2795,7 @@ def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
     if msg.content:
         payload["content"] = msg.content
     if msg.tool_calls:
-        payload["tool_calls"] = msg.tool_calls
+        payload["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
     if msg.tool_call_id:
         payload["tool_call_id"] = msg.tool_call_id
     return payload
@@ -3587,6 +3623,7 @@ class _StreamAccumulator:
     # inline with text/tool rows so they survive session reload; the reader
     # filters role="reasoning" out of LLM context.
     reasoning_response: ChatMessage | None = None
+    tool_display_names: dict[str, str] = dataclass_field(default_factory=dict)
 
 
 def _dispatch_response(
@@ -3696,6 +3733,15 @@ def _dispatch_response(
                 ctx.session.messages.append(acc.assistant_response)
                 acc.has_appended_assistant = True
 
+    elif isinstance(response, StreamToolDisplayAvailable):
+        display = response.data
+        acc.tool_display_names[display.toolCallId] = display.displayName
+        stamp_tool_display_name(
+            [acc.assistant_response, *ctx.session.messages],
+            display.toolCallId,
+            display.displayName,
+        )
+
     elif isinstance(response, StreamToolInputAvailable):
         acc.accumulated_tool_calls.append(
             {
@@ -3707,6 +3753,8 @@ def _dispatch_response(
                 },
             }
         )
+        if name := acc.tool_display_names.get(response.toolCallId):
+            acc.accumulated_tool_calls[-1]["display_name"] = name
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
         acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
@@ -4411,6 +4459,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
@@ -4632,6 +4681,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     compaction: CompactionTracker | None = None
     codex_effort: "CodexReasoningEffort | None" = None
     codex_gateway: CodexAnthropicGateway | None = None
+    tool_display_bridge = SDKToolDisplayBridge()
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
     turn_segment = _sdk_serving_segment(credential_lease)
@@ -4743,6 +4793,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             Flag.HIRE_EXPERTS, user_id, default=False
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        oversight_supplement = get_expert_oversight_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4758,6 +4811,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
+            + oversight_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4778,6 +4832,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sandbox=e2b_sandbox,
             sdk_cwd=sdk_cwd,
             permissions=permissions,
+            envelope=envelope,
         )
 
         if (
@@ -4820,7 +4875,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
         )
         mcp_server = create_copilot_mcp_server(
-            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+            use_e2b=use_e2b,
+            hidden_tool_names=hidden_tools,
+            tool_display_bridge=tool_display_bridge,
         )
 
         # Resolve model (request tier → LD per-user override → config default).
@@ -4875,6 +4932,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
+            tool_display_bridge=tool_display_bridge,
         )
 
         if permissions is not None:
@@ -4911,8 +4969,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # ones — so all turns share the same static prefix.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
-        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
-        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # is combined with --resume).  claude-agent-sdk >= 0.2.146 bundles
+        # CLI 2.1.248, so the pin in pyproject.toml is sufficient — no
         # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
@@ -5290,6 +5348,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             compaction=compaction,
             lock=lock,
             codex_gateway=codex_gateway,
+            tool_display=tool_display_bridge,
         )
 
         # ---------------------------------------------------------------
@@ -5348,6 +5407,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # the name-keyed FIFO would otherwise serve them (off-by-one) to
             # this attempt's tool calls, corrupting frontend tool payloads.
             reset_pending_tool_outputs()
+            tool_display_bridge.reset()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
@@ -5521,6 +5581,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
+                    oversight_supplement=oversight_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
@@ -5825,6 +5886,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         raise
     finally:
         turn_error = sys.exception()
+        tool_display_bridge.reset()
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
@@ -6260,6 +6322,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
+                    # Same turn continuing, so it keeps its envelope. Omitting
+                    # it would default to None and clear the contextvar for the
+                    # remainder of the turn: tool enforcement off, spend
+                    # uncharged, and the next spawn minted as an unbounded root.
+                    envelope=envelope,
                     model=model,
                     organization_id=organization_id,
                     team_id=team_id,

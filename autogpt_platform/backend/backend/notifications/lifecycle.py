@@ -5,8 +5,7 @@ keep them from misfiring — first subscription only, first failed charge only,
 the false→true flip rather than every subscription update — live here rather
 than in the webhook router, so the webhook stays a dispatcher.
 
-There is deliberately no trial handler: the platform does not offer a trial, so
-`customer.subscription.trial_will_end` is not listened for.
+Trial enrollment and conversion notices are handled separately in `trial.py`.
 """
 
 import logging
@@ -26,6 +25,7 @@ from backend.data.notifications import (
     SubscriptionResumedData,
     SubscriptionWelcomeData,
 )
+from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
@@ -36,6 +36,7 @@ from backend.notifications.lifecycle_plan import (
     plan_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
@@ -82,12 +83,16 @@ async def send_welcome_for_session(session_id: str) -> None:
     Raises on failure so the consumer retries; `on_checkout_completed` is
     idempotent via the `welcomeEmailSentAt` claim.
     """
-    session = dict(await stripe.checkout.Session.retrieve_async(session_id))
+    session = dict(
+        await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
+    )
     subscription_id = session.get("subscription")
     if not subscription_id:
         logger.info(f"Checkout {session_id} has no subscription; nothing to welcome")
         return
-    subscription = dict(await stripe.Subscription.retrieve_async(str(subscription_id)))
+    subscription = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, str(subscription_id))
+    )
     await on_checkout_completed(session, subscription)
 
 
@@ -95,6 +100,8 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     """First subscription → welcome email and the onboarding tour. A returning
     customer is not greeted like a stranger: they go straight into the
     changelog audience instead."""
+    if await notify_trial(subscription, "started"):
+        return
     user = await _user_for(session.get("customer"))
     if user is None:
         return
@@ -206,6 +213,8 @@ async def on_payment_failed(invoice: dict) -> None:
 async def on_subscription_updated(subscription: dict, previous: dict) -> None:
     """Only the cancel_at_period_end flip matters here; this event fires for
     many unrelated changes."""
+    if await on_trial_subscription_updated(subscription, previous):
+        return
     if "cancel_at_period_end" not in previous:
         return
     user = await _user_for(subscription.get("customer"))
@@ -268,6 +277,8 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    if await notify_trial(subscription, "ended"):
+        return
     user = await _user_for(subscription.get("customer"))
     if user is None:
         return
