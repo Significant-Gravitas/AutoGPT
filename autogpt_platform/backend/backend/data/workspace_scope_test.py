@@ -5,6 +5,7 @@ from backend.data.workspace_scope import WorkspaceScope, resolve_expert_workspac
 
 SCOPE = WorkspaceScope(
     expert_id="expert-a",
+    owns_skills_folder=True,
     session_ids=["expert-a", "expert-a-old"],
     delegated_session_ids=["sub-1"],
 )
@@ -66,6 +67,21 @@ def test_session_only_scope_carries_no_expert_grants():
     assert scope.skills_prefix is None
     assert scope.allows_path("/sessions/only/file.txt", write=True)
     assert not scope.allows_path("/sessions/other/file.txt")
+
+
+def test_denial_survives_the_rpc_round_trip():
+    """The scope is rebuilt as this class on the client side, so a denial that
+    lived in a subclass would come back as a grant."""
+    denied = WorkspaceScope(expert_id="expert-a")
+    rebuilt = WorkspaceScope.model_validate(denied.model_dump())
+
+    for scope in (denied, rebuilt):
+        assert scope.skills_prefix is None
+        assert not scope.allows_path("/experts/expert-a/skills/x/SKILL.md")
+        assert not scope.allows_path("/experts/expert-a/skills/x/SKILL.md", write=True)
+    assert WorkspaceScope.model_validate(SCOPE.model_dump()).allows_path(
+        "/experts/expert-a/skills/mine/SKILL.md", write=True
+    )
 
 
 def test_resolver_is_reachable_through_the_direct_db_accessor():

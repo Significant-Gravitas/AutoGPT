@@ -52,6 +52,10 @@ class WorkspaceScope(BaseModel):
     expert_id: str | None = None
     session_ids: list[str] = Field(default_factory=list)
     delegated_session_ids: list[str] = Field(default_factory=list)
+    # A carried grant, never inferred from ``expert_id``: this model crosses an
+    # RPC boundary and is rebuilt as this class, so a subclass that withheld the
+    # folder would come back granting it.
+    owns_skills_folder: bool = False
 
     def with_session(self, session_id: str) -> "WorkspaceScope":
         if session_id in self.session_ids:
@@ -60,7 +64,7 @@ class WorkspaceScope(BaseModel):
 
     @property
     def skills_prefix(self) -> str | None:
-        if self.expert_id is None:
+        if self.expert_id is None or not self.owns_skills_folder:
             return None
         return f"{expert_skills_folder(self.expert_id)}/"
 
@@ -104,7 +108,7 @@ async def resolve_expert_workspace_scope(
         }
     )
     if expert is None:
-        return _NoGrants(expert_id=expert_id)
+        return WorkspaceScope(expert_id=expert_id)
 
     own_sessions = await PrismaChatSession.prisma().find_many(
         where={"userId": user_id, "expertId": expert_id}
@@ -120,16 +124,9 @@ async def resolve_expert_workspace_scope(
     )
     return WorkspaceScope(
         expert_id=expert_id,
+        owns_skills_folder=True,
         session_ids=[row.id for row in own_sessions],
         delegated_session_ids=[
             row.id for row in delegated_sessions if row.expertId != expert_id
         ],
     )
-
-
-class _NoGrants(WorkspaceScope):
-    """Scope for an expert that no longer exists for this owner."""
-
-    @property
-    def skills_prefix(self) -> str | None:
-        return None

@@ -45,7 +45,9 @@ def world():
     fake.files[EXPERT_B] = _skill("theirs")
     workspace = MagicMock()
     workspace.resolve_expert_workspace_scope = AsyncMock(
-        side_effect=lambda user_id, expert_id: WorkspaceScope(expert_id=expert_id)
+        side_effect=lambda user_id, expert_id: WorkspaceScope(
+            expert_id=expert_id, owns_skills_folder=True
+        )
     )
     experts = MagicMock()
     experts.get_expert = AsyncMock(

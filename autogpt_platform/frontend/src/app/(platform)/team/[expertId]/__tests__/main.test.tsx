@@ -643,6 +643,12 @@ describe("ExpertDetailPage", () => {
     ).toBeDefined();
     expect(screen.getByText("content plan")).toBeDefined();
     expect(screen.queryByText("Skill details unavailable.")).toBeNull();
+
+    // The row searches on the description it actually shows.
+    await userEvent
+      .setup()
+      .type(screen.getByPlaceholderText(/search/i), "content calendar");
+    expect(screen.getByText("How we plan the content calendar")).toBeDefined();
   });
 
   test("lists the expert's skills with library details and adds one", async () => {

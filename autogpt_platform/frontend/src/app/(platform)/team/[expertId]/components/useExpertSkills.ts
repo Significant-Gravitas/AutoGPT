@@ -78,7 +78,9 @@ export function useExpertSkills(expert: Expert) {
     ? attached.filter(
         (entry) =>
           entry.name.toLowerCase().includes(needle) ||
-          (entry.skill?.description ?? "").toLowerCase().includes(needle),
+          (entry.skill?.description ?? entry.library?.description ?? "")
+            .toLowerCase()
+            .includes(needle),
       )
     : attached;
 

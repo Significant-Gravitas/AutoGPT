@@ -4019,6 +4019,31 @@ async def test_update_skills_resolves_every_name_before_copying(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_drops_a_name_whose_source_vanished_before_the_copy(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """The library lookup and the copy are separate awaits, so a skill can be
+    deleted in between; the row must not end up listing it."""
+
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names}
+
+    async def _copy(user_id, expert_id, name):
+        return None if name == "vanishing" else name
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["kept", "vanishing"]
+    )
+
+    assert updated.skills == ["kept"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_expert_skill_names_add_and_remove_atomically(
     server: SpinTestServer, test_user
 ):

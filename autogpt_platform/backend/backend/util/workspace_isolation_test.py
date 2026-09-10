@@ -11,6 +11,7 @@ from backend.util.workspace_test import _make_workspace_file
 
 SCOPE = WorkspaceScope(
     expert_id="expert-a",
+    owns_skills_folder=True,
     session_ids=["expert-a", "expert-a-old"],
     delegated_session_ids=["sub-1"],
 )
