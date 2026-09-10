@@ -23,20 +23,26 @@ def validate_report(root: ET.Element) -> None:
     if not math.isfinite(rate) or not 0 <= rate <= 1:
         raise ValueError("coverage.line-rate must be between 0 and 1")
 
-    classes = root.findall("packages/package/classes/class")
+    classes = root.findall("packages//class")
     if not classes:
         raise ValueError("coverage contains no source classes")
     line_count = 0
+    covered_count = 0
     for source in classes:
         if not source.get("filename", "").strip():
             raise ValueError("coverage class is missing a filename")
         for line in source.findall("lines/line"):
             if nonnegative_integer(line, "number") == 0:
                 raise ValueError("coverage line numbers must be positive")
-            nonnegative_integer(line, "hits")
+            covered_count += nonnegative_integer(line, "hits") > 0
             line_count += 1
     if line_count == 0:
         raise ValueError("coverage contains no source lines")
+    if valid != line_count or covered != covered_count:
+        raise ValueError("coverage summary counts do not match source lines")
+    # Istanbul truncates percentages to two decimals before converting to a rate.
+    if not math.isclose(rate, covered_count / line_count, rel_tol=0, abs_tol=1e-4):
+        raise ValueError("coverage.line-rate does not match source lines")
 
 
 def main(argv: list[str] | None = None) -> int:

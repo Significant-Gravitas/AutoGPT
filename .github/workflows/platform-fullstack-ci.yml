@@ -7,6 +7,8 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/validate_cobertura.py"
+      - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
@@ -17,6 +19,8 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/validate_cobertura.py"
+      - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
@@ -79,12 +83,13 @@ jobs:
         working-directory: autogpt_platform/backend
         run: poetry install
 
-      - name: Test Playwright report validator
+      - name: Test full-stack report validators
         working-directory: autogpt_platform/backend
         run: |
           mkdir -p "$RUNNER_TEMP/fullstack-validator-results"
           poetry run pytest \
             ../../.github/scripts/test_validate_playwright_json.py \
+            ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
@@ -386,13 +391,9 @@ jobs:
 
       - name: Validate coverage report
         if: ${{ always() }}
-        run: |
-          report=coverage/e2e/cobertura-coverage.xml
-          if [[ ! -s "$report" ]]; then
-            echo "missing machine-readable report: $report" >&2
-            exit 1
-          fi
-          python -c "import xml.etree.ElementTree as ET; ET.parse('$report')"
+        run: >-
+          python ../../.github/scripts/validate_cobertura.py
+          coverage/e2e/cobertura-coverage.xml
 
       - name: Upload E2E coverage to Codecov
         if: ${{ !cancelled() }}

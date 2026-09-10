@@ -64,6 +64,50 @@ class ValidateCoberturaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_report(report)
 
+    def test_rejects_summary_counts_that_disagree_with_source_lines(self):
+        for attribute, value in (("lines-valid", "2"), ("lines-covered", "1")):
+            with self.subTest(attribute=attribute):
+                report = valid_report()
+                report.set(attribute, value)
+                with self.assertRaises(ValueError):
+                    validate_report(report)
+
+    def test_rejects_uncovered_summary_with_a_covered_source_line(self):
+        report = valid_report()
+        report.find(".//class/lines/line").set("hits", "1")
+        with self.assertRaises(ValueError):
+            validate_report(report)
+
+    def test_rejects_rate_that_disagrees_with_source_line_counts(self):
+        report = valid_report()
+        report.set("line-rate", "0.5")
+        with self.assertRaises(ValueError):
+            validate_report(report)
+
+    def test_accepts_rounded_reporter_rate_and_ignores_method_line_duplicates(self):
+        report = valid_report()
+        report.set("lines-valid", "3")
+        report.set("lines-covered", "1")
+        lines = report.find(".//class/lines")
+        ET.SubElement(lines, "line", number="2", hits="1")
+        ET.SubElement(lines, "line", number="3", hits="0")
+        methods = ET.SubElement(report.find(".//class"), "methods")
+        method_lines = ET.SubElement(ET.SubElement(methods, "method"), "lines")
+        ET.SubElement(method_lines, "line", number="2", hits="1")
+        for rate in ("0.3333", "0.33329999999999999", str(1 / 3)):
+            with self.subTest(rate=rate):
+                report.set("line-rate", rate)
+                validate_report(report)
+
+    def test_counts_nested_packages_in_e2e_reports(self):
+        report = valid_report()
+        classes = report.find("packages/package/classes")
+        source = classes.find("class")
+        classes.remove(source)
+        nested = ET.SubElement(classes, "package", name="nested")
+        ET.SubElement(nested, "classes").append(source)
+        validate_report(report)
+
     def test_cli_fails_for_missing_empty_malformed_or_noncoverage_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "coverage.xml"
