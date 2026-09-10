@@ -1,16 +1,18 @@
-"""Per-user rate limit for ``GET /api/credits/subscription``.
+"""Shared per-user rate limit for subscription status and the trial router.
 
 The subscription-status endpoint fans out to uncached Stripe reads per request
 and is fetched on every load of the billing page, so a scripted client can
 drive a lot of upstream traffic from one account. A per-user cap puts a hard
-ceiling on that without affecting normal use: the frontend shares one React
-Query entry with a 60s ``staleTime``, so a real user stays well under the cap.
+ceiling on that without affecting normal use. Trial status and checkout,
+confirmation, and cancellation share this budget because they also call Stripe.
+Subscription status shares a React Query entry with a 60s ``staleTime``;
+trial mutations additionally retain their own ownership and idempotency checks.
 
 Atomic fixed-window counter in Redis (Lua ``INCR`` + first-hit ``EXPIRE``),
 keyed per ``user_id``. A single key per check keeps it correct on the Redis
 cluster.
 
-Availability: this puts Redis in front of a billing read, so the check is
+Availability: this puts Redis in front of billing, so the check is
 strictly best-effort. It is bounded by a short deadline and **fails open** on
 any Redis trouble — being unable to prove a user is under their cap must never
 cost every user their billing status.
@@ -92,10 +94,9 @@ async def enforce_subscription_status_rate_limit(
 ) -> None:
     """Raise HTTP 429 when ``user_id`` exceeds the per-window cap.
 
-    Wired as a route dependency on ``GET /credits/subscription`` only, so the
-    internal callers of ``get_subscription_status`` (e.g. the POST update flow
-    returning fresh state) never trip it — FastAPI dependencies run for HTTP
-    requests, not for direct function calls.
+    Wired on ``GET /credits/subscription`` and all ``/credits/trial`` routes.
+    Internal callers returning fresh subscription/trial status never trip it:
+    FastAPI dependencies run for HTTP requests, not direct function calls.
 
     On any Redis trouble this fails *open* (logs and lets the call through): a
     Redis blip must never block the billing status read for every user, which
