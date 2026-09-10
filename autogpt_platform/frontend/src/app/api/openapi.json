@@ -26728,7 +26728,8 @@
           "expert_change_applied",
           "team_roster",
           "expert_chat_list",
-          "expert_chat_transcript"
+          "expert_chat_transcript",
+          "expert_onboarding"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

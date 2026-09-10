@@ -1,9 +1,8 @@
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 
 export const EXPERT_ONBOARDING_PART_TYPE = "tool-expert_onboarding";
-
-const RESPONSE_TYPE = "expert_onboarding";
 
 export interface ExpertOnboardingStep {
   question: string;
@@ -50,7 +49,7 @@ export function parseExpertOnboarding(
   part: ToolUIPart,
 ): ExpertOnboardingOutput | null {
   const output = toRecord(part.output);
-  if (!output || output.type !== RESPONSE_TYPE) return null;
+  if (!output || output.type !== ResponseType.expert_onboarding) return null;
   const steps = Array.isArray(output.steps)
     ? output.steps.flatMap((step, index) => {
         const parsed = toStep(step, index);
