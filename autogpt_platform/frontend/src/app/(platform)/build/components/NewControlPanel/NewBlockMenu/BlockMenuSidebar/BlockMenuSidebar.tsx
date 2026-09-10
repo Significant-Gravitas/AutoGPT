@@ -106,7 +106,7 @@ export const BlockMenuSidebar = () => {
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
       ))}
-      <div className="ml-[0.5365rem] space-y-2 border-l border-zinc-800/10 pl-[0.75rem]">
+      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]">
         {subMenuItems.map((item) => (
           <MenuItem
             key={item.type}
