@@ -21,6 +21,7 @@ export function useHireStep() {
   const [hiringTemplateId, setHiringTemplateId] = useState<string | null>(null);
   const [gaveUpWaiting, setGaveUpWaiting] = useState(false);
   const reportedIds = useRef(new Set<string>());
+  const waitStartedAt = useRef<number | null>(null);
 
   const { data } = useGetBrainDumpRecommendedExperts({
     query: {
@@ -41,12 +42,17 @@ export function useHireStep() {
   const team: ExpertRecommendations | null =
     data?.status === 200 ? (data.data.team ?? null) : null;
 
+  // The ceiling is absolute from the first pending render: a pending flip
+  // (transient error, then a fresh poll) re-arms the timer with what is left
+  // of the original budget rather than a full new one.
   useEffect(() => {
     if (!isPending) return;
-    const timer = setTimeout(
-      () => setGaveUpWaiting(true),
-      RECOMMENDATIONS_MAX_WAIT_MS,
+    waitStartedAt.current ??= Date.now();
+    const remaining = Math.max(
+      0,
+      RECOMMENDATIONS_MAX_WAIT_MS - (Date.now() - waitStartedAt.current),
     );
+    const timer = setTimeout(() => setGaveUpWaiting(true), remaining);
     return () => clearTimeout(timer);
   }, [isPending]);
 
