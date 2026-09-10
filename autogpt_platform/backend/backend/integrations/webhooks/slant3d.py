@@ -1,23 +1,71 @@
+import asyncio
 import hashlib
 import hmac
 import logging
 import time
 from urllib.parse import quote
 
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from fastapi import HTTPException, Request
+from pydantic import BaseModel, Field
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.redis_client import get_redis_async
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
+from backend.util.exceptions import WebhookSetupUnavailableError
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
 
+class _WebhookEvent(BaseModel):
+    event_type: str = Field(min_length=1)
+
+
 class Slant3DWebhooksManager(BaseWebhooksManager):
     PROVIDER_NAME = ProviderName.SLANT3D
     BASE_URL = "https://slant3dapi.com/v2/api"
+
+    async def get_suitable_auto_webhook(
+        self,
+        user_id: str,
+        credentials: Credentials,
+        webhook_type: str,
+        resource: str,
+        events: list[str],
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> integrations.Webhook:
+        lock_key = ("webhook-setup", self.PROVIDER_NAME.value, resource)
+        try:
+            mutex = AsyncRedisKeyedMutex(await get_redis_async())
+        except Exception as exc:
+            raise WebhookSetupUnavailableError(
+                "Could not safely lock Slant3D webhook setup"
+            ) from exc
+        try:
+            try:
+                await asyncio.wait_for(mutex.acquire(lock_key), timeout=10)
+            except Exception as exc:
+                raise WebhookSetupUnavailableError(
+                    "Could not safely lock Slant3D webhook setup"
+                ) from exc
+            return await super().get_suitable_auto_webhook(
+                user_id=user_id,
+                credentials=credentials,
+                webhook_type=webhook_type,
+                resource=resource,
+                events=events,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+        finally:
+            try:
+                await mutex.release(lock_key)
+            except Exception:
+                logger.exception("Failed to release Slant3D webhook setup lock")
 
     async def _register_webhook(
         self,
@@ -86,7 +134,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
                 )
             if payload.get("dummy"):
                 return payload, "dummy"
-            event = payload["event_type"]
+            event = _WebhookEvent.model_validate(payload).event_type
             if not event.startswith("order."):
                 return payload, event
             order = payload["data"]["order"]
