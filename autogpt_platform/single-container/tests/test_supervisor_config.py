@@ -8,6 +8,16 @@ from pathlib import Path
 ASSET_DIR = Path(__file__).resolve().parents[1]
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
+WATCHDOG_PATH = ASSET_DIR / "watchdog.sh"
+SMOKE_PATH = (
+    ASSET_DIR.parents[1] / ".github" / "scripts" / "platform-single-container-smoke.sh"
+)
+WORKFLOW_PATH = (
+    ASSET_DIR.parents[1]
+    / ".github"
+    / "workflows"
+    / "platform-single-container-docker.yml"
+)
 
 # Unraid ships Docker's stock stop timeout and operators must not have to raise
 # it host-wide to run this appliance, so the whole supervised shutdown has to
@@ -199,6 +209,90 @@ class HealthcheckSupervisorNamesTest(unittest.TestCase):
         # Grouping renames status lines to `group:program`; an un-updated list
         # would silently match nothing and pass every program.
         self.assertEqual(checked, expected)
+
+
+class WatchdogCadenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.watchdog = WATCHDOG_PATH.read_text(encoding="utf-8")
+        self.smoke = SMOKE_PATH.read_text(encoding="utf-8")
+
+    def _constant(self, name: str) -> int:
+        match = re.search(rf"^readonly {name}=(\d+)$", self.watchdog, re.MULTILINE)
+        self.assertIsNotNone(match)
+        assert match is not None
+        return int(match.group(1))
+
+    def test_failure_limit_remains_three(self) -> None:
+        self.assertEqual(self._constant("FAILURE_LIMIT"), 3)
+
+        force_check = self.smoke.split("force_watchdog_check() {", maxsplit=1)[1].split(
+            "\n}\n", maxsplit=1
+        )[0]
+        count_position = force_check.index(
+            'previous_count="$(count_container_log_evidence "${expected}")"'
+        )
+        signal_position = force_check.index(
+            'docker exec "${CONTAINER_NAME}" kill -USR1 "${watchdog_pid}"'
+        )
+        wait_position = force_check.index(
+            'wait_for_new_container_log_evidence "${expected}" "${previous_count}"'
+        )
+        self.assertLess(count_position, signal_position)
+        self.assertLess(signal_position, wait_position)
+
+        evidence_wait = self.smoke.split(
+            "wait_for_new_container_log_evidence() {", maxsplit=1
+        )[1].split("\n}\n", maxsplit=1)[0]
+        self.assertIn("((current_count > previous_count))", evidence_wait)
+
+    def test_steady_state_cadence_remains_thirty_seconds(self) -> None:
+        self.assertEqual(self._constant("CHECK_INTERVAL"), 30)
+        self.assertIn("while true; do\n    wait_for_next_check", self.watchdog)
+        self.assertIn('sleep "${CHECK_INTERVAL}" &', self.watchdog)
+        self.assertIn("trap queue_forced_check USR1", self.watchdog)
+
+    def test_initial_health_poll_is_faster_than_steady_state_poll(self) -> None:
+        self.assertEqual(self._constant("INITIAL_CHECK_INTERVAL"), 1)
+
+        initial_wait = self.watchdog.split("wait_for_initial_health()", maxsplit=1)[
+            1
+        ].split("stop_appliance()", maxsplit=1)[0]
+        self.assertIn('sleep "${INITIAL_CHECK_INTERVAL}"', initial_wait)
+        self.assertNotIn('sleep "${CHECK_INTERVAL}"', initial_wait)
+
+
+class WorkflowFailurePropagationTest(unittest.TestCase):
+    def test_scans_join_smoke_and_fail_from_recorded_outcomes(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        validation_job = workflow.split("  build-and-scan:", maxsplit=1)[1].split(
+            "  publish-platform-digests:", maxsplit=1
+        )[0]
+
+        self.assertIn(
+            "      - name: Scan for fixable critical vulnerabilities\n"
+            "        id: vulnerability_scan\n"
+            "        continue-on-error: true",
+            validation_job,
+        )
+        self.assertIn(
+            "      - name: Scan image filesystem for embedded secrets\n"
+            "        id: secret_scan\n"
+            "        continue-on-error: true",
+            validation_job,
+        )
+        self.assertIn(
+            "      - name: Wait for complete-image smoke test\n"
+            "        wait: complete-image-smoke",
+            validation_job,
+        )
+        self.assertIn(
+            "VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}",
+            validation_job,
+        )
+        self.assertIn(
+            "SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}", validation_job
+        )
+        self.assertIn("((scan_failed == 0))", validation_job)
 
 
 if __name__ == "__main__":
