@@ -63,7 +63,7 @@ export function ExpertCover({ className, color, status, builtIn }: Props) {
     >
       {showArt ? (
         <Image
-          src="/experts/covers/autopilot.jpg"
+          src="/experts/covers/otto.jpg"
           alt=""
           fill
           sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
