@@ -9,7 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /** Enough to show what the expert is picking up without crowding out the Soul
  *  fields above it; the rest is one click away on the memory page. */
-export const SOUL_NOTES_LIMIT = 5;
+const SOUL_NOTES_LIMIT = 5;
 
 export function useLearnedNotes(expertId: string) {
   const isMemoryEnabled = useGetFlag(Flag.GRAPHITI_MEMORY);
