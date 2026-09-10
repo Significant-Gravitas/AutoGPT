@@ -1084,6 +1084,8 @@ async def update_skills(
             resolved.append(name)
     kept = {r.lower() for r in resolved}
     for dropped in [name for name in current.values() if name.lower() not in kept]:
+        # delete_user_skill drops the row name itself — except for a built-in,
+        # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
         await remove_expert_skill_name(user_id, expert_id, dropped)
     # Per-name atomic writes, not one full-array set: the expert can append to
