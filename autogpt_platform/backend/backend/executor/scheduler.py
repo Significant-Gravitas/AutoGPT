@@ -1891,7 +1891,10 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc),
+                next_run_time=datetime.now(timezone.utc)
+                + timedelta(
+                    hours=0 if config.scheduler_startup_embedding_backfill else 6
+                ),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
                 misfire_grace_time=None,

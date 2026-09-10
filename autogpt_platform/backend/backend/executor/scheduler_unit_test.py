@@ -1493,13 +1493,19 @@ class _StartupRun(NamedTuple):
     backfill_calls_at_readiness: int
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
+def _registered_jobs(
+    monkeypatch, interval_hours: int, startup_embedding_backfill: bool = True
+) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
     handing over to ``AppService.run_service``."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
+    )
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.scheduler_startup_embedding_backfill",
+        startup_embedding_backfill,
     )
     mock_scheduler = MagicMock()
     embedding_backfill = MagicMock(return_value=None)
@@ -1551,6 +1557,41 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(
+        monkeypatch, interval_hours=6, startup_embedding_backfill=False
+    )
+
+    run.embedding_backfill.assert_not_called()
+    job = next(
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    )
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert before + timedelta(hours=6) <= job.kwargs["next_run_time"]
+
+
+def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypatch):
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    run.embedding_backfill.assert_not_called()
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
+    job.args[0]()
+    run.embedding_backfill.assert_called_once_with()
 
 
 def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
