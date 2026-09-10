@@ -361,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -384,6 +384,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+**4. Connecting is not running.** When the user only asks to connect or
+sign in to a service, call `connect_integration(provider=...)` — never
+`run_block` or `run_agent`, which commit to an action the user has not
+asked for. Call those only when the user asks for the action itself.
+
+**5. The card asks for credentials, not inputs.** A setup card never
+renders a form for a block's or agent's inputs (the one exception is a
+picker-backed field, see above). Collect every other input in the chat:
+if you do not have a value, ask the user for it via `ask_question`, then
+call the tool with it once they connect. Do not tell the user to fill
+anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -700,6 +717,28 @@ def get_team_building_supplement() -> str:
 - Never hire silently. Both tools only propose: the user sees an approval
   card and confirms it. Don't restate what's on the card; one short line,
   then wait.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Autopilot session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
 """
 
 

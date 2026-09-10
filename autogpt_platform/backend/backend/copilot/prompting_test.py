@@ -52,6 +52,14 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_contains_rejection_rule(self):
+        """This section collects rules from several PRs at once, so a merge
+        that takes one side drops a rule silently."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "refused a credential the user already has" in result
+        assert "Connecting is not running" in result
+        assert "The card asks for credentials, not inputs" in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability
@@ -106,3 +114,32 @@ class TestDelegationSupplementTeamBuilding:
         assert "One proposal at a time" in result
         assert "Never hire silently" in result
         assert "Delegating to a teammate" in result
+
+
+class TestExpertOversightSupplement:
+    """The chat-reading tools are in the ``expert_admin`` group, so only an
+    Autopilot session with the team flag on can call them — a turn that
+    cannot must not be told about them."""
+
+    def test_an_autopilot_turn_with_the_flag_on_names_both_tools(self):
+        result = prompting.get_expert_oversight_supplement(
+            experts_enabled=True, expert_id=None
+        )
+        assert "list_expert_chats" in result
+        assert "read_expert_chat" in result
+
+    def test_an_expert_session_is_told_nothing(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=True, expert_id="expert-a"
+            )
+            == ""
+        )
+
+    def test_the_flag_off_tells_nobody(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=False, expert_id=None
+            )
+            == ""
+        )
