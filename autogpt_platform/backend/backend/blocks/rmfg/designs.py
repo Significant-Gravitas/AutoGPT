@@ -1,6 +1,7 @@
 """Blocks that upload a STEP file for analysis and read the resulting design."""
 
 from pathlib import Path
+from typing import Optional
 
 from backend.data.execution import ExecutionContext
 from backend.sdk import (
@@ -37,10 +38,17 @@ class RMFGDesignOutput(BlockSchemaOutput):
     )
     part: Part = SchemaField(description="One part at a time")
     part_ids: list[str] = SchemaField(description="Part IDs in the same order")
-    review_url: str = SchemaField(
-        description="Website page where a person can inspect and configure the design"
+    review_url: Optional[str] = SchemaField(
+        description=(
+            "Website page where a person can inspect and configure the design; "
+            "emitted once RMFG has assigned one"
+        ),
+        default=None,
     )
-    image_url: str = SchemaField(description="Rendered picture of the whole design")
+    image_url: Optional[str] = SchemaField(
+        description="Rendered picture of the whole design; emitted once analysis is ready",
+        default=None,
+    )
     error: str = SchemaField(description="Error message if the request failed")
 
 

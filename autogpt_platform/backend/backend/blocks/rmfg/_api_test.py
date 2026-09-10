@@ -1,5 +1,6 @@
 """Unit tests for the RMFG client's request shaping and error handling."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -8,7 +9,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks.rmfg import _http
-from backend.blocks.rmfg._api import SERVER_WAIT_SECONDS, RMFGClient
+from backend.blocks.rmfg._api import MAX_PAGES, SERVER_WAIT_SECONDS, RMFGClient
 from backend.blocks.rmfg._http import POLL_INITIAL_SECONDS, RMFGError, parse_body
 from backend.blocks.rmfg._models import Design, Part, ResourceError, absolute_api_url
 from backend.blocks.rmfg._testdata import TEST_DESIGN, TEST_PENDING_DESIGN, TEST_SHIP_TO
@@ -71,14 +72,34 @@ def _sent(request: AsyncMock, call: int = 0) -> tuple[str, str, dict[str, Any]]:
     return method, url, request.await_args_list[call].kwargs
 
 
+def _fake_asyncio(sleep) -> SimpleNamespace:
+    """Stand-in for the module's asyncio: a fake sleep, the real wait_for."""
+    return SimpleNamespace(
+        sleep=sleep, wait_for=asyncio.wait_for, TimeoutError=asyncio.TimeoutError
+    )
+
+
 class TestAuth:
-    def test_bearer_header_is_set_once_for_every_call(self):
-        client = RMFGClient(_credentials())
-        assert client.requests.extra_headers == {
-            "Authorization": "Bearer test-key",
-            "Accept": "application/json",
-        }
+    async def test_bearer_header_travels_with_each_request(self):
+        client, request = _client_with(_FakeResponse(200, {"id": "dsn_1"}))
+
+        await client.get_design("dsn_1")
+
+        _, _, kwargs = _sent(request)
+        assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+        assert kwargs["headers"]["Accept"] == "application/json"
+        # Never on the transport: it re-attaches ``extra_headers`` after a
+        # cross-origin redirect has stripped the token from the request.
+        assert client.requests.extra_headers is None
         assert client.requests.raise_for_status is False
+
+    async def test_ids_are_escaped_as_single_path_segments(self):
+        client, request = _client_with(_FakeResponse(200, {"id": "x"}))
+
+        await client.get_design("dsn/../x?y")
+
+        _, url, _ = _sent(request)
+        assert url == "https://api.rmfg.com/v1/designs/dsn%2F..%2Fx%3Fy"
 
 
 class TestParseBody:
@@ -147,6 +168,25 @@ class TestPagination:
         assert second["params"]["cursor"] == "c2"
         assert second["params"]["limit"] == 500
 
+    async def test_a_cursor_that_does_not_advance_is_an_error(self):
+        stuck = {"data": [{"id": "a"}], "has_more": True, "next_cursor": "c2"}
+        client, request = _client_with(*(_FakeResponse(200, stuck) for _ in range(3)))
+
+        with pytest.raises(RMFGError, match="repeated cursor c2"):
+            await client.list_materials()
+        assert request.await_count == 2
+
+    async def test_pagination_stops_after_the_page_cap(self):
+        pages = (
+            _FakeResponse(200, {"data": [], "has_more": True, "next_cursor": f"c{n}"})
+            for n in range(MAX_PAGES + 5)
+        )
+        client, request = _client_with(*pages)
+
+        with pytest.raises(RMFGError, match=f"did not end after {MAX_PAGES} pages"):
+            await client.list_materials()
+        assert request.await_count == MAX_PAGES
+
     async def test_finish_process_filter_is_a_query_param(self):
         client, request = _client_with(_FakeResponse(200, {"data": []}))
 
@@ -214,7 +254,7 @@ class TestPolling:
         async def fake_sleep(seconds: float) -> None:
             sleeps.append(seconds)
 
-        monkeypatch.setattr(_http, "asyncio", SimpleNamespace(sleep=fake_sleep))
+        monkeypatch.setattr(_http, "asyncio", _fake_asyncio(fake_sleep))
         client, request = _client_with(
             _FakeResponse(200, TEST_PENDING_DESIGN.model_dump(mode="json")),
             _FakeResponse(200, TEST_DESIGN.model_dump(mode="json")),
@@ -230,9 +270,7 @@ class TestPolling:
     async def test_failed_analysis_raises_with_the_reason(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.setattr(
-            _http, "asyncio", SimpleNamespace(sleep=AsyncMock(return_value=None))
-        )
+        monkeypatch.setattr(_http, "asyncio", _fake_asyncio(AsyncMock()))
         failed = TEST_DESIGN.model_copy(
             update={
                 "status": DesignStatus.FAILED,
@@ -247,25 +285,47 @@ class TestPolling:
     async def test_times_out_instead_of_polling_forever(
         self, monkeypatch: pytest.MonkeyPatch
     ):
+        # A clock that only the fake sleep advances, scoped to the module so
+        # the event loop's own clock is untouched.
+        clock = {"now": 0.0}
+        sleeps: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock["now"] += seconds
+
+        monkeypatch.setattr(_http, "asyncio", _fake_asyncio(fake_sleep))
         monkeypatch.setattr(
-            _http, "asyncio", SimpleNamespace(sleep=AsyncMock(return_value=None))
+            _http, "time", SimpleNamespace(monotonic=lambda: clock["now"])
         )
-        # Two reads before the deadline, then the clock jumps past it. Scoped
-        # to the module so the event loop's own clock is untouched.
-        ticks = [0.0, 0.0, 100.0]
-        monkeypatch.setattr(
-            _http,
-            "time",
-            SimpleNamespace(
-                monotonic=lambda: ticks.pop(0) if len(ticks) > 1 else ticks[0]
-            ),
-        )
-        client, _ = _client_with(
-            _FakeResponse(200, TEST_PENDING_DESIGN.model_dump(mode="json"))
-        )
+        pending = _FakeResponse(200, TEST_PENDING_DESIGN.model_dump(mode="json"))
+        client, request = _client_with(pending, pending, pending, pending)
 
         with pytest.raises(TimeoutError, match=TEST_PENDING_DESIGN.id):
             await client.wait_for_design(TEST_PENDING_DESIGN, timeout_seconds=10)
+
+        # Backoff 2, 3, 4.5 brings the clock to 9.5 s; the last sleep is
+        # capped to the half second left, and nothing is fetched after it.
+        assert sleeps == [2.0, 3.0, 4.5, 0.5]
+        assert request.await_count == 3
+
+    async def test_a_slow_fetch_is_cut_off_at_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(_http, "POLL_INITIAL_SECONDS", 0.01)
+
+        async def slow_fetch() -> str:
+            await asyncio.sleep(5)
+            return "ready"
+
+        with pytest.raises(TimeoutError, match="waiting for the thing"):
+            await _http.poll(
+                slow_fetch,
+                initial="pending",
+                is_pending=lambda state: state == "pending",
+                timeout_seconds=0.1,
+                what="the thing",
+            )
 
 
 class TestBaskets:
@@ -336,6 +396,14 @@ class TestBaskets:
         method, url, kwargs = _sent(request)
         assert (method, url) == ("PATCH", "https://api.rmfg.com/v1/carts/crt_1")
         assert kwargs["json"] == {"shipping_option_id": "ship_2"}
+
+    async def test_an_explicit_empty_basket_is_sent(self):
+        client, request = _client_with(_FakeResponse(200, {"id": "crt_1"}))
+
+        await client.update_cart("crt_1", items=[])
+
+        _, _, kwargs = _sent(request)
+        assert kwargs["json"] == {"items": []}
 
 
 class TestPayment:
@@ -445,6 +513,17 @@ class TestImages:
         method, url, kwargs = _sent(request)
         assert (method, url) == ("GET", "https://api.rmfg.com/v1/designs/dsn_1/image")
         assert kwargs["params"] == {"view": "iso", "format": "png"}
+        assert kwargs["headers"] == {
+            "Authorization": "Bearer test-key",
+            "Accept": "image/png",
+        }
+
+    async def test_a_dfm_report_without_a_part_is_rejected(self):
+        client, request = _client_with()
+
+        with pytest.raises(ValueError, match="part_id is required"):
+            await client.get_image("dsn_1", dfm_id="dfm_1")
+        request.assert_not_awaited()
 
     async def test_part_image_with_view_and_width(self):
         client, request = _client_with(_BytesResponse(200, b"PNG", "image/png"))

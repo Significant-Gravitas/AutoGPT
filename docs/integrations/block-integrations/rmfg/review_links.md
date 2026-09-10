@@ -10,7 +10,9 @@ Creates an RMFG review link so a person can inspect and adjust a design
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Posts a design ID and configuration to `/v1/review-links`. Optionally attach a DFM report so the page opens with that report's exact configuration. The returned `review_url` is a private hand-off link: the viewer can change material, finish and hole operations and save. Every design also carries a default `review_url`.
+Posts a design ID and configuration to `/v1/review-links` with an `Idempotency-Key`; optionally attach a `dfm_id` so the page opens with that report's exact configuration. The returned `review_url` is a private hand-off link: the viewer can change material, finish and hole operations and save. Every design also carries a default `review_url`.
+
+An unknown design or DFM report, or a configuration that references invalid IDs, is rejected by RMFG and reported as `RMFG <code>: <message> (field: <path>)`. Links carry an `expires_at`, and `configuration_updated_at` is empty until a person saves.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -36,7 +38,11 @@ Posts a design ID and configuration to `/v1/review-links`. Optionally attach a D
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A DFM report comes back `requires_input` on an assembly with many holes. Rather than guess, the agent creates a review link and asks the customer to configure the parts themselves.
+**Complex Configuration**: Hand an assembly with many holes to the customer to configure themselves instead of guessing.
+
+**Approval Before Ordering**: Let a customer inspect and adjust the exact configuration before the agent quotes it.
+
+**Engineer Sign-Off**: Send a DFM report's configuration to an engineer for review on rmfg.com.
 <!-- END MANUAL -->
 
 ---
@@ -48,7 +54,9 @@ Fetches an RMFG review link and the configuration a person saved on it
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches `/v1/review-links/{id}`. `configuration_updated_at` is set once a person has saved changes; `configuration` then holds their choices, ready to pass into Create Quote or Create Cart.
+Fetches `/v1/review-links/{id}`. `configuration_updated_at` is set once a person has saved changes, and `configuration` then holds their choices, ready to pass into Create Quote or Create Cart; before that it is empty and `configuration` is the starting configuration.
+
+An unknown ID is reported as `RMFG not_found_error: <message>`; a link past `expires_at` returns status `expired`, and a new link must be created for further edits.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -71,7 +79,11 @@ Fetches `/v1/review-links/{id}`. `configuration_updated_at` is set once a person
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-After the customer replies "done", the agent reads the link, sees `configuration_updated_at` is set, and quotes the saved configuration.
+**Customer Done Signal**: When the customer replies "done", read the link and quote the saved configuration.
+
+**Scheduled Check**: Poll the link daily and continue once `configuration_updated_at` is set.
+
+**Change Summary**: Compare the saved configuration with the original and tell the customer what changed.
 <!-- END MANUAL -->
 
 ---

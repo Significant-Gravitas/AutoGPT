@@ -6,6 +6,7 @@ Responses are validated into the models in ``_models`` and
 
 from io import BytesIO
 from typing import Any, Optional
+from urllib.parse import quote
 
 from pydantic import TypeAdapter
 
@@ -23,6 +24,7 @@ from ._models import (
 )
 from ._models_commerce import Cart, Order, Quote, ReviewLink
 from ._types import (
+    RMFG_API_URL,
     DesignStatus,
     HardwareKind,
     ImageView,
@@ -35,11 +37,12 @@ from ._types import (
     ShipTo,
 )
 
-RMFG_API_URL = "https://api.rmfg.com"
-
 # How long a create call asks the server to hold the connection while the
 # resource finishes, before the client falls back to polling.
 SERVER_WAIT_SECONDS = 20
+# Listing pages hold up to 500 rows, so this is far beyond any real catalog;
+# it only stops a server that keeps answering ``has_more``.
+MAX_PAGES = 100
 
 _JSON_LIST = TypeAdapter(list[dict[str, Any]])
 
@@ -49,17 +52,15 @@ class RMFGClient:
 
     def __init__(self, credentials: RMFGCredentials):
         self.base_url = f"{RMFG_API_URL}/v1"
+        # Sent with each request rather than as ``extra_headers``: the
+        # transport drops ``Authorization`` before following a cross-origin
+        # redirect but re-applies ``extra_headers`` to the redirected request,
+        # which would hand the bearer token to whatever host was named.
+        self._auth_header = credentials.auth_header()
         # 429/5xx are retried by ``Requests`` itself with jittered backoff; the
         # attempt cap keeps a stuck endpoint from consuming the whole block
         # timeout before the error surfaces.
-        self.requests = Requests(
-            raise_for_status=False,
-            retry_max_attempts=5,
-            extra_headers={
-                "Authorization": credentials.auth_header(),
-                "Accept": "application/json",
-            },
-        )
+        self.requests = Requests(raise_for_status=False, retry_max_attempts=5)
 
     async def _request(
         self,
@@ -72,7 +73,7 @@ class RMFGClient:
         idempotency_key: str = "",
         wait: bool = False,
     ) -> dict[str, Any]:
-        headers: dict[str, str] = {}
+        headers = {"Authorization": self._auth_header, "Accept": "application/json"}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
         if wait:
@@ -91,7 +92,8 @@ class RMFGClient:
         """Follow ``next_cursor`` until ``has_more`` is false."""
         items: list[dict] = []
         cursor: Optional[str] = None
-        while True:
+        seen: set[str] = set()
+        for _ in range(MAX_PAGES):
             page = await self._request(
                 "GET", path, params={**(params or {}), "cursor": cursor}
             )
@@ -99,6 +101,14 @@ class RMFGClient:
             cursor = page.get("next_cursor")
             if not page.get("has_more") or not cursor:
                 return items
+            if cursor in seen:
+                raise RMFGError(
+                    200, "pagination_error", f"{path} repeated cursor {cursor}"
+                )
+            seen.add(cursor)
+        raise RMFGError(
+            200, "pagination_error", f"{path} did not end after {MAX_PAGES} pages"
+        )
 
     # --- catalog -----------------------------------------------------------
 
@@ -139,7 +149,7 @@ class RMFGClient:
 
     async def get_design(self, design_id: str) -> Design:
         return Design.model_validate(
-            await self._request("GET", f"/designs/{design_id}")
+            await self._request("GET", f"/designs/{_id(design_id)}")
         )
 
     async def wait_for_design(self, design: Design, timeout_seconds: float) -> Design:
@@ -170,15 +180,18 @@ class RMFGClient:
         Without a part the whole design is drawn. With a DFM report the part
         is drawn with its configured hole operations marked.
         """
-        if dfm_id and part_id:
-            path = f"/dfm/{dfm_id}/parts/{part_id}/image"
+        if dfm_id and not part_id:
+            raise ValueError("part_id is required when dfm_id is set")
+        if dfm_id:
+            path = f"/dfm/{_id(dfm_id)}/parts/{_id(part_id)}/image"
         elif part_id:
-            path = f"/designs/{design_id}/parts/{part_id}/image"
+            path = f"/designs/{_id(design_id)}/parts/{_id(part_id)}/image"
         else:
-            path = f"/designs/{design_id}/image"
+            path = f"/designs/{_id(design_id)}/image"
         response = await self.requests.request(
             "GET",
             f"{self.base_url}{path}",
+            headers={"Authorization": self._auth_header, "Accept": "image/png"},
             params={
                 "view": view.value,
                 "format": "png",
@@ -209,7 +222,9 @@ class RMFGClient:
         return DFMReport.model_validate(data)
 
     async def get_dfm_report(self, dfm_id: str) -> DFMReport:
-        return DFMReport.model_validate(await self._request("GET", f"/dfm/{dfm_id}"))
+        return DFMReport.model_validate(
+            await self._request("GET", f"/dfm/{_id(dfm_id)}")
+        )
 
     # --- quotes ------------------------------------------------------------
 
@@ -229,7 +244,9 @@ class RMFGClient:
         return Quote.model_validate(data)
 
     async def get_quote(self, quote_id: str) -> Quote:
-        return Quote.model_validate(await self._request("GET", f"/quotes/{quote_id}"))
+        return Quote.model_validate(
+            await self._request("GET", f"/quotes/{_id(quote_id)}")
+        )
 
     async def wait_for_quote(self, quote: Quote, timeout_seconds: float) -> Quote:
         """Poll until pricing and DFM have finished."""
@@ -262,7 +279,7 @@ class RMFGClient:
         return Cart.model_validate(data)
 
     async def get_cart(self, cart_id: str) -> Cart:
-        return Cart.model_validate(await self._request("GET", f"/carts/{cart_id}"))
+        return Cart.model_validate(await self._request("GET", f"/carts/{_id(cart_id)}"))
 
     async def update_cart(
         self,
@@ -273,16 +290,23 @@ class RMFGClient:
         shipping_option_id: str = "",
         idempotency_key: str = "",
     ) -> Cart:
-        """Patch an open cart; omitted fields keep their current value."""
+        """Patch an open cart; omitted fields keep their current value.
+
+        ``items=[]`` is a real value that empties the basket; only ``None``
+        leaves the current items alone.
+        """
         body: dict[str, Any] = {}
-        if items:
+        if items is not None:
             body["items"] = [item.to_payload() for item in items]
         if ship_to:
             body["ship_to"] = ship_to.to_payload()
         if shipping_option_id:
             body["shipping_option_id"] = shipping_option_id
         data = await self._request(
-            "PATCH", f"/carts/{cart_id}", body=body, idempotency_key=idempotency_key
+            "PATCH",
+            f"/carts/{_id(cart_id)}",
+            body=body,
+            idempotency_key=idempotency_key,
         )
         return Cart.model_validate(data)
 
@@ -304,14 +328,19 @@ class RMFGClient:
         if customer_phone:
             body["customer_phone"] = customer_phone
         data = await self._request(
-            "POST", f"/carts/{cart_id}/pay", body=body, idempotency_key=idempotency_key
+            "POST",
+            f"/carts/{_id(cart_id)}/pay",
+            body=body,
+            idempotency_key=idempotency_key,
         )
         return Cart.model_validate(data)
 
     # --- orders ------------------------------------------------------------
 
     async def get_order(self, order_id: str) -> Order:
-        return Order.model_validate(await self._request("GET", f"/orders/{order_id}"))
+        return Order.model_validate(
+            await self._request("GET", f"/orders/{_id(order_id)}")
+        )
 
     async def list_orders(
         self, limit: int = 20, cursor: str = ""
@@ -343,8 +372,13 @@ class RMFGClient:
         return ReviewLink.model_validate(data)
 
     async def get_review_link(self, link_id: str) -> ReviewLink:
-        data = await self._request("GET", f"/review-links/{link_id}")
+        data = await self._request("GET", f"/review-links/{_id(link_id)}")
         return ReviewLink.model_validate(data)
+
+
+def _id(value: str) -> str:
+    """Escape a resource ID for use as one path segment."""
+    return quote(value, safe="")
 
 
 def _basket(items: list[QuoteItemRequest], ship_to: Optional[ShipTo]) -> dict:

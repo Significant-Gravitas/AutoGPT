@@ -10,7 +10,9 @@ Pays an RMFG cart with the saved card and places a real production order
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Posts to `/v1/carts/{id}/pay` with `card_on_file`, which uses the card saved on the RMFG account page, or with a Stripe PaymentMethod id you manage. A connected RMFG account must have been approved with "Also allow paid orders" (the `payments` permission); an API key pays whenever the account has a saved card. Preconditions: the cart is open, its quote is ready, and it has a `ship_to` and `shipping_option_id`; the charge is the cart's `totals.amount_total_cents`. A stable `Idempotency-Key` (defaulting to the node execution ID) makes retries safe: repeating a paid cart returns the existing payment rather than charging twice. A 202 means the outcome is not yet known — `payment_status` is `processing` and `checked_out` is false — so re-read the cart instead of paying again. On success the cart becomes `checked_out` and `order_id` points at the new order.
+Posts to `/v1/carts/{id}/pay` with `card_on_file`, which uses the card saved on the RMFG account page, or with `payment_method` and a Stripe PaymentMethod id you manage; the block refuses `payment_method` without a `payment_method_id` before any request is made. A connected RMFG account must have been approved with "Also allow paid orders" (the `payments` permission); an API key pays whenever the account has a saved card. RMFG only accepts an open cart whose quote is `ready` with a `ship_to` and `shipping_option_id`; anything else, a missing card, or a declined charge is reported as `RMFG <code>: <message>` on `error` and nothing is charged.
+
+The charge is the cart's `totals.amount_total_cents`. A stable `Idempotency-Key` (defaulting to the node execution ID) makes retries safe: repeating a paid cart returns the existing payment rather than charging twice. A 202 means the outcome is not yet known, so `payment_status` is `processing` and `checked_out` is false; re-read the cart instead of paying again. On success the cart becomes `checked_out` and `order_id` points at the new order. The platform marks this block as a sensitive action, so a person approves each run.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -40,13 +42,17 @@ Posts to `/v1/carts/{id}/pay` with `card_on_file`, which uses the card saved on 
 | shipping_options | Delivery choices once ship_to is set; pass an id to Update Cart | List[ShippingOption] |
 | requirements | Selections or decisions still needed before ordering | List[Requirement] |
 | manufacturing_warnings | Advisories from automatic file preparation; they do not block ordering | List[ManufacturingReviewWarning] |
-| order_id | Order ID, once the cart has been paid | str |
+| order_id | Order ID; only emitted once the cart has been paid | str |
 | payment_status | paid, processing (check the cart again later), failed or refunded | "paid" \| "processing" \| "failed" \| "refunded" |
 | checked_out | True once the order exists | bool |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-With the customer's explicit approval of the cart total, an ordering agent pays the cart and hands the `order_id` to Get Order for tracking updates.
+**Approved Agent Order**: After the customer confirms the total, pay the cart and hand `order_id` to Get Order for tracking.
+
+**Automated Reorder**: Re-order a standard part from a saved configuration with the account's card on file.
+
+**Managed Payment Method**: Pay with a specific Stripe PaymentMethod when the business keeps its own cards.
 <!-- END MANUAL -->
 
 ---

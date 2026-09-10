@@ -53,7 +53,10 @@ class RMFGCartOutput(BlockSchemaOutput):
     manufacturing_warnings: list[ManufacturingReviewWarning] = SchemaField(
         description="Advisories from automatic file preparation; they do not block ordering"
     )
-    order_id: str = SchemaField(description="Order ID, once the cart has been paid")
+    order_id: Optional[str] = SchemaField(
+        description="Order ID; only emitted once the cart has been paid",
+        default=None,
+    )
     error: str = SchemaField(description="Error message if the request failed")
 
 
@@ -272,7 +275,9 @@ class RMFGUpdateCartBlock(Block):
     ) -> Cart:
         return await RMFGClient(credentials).update_cart(
             input_data.cart_id,
-            items=input_data.items,
+            # An empty list here means "not set"; the client treats [] as a
+            # request to empty the basket.
+            items=input_data.items or None,
             ship_to=input_data.ship_to,
             shipping_option_id=input_data.shipping_option_id,
             idempotency_key=idempotency_key,

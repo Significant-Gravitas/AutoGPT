@@ -10,7 +10,9 @@ Runs an RMFG manufacturability (DFM) check on a configured design. A blocked fin
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Posts the design ID and a manufacturing configuration to `/v1/dfm`. Configuration precedence is per-part override, then defaults; the `material_id` input is a shortcut that sets `defaults.material_id`. RMFG responds with a status per part and overall: `ready`, `requires_input` (a selection is missing — see `requirements`) or `blocked` (the geometry or configuration cannot be made). Findings carry a severity, and warning-level ones such as a hole near a bend can be accepted by listing the code in `accepted_risks`. The `capabilities` on each part list which finishes, colors and hardware fit that part and each hole, which is how an agent chooses valid options. By default RMFG also prepares production files (laser DXF, corrected STEP). Reports are immutable: to evaluate a change, create a new one.
+Posts the design ID and a manufacturing configuration to `/v1/dfm` with an `Idempotency-Key`. Precedence is per-part override, then `defaults`; the `material_id` input is a shortcut that sets `defaults.material_id`. RMFG answers with a status per part and overall: `ready`, `requires_input` (a selection is missing, listed in `requirements`) or `blocked` (the geometry or configuration cannot be made). Neither of the latter is an error; they are results for the graph to act on. Findings carry a severity, and warning-level ones such as a hole near a bend can be accepted by listing their code in `accepted_risks`. Each part's `capabilities` list which finishes, colors and hardware fit that part and each of its holes.
+
+Unknown design, material or hardware IDs are rejected by RMFG and surfaced as `RMFG <code>: <message> (field: <path>)`. By default production files (laser DXF, corrected STEP) are also prepared; their status arrives on the report and can be re-read with Get DFM Report. Reports are immutable, so a changed configuration means a new report. `review_url` is emitted only when RMFG provides one.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,11 +39,15 @@ Posts the design ID and a manufacturing configuration to `/v1/dfm`. Configuratio
 | issue | One finding at a time | DFMIssue |
 | requirements | Selections still needed before the design can be quoted | List[Requirement] |
 | parts | Per-part status, findings, capabilities and images | List[PartDFM] |
-| review_url | Website page showing this exact configuration for a person to adjust | str |
+| review_url | Website page showing this exact configuration for a person to adjust; emitted when RMFG provides one | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-An agent quotes a bracket and gets `requires_input`. It creates a DFM report, reads the `material_required` requirement and the part's capabilities, picks a compatible material, and re-quotes.
+**Resolving requires_input**: Read the `material_required` requirement and each part's capabilities, pick a compatible material, and re-run.
+
+**Accepting a Known Risk**: After the customer approves a hole-near-bend warning, re-run with its code in `accepted_risks`.
+
+**Production File Prep**: Generate laser DXF and corrected STEP files for a configuration that is already priced.
 <!-- END MANUAL -->
 
 ---
@@ -53,7 +59,9 @@ Fetches an RMFG DFM report by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches `/v1/dfm/{id}`. Findings never change, but the `production_files` status does, so re-reading tells you when DXF and STEP files are ready or whether preparation failed with a manual-review warning.
+Fetches `/v1/dfm/{id}` and emits the same outputs as Create DFM Report. Findings never change, but the `production_files` status does, so re-reading tells you when DXF and STEP files are ready or whether preparation failed with a manual-review warning.
+
+An unknown or foreign report ID is reported as `RMFG not_found_error: <message>`. `issue` is emitted once per finding, so a clean report yields none, and `review_url` only when present.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -76,11 +84,15 @@ Fetches `/v1/dfm/{id}`. Findings never change, but the `production_files` status
 | issue | One finding at a time | DFMIssue |
 | requirements | Selections still needed before the design can be quoted | List[Requirement] |
 | parts | Per-part status, findings, capabilities and images | List[PartDFM] |
-| review_url | Website page showing this exact configuration for a person to adjust | str |
+| review_url | Website page showing this exact configuration for a person to adjust; emitted when RMFG provides one | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-After a `dfm_report.production_files.ready` webhook, the graph reads the report and forwards the production file links to the shop floor.
+**Production Files Ready**: After a `dfm_report.production_files.ready` event, read the report and forward the file links to the shop floor.
+
+**Audit Trail**: Re-read the report a quote was based on to show the customer exactly what was checked.
+
+**Failed Preparation**: Detect a `production_files` failure and route the design to a person for review.
 <!-- END MANUAL -->
 
 ---

@@ -11,13 +11,12 @@ from pydantic import ConfigDict, field_validator
 from backend.sdk import BaseModel, Field
 
 from ._types import (
+    RMFG_API_URL,
     DesignStatus,
     ManufacturabilityStatus,
     ManufacturingConfiguration,
     Process,
 )
-
-RMFG_API_URL = "https://api.rmfg.com"
 
 
 def absolute_api_url(value: Optional[str]) -> Optional[str]:

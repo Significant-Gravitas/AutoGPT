@@ -10,7 +10,9 @@ Fetches an RMFG order's status and shipment tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches `/v1/orders/{id}`: the status (`received`, `in_production`, `ready_for_pickup`, `shipped`, `delivered`, `cancelled` or `refunded`), estimated ship date, line items, a status history, and carrier tracking once shipped. `tracking_url` and `tracking_number` are only emitted when they exist.
+Fetches `/v1/orders/{id}`: the status (`received`, `in_production`, `ready_for_pickup`, `shipped`, `delivered`, `cancelled` or `refunded`), estimated ship date, line items, a status history, and carrier tracking once shipped.
+
+An unknown ID is reported as `RMFG not_found_error: <message>`. `tracking_url`, `tracking_number` and `estimated_ship_date` are emitted only when RMFG has them, so a graph can branch on their presence; `amount_total_cents` is `0` until the order carries a total.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,13 +31,17 @@ Fetches `/v1/orders/{id}`: the status (`received`, `in_production`, `ready_for_p
 | status | received, in_production, ready_for_pickup, shipped, delivered, cancelled or refunded | "received" \| "in_production" \| "ready_for_pickup" \| "shipped" \| "delivered" \| "cancelled" \| "refunded" |
 | tracking | Carrier, number and link once shipped | OrderTracking |
 | tracking_url | Carrier tracking link, once shipped | str |
-| tracking_number | Carrier tracking number | str |
-| estimated_ship_date | Planned ship date | str |
+| tracking_number | Carrier tracking number, once shipped | str |
+| estimated_ship_date | Planned ship date, when known | str |
 | amount_total_cents | Amount charged, USD cents | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-An `order.status_changed` webhook starts the graph; Get Order loads the details and the agent messages the customer with the tracking link.
+**Shipping Notification**: When an `order.status_changed` event arrives, load the order and message the customer with the tracking link.
+
+**Delivery Confirmation**: Check for `delivered` status before closing a support ticket.
+
+**Cancellation Handling**: Detect `cancelled` or `refunded` orders and update the internal record.
 <!-- END MANUAL -->
 
 ---
@@ -47,7 +53,9 @@ Lists the RMFG account's manufacturing orders
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Reads one page of `/v1/orders`, newest first, and returns `next_cursor` when there are more. Feed the cursor back in to page; an empty cursor means the last page.
+Reads one page of `/v1/orders`, newest first, with `limit` between 1 and 100, and returns `next_cursor` when there are more. Feed the cursor back in to page; an empty `next_cursor` means the last page.
+
+An invalid cursor is rejected by RMFG and surfaced as `RMFG <code>: <message>`. An account with no orders yields an empty `orders` list, no `order` items and an empty cursor.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -69,7 +77,11 @@ Reads one page of `/v1/orders`, newest first, and returns `next_cursor` when the
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A weekly report agent pages through all orders and summarises what is in production versus shipped.
+**Weekly Production Report**: Page through all orders and summarise what is in production versus shipped.
+
+**Open Order Dashboard**: List recent orders and filter to those not yet `delivered`.
+
+**Reconciliation**: Match order totals against the accounting system's records.
 <!-- END MANUAL -->
 
 ---

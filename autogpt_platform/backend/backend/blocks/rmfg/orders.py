@@ -40,11 +40,15 @@ class RMFGGetOrderBlock(Block):
         tracking: Optional[OrderTracking] = SchemaField(
             description="Carrier, number and link once shipped"
         )
-        tracking_url: str = SchemaField(
-            description="Carrier tracking link, once shipped"
+        tracking_url: Optional[str] = SchemaField(
+            default=None, description="Carrier tracking link, once shipped"
         )
-        tracking_number: str = SchemaField(description="Carrier tracking number")
-        estimated_ship_date: str = SchemaField(description="Planned ship date")
+        tracking_number: Optional[str] = SchemaField(
+            description="Carrier tracking number, once shipped", default=None
+        )
+        estimated_ship_date: Optional[str] = SchemaField(
+            description="Planned ship date, when known", default=None
+        )
         amount_total_cents: int = SchemaField(description="Amount charged, USD cents")
         error: str = SchemaField(description="Error message if the request failed")
 

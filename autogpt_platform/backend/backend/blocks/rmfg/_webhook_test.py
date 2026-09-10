@@ -308,6 +308,31 @@ class TestRegistration:
                     "s",
                 )
 
+    @pytest.mark.parametrize(
+        "payload, message",
+        [
+            (["whe_1", "whsec"], "unreadable response"),
+            (None, "unreadable response"),
+            ({"id": "whe_1", "secret": {"value": "whsec"}}, "signing secret"),
+            ({"id": 12, "secret": "whsec"}, "signing secret"),
+            ({"id": "whe_1", "secret": ""}, "signing secret"),
+        ],
+    )
+    async def test_refuses_a_malformed_registration_response(self, payload, message):
+        # A stored non-string secret would fail the HMAC on every delivery.
+        response = _FakeResponse(201, payload)
+        with patch("backend.blocks.rmfg._webhook.Requests") as requests_cls:
+            requests_cls.return_value.post = AsyncMock(return_value=response)
+            with pytest.raises(ValueError, match=message):
+                await RMFGWebhooksManager()._register_webhook(
+                    api_key_credentials(),
+                    RMFGWebhookType.ACCOUNT,
+                    "",
+                    ["design_ready"],
+                    "https://platform.example/ingress",
+                    "s",
+                )
+
     async def test_surfaces_the_api_error_message(self):
         response = _FakeResponse(
             403, {"error": {"type": "permission_error", "message": "scope missing"}}

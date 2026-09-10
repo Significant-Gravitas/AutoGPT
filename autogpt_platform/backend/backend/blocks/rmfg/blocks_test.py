@@ -4,11 +4,14 @@ The harness exercises one canned input per block. These cover the input
 shaping and guard paths it misses.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
+from backend.blocks.rmfg import carts, images
 from backend.blocks.rmfg._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.rmfg._inputs import build_items
 from backend.blocks.rmfg._testdata import (
@@ -16,6 +19,7 @@ from backend.blocks.rmfg._testdata import (
     TEST_CONFIGURATION,
     TEST_DESIGN,
     TEST_PAID_CART,
+    TEST_PART,
     TEST_SHIP_TO,
 )
 from backend.blocks.rmfg._types import (
@@ -28,6 +32,7 @@ from backend.blocks.rmfg._types import (
 )
 from backend.blocks.rmfg.carts import RMFGUpdateCartBlock, is_payable
 from backend.blocks.rmfg.designs import RMFGAnalyzeDesignBlock
+from backend.blocks.rmfg.images import PNG_SIGNATURE, RMFGGetImageBlock
 from backend.blocks.rmfg.pay_cart import RMFGPayCartBlock
 from backend.blocks.rmfg.quotes import RMFGCreateQuoteBlock
 from backend.blocks.rmfg.triggers import RMFGEventTriggerBlock
@@ -108,6 +113,17 @@ class TestBuildItems:
         assert items[0].client_reference_id == "ref-1"
         assert items[0].quantity_options == [1, 25]
         assert items[1] is extra
+
+    @pytest.mark.parametrize("options", [[0], [5, -1], list(range(1, 12))])
+    def test_quantity_options_are_bounded(self, options: list[int]):
+        with pytest.raises(ValidationError):
+            QuoteItemRequest(design_id="dsn_1", quantity_options=options)
+        with pytest.raises(ValidationError):
+            RMFGCreateQuoteBlock.Input(
+                credentials=TEST_CREDENTIALS_INPUT,
+                design_id="dsn_1",
+                quantity_options=options,
+            )
 
 
 class TestQuoteBlock:
@@ -193,10 +209,45 @@ class TestUpdateCartBlock:
         assert out["cart_id"] == TEST_CART.id
         assert out["is_payable"] is True
 
+    async def test_unset_items_do_not_empty_the_basket(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # The input's empty default must reach the client as "not set";
+        # an empty list there is an instruction to clear the cart.
+        update = AsyncMock(return_value=TEST_CART)
+        monkeypatch.setattr(
+            carts, "RMFGClient", lambda _: SimpleNamespace(update_cart=update)
+        )
+
+        await _run(RMFGUpdateCartBlock(), cart_id="crt_1", shipping_option_id="s")
+
+        assert update.await_args.kwargs["items"] is None
+
 
 class TestPayCartBlock:
     def test_is_a_sensitive_action(self):
         assert RMFGPayCartBlock().is_sensitive_action is True
+
+    async def test_uses_node_exec_id_as_idempotency_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # The double-charge protection rests on this default.
+        block = RMFGPayCartBlock()
+        pay = AsyncMock(return_value=TEST_PAID_CART)
+        monkeypatch.setattr(block, "pay_cart", pay)
+
+        await _run(block, cart_id="crt_1")
+
+        assert pay.await_args.args[2] == "node-exec-1"
+
+    async def test_explicit_idempotency_key_wins(self, monkeypatch: pytest.MonkeyPatch):
+        block = RMFGPayCartBlock()
+        pay = AsyncMock(return_value=TEST_PAID_CART)
+        monkeypatch.setattr(block, "pay_cart", pay)
+
+        await _run(block, cart_id="crt_1", idempotency_key="pay-bracket-001")
+
+        assert pay.await_args.args[2] == "pay-bracket-001"
 
     async def test_payment_method_requires_an_id(self, monkeypatch: pytest.MonkeyPatch):
         block = RMFGPayCartBlock()
@@ -252,6 +303,54 @@ class TestAnalyzeDesignBlock:
         )
 
         assert analyze.await_args.args[1] == "Bracket.STP"
+
+
+class TestGetImageBlock:
+    def _client(self, monkeypatch: pytest.MonkeyPatch, content: bytes, kind: str):
+        get_image = AsyncMock(return_value=(content, kind))
+        monkeypatch.setattr(
+            images, "RMFGClient", lambda _: SimpleNamespace(get_image=get_image)
+        )
+
+    async def test_png_bytes_become_a_png_data_uri(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._client(monkeypatch, PNG_SIGNATURE + b"...", "image/png; charset=binary")
+        block = RMFGGetImageBlock()
+
+        image = await block.fetch_image(
+            TEST_CREDENTIALS,
+            block.input_schema(
+                credentials=TEST_CREDENTIALS_INPUT,
+                design_id=TEST_DESIGN.id,
+                part_id=TEST_PART.id,
+            ),
+        )
+
+        assert image.startswith("data:image/png;base64,iVBORw0KGgo")
+
+    @pytest.mark.parametrize(
+        "content, kind",
+        [
+            (b"<svg xmlns='http://www.w3.org/2000/svg'/>", "image/svg+xml"),
+            (b"<html><script>alert(1)</script></html>", "text/html"),
+            (b"<html>oops</html>", "image/png"),
+        ],
+    )
+    async def test_anything_but_png_bytes_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, content: bytes, kind: str
+    ):
+        # A stored SVG or HTML page would execute in the viewer's browser.
+        self._client(monkeypatch, content, kind)
+        block = RMFGGetImageBlock()
+
+        with pytest.raises(ValueError, match="instead of a PNG"):
+            await block.fetch_image(
+                TEST_CREDENTIALS,
+                block.input_schema(
+                    credentials=TEST_CREDENTIALS_INPUT, design_id=TEST_DESIGN.id
+                ),
+            )
 
 
 class TestEventTrigger:

@@ -161,12 +161,19 @@ class RMFGDeviceAuthHandler(BaseDeviceAuthHandler):
             response.raise_for_status()
             data: dict[str, Any] = response.json()
 
-        credentials.access_token = SecretStr(data["access_token"])
+        access_token, replacement = data.get("access_token"), data.get("refresh_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise RuntimeError("RMFG token refresh returned no access token")
         # RMFG rotates the refresh token on every refresh and revokes the
-        # connection if a consumed one is replayed, so the replacement must be
-        # saved every time. RFC 6749 still makes the field optional.
-        if data.get("refresh_token"):
-            credentials.refresh_token = SecretStr(data["refresh_token"])
+        # connection if a consumed one is replayed. Keeping the old token
+        # would make the next refresh kill the connection, so a response
+        # without a replacement is a failed refresh, and nothing is changed.
+        if not isinstance(replacement, str) or not replacement:
+            raise RuntimeError(
+                "RMFG token refresh returned no replacement refresh token"
+            )
+        credentials.access_token = SecretStr(access_token)
+        credentials.refresh_token = SecretStr(replacement)
         if data.get("expires_in") is not None:
             credentials.access_token_expires_at = int(time.time()) + int(
                 data["expires_in"]

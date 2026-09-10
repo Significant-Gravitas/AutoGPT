@@ -28,6 +28,8 @@ from ._types import ImageView, RMFGCredentials
 
 CATEGORIES = {BlockCategory.HARDWARE, BlockCategory.MULTIMEDIA}
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
 
 class RMFGGetImageBlock(Block):
     """Render a design, one of its parts, or a DFM report's configured part."""
@@ -93,7 +95,7 @@ class RMFGGetImageBlock(Block):
     async def fetch_image(
         credentials: RMFGCredentials, input_data: Input
     ) -> MediaFileType:
-        """Download the picture and return it as a data URI."""
+        """Download the picture and return it as a PNG data URI."""
         content, content_type = await RMFGClient(credentials).get_image(
             input_data.design_id,
             input_data.part_id,
@@ -101,9 +103,15 @@ class RMFGGetImageBlock(Block):
             input_data.view,
             input_data.width,
         )
-        mime = content_type.split(";")[0].strip() or "image/png"
+        # The block always asks for PNG. Anything else, such as the SVG the
+        # API can also render or an HTML error page, must not be stored as a
+        # media file, so the bytes are checked rather than the header trusted.
+        if not content.startswith(PNG_SIGNATURE):
+            raise ValueError(
+                f"RMFG returned {content_type or 'an unknown type'} instead of a PNG"
+            )
         return MediaFileType(
-            f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"
+            f"data:image/png;base64,{base64.b64encode(content).decode('ascii')}"
         )
 
     @staticmethod

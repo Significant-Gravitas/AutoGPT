@@ -213,12 +213,21 @@ class TestRefresh:
         assert sent["refresh_token"] == "old-refresh"
         assert sent["client_id"] == RMFG_CLIENT_ID
 
-    async def test_keeps_the_refresh_token_when_not_rotated(self):
+    async def test_a_missing_replacement_refresh_token_is_a_failed_refresh(self):
+        # The old token has been consumed; saving it would make the next
+        # refresh look like a replay and get the connection revoked.
         patcher, _ = mock_http(post=(200, {"access_token": "new-access"}))
-        with patcher:
-            updated = await RMFGDeviceAuthHandler().refresh_tokens(credentials())
-        assert updated.refresh_token is not None
-        assert updated.refresh_token.get_secret_value() == "old-refresh"
+        creds = credentials()
+        with patcher, pytest.raises(RuntimeError, match="replacement refresh token"):
+            await RMFGDeviceAuthHandler().refresh_tokens(creds)
+        assert creds.access_token.get_secret_value() == "old-access"
+        assert creds.refresh_token is not None
+        assert creds.refresh_token.get_secret_value() == "old-refresh"
+
+    async def test_a_missing_access_token_is_a_failed_refresh(self):
+        patcher, _ = mock_http(post=(200, {"refresh_token": "new-refresh"}))
+        with patcher, pytest.raises(RuntimeError, match="no access token"):
+            await RMFGDeviceAuthHandler().refresh_tokens(credentials())
 
     async def test_requires_a_refresh_token(self):
         with pytest.raises(RuntimeError, match="No refresh token"):

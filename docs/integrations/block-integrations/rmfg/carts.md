@@ -10,7 +10,9 @@ Creates an RMFG cart with a website checkout link for one or more configured des
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Posts the same basket shape as Create Quote to `/v1/carts`, optionally with `ship_to` and a `shipping_option_id`. RMFG quotes the cart immediately and returns `cart_url`, an unguessable checkout link, plus `totals` with subtotal, shipping, tax (once the address is known) and the amount to be charged. `is_payable` is true only when the cart is open, its quote is ready, and both address and shipping option are set. The cart URL grants access to anyone holding it, so treat it as a secret.
+Posts the same basket shape as Create Quote to `/v1/carts`, optionally with `ship_to` and a `shipping_option_id`, under an `Idempotency-Key`; `quantity` and `quantity_options` are validated as for quotes. RMFG quotes the cart immediately and returns `cart_url`, an unguessable checkout link, plus `totals` with subtotal, shipping and tax (once the address is known) and the amount that will be charged. `is_payable` is true only when the cart is open, its quote is `ready`, and both address and shipping option are set.
+
+A `shipping_option_id` that does not belong to the given address is rejected by RMFG and surfaced as `RMFG <code>: <message>`; a missing material shows up as `quote_status` `requires_input` with `requirements` rather than as an error. `order_id` is emitted only after the cart has been paid. The cart URL grants access to anyone holding it, so treat it as a secret.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -44,11 +46,15 @@ Posts the same basket shape as Create Quote to `/v1/carts`, optionally with `shi
 | shipping_options | Delivery choices once ship_to is set; pass an id to Update Cart | List[ShippingOption] |
 | requirements | Selections or decisions still needed before ordering | List[Requirement] |
 | manufacturing_warnings | Advisories from automatic file preparation; they do not block ordering | List[ManufacturingReviewWarning] |
-| order_id | Order ID, once the cart has been paid | str |
+| order_id | Order ID; only emitted once the cart has been paid | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-After the customer approves a quote, the agent creates a cart with their address and sends them the `cart_url` to choose delivery, sign in and pay on rmfg.com.
+**Website Checkout Hand-Off**: Create a cart with the customer's address and send them `cart_url` to pick delivery, sign in and pay.
+
+**Agent Ordering Prep**: Build a cart with address and shipping option so Pay Cart can charge the saved card after approval.
+
+**Tax-Inclusive Total**: Show a customer the final total including shipping and tax before they commit.
 <!-- END MANUAL -->
 
 ---
@@ -60,7 +66,9 @@ Fetches an RMFG cart and its latest quote by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches `/v1/carts/{id}`, including re-quoted totals and the `order_id` once paid. Use it after a person edits the cart on the website, or to check the outcome of a payment that returned `processing`.
+Fetches `/v1/carts/{id}`, including re-quoted totals, the current `status` (`open`, `checked_out` or `expired`) and the `order_id` once paid. Use it after a person edits the cart on the website, or to check the outcome of a payment that returned `processing`.
+
+An unknown ID is reported as `RMFG not_found_error: <message>`. `order_id` is only emitted for a paid cart, so a graph can branch on its presence, and `is_payable` is recomputed on every read.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -85,11 +93,15 @@ Fetches `/v1/carts/{id}`, including re-quoted totals and the `order_id` once pai
 | shipping_options | Delivery choices once ship_to is set; pass an id to Update Cart | List[ShippingOption] |
 | requirements | Selections or decisions still needed before ordering | List[Requirement] |
 | manufacturing_warnings | Advisories from automatic file preparation; they do not block ordering | List[ManufacturingReviewWarning] |
-| order_id | Order ID, once the cart has been paid | str |
+| order_id | Order ID; only emitted once the cart has been paid | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Pay Cart returned `processing`; a scheduled run reads the cart until its status is `checked_out`, then passes `order_id` to Get Order.
+**Payment Settlement**: Poll a cart after a `processing` payment until it is `checked_out`, then pass `order_id` to Get Order.
+
+**Customer Edits**: Re-read a cart the customer changed on rmfg.com before quoting the final total back to them.
+
+**Expiry Guard**: Check a cart is still `open` before asking for approval to pay it.
 <!-- END MANUAL -->
 
 ---
@@ -101,7 +113,9 @@ Updates an open RMFG cart's address, shipping option or items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Patches `/v1/carts/{id}` with whichever of `ship_to`, `shipping_option_id` or `items` you set; omitted fields keep their values. The cart re-quotes on every change, so read the returned totals and `quote_status` before paying. The block refuses an update with nothing to change.
+Patches `/v1/carts/{id}` with whichever of `ship_to`, `shipping_option_id` or `items` you set; omitted fields keep their current values, and an empty `items` list keeps the current basket rather than emptying it. The cart re-quotes on every change, so read the returned totals and `quote_status` before paying.
+
+The block refuses to run with nothing to change (`Nothing to update: set ship_to, shipping_option_id or items`). RMFG rejects updates to a `checked_out` or `expired` cart and shipping options that do not match the address; both are surfaced as `RMFG <code>: <message>`.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -130,11 +144,15 @@ Patches `/v1/carts/{id}` with whichever of `ship_to`, `shipping_option_id` or `i
 | shipping_options | Delivery choices once ship_to is set; pass an id to Update Cart | List[ShippingOption] |
 | requirements | Selections or decisions still needed before ordering | List[Requirement] |
 | manufacturing_warnings | Advisories from automatic file preparation; they do not block ordering | List[ManufacturingReviewWarning] |
-| order_id | Order ID, once the cart has been paid | str |
+| order_id | Order ID; only emitted once the cart has been paid | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-The agent shows the `shipping_options` from Create Cart, the customer picks UPS Ground, and Update Cart selects it so tax and total are final.
+**Shipping Selection**: Let the customer pick from `shipping_options`, then select it so tax and total are final.
+
+**Address Correction**: Replace a mistyped delivery address and re-read the re-quoted totals.
+
+**Quantity Change**: Replace `items` with the same design at a new quantity after the customer changes their order.
 <!-- END MANUAL -->
 
 ---

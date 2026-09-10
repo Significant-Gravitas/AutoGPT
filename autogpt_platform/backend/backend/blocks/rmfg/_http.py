@@ -2,7 +2,8 @@
 
 import asyncio
 import time
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, Optional, TypeVar
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -79,17 +80,32 @@ async def poll(
     timeout_seconds: float,
     what: str,
 ) -> T:
-    """Re-fetch a resource with growing delays until it is no longer pending."""
+    """Re-fetch a resource with growing delays until it is no longer pending.
+
+    Every wait, the fetch included, is capped by what is left of
+    ``timeout_seconds``, so the call never runs materially past its deadline.
+    """
     resource = initial
     deadline = time.monotonic() + timeout_seconds
     delay = POLL_INITIAL_SECONDS
     while is_pending(resource):
-        if time.monotonic() >= deadline:
-            raise TimeoutError(
-                f"Timed out after {timeout_seconds:.0f}s waiting for {what}; "
-                "fetch it again later with its ID."
-            )
-        await asyncio.sleep(delay)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _timeout(timeout_seconds, what)
+        await asyncio.sleep(min(delay, remaining))
         delay = min(delay * 1.5, POLL_MAX_SECONDS)
-        resource = await fetch()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _timeout(timeout_seconds, what)
+        try:
+            resource = await asyncio.wait_for(fetch(), timeout=remaining)
+        except asyncio.TimeoutError:
+            raise _timeout(timeout_seconds, what) from None
     return resource
+
+
+def _timeout(timeout_seconds: float, what: str) -> TimeoutError:
+    return TimeoutError(
+        f"Timed out after {timeout_seconds:.0f}s waiting for {what}; "
+        "fetch it again later with its ID."
+    )

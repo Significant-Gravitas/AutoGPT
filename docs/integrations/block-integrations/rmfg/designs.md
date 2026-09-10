@@ -10,7 +10,9 @@ Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-meta
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Reads the input file (a URL, data URI or workspace file), uploads it as multipart form data to `/v1/analyze`, and by default polls the design until it is ready or has failed. The upload carries an `Idempotency-Key`, defaulting to the node execution ID, so a retried run returns the same design instead of a duplicate. The result lists every unique part with its instance count, dimensions, bends and holes; hole IDs are stable and are what later hole operations refer to. Turn off `wait_for_ready` to get the design ID back at once and fetch the result later with Get Design.
+Reads the input file through the platform's media pipeline (a URL, data URI or workspace file), appends `.step` to the recorded name unless it already ends in `.step` or `.stp`, and uploads it as multipart form data to `/v1/analyze` with an `Idempotency-Key` (defaulting to the node execution ID), so a retried run returns the same design instead of a duplicate. The request asks RMFG to hold the connection for up to 20 seconds; with `wait_for_ready` on, the block then polls with growing delays, capped by `timeout_seconds`, until the design is `ready` or `failed`.
+
+A `failed` analysis (for example a file that is not a solid body) raises `RMFG design_failed: Analysis failed: <reason>`; running out of time raises `Timed out after Ns waiting for design <id>; fetch it again later with its ID`, and any HTTP error is reported as `RMFG <code>: <message>`. `review_url` and `image_url` are only emitted once RMFG has assigned them, and `part` is emitted once per unique part, so a design that is still queued has no parts yet.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,12 +36,16 @@ Reads the input file (a URL, data URI or workspace file), uploads it as multipar
 | parts | Every unique part with its instance count, once ready | List[Part] |
 | part | One part at a time | Part |
 | part_ids | Part IDs in the same order | List[str] |
-| review_url | Website page where a person can inspect and configure the design | str |
-| image_url | Rendered picture of the whole design | str |
+| review_url | Website page where a person can inspect and configure the design; emitted once RMFG has assigned one | str |
+| image_url | Rendered picture of the whole design; emitted once analysis is ready | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A customer emails a STEP file. The agent runs Analyze Design, reads back two unique parts with their instance counts, and shows the customer the rendered `image_url` before asking which material to quote.
+**Customer STEP Upload**: Analyze an emailed STEP file and show the customer each unique part and its instance count before quoting.
+
+**Assembly Breakdown**: Split an assembly into unique parts so every one can be configured and priced.
+
+**Fire and Forget**: Upload with `wait_for_ready` off and let a `design.ready` webhook continue the graph.
 <!-- END MANUAL -->
 
 ---
@@ -51,7 +57,9 @@ Fetches an RMFG design and its analyzed parts by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches `/v1/designs/{id}`. Optionally polls until analysis has finished, which is useful when Analyze Design was run with `wait_for_ready` off or an earlier run timed out. Outputs are identical to Analyze Design.
+Fetches `/v1/designs/{id}` and emits the same outputs as Analyze Design. With `wait_for_ready` on it polls until analysis leaves `queued`/`processing`, bounded by `timeout_seconds`, which is useful after an upload with waiting off or a run that timed out.
+
+An unknown ID is reported as `RMFG not_found_error: <message>`. A design whose analysis failed raises `RMFG design_failed` with the reason when waiting, or is returned with `status` `failed` when not. `review_url` and `image_url` are emitted only when present.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -73,12 +81,16 @@ Fetches `/v1/designs/{id}`. Optionally polls until analysis has finished, which 
 | parts | Every unique part with its instance count, once ready | List[Part] |
 | part | One part at a time | Part |
 | part_ids | Part IDs in the same order | List[str] |
-| review_url | Website page where a person can inspect and configure the design | str |
-| image_url | Rendered picture of the whole design | str |
+| review_url | Website page where a person can inspect and configure the design; emitted once RMFG has assigned one | str |
+| image_url | Rendered picture of the whole design; emitted once analysis is ready | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A `design.ready` webhook fires; the graph passes the event's `resource_id` into Get Design to load the parts and continue to quoting.
+**Webhook Continuation**: Load the parts after a `design.ready` event using the event's `resource_id`.
+
+**Resume After Timeout**: Re-read a large design that Analyze Design gave up waiting for.
+
+**Part ID Lookup**: Re-fetch a design's `part_ids` before building a per-part configuration.
 <!-- END MANUAL -->
 
 ---

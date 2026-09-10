@@ -1,6 +1,8 @@
 """Input schema shared by the blocks that price or buy a configured design."""
 
-from backend.sdk import BlockSchemaInput, CredentialsMetaInput, SchemaField
+from typing import Annotated
+
+from backend.sdk import BlockSchemaInput, CredentialsMetaInput, Field, SchemaField
 
 from ._config import rmfg
 from ._types import ManufacturingConfiguration, QuoteItemRequest
@@ -51,12 +53,13 @@ class RMFGBasketInput(BlockSchemaInput):
         default_factory=ManufacturingConfiguration,
         advanced=True,
     )
-    quantity_options: list[int] = SchemaField(
+    quantity_options: list[Annotated[int, Field(ge=1)]] = SchemaField(
         description=(
             "Up to ten other quantities to price alongside quantity, only when the "
             "customer wants a comparison; the main quantity stays as requested."
         ),
         default_factory=list,
+        max_length=10,
         advanced=True,
     )
     additional_items: list[QuoteItemRequest] = SchemaField(

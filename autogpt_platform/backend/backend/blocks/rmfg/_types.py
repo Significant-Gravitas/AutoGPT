@@ -5,13 +5,17 @@ Response-side models live in ``_models`` and ``_models_commerce``.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Annotated, Optional
 
 from backend.sdk import APIKeyCredentials, BaseModel, Field, OAuth2Credentials
 
 # An RMFG API key or an OAuth token pair from the device-code connection flow;
 # both are sent as a bearer token.
 RMFGCredentials = APIKeyCredentials | OAuth2Credentials
+
+# Origin of the RMFG API. Every module joins ``/v1`` itself so the version
+# lives at the call sites rather than in two differently-shaped constants.
+RMFG_API_URL = "https://api.rmfg.com"
 
 
 class Process(str, Enum):
@@ -244,8 +248,9 @@ class QuoteItemRequest(BaseModel):
         default_factory=ManufacturingConfiguration
     )
     client_reference_id: Optional[str] = None
-    quantity_options: list[int] = Field(
+    quantity_options: list[Annotated[int, Field(ge=1)]] = Field(
         default_factory=list,
+        max_length=10,
         description="Up to ten other quantities to price alongside quantity",
     )
 

@@ -10,7 +10,9 @@ Triggers when an RMFG design, quote, cart or order changes
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Select which events to subscribe to; the platform registers an endpoint at `/v1/webhook-endpoints` for exactly those events and stores the signing secret RMFG returns. A connected RMFG account needs the `webhooks` permission from the approval page; an API key can register endpoints directly. Each delivery is verified: the `X-RMFG-Signature` header must match an HMAC-SHA256 of the timestamp and raw body, and stale timestamps are rejected. The event body is `{id, type, created_at, data}`; the block emits the type plus the data object's id, object, status and `status_url`, so the next block can fetch the full resource with Get Design, Get DFM Report, Get Quote, Get Cart or Get Order.
+Select which events to subscribe to; the platform registers an endpoint at `/v1/webhook-endpoints` for exactly those events and stores the signing secret RMFG returns once, at creation. A connected RMFG account needs the `webhooks` permission from the approval page; an API key registers directly. Registration fails with a clear message when an event is unknown, when RMFG refuses (a 403 on a connected account says to reconnect and allow the webhooks permission), or when the response lacks an endpoint ID or a string signing secret, so no half-registered hook is ever kept. Removing the block deletes the endpoint again; an already-deleted endpoint is fine.
+
+Each delivery is verified before it reaches the graph: `X-RMFG-Signature` must carry a `v1=` HMAC-SHA256 of `<X-RMFG-Timestamp>.<raw body>` under the stored secret, and a timestamp that is missing, unparseable or more than 300 seconds off is rejected with 403. A body that is not a JSON object or lacks `type` is rejected with 400, and an event type the block does not know triggers nothing. The event body is `{id, type, created_at, data}`; the block emits the type plus the data object's id, object, status and `status_url` (as empty strings when absent), so the next block can fetch the full resource with Get Design, Get DFM Report, Get Quote, Get Cart or Get Order.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,7 +37,11 @@ Select which events to subscribe to; the platform registers an endpoint at `/v1/
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Subscribe to `order.status_changed` and `cart.checked_out`. When a customer pays on the website the graph fetches the order and posts it to the fulfilment channel, and later relays each shipping update.
+**Fulfilment Feed**: Subscribe to `cart.checked_out` and `order.status_changed`, fetch the order, and post it to the fulfilment channel.
+
+**Async Analysis**: Upload with waiting off and continue the graph when `design.ready` fires.
+
+**Failure Alerts**: Route `design.failed` and `quote.failed` events to a person with the resource ID.
 <!-- END MANUAL -->
 
 ---

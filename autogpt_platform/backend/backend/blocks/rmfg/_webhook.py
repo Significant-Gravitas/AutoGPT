@@ -10,7 +10,8 @@ import hmac
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, TypeGuard
+from urllib.parse import quote
 
 from fastapi import HTTPException, Request
 from pydantic import TypeAdapter, ValidationError
@@ -27,11 +28,11 @@ from backend.sdk import (
 from backend.util.request import Response
 
 from ._http import ErrorEnvelope
-from ._types import RMFGCredentials
+from ._types import RMFG_API_URL, RMFGCredentials
 
 logger = logging.getLogger(__name__)
 
-RMFG_API_URL = "https://api.rmfg.com/v1"
+RMFG_WEBHOOKS_URL = f"{RMFG_API_URL}/v1/webhook-endpoints"
 SIGNATURE_HEADER = "X-RMFG-Signature"
 TIMESTAMP_HEADER = "X-RMFG-Timestamp"
 # How far a delivery's timestamp may drift before it is treated as a replay.
@@ -133,7 +134,7 @@ class RMFGWebhooksManager(BaseWebhooksManager):
             raise ValueError(f"Unknown RMFG events: {', '.join(unknown)}")
 
         response = await Requests(raise_for_status=False).post(
-            f"{RMFG_API_URL}/webhook-endpoints",
+            RMFG_WEBHOOKS_URL,
             headers=_headers(credentials),
             json={
                 "url": ingress_url,
@@ -147,14 +148,22 @@ class RMFGWebhooksManager(BaseWebhooksManager):
                 # Webhooks are an opt-in permission on RMFG's approval page.
                 message += ". Reconnect RMFG and allow the webhooks permission"
             raise ValueError(f"RMFG webhook registration failed: {message}")
-        data = response.json()
+        try:
+            data = _JSON_OBJECT.validate_python(response.json())
+        except (ValueError, ValidationError) as exc:
+            raise ValueError(
+                "RMFG webhook registration returned an unreadable response"
+            ) from exc
+        endpoint_id, signing_secret = data.get("id"), data.get("secret")
         # The secret is only returned on creation; without it no delivery
         # could ever be verified, so refuse to keep a half-registered hook.
-        if not data.get("id") or not data.get("secret"):
+        # Both must be strings: the secret is keyed into an HMAC on every
+        # delivery, and a stored non-string would fail each one with a 403.
+        if not _non_empty_str(endpoint_id) or not _non_empty_str(signing_secret):
             raise ValueError(
                 "RMFG webhook registration returned no endpoint ID or signing secret"
             )
-        return str(data["id"]), {SIGNING_SECRET_KEY: data["secret"]}
+        return endpoint_id, {SIGNING_SECRET_KEY: signing_secret}
 
     async def _deregister_webhook(
         self, webhook: integrations.Webhook, credentials: Credentials
@@ -165,7 +174,7 @@ class RMFGWebhooksManager(BaseWebhooksManager):
         if not webhook.provider_webhook_id:
             return
         response = await Requests(raise_for_status=False).delete(
-            f"{RMFG_API_URL}/webhook-endpoints/{webhook.provider_webhook_id}",
+            f"{RMFG_WEBHOOKS_URL}/{quote(webhook.provider_webhook_id, safe='')}",
             headers=_headers(credentials),
         )
         # 404 means the endpoint is already gone, which is the desired state.
@@ -174,6 +183,10 @@ class RMFGWebhooksManager(BaseWebhooksManager):
                 f"Failed to deregister RMFG webhook {webhook.provider_webhook_id}: "
                 f"{_error_message(response)}"
             )
+
+
+def _non_empty_str(value: object) -> TypeGuard[str]:
+    return isinstance(value, str) and bool(value)
 
 
 def _headers(credentials: RMFGCredentials) -> dict[str, str]:

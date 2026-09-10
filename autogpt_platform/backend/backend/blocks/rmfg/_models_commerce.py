@@ -12,7 +12,6 @@ from ._types import (
     OrderStatus,
     PaymentStatus,
     Process,
-    QuoteItemRequest,
     QuoteStatus,
     ShipTo,
 )
@@ -141,6 +140,22 @@ class CartPayment(BaseModel):
     paid_at: Optional[str] = None
 
 
+class CartItem(BaseModel):
+    """One configured design as a cart echoes it back.
+
+    The API documents this as the request item shape, but a response model
+    must never reject what the server sends, so every field has a default.
+    """
+
+    design_id: str = ""
+    quantity: int = 1
+    configuration: ManufacturingConfiguration = Field(
+        default_factory=ManufacturingConfiguration
+    )
+    client_reference_id: Optional[str] = None
+    quantity_options: list[int] = Field(default_factory=list)
+
+
 class Cart(BaseModel):
     """A server-side basket that re-quotes on every change.
 
@@ -151,7 +166,7 @@ class Cart(BaseModel):
     revision: int = 0
     status: CartStatus = CartStatus.OPEN
     cart_url: str = ""
-    items: list[QuoteItemRequest] = Field(default_factory=list)
+    items: list[CartItem] = Field(default_factory=list)
     ship_to: Optional[ShipTo] = None
     shipping_option_id: Optional[str] = None
     selected_shipping_option: Optional[ShippingOption] = None
