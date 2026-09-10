@@ -25,7 +25,6 @@ from backend.util.exceptions import ExpertNotFoundError, ExpertWriteNotReadableE
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
-from .expert_avatar import build_avatar_url
 from .expert_proposal import ExpertChangeProposal, apply_proposal, proposal_key
 from .hire_expert import HireExpertTool
 from .models import (
@@ -243,9 +242,12 @@ class TestPreviewNeverWrites:
             charter = {k: v for k, v in _CHARTER.items() if k not in AVATAR_KEYS}
             resp = await _raise(make_session(_USER), **charter)
         assert isinstance(resp, ExpertChangeProposedResponse)
-        assert resp.preview.avatar_url == build_avatar_url(
-            _CHARTER["name"], color_token=_CHARTER["color"]
-        )
+        # Golden vector cross-checked against the frontend's configForName:
+        # "otto" seeds wide/butter/crown and the violet token maps to lavender.
+        # A literal, not build_avatar_url(), so a drift in the FNV/LCG
+        # constants or pick order fails here instead of comparing the
+        # implementation to itself.
+        assert resp.preview.avatar_url == "/avatars/wide.lavender.crown.svg"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_raise_rejects_an_unknown_avatar_shape(self):
@@ -255,6 +257,15 @@ class TestPreviewNeverWrites:
             )
         assert isinstance(resp, ErrorResponse)
         assert "avatar_shape" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_rejects_an_unknown_avatar_accessory(self):
+        with _env():
+            resp = await _raise(
+                make_session(_USER), **{**_CHARTER, "avatar_accessory": "monocle"}
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "avatar_accessory" in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):
