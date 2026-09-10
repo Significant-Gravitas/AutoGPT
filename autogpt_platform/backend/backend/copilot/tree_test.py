@@ -19,6 +19,8 @@ from backend.data.redis_client import AsyncRedisClient
 
 from . import tree
 from .tree import (
+    _CLAIM_WRAPUP_SCRIPT,
+    _OPEN_TREE_SCRIPT,
     DESCENT_DENIED_TOOLS,
     ISOLATE_DENIED_TOOLS,
     MAX_DEPTH,
@@ -72,8 +74,14 @@ class FakeRedis:
         return _FakePipeline(self)
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
-        """Emulate the one Lua script the ledger uses (all-or-nothing open)."""
+        """Emulate the ledger's Lua scripts, dispatching on the script itself
+        so a new one cannot silently inherit another's emulation."""
         key = str(args[0])
+        if script == _CLAIM_WRAPUP_SCRIPT:
+            if "ceiling" not in self.hashes.get(key, {}):
+                return 0
+            return await self.hsetnx(key, "wrapup", "1")
+        assert script == _OPEN_TREE_SCRIPT, "unemulated Lua script"
         ceiling, max_nodes, nodes, ttl = (str(a) for a in args[1:5])
         if key in self.hashes:
             return 0
@@ -105,6 +113,17 @@ class _FakePipeline:
 
     async def execute(self) -> list[Any]:
         return [await getattr(self._redis, name)(*args) for name, args in self._queued]
+
+
+class ExpiringRedis(FakeRedis):
+    """A ledger whose TTL fires between two round-trips: the only way to hold
+    an interleaving still in an in-memory fake is to expire on the read."""
+
+    async def hexists(self, key: str, field: str) -> bool:
+        present = await super().hexists(key, field)
+        self.hashes.pop(key, None)
+        self.ttls.pop(key, None)
+        return present
 
 
 class BrokenRedis:
@@ -367,6 +386,22 @@ async def test_the_wrap_up_is_claimable_once_and_never_conjures_a_tree() -> None
     await ledger.open("t", ceiling_microdollars=500_000, max_nodes=10)
     assert await ledger.claim_wrapup("t")
     assert not await ledger.claim_wrapup("t")
+
+
+@pytest.mark.asyncio
+async def test_a_wrap_up_claim_never_resurrects_an_expired_ledger() -> None:
+    """Claiming across a separate existence check recreates the hash with only
+    ``wrapup`` and no TTL, which every later admit reads as a closed tree and
+    nothing ever reaps. One round-trip has no point to expire at."""
+    redis = ExpiringRedis()
+    ledger = TreeLedger(cast(AsyncRedisClient, redis))
+    await ledger.open("t", ceiling_microdollars=500_000, max_nodes=10)
+
+    await ledger.claim_wrapup("t")
+
+    key = "copilot:tree:t"
+    assert "ceiling" in redis.hashes.get(key, {}), "claim left a ledger stub"
+    assert key in redis.ttls, "claim left a hash that never expires"
 
 
 @pytest.mark.asyncio

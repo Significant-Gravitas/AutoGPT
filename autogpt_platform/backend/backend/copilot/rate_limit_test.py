@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.data.subscription_trial import TrialState
+
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
@@ -2814,6 +2816,32 @@ class TestGetRemainingUsdBudget:
                 floor_usd=0.5,
             )
         assert result == 0.5
+
+    @pytest.mark.asyncio
+    async def test_an_active_trial_gets_the_same_failure_sentinel(self, mocker):
+        """Every tier answers a brown-out with ``floor_usd``. A trial that
+        returned a hardcoded 0.0 instead was indistinguishable from a trial
+        that had genuinely spent its last cent."""
+        trial = MagicMock(spec=TrialState)
+        trial.active = True
+        store = MagicMock()
+        store.get_subscription_trial = AsyncMock(return_value=trial)
+        mocker.patch("backend.copilot.rate_limit.credit_db", return_value=store)
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+        )
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=RedisError("boom"),
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=10_000_000,
+                weekly_cost_limit=50_000_000,
+                floor_usd=-1.0,
+            )
+        assert result == -1.0
 
     @pytest.mark.asyncio
     async def test_daily_drives_when_weekly_is_loose(self):

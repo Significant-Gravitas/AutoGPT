@@ -122,6 +122,16 @@ end
 return 0
 """
 
+# ``HEXISTS`` then ``HSETNX`` is two round-trips, and a ledger expiring between
+# them leaves the second recreating the hash with only ``wrapup`` and no TTL —
+# a tree every later ``admit`` reads as closed and nothing ever reaps.
+_CLAIM_WRAPUP_SCRIPT = """
+if redis.call("HEXISTS", KEYS[1], "ceiling") == 0 then
+    return 0
+end
+return redis.call("HSETNX", KEYS[1], "wrapup", "1")
+"""
+
 
 class TreeRefusal(Exception):
     """A turn may not start; ``message`` is written for the model."""
@@ -348,14 +358,16 @@ class TreeLedger:
     async def claim_wrapup(self, tree_id: str) -> bool:
         """True for the one turn that first crosses the wrap-up threshold.
 
-        ``HSETNX`` is what makes it once-per-tree under concurrent turns, and
-        the ``hexists`` guard keeps it from conjuring a ledger for a tree that
-        never spawned anything.
+        ``HSETNX`` is what makes it once-per-tree under concurrent turns; the
+        ``ceiling`` check rides in the same script so a tree that never spawned
+        — or whose ledger has expired — is not conjured back without a TTL.
         """
-        key = self.key(tree_id)
-        if not await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
-            return False
-        return await cast(Awaitable[bool], self._redis.hsetnx(key, "wrapup", "1"))
+        return bool(
+            await cast(
+                Awaitable[int],
+                self._redis.eval(_CLAIM_WRAPUP_SCRIPT, 1, self.key(tree_id)),
+            )
+        )
 
     async def snapshot(self, tree_id: str) -> dict[str, int]:
         raw = await cast(

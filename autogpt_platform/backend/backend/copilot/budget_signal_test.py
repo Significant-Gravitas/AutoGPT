@@ -106,6 +106,19 @@ async def test_a_tree_that_has_not_spawned_yet_shows_its_prospective_ceiling(
 
 
 @pytest.mark.asyncio
+async def test_a_tier_that_may_not_spend_is_not_offered_sub_sessions(ledger) -> None:
+    """A zero ceiling is a tier that may not spend at all, so a line offering
+    seats contradicts the refusal the spawn would hit in the same turn."""
+    await ledger.open("t", ceiling_microdollars=0, max_nodes=8, initial_nodes=1)
+
+    block = await build_turn_budget_block(ENVELOPE, "u")
+
+    assert "no subscription" in block
+    assert "more sub-sessions" not in block
+    assert "$0.00 of its $0.00" not in block
+
+
+@pytest.mark.asyncio
 async def test_the_daily_line_is_dropped_when_there_is_no_user(ledger) -> None:
     await ledger.open("t", ceiling_microdollars=500_000, max_nodes=8, initial_nodes=1)
     assert "today's budget" not in await build_turn_budget_block(ENVELOPE, None)
@@ -135,6 +148,30 @@ async def test_two_turns_crossing_at_once_still_get_one_checkpoint(ledger) -> No
     )
 
     assert sum(CHECKPOINT_INSTRUCTION in b for b in blocks) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_brownout_drops_the_daily_line_and_a_real_zero_still_states_it(
+    ledger, monkeypatch
+) -> None:
+    """``get_remaining_usd_budget`` answers a brown-out with the floor it was
+    handed, so a caller asking for ``0.0`` cannot tell "unknown" from "spent to
+    the last cent" — and the second is the one worth telling the model."""
+    await ledger.open("t", ceiling_microdollars=500_000, max_nodes=8, initial_nodes=1)
+
+    async def _brownout(*, floor_usd: float, **_kw) -> float:
+        return floor_usd
+
+    monkeypatch.setattr(budget_signal, "get_remaining_usd_budget", _brownout)
+    assert "today's budget" not in await build_turn_budget_block(ENVELOPE, "u")
+
+    async def _spent_out(**_kw) -> float:
+        return 0.0
+
+    monkeypatch.setattr(budget_signal, "get_remaining_usd_budget", _spent_out)
+    assert "$0.00 of today's budget left" in await build_turn_budget_block(
+        ENVELOPE, "u"
+    )
 
 
 @pytest.mark.asyncio
@@ -202,7 +239,9 @@ def test_the_block_never_reaches_the_variable_the_transcript_records(
     engine: str, transcribed: str
 ) -> None:
     """The transcript is replayed on the next turn; one stale figure per turn
-    is what folding the block into it would leave behind."""
+    is what folding the block into it would leave behind. Both engines reach
+    the block through a ``budget_status`` local, so naming only the builder
+    would miss every regression that actually folds it in."""
     tree = ast.parse(textwrap.dedent(_stream_sources()[engine]))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
@@ -210,6 +249,8 @@ def test_the_block_never_reaches_the_variable_the_transcript_records(
         targets = {t.id for t in node.targets if isinstance(t, ast.Name)}
         if transcribed not in targets:
             continue
-        assert "build_turn_budget_block" not in ast.unparse(
-            node.value
-        ), f"{engine}: the budget block was assigned into {transcribed}"
+        folded = ast.unparse(node.value)
+        for carrier in ("build_turn_budget_block", "budget_status"):
+            assert (
+                carrier not in folded
+            ), f"{engine}: {carrier} was assigned into {transcribed}"

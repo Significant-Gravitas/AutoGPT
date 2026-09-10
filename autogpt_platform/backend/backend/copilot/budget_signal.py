@@ -52,11 +52,7 @@ async def build_turn_budget_block(
         return ""
     try:
         ceiling, spent, nodes, max_nodes = await _tree_state(envelope, user_id)
-        line = (
-            f"This task has ${_usd(ceiling - spent)} of its ${_usd(ceiling)} "
-            f"budget left and can start {max(0, max_nodes - nodes)} more "
-            f"sub-sessions."
-        )
+        line = _budget_line(ceiling, spent, nodes, max_nodes)
         daily = await _remaining_daily_usd(user_id)
         if daily is not None:
             line += f" This account has ${daily:.2f} of today's budget left."
@@ -94,6 +90,21 @@ async def build_spawn_state_note() -> str:
     except Exception:
         logger.warning("[budget] spawn state unavailable", exc_info=True)
         return ""
+
+
+def _budget_line(ceiling: int, spent: int, nodes: int, max_nodes: int) -> str:
+    """A tier that may not spend is not offered sub-sessions it would then be
+    refused; ``_spend_refusal`` says the same on the way out."""
+    if ceiling <= 0:
+        return (
+            "This account has no subscription, so this task cannot start "
+            "sub-sessions."
+        )
+    return (
+        f"This task has ${_usd(ceiling - spent)} of its ${_usd(ceiling)} "
+        f"budget left and can start {max(0, max_nodes - nodes)} more "
+        f"sub-sessions."
+    )
 
 
 async def _tree_state(
@@ -137,9 +148,11 @@ async def _remaining_daily_usd(user_id: str | None) -> float | None:
         user_id=user_id,
         daily_cost_limit=daily,
         weekly_cost_limit=weekly,
-        floor_usd=0.0,
+        # Negative is the "Redis said nothing" floor; a real $0.00 comes back
+        # as 0.0 and is the one figure worth telling the model.
+        floor_usd=-1.0,
     )
-    return None if remaining == float("inf") else remaining
+    return None if remaining < 0 or remaining == float("inf") else remaining
 
 
 async def _crossed_wrapup(envelope: TurnEnvelope, ceiling: int, spent: int) -> bool:
