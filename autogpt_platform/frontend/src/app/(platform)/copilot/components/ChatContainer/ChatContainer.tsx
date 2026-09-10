@@ -171,6 +171,7 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -363,7 +364,10 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
-                    <Tooltip open={isLimitReached ? undefined : false}>
+                    <Tooltip
+                      open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                      onOpenChange={setIsUsageTooltipOpen}
+                    >
                       <TooltipTrigger asChild>
                         <div>
                           <ChatInput
