@@ -39,5 +39,5 @@ export function formatWhen(createdAt: string | null | undefined) {
  *  owns is left to the page's active-expert fallback rather than checked here. */
 export function readExpertScopeFromUrl() {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("expert");
+  return new URLSearchParams(window.location.search).get("expert") || null;
 }

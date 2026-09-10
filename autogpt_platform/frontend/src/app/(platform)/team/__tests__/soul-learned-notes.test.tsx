@@ -2,6 +2,7 @@ import {
   getListExpertCredentialsMockHandler,
   getListExpertPodsMockHandler,
   getListExpertsMockHandler,
+  getUpdateExpertSoulMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV2ListLibraryAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import {
@@ -163,8 +164,9 @@ describe("Soul drawer — what I've learned", () => {
     ).toBeNull();
   });
 
-  test("forgetting a memory calls the scoped delete and refetches", async () => {
+  test("forgetting a memory calls the scoped delete, refetches, and leaves the Soul unsaved", async () => {
     const forgotten: string[] = [];
+    const soulSaves: unknown[] = [];
     let listCalls = 0;
     server.use(
       getListMyExpertMemoryFactsMockHandler(async () => {
@@ -177,6 +179,10 @@ describe("Soul drawer — what I've learned", () => {
       getForgetMyExpertMemoryFactMockHandler200(async (info) => {
         forgotten.push(String(info.params.factUuid));
         return { uuid: String(info.params.factUuid), forgotten: true };
+      }),
+      getUpdateExpertSoulMockHandler(async ({ request }) => {
+        soulSaves.push(await request.json());
+        return maria;
       }),
     );
 
@@ -195,6 +201,11 @@ describe("Soul drawer — what I've learned", () => {
         ),
       ).toBeDefined(),
     );
+    // Forget sits inside the Soul form; it must not submit it.
+    expect(soulSaves).toEqual([]);
+    expect(
+      screen.getByRole("complementary", { name: "Maria's Soul" }),
+    ).toBeDefined();
   });
 
   test("says so when the memories cannot be loaded, instead of claiming there are none", async () => {

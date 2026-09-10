@@ -302,19 +302,29 @@ describe("Settings memory page", () => {
     expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
   });
 
-  it("falls back to AutoPilot when ?expert= names an expert the caller no longer has", async () => {
-    mockHappyPath();
-    window.history.replaceState({}, "", "/settings/memory?expert=expert-gone");
+  it.each([
+    ["an expert the caller no longer has", "expert-gone"],
+    ["an empty value", ""],
+  ])(
+    "falls back to AutoPilot when ?expert= is %s",
+    async (_case, expertParam) => {
+      mockHappyPath();
+      window.history.replaceState(
+        {},
+        "",
+        `/settings/memory?expert=${expertParam}`,
+      );
 
-    render(<SettingsMemoryPage />);
+      render(<SettingsMemoryPage />);
 
-    expect(
-      await screen.findByText("Runs a DTC candle brand called Emberline"),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "View my summary" }),
-    ).toBeDefined();
-  });
+      expect(
+        await screen.findByText("Runs a DTC candle brand called Emberline"),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "View my summary" }),
+      ).toBeDefined();
+    },
+  );
 
   it("opens the summary chat in-pane and auto-sends the seeded prompt", async () => {
     mockHappyPath();
