@@ -6,6 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { getGetV1ListSystemProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { server } from "@/mocks/mock-server";
 import {
   render,
@@ -88,8 +89,8 @@ const mariaTemplate: Expert = {
       library_agent_id: null,
       graph_id: null,
       chain: [
-        { kind: "integration", provider: "linkedin" },
-        { kind: "ai", provider: null },
+        { kind: "integration", provider: "anthropic" },
+        { kind: "integration", provider: "jina" },
       ],
     },
     {
@@ -100,8 +101,8 @@ const mariaTemplate: Expert = {
       library_agent_id: null,
       graph_id: null,
       chain: [
-        { kind: "integration", provider: "linkedin" },
-        { kind: "integration", provider: "google" },
+        { kind: "integration", provider: "openai" },
+        { kind: "integration", provider: "dataforseo" },
       ],
     },
   ],
@@ -140,6 +141,14 @@ describe("Marketplace expert page", () => {
     mockParams.expertId = "template-maria";
     flagStatusMock.mockReturnValue({ enabled: true, ready: true });
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
+    server.use(
+      getGetV1ListSystemProvidersMockHandler([
+        "anthropic",
+        "openai",
+        "jina",
+        "webshare_proxy",
+      ]),
+    );
   });
 
   test("shows the profile and hires from the page", async () => {
@@ -195,11 +204,14 @@ describe("Marketplace expert page", () => {
       ),
     ).toBeDefined();
 
-    const access = screen.getByRole("region", {
+    // Only what the viewer connects: Anthropic, OpenAI and Jina are on the
+    // platform's own credentials and must not be asked for.
+    const access = await screen.findByRole("region", {
       name: "Access Maria will ask for",
     });
-    expect(within(access).getByText("LinkedIn")).toBeDefined();
-    expect(within(access).getByText("Google")).toBeDefined();
+    expect(within(access).getByText("Dataforseo")).toBeDefined();
+    expect(within(access).queryByText("Anthropic")).toBeNull();
+    expect(within(access).queryByText("OpenAI")).toBeNull();
 
     expect(
       screen.getByRole("heading", { name: "Included with your plan" }),

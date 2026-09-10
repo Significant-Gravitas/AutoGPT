@@ -59,42 +59,86 @@ describe("getExpertFirstName", () => {
 });
 
 describe("getExpertAccessProviders", () => {
-  test("dedupes integrations across workflows and drops non-integrations", () => {
-    const first = makeWorkflow({
+  // Every provider the platform pays for, as /api/integrations/providers/system
+  // returns them. The roster's real workflows are almost entirely these.
+  const systemProviders = ["anthropic", "openai", "jina", "webshare_proxy"];
+
+  test("keeps only what the viewer has to connect themselves", () => {
+    // Maria's real chain on dev: three model and infrastructure providers the
+    // platform supplies, and one the user connects.
+    const blogWriter = makeWorkflow({
       id: "wf-1",
       chain: [
-        { kind: "integration", provider: "linkedin" },
-        { kind: "ai", provider: null },
+        { kind: "integration", provider: "openai" },
+        { kind: "integration", provider: "dataforseo" },
+        { kind: "integration", provider: "anthropic" },
+      ],
+    });
+    const copyImprover = makeWorkflow({
+      id: "wf-2",
+      chain: [
+        { kind: "integration", provider: "openai" },
+        { kind: "integration", provider: "jina" },
         // A named non-integration step: the access list is what the user has
         // to connect, so it must not pick this up.
         { kind: "mcp", provider: "notion" },
       ],
     });
+
+    expect(
+      getExpertAccessProviders([blogWriter, copyImprover], systemProviders),
+    ).toEqual(["dataforseo"]);
+  });
+
+  test("dedupes a provider named by more than one workflow", () => {
+    const first = makeWorkflow({
+      id: "wf-1",
+      chain: [{ kind: "integration", provider: "linkedin" }],
+    });
     const second = makeWorkflow({
       id: "wf-2",
       chain: [
-        { kind: "integration", provider: "google" },
         { kind: "integration", provider: "linkedin" },
+        { kind: "integration", provider: "google" },
       ],
     });
 
-    expect(getExpertAccessProviders([first, second])).toEqual([
+    expect(getExpertAccessProviders([first, second], systemProviders)).toEqual([
       "linkedin",
       "google",
     ]);
   });
 
-  test("is empty when no workflow names an integration", () => {
-    expect(getExpertAccessProviders([])).toEqual([]);
+  test("is empty when there is nothing to connect", () => {
+    expect(getExpertAccessProviders([], systemProviders)).toEqual([]);
     // A template served before the listing-graph fallback landed has no chain
     // at all, and the section has to disappear rather than throw.
-    expect(getExpertAccessProviders([makeWorkflow({ id: "wf-1" })])).toEqual(
-      [],
-    );
     expect(
-      getExpertAccessProviders([
-        makeWorkflow({ id: "wf-2", chain: [{ kind: "ai", provider: null }] }),
-      ]),
+      getExpertAccessProviders([makeWorkflow({ id: "wf-1" })], systemProviders),
     ).toEqual([]);
+    expect(
+      getExpertAccessProviders(
+        [
+          makeWorkflow({
+            id: "wf-2",
+            chain: [{ kind: "integration", provider: "anthropic" }],
+          }),
+        ],
+        systemProviders,
+      ),
+    ).toEqual([]);
+  });
+
+  test("names nothing while the system-provider list is missing", () => {
+    // Better to say nothing than to tell someone they must connect Anthropic.
+    const workflow = makeWorkflow({
+      id: "wf-1",
+      chain: [
+        { kind: "integration", provider: "anthropic" },
+        { kind: "integration", provider: "dataforseo" },
+      ],
+    });
+
+    expect(getExpertAccessProviders([workflow], undefined)).toEqual([]);
   });
 });

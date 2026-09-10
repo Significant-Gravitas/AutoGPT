@@ -51,6 +51,7 @@ export function ExpertPage() {
     isLoggedIn,
     isHiringOpen,
     isActionReady,
+    systemProviders,
     isLoading,
     isError,
     refetch,
@@ -142,7 +143,10 @@ export function ExpertPage() {
         />
         <ExpertAccess
           name={firstName}
-          providers={getExpertAccessProviders(expert.workflows)}
+          providers={getExpertAccessProviders(
+            expert.workflows,
+            systemProviders,
+          )}
         />
         <div className="flex flex-col gap-3">
           <ExpertPlanNote
