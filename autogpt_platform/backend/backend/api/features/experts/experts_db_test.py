@@ -1254,6 +1254,45 @@ async def test_owns_active_expert_scopes_owner_and_archive_state(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_owns_private_active_expert_adds_the_visibility_filter(
+    server: SpinTestServer, test_user, other_user
+):
+    """The gate on the per-expert resource routes. A TEAM/ORG expert resolves
+    to no grants on the chat side, so writing its folder would mutate an
+    expert nothing can read — which is the whole delta from
+    ``owns_active_expert``."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert await experts_db.owns_private_active_expert(test_user.id, hired.expert.id)
+    assert not await experts_db.owns_private_active_expert(
+        other_user.id, hired.expert.id
+    )
+    assert not await experts_db.owns_private_active_expert(test_user.id, template.id)
+
+    for shared in (
+        prisma.enums.ResourceVisibility.TEAM,
+        prisma.enums.ResourceVisibility.ORG,
+    ):
+        await prisma.models.Expert.prisma().update(
+            where={"id": hired.expert.id}, data={"visibility": shared}
+        )
+        assert await experts_db.owns_active_expert(test_user.id, hired.expert.id)
+        assert not await experts_db.owns_private_active_expert(
+            test_user.id, hired.expert.id
+        )
+
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"visibility": prisma.enums.ResourceVisibility.PRIVATE},
+    )
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    assert not await experts_db.owns_private_active_expert(
+        test_user.id, hired.expert.id
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_archive_expert_rejects_cross_user(
     server: SpinTestServer, test_user, other_user
 ):

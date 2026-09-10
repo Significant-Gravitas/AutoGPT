@@ -1621,3 +1621,128 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
     response = client.post("/skills", json={"content": _VALID_SKILL_MD})
     assert response.status_code == 400
     assert "virus scan" in response.json()["detail"]
+
+
+_EXPERT_SKILL_ROUTES = {
+    "list": lambda expert_id: client.get("/skills", params=_owner(expert_id)),
+    "upload": lambda expert_id: client.post(
+        "/skills", params=_owner(expert_id), json={"content": _VALID_SKILL_MD}
+    ),
+    "read": lambda expert_id: client.get(
+        "/skills/oauth_flow", params=_owner(expert_id)
+    ),
+    "delete": lambda expert_id: client.delete(
+        "/skills/oauth_flow", params=_owner(expert_id)
+    ),
+}
+
+_SKILL_LAYER = {
+    "list_user_skills": [],
+    "store_user_skill": ParsedSkill(name="oauth_flow", description="d", body="b"),
+    "read_user_skill_with_body": ParsedSkill(
+        name="oauth_flow", description="d", body="b"
+    ),
+    "delete_user_skill": "oauth_flow",
+}
+
+
+@pytest.mark.parametrize("route", list(_EXPERT_SKILL_ROUTES))
+def test_expert_skill_routes_refuse_an_expert_the_caller_does_not_own(
+    route: str,
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """Every /skills route naming an expert goes through the same owner gate,
+    and a refusal is a 404 that never reaches the skills layer."""
+    owns = mocker.patch(
+        "backend.api.features.v1.experts_db.owns_private_active_expert",
+        AsyncMock(return_value=False),
+    )
+    downstream = {
+        name: mocker.patch(f"backend.api.features.v1.{name}", AsyncMock())
+        for name in _SKILL_LAYER
+    }
+
+    response = _EXPERT_SKILL_ROUTES[route]("expert-not-mine")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Expert 'expert-not-mine' not found"
+    owns.assert_awaited_once_with(test_user_id, "expert-not-mine")
+    for mock in downstream.values():
+        mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "route,downstream",
+    [
+        ("list", "list_user_skills"),
+        ("upload", "store_user_skill"),
+        ("read", "read_user_skill_with_body"),
+        ("delete", "delete_user_skill"),
+    ],
+)
+def test_expert_skill_routes_forward_an_owned_expert(
+    route: str,
+    downstream: str,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An owned PRIVATE expert passes the gate and its id reaches the skills
+    layer, so the call reads that expert's folder and not AutoPilot's."""
+    mocker.patch(
+        "backend.api.features.v1.experts_db.owns_private_active_expert",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.v1.list_user_skill_sibling_paths",
+        AsyncMock(return_value=[]),
+    )
+    target = mocker.patch(
+        f"backend.api.features.v1.{downstream}",
+        AsyncMock(return_value=_SKILL_LAYER[downstream]),
+    )
+
+    response = _EXPERT_SKILL_ROUTES[route]("expert-mine")
+
+    assert response.status_code in (200, 201)
+    assert _forwarded_expert_id(target) == "expert-mine"
+
+
+@pytest.mark.parametrize("route", list(_EXPERT_SKILL_ROUTES))
+def test_personal_autopilot_skill_routes_skip_the_expert_gate(
+    route: str,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """No expert named means personal AutoPilot, which owns its own folder and
+    must never be refused by the expert gate."""
+    owns = mocker.patch(
+        "backend.api.features.v1.experts_db.owns_private_active_expert",
+        AsyncMock(return_value=False),
+    )
+    mocker.patch(
+        "backend.api.features.v1.list_user_skill_sibling_paths",
+        AsyncMock(return_value=[]),
+    )
+    for name, value in _SKILL_LAYER.items():
+        mocker.patch(f"backend.api.features.v1.{name}", AsyncMock(return_value=value))
+
+    response = _EXPERT_SKILL_ROUTES[route](None)
+
+    assert response.status_code in (200, 201)
+    owns.assert_not_awaited()
+
+
+# ``expert_id`` omitted entirely, not sent empty: an empty query value is a
+# str, which would take the expert branch of the gate rather than the
+# personal-AutoPilot one.
+def _owner(expert_id: str | None) -> dict[str, str]:
+    return {} if expert_id is None else {"expert_id": expert_id}
+
+
+def _forwarded_expert_id(mock: AsyncMock) -> str | None:
+    """``list_user_skills`` takes the owner positionally, the rest by keyword."""
+    call = mock.await_args
+    if call is None:
+        return None
+    if "expert_id" in call.kwargs:
+        return call.kwargs["expert_id"]
+    return call.args[1] if len(call.args) > 1 else None
