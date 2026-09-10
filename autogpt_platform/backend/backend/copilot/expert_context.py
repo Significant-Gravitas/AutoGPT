@@ -275,10 +275,21 @@ async def _team_context(
     without a team.
     """
     experts = await experts_db().list_experts(user_id, with_metrics=False)
+    hiring_roster: list[Expert] | None = None
+    if (
+        not any(e.id != exclude_expert_id for e in experts)
+        and exclude_expert_id is None
+        and delegation_enabled
+        and await is_feature_enabled(
+            Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
+        )
+    ):
+        hiring_roster = await experts_db().list_templates()
     return render_team_context(
         experts,
         delegation_enabled=delegation_enabled,
         exclude_expert_id=exclude_expert_id,
+        hiring_roster=hiring_roster,
     )
 
 
@@ -287,18 +298,16 @@ def render_team_context(
     *,
     delegation_enabled: bool,
     exclude_expert_id: str | None = None,
+    hiring_roster: list[Expert] | None = None,
 ) -> str:
+    """Pure renderer; ``hiring_roster`` is the template list for the
+    Head-of-AI block and is only passed when the caller already checked the
+    flag and found nobody hired. ``None`` keeps the empty roster silent."""
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
-        if (
-            exclude_expert_id is not None
-            or not delegation_enabled
-            or not await is_feature_enabled(
-                Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
-            )
-        ):
+        if hiring_roster is None:
             return ""
-        return _empty_team_context(await experts_db().list_templates())
+        return _empty_team_context(hiring_roster)
 
     lines = "\n".join(_team_line(e) for e in teammates)
     rule = _team_rule(
