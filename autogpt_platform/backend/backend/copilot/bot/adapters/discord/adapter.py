@@ -332,13 +332,13 @@ class DiscordAdapter(SocketAdapter):
             logger.warning("Cannot post to non-messageable channel %s", channel_id)
             return None
         try:
-            first = await self._send_chunked(channel, text)
+            first, sent = await self._send_chunked(channel, text)
         except discord.HTTPException:
             logger.exception("Failed to post message to channel %s", channel_id)
             return None
         if first is None:
             return None
-        return PostedRef(id=str(first.id), url=first.jump_url)
+        return PostedRef(id=str(first.id), url=first.jump_url, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -364,7 +364,9 @@ class DiscordAdapter(SocketAdapter):
             logger.exception(
                 "Thread %s created but posting its content failed", thread.id
             )
-        return PostedRef(id=str(thread.id), url=thread.jump_url)
+        # The ref is the *thread*, not a message in it, so it is not a valid
+        # target for `edit_channel_message`.
+        return PostedRef(id=str(thread.id), url=thread.jump_url, editable=False)
 
     async def edit_channel_message(
         self, channel_id: str, ref_id: str, text: str
@@ -395,10 +397,11 @@ class DiscordAdapter(SocketAdapter):
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str
-    ) -> Optional[discord.Message]:
+    ) -> tuple[Optional[discord.Message], int]:
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
-        callers permalink to), or ``None`` if there was nothing to send.
+        callers permalink to) and how many chunks actually landed, or
+        ``(None, 0)`` if there was nothing to send.
 
         Raises only if the *first* chunk fails — once anything is delivered, a
         later-chunk failure stops the send and keeps the partial result rather
@@ -408,6 +411,7 @@ class DiscordAdapter(SocketAdapter):
             text, await self._mentionables_for(channel, text, ())
         )
         first: Optional[discord.Message] = None
+        sent = 0
         for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
                 msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
@@ -416,9 +420,10 @@ class DiscordAdapter(SocketAdapter):
                     raise
                 logger.exception("Dropping trailing chunk after partial send")
                 break
+            sent += 1
             if first is None:
                 first = msg
-        return first
+        return first, sent
 
     # -- Internal --
 

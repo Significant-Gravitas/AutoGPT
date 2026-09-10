@@ -6,7 +6,10 @@ adapter calls. Two concerns live here, both platform-agnostic:
 - **Authorization** — a user may only post into channels that belong to a
   server they've linked (``BotBackend.list_linked_server_ids``). Channel
   resolution is funneled through that allowlist so an unauthorized target can
-  never be reached, whether referenced by ID or by name.
+  never be reached, whether referenced by ID or by name. Editing needs a
+  second, stronger fact: the channel allowlist is shared by everyone linked
+  to that server, so an edit additionally requires an authorship record
+  (``sent_messages``) proving *this* account had the bot post that message.
 - **Resolution** — a human channel reference (``#announcements``, a bare
   name, or a raw snowflake ID) is mapped to a concrete channel ID.
 
@@ -21,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.copilot.bot.adapters.base import ChannelInfo, EditOutcome, PlatformAdapter
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.sent_messages import record_sent, sender_of
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,14 @@ async def deliver_message(
         return DeliveryResult(
             ok=False, kind="message", channel_id=channel_id, error="send_failed"
         )
+    await record_sent(
+        platform,
+        channel_id,
+        ref.id,
+        user_id,
+        chunk_count=ref.chunk_count,
+        editable=ref.editable,
+    )
     return DeliveryResult(
         ok=True, kind="message", channel_id=channel_id, ref_id=ref.id, url=ref.url
     )
@@ -126,6 +138,14 @@ async def deliver_dm(
         return DeliveryResult(
             ok=False, kind="dm", channel_id=channel_id, error="send_failed"
         )
+    await record_sent(
+        platform,
+        channel_id,
+        ref.id,
+        user_id,
+        chunk_count=ref.chunk_count,
+        editable=ref.editable,
+    )
     return DeliveryResult(
         ok=True, kind="dm", channel_id=channel_id, ref_id=ref.id, url=ref.url
     )
@@ -151,6 +171,14 @@ async def create_thread(
         return DeliveryResult(
             ok=False, kind="thread", channel_id=channel_id, error="thread_failed"
         )
+    await record_sent(
+        platform,
+        channel_id,
+        ref.id,
+        user_id,
+        chunk_count=ref.chunk_count,
+        editable=ref.editable,
+    )
     return DeliveryResult(
         ok=True, kind="thread", channel_id=channel_id, ref_id=ref.id, url=ref.url
     )
@@ -168,16 +196,35 @@ async def edit_message(
 ) -> EditResult:
     """Edit a message previously posted via ``deliver_message``/``deliver_dm``.
 
-    ``channel_id``/``ref_id`` are the values that call returned — never a
-    caller-chosen channel name — so authorization here re-derives the
-    expected channel from the user's links and requires it to match, exactly
-    like ``_resolve_target`` does for a raw id. This closes the same hole a
-    naive "trust the channel_id the model sent back" implementation would
-    open: a channel_id alone doesn't prove the calling user's account is the
-    one linked to it.
+    Two independent gates, both required:
+
+    1. **Authorship** — ``sent_messages`` must hold a record that this same
+       ``user_id`` had the bot post this ``ref_id``. Without it, "the channel
+       is in a server you linked" is the only check, and that is shared by
+       every user linked to the server: Alice could rewrite Bob's post, or any
+       reply the bot made to a third party. A message the bot sent as
+       *conversation* (an inbound reply) is never recorded, so it can never be
+       rewritten this way either.
+    2. **Channel** — the channel is still re-derived from the user's links and
+       required to match, exactly like ``_resolve_target`` does for a raw id.
+       Redundant with (1) by construction, kept as defence in depth so a lost
+       or forged record still can't reach an unlinked server.
     """
     if not content or not content.strip():
         return EditResult(ok=False, error="empty_content")
+
+    record = await sender_of(platform, channel_id, ref_id)
+    if record is None:
+        return EditResult(ok=False, error="not_sender")
+    sender_user_id, chunk_count, editable = record
+    if sender_user_id != user_id:
+        return EditResult(ok=False, error="not_sender")
+    if not editable:
+        return EditResult(ok=False, error="edit_unsupported_ref")
+    if chunk_count > 1:
+        # `ref_id` is only the first chunk, so an edit would rewrite the
+        # opening and leave the rest of the post stale below it.
+        return EditResult(ok=False, error="edit_chunked")
 
     if target == "dm":
         platform_user_id = await api.get_dm_user_id(platform, user_id)
@@ -190,6 +237,14 @@ async def edit_message(
         server_ids = tuple(await api.list_linked_server_ids(platform, user_id))
         if not server_ids:
             return EditResult(ok=False, error="no_linked_servers")
+        # No `looks_like_channel_id` gate here on purpose. The post path needs
+        # it to tell a raw id from a channel *name*; the edit path takes no
+        # names, and applying it would reject the encoded `team|channel|`
+        # targets `list_text_channels` hands back for name-resolved Slack
+        # posts. What keeps the edit path from being wider than the post path
+        # is the authorship record above: a channel/ref pair only has one if
+        # `_resolve_target` already authorized it for this same user, which is
+        # strictly narrower than any id-shape test.
         guild_id = await adapter.get_channel_server_id(channel_id)
         if guild_id is None:
             return EditResult(ok=False, error="channel_not_found")

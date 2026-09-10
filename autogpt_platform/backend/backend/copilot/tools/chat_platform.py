@@ -105,6 +105,22 @@ _ERROR_MESSAGES: dict[str, str] = {
         "The platform rejected the edit — the bot may lack permission, or the "
         "message wasn't posted by the bot."
     ),
+    "not_sender": (
+        "That message isn't one this account had the bot post, so it can't be "
+        "edited. Only a message from an earlier post_to_chat_platform call in "
+        "this account can be edited, and only for 30 days. Post a new message "
+        "instead."
+    ),
+    "edit_chunked": (
+        "That post was too long for one message and was split across several, "
+        "so editing it would rewrite only the first part and leave the rest "
+        "stale. Post a shorter replacement instead."
+    ),
+    "edit_unsupported_ref": (
+        "That reference points at a thread or chat rather than a single "
+        "message, so there is nothing to edit. Post a new message into it "
+        "instead."
+    ),
 }
 
 
@@ -215,9 +231,10 @@ class PostToChatPlatformTool(BaseTool):
             "target='dm' only; its channels cannot be posted to yet. Pair "
             "with schedule_followup for recurring posts; call "
             "list_chat_platform_channels if a Discord/Slack channel won't "
-            "resolve. To edit what was posted, call "
-            "edit_chat_platform_message with the channel_id and ref_id this "
-            "tool returns."
+            "resolve. A mode='message' post can later be changed with "
+            "edit_chat_platform_message, passing the channel_id and ref_id "
+            "this tool returns; mode='thread' returns the thread itself, "
+            "which is not editable."
         )
 
     @property
@@ -413,10 +430,12 @@ class EditChatPlatformMessageTool(BaseTool):
             "on Discord, Slack, Telegram or Microsoft Teams. Pass the same "
             "`channel_id` and `ref_id` that call returned (and the same "
             "`target`/`platform` it used) along with the new `content` — the "
-            "old content is replaced entirely. Only messages the bot itself "
-            "posted, in a channel or DM already linked to this account, can "
-            "be edited; a failure (message too old, deleted, or the platform "
-            "rejecting the edit) is always reported, never silent."
+            "old content is replaced entirely. Only a message this account "
+            "itself had the bot post is editable, and only for 30 days — not "
+            "the bot's replies to anyone, not another user's posts, not a "
+            "thread ref, and not a long post that was split across several "
+            "messages. A failure (message too old, deleted, not yours, or the "
+            "platform rejecting the edit) is always reported, never silent."
         )
 
     @property

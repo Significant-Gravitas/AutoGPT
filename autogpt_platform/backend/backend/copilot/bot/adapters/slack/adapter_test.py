@@ -627,6 +627,24 @@ class TestOutbound:
         assert call["channel"] == "C1"
         assert call["ts"] == "111.222"
         assert call["text"] == "updated"
+        # chat.update keeps a message's existing blocks when `blocks` is
+        # omitted, so a block message would silently not change.
+        assert call["blocks"] == []
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self, adapter):
+        # Edit content is model-authored, so it must go through the same
+        # mrkdwn escaping as a send. Dropping `localize_markup` from the edit
+        # path has to fail here.
+        await adapter.edit_channel_message(
+            "T1|C1|", "111.222", "**bold** <!channel> & <https://x>"
+        )
+
+        call = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert call["text"] == adapter.localize_markup(
+            "**bold** <!channel> & <https://x>"
+        )
+        assert "**bold**" not in call["text"]
 
     @pytest.mark.asyncio
     async def test_edit_channel_message_not_found(self, adapter):

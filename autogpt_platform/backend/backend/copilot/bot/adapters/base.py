@@ -129,10 +129,19 @@ class PostedRef(BaseModel):
     ``url`` is a best-effort permalink (Discord ``jump_url``) so callers can
     surface a clickable link in their confirmation; platforms without
     permalinks leave it ``None``.
+
+    ``chunk_count`` and ``editable`` describe what ``id`` can still be done
+    to. A post split across the platform's message cap has ``id`` pointing at
+    the *first* chunk only, so editing it would rewrite the opening and leave
+    the rest stale; and some ``id``s are a thread or chat rather than a
+    message (Discord threads, Telegram topics), which no edit call accepts.
+    Both are refused rather than half-applied.
     """
 
     id: str
     url: Optional[str] = None
+    chunk_count: int = 1
+    editable: bool = True
 
 
 @dataclass

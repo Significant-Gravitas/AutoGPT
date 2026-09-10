@@ -499,6 +499,7 @@ class TelegramAdapter(WebhookAdapter):
         # caller's retry would repost the chunks already delivered (mirrors
         # Discord's ``_send_chunked``).
         posted = False
+        sent = 0
         for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 result = await self._client.call(
@@ -516,11 +517,12 @@ class TelegramAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Telegram chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_id is None:
                 first_id = str(result.get("message_id", ""))
         if first_id is None:
             return None
-        return PostedRef(id=first_id, url=None)
+        return PostedRef(id=first_id, url=None, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -549,7 +551,16 @@ class TelegramAdapter(WebhookAdapter):
                 parse_mode="HTML",
             )
         except TelegramAPIError as e:
-            if "not found" in str(e).lower():
+            detail = str(e).lower()
+            # Telegram answers "message is not modified" when the new text is
+            # byte-identical. The edit is already in the requested state, so
+            # reporting failure only makes the model retry forever.
+            if "not modified" in detail:
+                return EditOutcome.OK
+            # "message to edit not found" and "message can't be edited" (past
+            # the 48h window) are both NOT_FOUND's documented meaning: gone or
+            # too old to touch.
+            if "not found" in detail or "can't be edited" in detail:
                 return EditOutcome.NOT_FOUND
             logger.warning("Telegram editMessageText rejected edit: %s", e)
             return EditOutcome.FAILED

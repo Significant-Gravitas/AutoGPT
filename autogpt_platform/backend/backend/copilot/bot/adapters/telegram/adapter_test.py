@@ -482,6 +482,46 @@ class TestEditChannelMessage:
         assert kwargs["text"] == "updated text"
 
     @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self):
+        a = _adapter()
+        a._client.call = AsyncMock(return_value={})
+
+        await a.edit_channel_message("123", "77", "<b>raw</b> & **bold**")
+
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["text"] == a.localize_markup("<b>raw</b> & **bold**")
+        assert kwargs["parse_mode"] == "HTML"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_modified_is_ok(self):
+        # Telegram answers this when the text is byte-identical. The message
+        # is already in the requested state, so reporting failure only makes
+        # the model retry forever.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message is not modified"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "same")
+
+        assert outcome == EditOutcome.OK
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_too_old_is_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message can't be edited"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
     async def test_edit_channel_message_not_found(self):
         a = _adapter()
         a._client.call = AsyncMock(

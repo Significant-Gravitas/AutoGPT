@@ -1390,6 +1390,12 @@ class TestProactiveOutput:
         assert outcome == EditOutcome.OK
         message.edit.assert_awaited_once()
         assert message.edit.call_args.kwargs["content"] == "updated text"
+        # An edit carries model-authored content, so it must pass the same
+        # mention suppressor as a send — without it, "@everyone" in an edit
+        # pings the server.
+        allowed = message.edit.call_args.kwargs["allowed_mentions"]
+        assert allowed.everyone is False
+        assert allowed.roles is False
 
     @pytest.mark.asyncio
     async def test_edit_channel_message_not_found_when_message_missing(self):
