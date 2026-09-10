@@ -1,12 +1,18 @@
 """ExpertOnboardingTool - a freshly hired expert's first-turn intake card."""
 
+import json
 import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .models import ErrorResponse, ExpertOnboardingResponse, ExpertOnboardingStep
+from .models import (
+    ErrorResponse,
+    ExpertOnboardingResponse,
+    ExpertOnboardingStep,
+    ResponseType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +21,7 @@ TOOL_NAME = "expert_onboarding"
 # The card is a one-question-at-a-time pager, so its length is the user's
 # patience, not a context budget: five steps is already a long walk before
 # anyone has seen the expert do anything.
+MIN_STEPS = 3
 MAX_STEPS = 5
 MAX_OPTIONS = 6
 MAX_QUESTION_LENGTH = 200
@@ -62,6 +69,8 @@ class ExpertOnboardingTool(BaseTool):
                 },
                 "steps": {
                     "type": "array",
+                    "minItems": MIN_STEPS,
+                    "maxItems": MAX_STEPS,
                     "items": {
                         "type": "object",
                         "properties": {
@@ -153,19 +162,30 @@ class ExpertOnboardingTool(BaseTool):
 
 
 def _has_onboarded(session: ChatSession) -> bool:
-    """Whether this chat already opened an onboarding card.
+    """Whether this chat already opened an onboarding card successfully.
 
     The card belongs to the hire, not to the conversation: without this a
     model that re-read its kickoff instruction — or was talked into it — would
     interrupt an ongoing chat with a fresh intake form.
+
+    Keyed off the persisted tool *result* rather than the assistant's tool
+    call. The call row is appended before the tool runs (see
+    ``BaselineToolPersistence.begin``), so matching on it would let one
+    malformed first attempt — bad arguments, a refusal — permanently convince
+    this guard the hire was already onboarded, with no way to recover.
     """
     for message in session.messages:
-        if message.role != "assistant" or not message.tool_calls:
+        if message.role != "tool" or not message.content:
             continue
-        for call in message.tool_calls:
-            name = (call.get("function") or {}).get("name") or call.get("name")
-            if name == TOOL_NAME:
-                return True
+        try:
+            payload = json.loads(message.content)
+        except ValueError:
+            continue
+        if (
+            isinstance(payload, dict)
+            and payload.get("type") == ResponseType.EXPERT_ONBOARDING.value
+        ):
+            return True
     return False
 
 

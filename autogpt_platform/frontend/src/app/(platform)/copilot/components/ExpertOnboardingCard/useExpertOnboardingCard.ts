@@ -19,6 +19,7 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSent, setIsSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const current = Math.min(step, steps.length - 1);
   const currentStep = steps[current];
@@ -37,19 +38,33 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     setStep(Math.max(current - 1, 0));
   }
 
+  // Settling the card is what removes the user's only copy of their answers,
+  // so it waits for the send to resolve. A rejected send (no session, dispatch
+  // failure) leaves the form exactly as it was, still submittable.
+  async function send(message: string) {
+    if (isSending) return;
+    setIsSending(true);
+    try {
+      await onSend(message);
+      setIsSent(true);
+    } catch {
+      setIsSent(false);
+    } finally {
+      setIsSending(false);
+    }
+  }
+
   function advance() {
     if (!isAnswered) return;
     if (!isLast) {
       setStep(current + 1);
       return;
     }
-    setIsSent(true);
-    void onSend(buildOnboardingAnswersMessage(steps, answers));
+    void send(buildOnboardingAnswersMessage(steps, answers));
   }
 
   function skip() {
-    setIsSent(true);
-    void onSend(SKIP_MESSAGE);
+    void send(SKIP_MESSAGE);
   }
 
   return {
@@ -59,6 +74,7 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     isAnswered,
     isDone,
     isLast,
+    isSending,
     value,
     advance,
     goBack,

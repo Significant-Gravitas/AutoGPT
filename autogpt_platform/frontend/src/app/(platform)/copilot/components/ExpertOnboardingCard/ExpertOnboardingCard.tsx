@@ -35,7 +35,11 @@ export function ExpertOnboardingCard({ part }: Props) {
   const onboarding = parseExpertOnboarding(part);
 
   if (!onboarding) {
-    if (part.state === "output-error") {
+    // A settled call that parsed to nothing is as final as an errored one —
+    // no later output is coming, so the pending line would spin forever.
+    const isSettled =
+      part.state === "output-error" || part.state === "output-available";
+    if (isSettled) {
       return (
         <div className="py-2 text-sm text-zinc-500">
           Couldn&apos;t open the setup questions.
@@ -71,6 +75,7 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
     isAnswered,
     isDone,
     isLast,
+    isSending,
     value,
     advance,
     goBack,
@@ -116,7 +121,8 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
         <button
           type="button"
           onClick={skip}
-          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+          disabled={isSending}
+          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-50"
         >
           Skip
         </button>
@@ -189,11 +195,11 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
         <button
           type="button"
           aria-label={isLast ? "Send answers" : "Next question"}
-          disabled={!isAnswered}
+          disabled={!isAnswered || isSending}
           onClick={advance}
           className={
             "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
-            (isAnswered
+            (isAnswered && !isSending
               ? "bg-zinc-800 text-white hover:bg-zinc-900"
               : "bg-zinc-100 text-zinc-400")
           }

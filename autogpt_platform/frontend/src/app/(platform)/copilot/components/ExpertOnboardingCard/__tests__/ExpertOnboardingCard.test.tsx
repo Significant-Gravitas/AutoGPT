@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ToolUIPart } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -57,8 +63,15 @@ function onboardingPart(overrides: Record<string, unknown> = {}): ToolUIPart {
   } as unknown as ToolUIPart;
 }
 
-function renderCard(part: ToolUIPart, pendingCallId: string | null = CALL_ID) {
-  const onSend = vi.fn();
+function createSendMock() {
+  return vi.fn<(message: string) => Promise<void>>();
+}
+
+function renderCard(
+  part: ToolUIPart,
+  pendingCallId: string | null = CALL_ID,
+  onSend = createSendMock(),
+) {
   render(
     <CopilotChatActionsProvider onSend={onSend}>
       <PendingOnboardingContext.Provider value={pendingCallId}>
@@ -171,10 +184,34 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.queryByRole("radio")).toBeNull();
   });
 
-  it("ignores an output carrying no usable steps", () => {
+  it("reports a settled call whose output carries no usable steps", () => {
     renderCard(onboardingPart({ steps: [] }));
 
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByText("Ada")).toBeNull();
+    // The call is over, so this must not sit on the loading line forever.
+    expect(screen.getByText(/Couldn.t open the setup questions/)).toBeDefined();
+  });
+
+  it("keeps the answers on screen when the send fails", async () => {
+    const onSend = createSendMock();
+    onSend.mockRejectedValue(new Error("no session"));
+    renderCard(onboardingPart(), CALL_ID, onSend);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+    fireEvent.click(actionButton("Next question"));
+    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    fireEvent.click(actionButton("Send answers"));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    // Still the live form, with the answer intact — not a settled history row.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("radio", { name: /Linear/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    expect(screen.queryByText(/Setup questions from/)).toBeNull();
   });
 });

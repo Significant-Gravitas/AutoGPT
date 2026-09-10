@@ -1,5 +1,7 @@
 """Tests for ExpertOnboardingTool."""
 
+import json
+
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
@@ -7,9 +9,14 @@ from backend.copilot.tools.expert_onboarding import (
     MAX_OPTION_LENGTH,
     MAX_OPTIONS,
     MAX_STEPS,
+    MIN_STEPS,
     ExpertOnboardingTool,
 )
-from backend.copilot.tools.models import ErrorResponse, ExpertOnboardingResponse
+from backend.copilot.tools.models import (
+    ErrorResponse,
+    ExpertOnboardingResponse,
+    ResponseType,
+)
 
 EXPERT_ID = "1a5b1a10-6d10-4d7c-9d0d-2f6f1d9c0f11"
 
@@ -185,21 +192,31 @@ async def test_refuses_outside_an_expert_session(tool: ExpertOnboardingTool):
     assert "expert" in result.message.lower()
 
 
+def onboarding_call() -> ChatMessage:
+    """The assistant row the runtime appends BEFORE the tool executes."""
+    return ChatMessage(
+        role="assistant",
+        tool_calls=[
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "expert_onboarding", "arguments": "{}"},
+            }
+        ],
+    )
+
+
+def tool_result(payload: dict) -> ChatMessage:
+    return ChatMessage(role="tool", content=json.dumps(payload), tool_call_id="call-1")
+
+
 @pytest.mark.asyncio
 async def test_refuses_a_second_card_in_the_same_chat(
     tool: ExpertOnboardingTool, session: ChatSession
 ):
+    session.messages.append(onboarding_call())
     session.messages.append(
-        ChatMessage(
-            role="assistant",
-            tool_calls=[
-                {
-                    "id": "call-1",
-                    "type": "function",
-                    "function": {"name": "expert_onboarding", "arguments": "{}"},
-                }
-            ],
-        )
+        tool_result({"type": ResponseType.EXPERT_ONBOARDING.value, "steps": []})
     )
 
     result = await tool._execute(
@@ -208,6 +225,45 @@ async def test_refuses_a_second_card_in_the_same_chat(
 
     assert isinstance(result, ErrorResponse)
     assert "already" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_first_attempt_does_not_block_a_retry(
+    tool: ExpertOnboardingTool, session: ChatSession
+):
+    """The tool-call row lands before the tool runs, so a rejected first call
+    would otherwise convince the guard the hire was already onboarded."""
+    session.messages.append(onboarding_call())
+    session.messages.append(
+        tool_result({"type": ResponseType.ERROR.value, "message": "bad arguments"})
+    )
+
+    result = await tool._execute(
+        user_id="test-user", session=session, greeting="Hi.", steps=steps(3)
+    )
+
+    assert isinstance(result, ExpertOnboardingResponse)
+    assert len(result.steps) == 3
+
+
+@pytest.mark.asyncio
+async def test_an_unparsable_tool_row_does_not_block(
+    tool: ExpertOnboardingTool, session: ChatSession
+):
+    session.messages.append(ChatMessage(role="tool", content="not json"))
+
+    result = await tool._execute(
+        user_id="test-user", session=session, greeting="Hi.", steps=steps(3)
+    )
+
+    assert isinstance(result, ExpertOnboardingResponse)
+
+
+def test_schema_declares_the_step_range(tool: ExpertOnboardingTool):
+    steps_schema = tool.parameters["properties"]["steps"]
+
+    assert steps_schema["minItems"] == MIN_STEPS
+    assert steps_schema["maxItems"] == MAX_STEPS
 
 
 @pytest.mark.asyncio
