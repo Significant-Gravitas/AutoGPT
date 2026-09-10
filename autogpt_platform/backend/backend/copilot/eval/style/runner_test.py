@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
 
@@ -27,6 +28,7 @@ from .runner import (
     drift,
     generate,
     plan_jobs,
+    prompt_scores,
     run,
     separation,
     summarize,
@@ -124,6 +126,38 @@ def test_the_comparison_pairs_this_run_against_the_baseline_prompt_by_prompt():
     assert comparison.paired_delta == 6.0
     assert comparison.paired_sem == 0.0
     assert comparison.baseline_mean == stored.scores.mean
+
+
+def test_repeats_of_one_prompt_are_one_comparison_not_several():
+    """Both sides average a prompt's repeats. Comparing each repeat against a
+    single stored value counts one prompt's noise three times and understates
+    the standard error."""
+    baseline = load_baseline()
+    stored = next(b for b in baseline.experts if b.expert == "Max")
+    prompt = sorted(stored.by_prompt)[0]
+    rows = [
+        _row("Max", stored.by_prompt[prompt] + delta, prompt_id=prompt, repeat=i)
+        for i, delta in enumerate((0.0, 6.0, 12.0))
+    ]
+    assert prompt_scores(rows, "Max") == {prompt: stored.by_prompt[prompt] + 6.0}
+    comparison = compare(summarize_expert("Max", rows), rows, baseline)
+    assert comparison.shared_prompts == 1
+    assert comparison.paired_delta == 6.0
+    assert comparison.paired_sem == 0.0
+
+
+def test_run_options_refuse_a_hang_and_a_partial_baseline():
+    """Concurrency 0 builds a semaphore nothing can acquire, and a filtered
+    --write-baseline stores part of the set under a whole-set fingerprint."""
+    for invalid in ({"concurrency": 0}, {"repeats": 0}, {"control": -1}):
+        with pytest.raises(ValidationError):
+            RunOptions(**invalid)
+    with pytest.raises(ValidationError):
+        RunOptions(write_baseline=True, experts=["Max"])
+    with pytest.raises(ValidationError):
+        RunOptions(write_baseline=True, kinds=["failure"])
+    assert RunOptions(write_baseline=True).concurrency == 6
+    assert RunOptions(experts=["Max"], kinds=["failure"]).repeats == 1
 
 
 def test_the_comparison_says_so_when_a_prompt_set_has_no_baseline():
@@ -321,14 +355,12 @@ async def test_write_baseline_stores_every_prompt_of_this_run(
     stubbed_models, tmp_path: Path
 ):
     _, save_baseline = stubbed_models
-    result = await run(
-        RunOptions(experts=["Max"], out=tmp_path / "r.json", write_baseline=True)
-    )
+    result = await run(RunOptions(out=tmp_path / "r.json", write_baseline=True))
     assert result is not None
-    (stored,) = save_baseline.call_args.args[0].experts
-    assert stored.expert == "Max"
-    assert len(stored.by_prompt) == 30
-    assert save_baseline.call_args.args[0].fingerprint == result.fingerprint
+    written = save_baseline.call_args.args[0]
+    assert {e.expert for e in written.experts} == {e.name for e in roster_experts()}
+    assert all(len(e.by_prompt) == 30 for e in written.experts)
+    assert written.fingerprint == result.fingerprint
 
 
 def test_drift_names_the_components_that_moved_since_the_baseline():

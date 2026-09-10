@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import openai
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.narrative import _MAX_NARRATIVE_CHARS, NarrativeResponse
@@ -86,16 +86,27 @@ class RoundCapReached(Exception):
 class RunOptions(BaseModel):
     experts: list[str] | None = None
     kinds: list[PromptKind] | None = None
-    repeats: int = 1
+    repeats: int = Field(default=1, gt=0)
     model: str | None = None
     judge: str | None = None
-    concurrency: int = 6
+    # Zero builds a semaphore nothing can acquire; every task waits forever.
+    concurrency: int = Field(default=6, gt=0)
     out: Path = Path("expert_style_results.json")
     write_baseline: bool = False
     dry_run: bool = False
     cross_spec: bool = False
     # Prompts per expert to also run as plain AutoPilot, no suffix.
-    control: int = 0
+    control: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _baseline_needs_the_whole_set(self) -> "RunOptions":
+        """A filtered run scores part of the set and ``--kinds`` is not in the
+        fingerprint, so the baseline it wrote would claim to cover everything."""
+        if self.write_baseline and (self.experts or self.kinds):
+            raise ValueError(
+                "--write-baseline takes a full run; drop --experts/--kinds"
+            )
+        return self
 
 
 class Job(BaseModel):
@@ -442,13 +453,11 @@ def compare(
         return ExpertComparison(
             expert=summary.expert, mean=summary.scores.mean, baseline_mean=None
         )
+    current = prompt_scores(rows, summary.expert)
     deltas = [
-        row.score - stored.by_prompt[row.prompt_id]
-        for row in rows
-        if row.expert == summary.expert
-        and row.arm == "expert"
-        and row.score is not None
-        and row.prompt_id in stored.by_prompt
+        score - stored.by_prompt[prompt_id]
+        for prompt_id, score in current.items()
+        if prompt_id in stored.by_prompt
     ]
     if not deltas:
         return ExpertComparison(
@@ -485,17 +494,22 @@ def new_baseline(
                 expert=s.expert,
                 scores=s.scores,
                 by_kind=s.by_kind,
-                by_prompt={
-                    r.prompt_id: r.score
-                    for r in rows
-                    if r.expert == s.expert
-                    and r.arm == "expert"
-                    and r.score is not None
-                },
+                by_prompt=prompt_scores(rows, s.expert),
             )
             for s in result.experts
         ],
     )
+
+
+def prompt_scores(rows: list[ScoredResponse], expert: str) -> dict[str, float]:
+    """One score per prompt, averaging repeats. The baseline and the run read
+    against it both use this, so a repeated prompt is one pair rather than
+    several — counting each repeat separately understates the spread."""
+    by_prompt: dict[str, list[float]] = {}
+    for row in rows:
+        if row.expert == expert and row.arm == "expert" and row.score is not None:
+            by_prompt.setdefault(row.prompt_id, []).append(row.score)
+    return {prompt: round(mean(scores), 2) for prompt, scores in by_prompt.items()}
 
 
 def summarize_expert(name: str, rows: list[ScoredResponse]) -> ExpertSummary:
@@ -705,19 +719,22 @@ def main() -> None:
         help="prompts per expert to also run with no persona",
     )
     args = parser.parse_args()
-    options = RunOptions(
-        experts=args.experts or None,
-        kinds=args.kinds or None,
-        repeats=args.repeats,
-        model=args.model,
-        judge=args.judge,
-        concurrency=args.concurrency,
-        out=args.out,
-        write_baseline=args.write_baseline,
-        dry_run=args.dry_run,
-        cross_spec=args.cross_spec,
-        control=args.control,
-    )
+    try:
+        options = RunOptions(
+            experts=args.experts or None,
+            kinds=args.kinds or None,
+            repeats=args.repeats,
+            model=args.model,
+            judge=args.judge,
+            concurrency=args.concurrency,
+            out=args.out,
+            write_baseline=args.write_baseline,
+            dry_run=args.dry_run,
+            cross_spec=args.cross_spec,
+            control=args.control,
+        )
+    except ValidationError as invalid:
+        parser.error(str(invalid))
     asyncio.run(run(options))
 
 

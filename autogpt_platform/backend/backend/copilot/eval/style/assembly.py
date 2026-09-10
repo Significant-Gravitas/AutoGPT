@@ -7,6 +7,7 @@ changed fingerprint component.
 
 import hashlib
 import json
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,6 +43,10 @@ STYLE_DIR = Path(__file__).resolve().parent
 FIXTURES_DIR = STYLE_DIR / "fixtures"
 RUBRIC_PATH = STYLE_DIR / "rubric.json"
 BASELINE_PATH = STYLE_DIR / "baseline.json"
+# Everything between a prompt and a score: the tool stubs and round cap a turn
+# runs under, the judge's own prompt, and the rules that decide which rows are
+# scored at all.
+HARNESS_MODULES = ("generation.py", "runner.py", "scorer.py")
 
 
 class RoutedModel(BaseModel):
@@ -206,8 +211,16 @@ def fingerprint_parts(
         "autopilot": _sha(chat_system_prompt(None) + user_prefix(None, experts)),
         "rubric": _sha(rubric.model_dump_json()),
         "models": _sha(f"{chat_model}|{lede_model}|{judge_model}"),
+        "harness": harness_fingerprint(STYLE_DIR / m for m in HARNESS_MODULES),
         **{key: _sha(value) for key, value in sorted(by_name.items())},
     }
+
+
+def harness_fingerprint(paths: Iterable[Path]) -> str:
+    """Hashes the source that turns a prompt into a score. Without it an edited
+    tool stub or judge prompt reads as an unchanged baseline; an edited comment
+    reads as a changed one, which is the safe direction to be wrong in."""
+    return _sha("".join(path.read_text(encoding="utf-8") for path in sorted(paths)))
 
 
 def _sha(value: str) -> str:

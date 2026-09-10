@@ -15,10 +15,13 @@ from backend.copilot.prompting import get_sdk_supplement
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 from .assembly import (
+    HARNESS_MODULES,
+    STYLE_DIR,
     attach_workflows,
     chat_system_prompt,
     fingerprint,
     fingerprint_parts,
+    harness_fingerprint,
     lede_prompt,
     load_baseline,
     load_fixtures,
@@ -83,7 +86,7 @@ async def test_expert_suffix_is_the_production_rendering():
 async def test_user_prefix_is_the_production_first_turn_context():
     """``build_expert_context`` (DB-backed) and the pure renderers must emit
     the same workflow and teammate blocks, for an expert and for AutoPilot."""
-    roster = [attach_workflows(e, f) for e, f in zip(roster_experts(), load_fixtures())]
+    roster = _installed(roster_experts(), load_fixtures())
     max_ = next(e for e in roster if e.name == "Max")
     db = MagicMock()
     db.get_expert = AsyncMock(return_value=max_)
@@ -143,6 +146,39 @@ async def test_chat_model_comes_from_the_router_without_launchdarkly():
     assert routed.source == "env"
 
 
+def test_each_expert_is_installed_with_its_own_fixtures_workflows():
+    """ROSTER order and the fixture files' alphabetical order differ, so
+    zipping the two gives Max another expert's workflows and every assertion
+    downstream compares one invalid roster against another."""
+    by_name = {fixture.expert: fixture for fixture in load_fixtures()}
+    for expert in _installed(roster_experts(), load_fixtures()):
+        assert [w.name for w in expert.workflows] == [
+            w.name for w in by_name[expert.name].workflows
+        ]
+
+
+def test_the_fingerprint_moves_when_the_harness_does(tmp_path):
+    """A tool stub or a judge prompt decides a score as much as the prompts do,
+    so an edit to one must not read as an unchanged baseline."""
+    first, second = tmp_path / "a.py", tmp_path / "b.py"
+    first.write_text("stub = 'queued'\n")
+    second.write_text("cap = 10\n")
+    before = harness_fingerprint([first, second])
+    assert before == harness_fingerprint([second, first]), "order is not content"
+    second.write_text("cap = 12\n")
+    assert harness_fingerprint([first, second]) != before
+
+    experts, fixtures, rubric = roster_experts(), load_fixtures(), load_rubric()
+    parts = fingerprint_parts(
+        experts, fixtures, rubric, chat_model="m", lede_model="l", judge_model="j"
+    )
+    assert parts["harness"] == harness_fingerprint(
+        STYLE_DIR / name for name in HARNESS_MODULES
+    )
+    for name in HARNESS_MODULES:
+        assert (STYLE_DIR / name).exists(), name
+
+
 def test_the_fingerprint_names_the_component_that_moved():
     experts = roster_experts()
     fixtures, rubric = load_fixtures(), load_rubric()
@@ -161,11 +197,19 @@ def test_the_fingerprint_names_the_component_that_moved():
         "prompt:Max",
         "lede:Max",
     }, "the voice spec reaches the chat prompt and the briefing lede"
-    installed = [attach_workflows(e, f) for e, f in zip(experts, fixtures)]
+    installed = _installed(experts, fixtures)
     assert _moved(base, fingerprint_parts(installed, fixtures, rubric, **models)) == {
         "autopilot",
         *(f"context:{e.name}" for e in experts),
     }, "installed workflows show in every first-turn block, AutoPilot's included"
+
+
+def _installed(experts, fixtures):
+    """The roster with its preloads attached, paired the way the runner pairs
+    them: ROSTER order and the fixture files' alphabetical order differ, so
+    zipping them gives Max another expert's workflows."""
+    by_name = {fixture.expert: fixture for fixture in fixtures}
+    return [attach_workflows(expert, by_name[expert.name]) for expert in experts]
 
 
 def _moved(before: dict[str, str], after: dict[str, str]) -> set[str]:
