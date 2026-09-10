@@ -3914,7 +3914,10 @@
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
                     { "$ref": "#/components/schemas/TodoWriteResponse" },
-                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
+                    {
+                      "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
+                    },
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -20763,6 +20766,45 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertOnboardingResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_onboarding"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/ExpertOnboardingStep" },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["message", "expert_id", "greeting"],
+        "title": "ExpertOnboardingResponse",
+        "description": "The intake card a freshly hired expert opens its first turn with."
+      },
+      "ExpertOnboardingStep": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "keyword": { "type": "string", "title": "Keyword" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["question", "keyword"],
+        "title": "ExpertOnboardingStep",
+        "description": "One step of a freshly hired expert's intake card."
       },
       "ExpertPod": {
         "properties": {

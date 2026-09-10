@@ -1,14 +1,14 @@
+import type { ExpertOnboardingStep as ExpertOnboardingStepPayload } from "@/app/api/__generated__/models/expertOnboardingStep";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 
 export const EXPERT_ONBOARDING_PART_TYPE = "tool-expert_onboarding";
 
-export interface ExpertOnboardingStep {
-  question: string;
-  keyword: string;
-  options: string[];
-}
+/** A step once parsed: same contract the backend publishes, except `options`
+ *  has been normalised to always be an array. Derived from the generated
+ *  model so the two cannot drift. */
+export type ExpertOnboardingStep = Required<ExpertOnboardingStepPayload>;
 
 export interface ExpertOnboardingOutput {
   expertId: string | null;
