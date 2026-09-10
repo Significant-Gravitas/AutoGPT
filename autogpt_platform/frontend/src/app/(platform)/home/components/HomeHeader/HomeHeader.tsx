@@ -1,6 +1,4 @@
-import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatHeaderDate, getHomeStatusLine } from "../../helpers";
 
@@ -15,26 +13,24 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
   const status = getHomeStatusLine(dashboard);
 
   return (
-    <header className="my-6 flex items-start justify-between gap-6 px-4 sm:px-5">
+    <header className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
       <div className="min-w-0">
         <Text
-          variant="h4"
-          className="text-pretty tracking-[-0.025em] text-zinc-950"
+          variant="large-semibold"
+          as="h1"
+          className="text-pretty text-[1.25rem] leading-7 tracking-[-0.01em] text-zinc-950"
         >
-          {greeting},{" "}
-          <span className="bg-gradient-to-r from-purple-500 to-purple-300 bg-clip-text text-transparent">
-            {name}
-          </span>
+          {greeting}, {name}
         </Text>
-        <Text variant="large" className="mt-3 text-pretty text-zinc-500">
+        <Text variant="body" className="mt-0.5 text-pretty text-zinc-950">
           {status.split(/(\d+)/).map((part, index) =>
             /^\d+$/.test(part) ? (
-              <strong
+              <span
                 key={`${part}-${index}`}
-                className="font-semibold tabular-nums text-zinc-700"
+                className="font-medium tabular-nums"
               >
                 {part}
-              </strong>
+              </span>
             ) : (
               part
             ),
@@ -43,22 +39,14 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
       </div>
       <time
         dateTime={new Date(dashboard.generated_at).toISOString()}
-        className="flex shrink-0 items-center gap-3 text-right"
+        className="shrink-0 text-right"
       >
-        <Icon
-          icon={Calendar03Icon}
-          size={22}
-          className="text-zinc-500"
-          aria-hidden="true"
-        />
-        <div>
-          <Text variant="large" className="font-medium text-zinc-900">
-            {date.weekday}
-          </Text>
-          <Text variant="body-medium" className="mt-0.5 text-zinc-500">
-            {date.calendarDate}
-          </Text>
-        </div>
+        <Text variant="large-medium" className="text-zinc-950">
+          {date.weekday}
+        </Text>
+        <Text variant="body" className="text-zinc-950">
+          {date.calendarDate}
+        </Text>
       </time>
     </header>
   );

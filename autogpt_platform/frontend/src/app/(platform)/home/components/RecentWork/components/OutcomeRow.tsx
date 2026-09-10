@@ -15,53 +15,66 @@ interface Props {
   outcome: HomeBriefingOutcome;
 }
 
+const ROW_CLASS = "flex gap-3 px-4 py-3";
+
 export function OutcomeRow({ outcome }: Props) {
   const failed = outcome.status === "failed";
   const content = (
     <>
       <span
         className={cn(
-          "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+          "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md",
           failed ? "bg-rose-50 text-rose-600" : "bg-zinc-100 text-zinc-500",
         )}
       >
         <Icon
           icon={failed ? AlertDiamondIcon : CheckListIcon}
-          size={16}
+          size={13}
           aria-hidden="true"
         />
       </span>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium" className="text-pretty text-zinc-950">
+        <Text
+          variant="body-medium"
+          className="text-pretty text-[13px] leading-5 text-zinc-900"
+        >
           {outcome.title}
         </Text>
         <Text
-          variant="body"
-          className="mt-1 line-clamp-2 text-pretty text-zinc-600"
+          variant="small"
+          className="mt-0.5 line-clamp-2 text-pretty text-[13px] leading-5 text-zinc-500"
         >
           {outcome.summary}
         </Text>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-zinc-400">
           {outcome.expert ? (
             <ExpertAvatar
               name={outcome.expert.name}
               avatarUrl={outcome.expert.avatar_url}
-              size={22}
+              size={16}
             />
           ) : null}
-          <span>{outcome.expert?.name ?? outcome.agent_name}</span>
+          <span className="font-medium text-zinc-500">
+            {outcome.expert?.name ?? outcome.agent_name}
+          </span>
           <span aria-hidden="true">·</span>
-          <span>{formatOccurredAt(outcome.occurred_at)}</span>
+          <span className="tabular-nums">
+            {formatOccurredAt(outcome.occurred_at)}
+          </span>
           {outcome.duration_seconds ? (
             <>
               <span aria-hidden="true">·</span>
-              <span>{formatDuration(outcome.duration_seconds)}</span>
+              <span className="tabular-nums">
+                {formatDuration(outcome.duration_seconds)}
+              </span>
             </>
           ) : null}
           {outcome.cost_cents ? (
             <>
               <span aria-hidden="true">·</span>
-              <span>{formatCurrency(outcome.cost_cents)}</span>
+              <span className="tabular-nums">
+                {formatCurrency(outcome.cost_cents)}
+              </span>
             </>
           ) : null}
         </div>
@@ -69,8 +82,8 @@ export function OutcomeRow({ outcome }: Props) {
       {outcome.link ? (
         <Icon
           icon={ArrowUpRight01Icon}
-          size={17}
-          className="mt-1 shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-700"
+          size={14}
+          className="mt-1 shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
           aria-hidden="true"
         />
       ) : null}
@@ -78,14 +91,15 @@ export function OutcomeRow({ outcome }: Props) {
   );
 
   if (!outcome.link) {
-    return (
-      <article className="flex gap-3 px-4 py-3 sm:px-5">{content}</article>
-    );
+    return <article className={ROW_CLASS}>{content}</article>;
   }
   return (
     <Link
       href={outcome.link}
-      className="group flex gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400 sm:px-5"
+      className={cn(
+        ROW_CLASS,
+        "group outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+      )}
     >
       {content}
     </Link>

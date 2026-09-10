@@ -30,9 +30,11 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
-from backend.api.features.experts.routes import router
+from backend.api.features.experts.routes import public_router, router
+from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
+app.include_router(public_router)
 app.include_router(router)
 
 client = fastapi.testclient.TestClient(app)
@@ -946,10 +948,13 @@ def test_install_workflow_duplicate_returns_same_row_id(
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["id"] == second.json()["id"] == "workflow-ref-1"
-    assert mock_install.await_args_list == [
-        mocker.call(test_user_id, "expert-1", "listing-version-1"),
-        mocker.call(test_user_id, "expert-1", "listing-version-1"),
-    ]
+    expected = mocker.call(
+        test_user_id,
+        "expert-1",
+        store_listing_version_id="listing-version-1",
+        library_agent_id=None,
+    )
+    assert mock_install.await_args_list == [expected, expected]
 
 
 def test_install_workflow_unknown_expert_returns_404(
@@ -966,6 +971,67 @@ def test_install_workflow_unknown_expert_returns_404(
     )
 
     assert response.status_code == 404
+
+
+def test_install_workflow_accepts_library_agent_id(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    ref = _make_workflow_ref()
+    mock_install = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.install_workflow",
+        new_callable=AsyncMock,
+        return_value=ref,
+    )
+
+    response = client.post(
+        "/experts/expert-1/workflows", json={"library_agent_id": "library-agent-1"}
+    )
+
+    assert response.status_code == 200
+    assert mock_install.await_args == mocker.call(
+        test_user_id,
+        "expert-1",
+        store_listing_version_id=None,
+        library_agent_id="library-agent-1",
+    )
+
+
+def test_install_workflow_unknown_library_agent_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.install_workflow",
+        new_callable=AsyncMock,
+        side_effect=NotFoundError("Library agent #nope not found"),
+    )
+
+    response = client.post(
+        "/experts/expert-1/workflows", json={"library_agent_id": "nope"}
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"store_listing_version_id": "listing-1", "library_agent_id": "agent-1"},
+    ],
+)
+def test_install_workflow_requires_exactly_one_source(
+    mocker: pytest_mock.MockerFixture, body: dict[str, str]
+) -> None:
+    mock_install = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.install_workflow",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/experts/expert-1/workflows", json=body)
+
+    assert response.status_code == 422
+    mock_install.assert_not_awaited()
 
 
 # ─── Archive + list ────────────────────────────────────────────────────

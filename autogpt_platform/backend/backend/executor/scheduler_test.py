@@ -847,3 +847,69 @@ class TestLaunchDarklyLifecycle:
         ):
             sched._shutdown_launchdarkly_for_scheduler()
         shutdown.assert_not_called()
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+def test_get_jobs_cached_sets_the_scheduler_jobs_gauge():
+    """autogpt_scheduler_jobs has an alert on it and was never set."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.scheduler import Scheduler
+
+    s = Scheduler.__new__(Scheduler)
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+    s._jobs_cache_version = 0
+    s.scheduler = MagicMock()
+    s.scheduler.get_jobs.return_value = [object(), object(), object()]
+
+    assert len(s._get_jobs_cached()) == 3
+    assert (
+        _counter("autogpt_scheduler_jobs", job_type="execution", status="scheduled")
+        == 3
+    )
+
+
+def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
+    """An invalidation that lands while get_jobs() is in flight rejects the
+    cache write; the gauge must be rejected with it, or a slow stale read can
+    overwrite a newer count that another reader already published."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.scheduler import Scheduler
+
+    s = Scheduler.__new__(Scheduler)
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+    s._jobs_cache_version = 0
+    s.scheduler = MagicMock()
+
+    # A fresh, accepted read publishes 5.
+    s.scheduler.get_jobs.return_value = [object()] * 5
+    s._get_jobs_cached()
+
+    def gauge() -> float:
+        return _counter(
+            "autogpt_scheduler_jobs", job_type="execution", status="scheduled"
+        )
+
+    assert gauge() == 5
+
+    # Now a read whose query is interrupted by an invalidation: it returns a
+    # different count, but the version moved, so the cache write is skipped.
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+
+    def _slow_query_then_invalidated(**_):
+        s._invalidate_jobs_cache()
+        return [object()] * 2
+
+    s.scheduler.get_jobs.side_effect = _slow_query_then_invalidated
+    assert len(s._get_jobs_cached()) == 2  # caller still gets the list
+    assert s._jobs_cache is None  # write-back was rejected
+    assert gauge() == 5  # and so was the gauge update

@@ -51,6 +51,7 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -2114,6 +2115,17 @@ def update_node_execution_status(
     return exec_update
 
 
+_TERMINAL_RUN_STATUSES = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED}
+)
+
+
+def _record_terminal_status(status: "ExecutionStatus | None") -> None:
+    """Feed the run-outcome counter exactly once, at the terminal transition."""
+    if status is not None and status in _TERMINAL_RUN_STATUSES:
+        record_graph_run_completion(status.value)
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -2125,6 +2137,7 @@ async def async_update_graph_execution_state(
         graph_exec_id, status, stats
     )
     if graph_update:
+        _record_terminal_status(status)
         await send_async_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
@@ -2140,6 +2153,7 @@ def update_graph_execution_state(
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
+        _record_terminal_status(status)
         send_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")

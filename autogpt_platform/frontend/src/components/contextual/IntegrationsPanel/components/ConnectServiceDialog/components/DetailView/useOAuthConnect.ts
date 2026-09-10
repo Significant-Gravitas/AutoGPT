@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -15,16 +15,29 @@ import {
   openOAuthPopup,
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 import { getOAuthErrorMessage } from "./helpers";
 
 interface Args {
   provider: string;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** Scopes the requesting block needs. Omit for a provider-level connect,
+   *  where the provider's default scopes are the whole ask. */
+  scopes?: string[];
+  /** Existing account to upgrade. The backend unions its scopes with the
+   *  requested ones, so a re-auth cannot narrow what the user already had. */
+  credentialID?: string;
 }
 
-export function useOAuthConnect({ provider, onSuccess }: Args) {
+export function useOAuthConnect({
+  provider,
+  onSuccess,
+  scopes,
+  credentialID,
+}: Args) {
   const queryClient = useQueryClient();
+  const credentialsActions = useContext(CredentialsActionsContext);
   const [isPending, setIsPending] = useState(false);
   const isPendingRef = useRef(false);
   const abortRef = useRef<(() => void) | null>(null);
@@ -65,7 +78,12 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     const preOpenedWindow = preOpenOAuthPopup();
     preOpenedWindowRef.current = preOpenedWindow;
     try {
-      const initiateResponse = await getV1InitiateOauthFlow(provider);
+      // Without the scopes the consent screen grants provider defaults, and
+      // a credential missing a required scope never satisfies the caller.
+      const initiateResponse = await getV1InitiateOauthFlow(
+        provider,
+        buildLoginParams(scopes, credentialID),
+      );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
       // 200-only LoginResponse shape is accessible below.
@@ -116,6 +134,10 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
 
       toast({ title: "Connected via OAuth", variant: "success" });
       await invalidateConnectionQueries(queryClient);
+      // The provider's in-memory list only reloads off a React Query cache
+      // event, which invalidation never emits unless something already
+      // subscribed to that query — so ask it directly.
+      credentialsActions?.reload();
       // customMutator rejects non-2xx, so a 200 is the only way to get here;
       // the check narrows the union rather than guarding a real branch.
       onSuccess(exchanged.status === 200 ? exchanged.data : undefined);
@@ -143,4 +165,11 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   }
 
   return { connect, isPending };
+}
+
+function buildLoginParams(scopes?: string[], credentialID?: string) {
+  const params: { scopes?: string; credential_id?: string } = {};
+  if (scopes?.length) params.scopes = scopes.join(",");
+  if (credentialID) params.credential_id = credentialID;
+  return Object.keys(params).length > 0 ? params : undefined;
 }

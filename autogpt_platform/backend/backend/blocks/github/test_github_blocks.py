@@ -41,9 +41,11 @@ from backend.blocks.github.notifications import (
     _to_notification_item,
 )
 from backend.blocks.github.pull_requests import (
+    TEST_PR_PAYLOAD,
     GithubListPRReviewersBlock,
     GithubListPullRequestsBlock,
     GithubMergePullRequestBlock,
+    GithubReadPullRequestBlock,
     prepare_pr_api_url,
 )
 from backend.blocks.github.repo import (
@@ -540,6 +542,46 @@ class TestListReviewers:
 
     def test_deleted_accounts_are_ignored(self):
         assert len(_list_reviewers([_review(None, "APPROVED")])) == 1
+
+
+# ── read_pr tests ──
+
+
+PR_ENDPOINT_URL = "https://github.com/owner/repo/pulls/1"
+
+
+class TestReadPr:
+    def test_hits_the_pulls_endpoint_not_the_issues_endpoint(self):
+        api = _FakeApi({PR_ENDPOINT_URL: {}})
+        with mock.patch.object(pull_requests, "get_api", lambda *a, **kw: api):
+            asyncio.run(GithubReadPullRequestBlock.read_pr(TEST_CREDENTIALS, PR_URL))
+        assert api.calls[0][1] == PR_ENDPOINT_URL
+
+    def test_returns_the_raw_response_body(self):
+        api = _FakeApi({PR_ENDPOINT_URL: TEST_PR_PAYLOAD})
+        with mock.patch.object(pull_requests, "get_api", lambda *a, **kw: api):
+            result = asyncio.run(
+                GithubReadPullRequestBlock.read_pr(TEST_CREDENTIALS, PR_URL)
+            )
+        assert result == TEST_PR_PAYLOAD
+
+
+class TestPrSummary:
+    def test_null_title_falls_back_instead_of_yielding_none(self):
+        pr = {**TEST_PR_PAYLOAD, "title": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[0] == "No title found"
+
+    def test_null_body_falls_back_instead_of_yielding_none(self):
+        # GitHub returns an explicit "body": null for PRs with no description.
+        pr = {**TEST_PR_PAYLOAD, "body": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[1] == (
+            "No body content found"
+        )
+
+    def test_null_user_falls_back_instead_of_raising(self):
+        # Reviews by deleted accounts come back with a null user.
+        pr = {**TEST_PR_PAYLOAD, "user": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[2] == "Unknown author"
 
 
 # ── get_paginated tests ──

@@ -3,24 +3,24 @@
 import { useState } from "react";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 
-export type BriefingFilter = "all" | HomeBriefingOutcome["status"];
+export type OutcomeFilter = "all" | HomeBriefingOutcome["status"];
 
-const FILTER_LABELS: Partial<Record<BriefingFilter, string>> = {
+const FILTER_LABELS: Partial<Record<OutcomeFilter, string>> = {
   all: "All",
   completed: "Completed",
   failed: "Failed",
 };
 
-export function useMorningBriefing({
+export function useOutcomeFilter({
   outcomes,
 }: {
   outcomes: HomeBriefingOutcome[];
 }) {
-  const [activeFilter, setActiveFilter] = useState<BriefingFilter>("all");
+  const [activeFilter, setActiveFilter] = useState<OutcomeFilter>("all");
   const filterStatuses = Array.from(
     new Set(outcomes.map((outcome) => outcome.status)),
   );
-  const selectedFilter: BriefingFilter =
+  const selectedFilter: OutcomeFilter =
     activeFilter !== "all" && filterStatuses.includes(activeFilter)
       ? activeFilter
       : "all";
@@ -30,7 +30,7 @@ export function useMorningBriefing({
       : outcomes.filter((outcome) => outcome.status === selectedFilter);
 
   return {
-    filterOptions: (["all", ...filterStatuses] as BriefingFilter[]).map(
+    filterOptions: (["all", ...filterStatuses] as OutcomeFilter[]).map(
       (value) => ({ value, label: FILTER_LABELS[value] ?? value }),
     ),
     hasFilters: filterStatuses.length > 1,
