@@ -26,6 +26,11 @@ def test_type_conversion():
     assert convert((1, 2, 3), list) == [1, 2, 3]
     assert convert({1, 2, 3}, list) == [1, 2, 3]
 
+    assert convert("hello", set) == {"hello"}
+    assert convert("hello", tuple) == ("hello",)
+    assert convert("[1, 2, 3]", set) == {1, 2, 3}
+    assert convert("[1, 2, 3]", tuple) == (1, 2, 3)
+
     assert convert("5", dict) == {"value": 5}
     assert convert('{"a": 1, "b": 2}', dict) == {"a": 1, "b": 2}
     assert convert([1, 2, 3], dict) == {0: 1, 1: 2, 2: 3}
