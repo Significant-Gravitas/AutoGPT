@@ -179,10 +179,6 @@ export const getCredentialProviderFromSchema = (
       );
     }
     if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
       return null;
     }
     return discriminatedProvider;
