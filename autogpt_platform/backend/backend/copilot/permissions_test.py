@@ -106,6 +106,34 @@ class TestEffectiveAllowedTools:
         result = perms.effective_allowed_tools(ALL_TOOLS)
         assert result == ALL_TOOLS
 
+    def test_denying_a_capability_also_denies_what_extends_it(self):
+        # A blacklist is written against the tools that exist at the time, so
+        # an operator who revoked proactive posting never listed the edit
+        # tool — and would otherwise silently regain the ability to rewrite
+        # everything the bot has already said in their servers.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(tools=["post_to_chat_platform"], tools_exclude=True)
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["run_block"])
+
+    def test_an_implied_denial_does_not_leak_into_a_whitelist(self):
+        # Whitelists are explicit: listing the edit tool means it is wanted,
+        # and the implication table must not second-guess that.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(
+            tools=["edit_chat_platform_message"], tools_exclude=False
+        )
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["edit_chat_platform_message"])
+
 
 # ---------------------------------------------------------------------------
 # CopilotPermissions.is_block_allowed
