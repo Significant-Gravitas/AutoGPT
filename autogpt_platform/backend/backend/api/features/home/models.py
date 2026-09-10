@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.copilot.constants import AUTOPILOT_NAME, AUTOPILOT_ROLE
 
 
 class HomeExpert(BaseModel):
@@ -50,6 +51,23 @@ class HomeBriefingOutcome(BaseModel):
     trigger: Literal["schedule", "webhook", "manual"] = "manual"
 
 
+class HomeBriefingAuthor(BaseModel):
+    """Who wrote the brief. Always AutoPilot, the account's built-in helper:
+    the brief reports the team's work, so no member of the team authors it.
+    `kind` is the seam a future personal-assistant author would widen."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["autopilot"]
+    name: str
+    role: str
+
+
+AUTOPILOT_BRIEFING_AUTHOR = HomeBriefingAuthor(
+    kind="autopilot", name=AUTOPILOT_NAME, role=AUTOPILOT_ROLE
+)
+
+
 class HomeBriefing(BaseModel):
     generated_at: datetime
     window_started_at: datetime
@@ -57,6 +75,7 @@ class HomeBriefing(BaseModel):
     failed_count: int
     routine_count: int
     outcomes: list[HomeBriefingOutcome]
+    author: HomeBriefingAuthor
     # The AI-voice opening the copilot thread was posted with, read off the
     # stored briefing. None on the live path (nothing was generated) and
     # whenever the AI-summary flag is off.

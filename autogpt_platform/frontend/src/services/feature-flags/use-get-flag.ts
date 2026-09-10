@@ -22,6 +22,8 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  // Reveals the marketplace Skills shelf and the skill listing pages.
+  SKILLS_HUB = "skills-hub",
   // Reveals the notification-preferences card on /settings/account. The card
   // is built but its design is still being reworked, so it ships dark and is
   // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
@@ -78,6 +80,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.SKILLS_HUB]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
@@ -123,6 +126,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
+    case Flag.SKILLS_HUB:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
     case Flag.ARTIFACTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
     case Flag.ARTIFACTS_PAGE:
