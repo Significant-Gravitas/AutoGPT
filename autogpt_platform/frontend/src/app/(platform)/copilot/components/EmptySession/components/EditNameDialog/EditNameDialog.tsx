@@ -4,9 +4,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
+import { PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   currentName: string;
@@ -16,7 +18,7 @@ export function EditNameDialog({ currentName }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState(currentName);
   const [isSaving, setIsSaving] = useState(false);
-  const { refreshSession } = useSupabase();
+  const { refreshSession } = useAuth();
   const { toast } = useToast();
 
   function handleOpenChange(open: boolean) {
@@ -75,7 +77,7 @@ export function EditNameDialog({ currentName }: Props) {
           type="button"
           className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-violet-700"
         >
-          <PencilSimpleIcon size={16} />
+          <Icon icon={PencilIcon} size={16} />
         </button>
       </Dialog.Trigger>
       <Dialog.Content>
@@ -87,7 +89,7 @@ export function EditNameDialog({ currentName }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.preventDefault();
                 handleSave();
               }

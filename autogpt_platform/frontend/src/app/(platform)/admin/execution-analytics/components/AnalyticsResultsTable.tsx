@@ -4,9 +4,14 @@ import React, { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { DownloadIcon, EyeIcon, CopyIcon } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
+import {
+  Copy01Icon,
+  Download04Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   results: ExecutionAnalyticsResponse;
@@ -29,7 +34,10 @@ export function AnalyticsResultsTable({ results }: Props) {
       title={`Click to copy ${label.toLowerCase()}`}
     >
       {value.substring(0, 8)}...
-      <CopyIcon className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+      <Icon
+        icon={Copy01Icon}
+        className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
+      />
     </div>
   );
 
@@ -176,7 +184,7 @@ export function AnalyticsResultsTable({ results }: Props) {
           onClick={exportToCSV}
           disabled={results.results.length === 0}
         >
-          <DownloadIcon size={16} className="mr-2" />
+          <Icon icon={Download04Icon} size={16} className="mr-2" />
           Export CSV
         </Button>
       </div>
@@ -257,7 +265,7 @@ export function AnalyticsResultsTable({ results }: Props) {
                           size="small"
                           onClick={() => toggleRowExpansion(result.exec_id)}
                         >
-                          <EyeIcon size={16} />
+                          <Icon icon={EyeIcon} size={16} />
                         </Button>
                       </td>
                     </tr>

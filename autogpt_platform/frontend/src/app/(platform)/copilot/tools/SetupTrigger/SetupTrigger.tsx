@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
@@ -18,6 +17,8 @@ import {
   ToolIcon,
   type TriggerSetupOutput,
 } from "./helpers";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: {
@@ -129,7 +130,11 @@ function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
             onClick={handleCopy}
             aria-label={copied ? "Copied" : "Copy webhook URL"}
           >
-            {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            {copied ? (
+              <Icon icon={Tick02Icon} size={14} />
+            ) : (
+              <Icon icon={Copy01Icon} size={14} />
+            )}
           </Button>
         </div>
       )}

@@ -50,11 +50,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => false,
 }));
 
-vi.mock("@phosphor-icons/react", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return { ...actual, ExclamationMarkIcon: () => null };
-});
-
 vi.mock("../StoppedTaskCard", () => ({
   StoppedTaskCard: () => <div data-testid="stopped-task-card" />,
 }));

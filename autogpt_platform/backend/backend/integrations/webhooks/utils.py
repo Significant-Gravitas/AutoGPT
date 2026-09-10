@@ -196,7 +196,8 @@ async def migrate_legacy_triggered_graphs():
                 if not is_credentials_field_name(field_name)
             }
 
-            # Create a triggered preset for the graph
+            # Create a triggered preset for the graph, attaching the graph
+            # owner's existing node webhook.
             await create_preset(
                 graph.user_id,
                 LibraryAgentPresetCreatable(
@@ -206,9 +207,9 @@ async def migrate_legacy_triggered_graphs():
                     credentials=preset_credentials,
                     name=graph.name,
                     description=graph.description,
-                    webhook_id=trigger_node.webhook_id,
                     is_active=True,
                 ),
+                webhook_id=trigger_node.webhook_id,
             )
 
             # Detach webhook from the graph node

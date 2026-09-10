@@ -30,8 +30,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockUser = { id: "user-1", email: "test@test.com" };
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: vi.fn(() => ({ user: mockUser })),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: vi.fn(() => ({ user: mockUser })),
 }));
 
 const { notificationsEnabledMock } = vi.hoisted(() => ({
@@ -148,10 +148,10 @@ describe("PushNotificationProvider", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("sessionId=A"));
     notificationsEnabledMock.mockReturnValue(true);
 
-    const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
-    vi.mocked(useSupabase).mockReturnValue({
+    const { useAuth } = await import("@/lib/auth/hooks/useAuth");
+    vi.mocked(useAuth).mockReturnValue({
       user: mockUser,
-    } as ReturnType<typeof useSupabase>);
+    } as ReturnType<typeof useAuth>);
 
     Object.defineProperty(globalThis, "Notification", {
       value: { permission: "granted" },
@@ -239,10 +239,10 @@ describe("PushNotificationProvider", () => {
     });
 
     it("skips when no user is authenticated", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
-      vi.mocked(useSupabase).mockReturnValue({
+      const { useAuth } = await import("@/lib/auth/hooks/useAuth");
+      vi.mocked(useAuth).mockReturnValue({
         user: null,
-      } as ReturnType<typeof useSupabase>);
+      } as ReturnType<typeof useAuth>);
 
       render(<PushNotificationProvider />);
 
@@ -316,16 +316,16 @@ describe("PushNotificationProvider", () => {
     });
 
     it("unsubscribes on logout after having been authenticated", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+      const { useAuth } = await import("@/lib/auth/hooks/useAuth");
       const { rerender } = render(<PushNotificationProvider />);
 
       await waitFor(() => {
         expect(mockSendSubscriptionToServer).toHaveBeenCalled();
       });
 
-      vi.mocked(useSupabase).mockReturnValue({
+      vi.mocked(useAuth).mockReturnValue({
         user: null,
-      } as ReturnType<typeof useSupabase>);
+      } as ReturnType<typeof useAuth>);
       rerender(<PushNotificationProvider />);
 
       await waitFor(() => {
@@ -337,10 +337,10 @@ describe("PushNotificationProvider", () => {
     });
 
     it("does not call teardown when user is null from the start", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
-      vi.mocked(useSupabase).mockReturnValue({
+      const { useAuth } = await import("@/lib/auth/hooks/useAuth");
+      vi.mocked(useAuth).mockReturnValue({
         user: null,
-      } as ReturnType<typeof useSupabase>);
+      } as ReturnType<typeof useAuth>);
 
       render(<PushNotificationProvider />);
 

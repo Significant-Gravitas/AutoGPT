@@ -5,19 +5,20 @@ import type {
   SearchCommandBucket,
   SearchCommandItem,
 } from "@/components/organisms/SearchCommandModal/helpers";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-import {
-  ChatCircleIcon,
-  FileIcon,
-  StorefrontIcon,
-  TreeStructureIcon,
-} from "@phosphor-icons/react";
 import Image from "next/image";
 import type { ComponentType } from "react";
 import {
   type PlatformLogo,
   resolvePlatformLogo,
 } from "@/app/(platform)/copilot/components/ChatOriginIcon/platformLogos";
+import {
+  BubbleChatIcon,
+  FileEmpty02Icon,
+  HierarchySquare01Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
 
 export type BucketKey = "agents" | "files" | "chats";
 
@@ -28,10 +29,10 @@ const ICON_BY_TYPE: Record<
   // Workflow / node-graph cue maps better to "an agent" than a robot
   // mascot — agents in this product are visual graphs of nodes, not
   // anthropomorphic assistants.
-  library_agent: TreeStructureIcon,
-  store_agent: StorefrontIcon,
-  workspace_file: FileIcon,
-  chat_session: ChatCircleIcon,
+  library_agent: createIconComponent(HierarchySquare01Icon),
+  store_agent: createIconComponent(Store01Icon),
+  workspace_file: createIconComponent(FileEmpty02Icon),
+  chat_session: createIconComponent(BubbleChatIcon),
 };
 
 // Chat sessions opened from external platforms (Discord, Slack, …)

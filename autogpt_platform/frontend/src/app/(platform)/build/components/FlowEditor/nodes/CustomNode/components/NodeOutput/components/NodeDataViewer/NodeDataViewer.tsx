@@ -12,17 +12,18 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
-import {
-  ArrowsOutSimpleIcon,
-  CheckIcon,
-  CopyIcon,
-  DownloadIcon,
-} from "@phosphor-icons/react";
 import React, { FC } from "react";
 import { useNodeDataViewer } from "./useNodeDataViewer";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { NodeDataType } from "../../helpers";
+import {
+  ArrowExpand01Icon,
+  Copy01Icon,
+  Download04Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface NodeDataViewerProps {
   data?: any;
@@ -95,7 +96,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 size="small"
                 className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
               >
-                <ArrowsOutSimpleIcon size={isViewMoreData ? 16 : 12} />
+                <Icon
+                  icon={ArrowExpand01Icon}
+                  size={isViewMoreData ? 16 : 12}
+                />
               </Button>
             </Dialog.Trigger>
           </TooltipTrigger>
@@ -149,7 +153,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                     onClick={copyExecutionId}
                     className="h-6 w-6 min-w-0 p-0"
                   >
-                    <CopyIcon size={14} />
+                    <Icon icon={Copy01Icon} size={14} />
                   </Button>
                 </div>
                 <div className="mt-2">
@@ -208,9 +212,15 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                               >
                                 {copiedKey ===
                                 `${execution.execId}-${index}` ? (
-                                  <CheckIcon className="size-4 text-green-600" />
+                                  <Icon
+                                    icon={Tick02Icon}
+                                    className="size-4 text-green-600"
+                                  />
                                 ) : (
-                                  <CopyIcon className="size-4 text-black" />
+                                  <Icon
+                                    icon={Copy01Icon}
+                                    className="size-4 text-black"
+                                  />
                                 )}
                               </Button>
                               <Button
@@ -220,7 +230,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
                               >
-                                <DownloadIcon className="size-4 text-black" />
+                                <Icon
+                                  icon={Download04Icon}
+                                  className="size-4 text-black"
+                                />
                               </Button>
                             </div>
                           </div>
@@ -252,9 +265,15 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         aria-label="Copy item"
                       >
                         {copiedIndex === index ? (
-                          <CheckIcon className="size-4 text-green-600" />
+                          <Icon
+                            icon={Tick02Icon}
+                            className="size-4 text-green-600"
+                          />
                         ) : (
-                          <CopyIcon className="size-4 text-black" />
+                          <Icon
+                            icon={Copy01Icon}
+                            className="size-4 text-black"
+                          />
                         )}
                       </Button>
                       <Button
@@ -264,7 +283,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"
                       >
-                        <DownloadIcon className="size-4 text-black" />
+                        <Icon
+                          icon={Download04Icon}
+                          className="size-4 text-black"
+                        />
                       </Button>
                     </div>
                   </div>

@@ -6,6 +6,10 @@ import {
   getWorkspaceDownloadErrorMessage,
   fetchWorkspaceDownloadOnce,
   fetchWorkspaceDownloadWithRetry,
+  watchResponseStart,
+  RESPONSE_START_TIMEOUT_MS,
+  CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+  getResponseStartTimeoutMs,
 } from "../route.helpers";
 
 describe("isWorkspaceDownloadRequest", () => {
@@ -952,5 +956,120 @@ describe("fetchWorkspaceDownloadWithRetry", () => {
       fetchWorkspaceDownloadWithRetry("https://backend/file", {}, 1, 0),
     ).rejects.toThrow("Connection reset");
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("watchResponseStart", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("aborts with TimeoutError when a bodyless request gets no response in time", () => {
+    const watch = watchResponseStart(null);
+
+    expect(watch.body).toBeUndefined();
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+
+    expect(watch.signal.aborted).toBe(true);
+    expect((watch.signal.reason as DOMException).name).toBe("TimeoutError");
+  });
+
+  it("uses the extended cold-start budget for Codex device login", () => {
+    const timeout = getResponseStartTimeoutMs(
+      ["api", "integrations", "codex", "login"],
+      "GET",
+    );
+    const watch = watchResponseStart(null, timeout);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(
+      CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+    );
+    expect(watch.signal.aborted).toBe(true);
+  });
+
+  it("keeps the standard budget for other methods and routes", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "login"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "github", "login"],
+        "GET",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
+  it("extends cold App Server account, rate-limit, and logout operations", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "credentials", "cred-1"],
+        "DELETE",
+      ),
+    ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    for (const operation of ["account", "rate-limits"]) {
+      expect(
+        getResponseStartTimeoutMs(
+          ["api", "integrations", "codex", "credentials", "cred-1", operation],
+          "GET",
+        ),
+      ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    }
+  });
+  it("does not abort once cleared (backend started responding)", () => {
+    const watch = watchResponseStart(null);
+
+    watch.clear();
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS * 2);
+
+    expect(watch.signal.aborted).toBe(false);
+  });
+
+  it("does not start the clock while the request body is still uploading", async () => {
+    const requestBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        // Never closed: the upload is still in progress.
+      },
+    });
+
+    const watch = watchResponseStart(requestBody);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS * 10);
+
+    expect(watch.signal.aborted).toBe(false);
+  });
+
+  it("arms only after the request body has been fully consumed", async () => {
+    const requestBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        controller.close();
+      },
+    });
+
+    const watch = watchResponseStart(requestBody);
+
+    const reader = watch.body!.getReader();
+    while (!(await reader.read()).done) {
+      // Drain, as fetch would while uploading to the backend.
+    }
+
+    expect(watch.signal.aborted).toBe(false);
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+
+    expect(watch.signal.aborted).toBe(true);
+    expect((watch.signal.reason as DOMException).name).toBe("TimeoutError");
   });
 });

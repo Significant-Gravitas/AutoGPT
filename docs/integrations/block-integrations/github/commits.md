@@ -21,8 +21,14 @@ Each commit entry includes the SHA, commit message, author name, date, and a URL
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | branch | Branch name to list commits from | str | No |
-| per_page | Number of commits to return (max 100) | int | No |
-| page | Page number for pagination | int | No |
+| limit | Maximum number of commits to fetch | int | No |
+| per_page | [Legacy] Number of commits to return per page (max 100). If set (or `page` is set), `limit` is ignored. | int | No |
+| page | [Legacy] Page number for pagination. If set (or `per_page` is set), `limit` is ignored. | int | No |
+| path | Only include commits that touch this file or directory path | str | No |
+| author | Only include commits authored by this user (GitHub username or email address) | str | No |
+| committer | Only include commits committed by this user (GitHub username or email address) | str | No |
+| since | Only include commits after the given ISO 8601 timestamp | str | No |
+| until | Only include commits before the given ISO 8601 timestamp | str | No |
 
 ### Outputs
 

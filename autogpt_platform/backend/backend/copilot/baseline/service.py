@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -37,26 +38,33 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLlmModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
 )
+from backend.copilot.markers import append_error_marker
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    RoutingSource,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import resolve_model
+from backend.copilot.model_router import ResolvedModel, resolve_model_route
 from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
@@ -68,22 +76,33 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    get_delegation_supplement,
+    get_expert_oversight_supplement,
+    get_graphiti_supplement,
+)
+from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamModeChanged,
+    StreamProviderFailure,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
+    ToolDisplayData,
 )
 from backend.copilot.service import (
     _build_system_prompt,
@@ -99,7 +118,13 @@ from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
     persist_and_record_usage,
 )
-from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tool_display import tool_calls_for_provider, tool_display_context
+from backend.copilot.tools import (
+    ToolGroup,
+    execute_tool,
+    expert_tool_disabled_groups,
+    get_available_tools,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -119,6 +144,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -134,6 +160,7 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -400,16 +427,17 @@ def _filter_tools_by_permissions(
 
 
 async def _resolve_baseline_model(
-    tier: CopilotLlmModel | None, user_id: str | None
-) -> str:
+    tier: CopilotLLMModel | None, user_id: str | None
+) -> ResolvedModel:
     """Pick the model for the baseline path based on the per-request tier.
 
-    Delegates to :func:`copilot.model_router.resolve_model` so the
-    ``(fast, tier)`` cell is LD-overridable per user.  ``None`` tier
-    maps to ``"standard"``.
+    Delegates to :func:`copilot.model_router.resolve_model_route` so the
+    ``(fast, tier)`` cell resolves LD → registry cell → env.  ``None`` tier
+    maps to ``"standard"``.  The routing source rides along so persisted
+    assistant messages can be stamped for product-intelligence segmentation.
     """
     tier_name = "advanced" if tier == "advanced" else "standard"
-    return await resolve_model("fast", tier_name, user_id, config=config)
+    return await resolve_model_route("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -421,6 +449,16 @@ class _BaselineStreamState:
     """
 
     model: str = ""
+    # Which routing layer picked ``model`` — stamped onto persisted assistant
+    # messages for product-intelligence segmentation. The baseline path only
+    # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
+    # a CLI 529-overload swap); typed as the shared RoutingSource superset.
+    routing_source: RoutingSource = "env"
+    # The connection this turn runs on, stamped onto each assistant row as
+    # it is built. Recorded per turn so a later route change cannot rewrite
+    # what already ran; see backend/copilot/segments.py.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -455,6 +493,9 @@ class _BaselineStreamState:
     # deltas stream in.  Reassigning (``state.session_messages = [...]``)
     # would silently detach the emitter from the new list.
     session_messages: list[ChatMessage] = field(default_factory=list)
+    tool_persistence: BaselineToolPersistence = field(
+        default_factory=BaselineToolPersistence
+    )
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
     # block only appends the *new* assistant text (avoiding duplication of
@@ -997,13 +1038,16 @@ async def _baseline_llm_caller(
         for tc in tool_calls_by_index.values()
     ]
 
-    return LLMLoopResponse(
+    response = LLMLoopResponse(
         response_text=round_text or None,
         tool_calls=llm_tool_calls,
         raw_response=None,  # Not needed for baseline conversation updater
         prompt_tokens=0,  # Tracked via state accumulators
         completion_tokens=0,
     )
+    if response.tool_calls:
+        _begin_baseline_tool_round(state, response)
+    return response
 
 
 async def _baseline_tool_executor(
@@ -1013,10 +1057,15 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    disabled_groups: Sequence[ToolGroup],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
+
+    ``disabled_groups`` is the same list used to build the turn's schema
+    list; passing it here makes the capability gate an enforcement boundary
+    rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1036,11 +1085,13 @@ async def _baseline_tool_executor(
                 success=False,
             ),
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=parse_error,
-            is_error=True,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=parse_error,
+                is_error=True,
+            )
         )
 
     _emit(
@@ -1066,25 +1117,39 @@ async def _baseline_tool_executor(
     # the guide having been called.  The announce-set is cleared at turn
     # end; we deliberately don't touch ``session.messages`` here to avoid
     # duplicating the assistant row that ``_baseline_conversation_updater``
-    # will append at round end.
+    # persists at turn end.
     session.announce_inflight_tool_call(tool_name, tool_args)
 
-    try:
-        result: StreamToolOutputAvailable = await execute_tool(
-            tool_name=tool_name,
-            parameters=tool_args,
-            user_id=user_id,
-            session=session,
-            tool_call_id=tool_call_id,
+    def on_display_name(name: str) -> None:
+        state.tool_persistence.set_display_name(tool_call_id, name)
+        _emit(
+            state,
+            StreamToolDisplayAvailable(
+                id=tool_call_id,
+                data=ToolDisplayData(toolCallId=tool_call_id, displayName=name),
+            ),
         )
+
+    try:
+        with tool_display_context(on_display_name):
+            result: StreamToolOutputAvailable = await execute_tool(
+                tool_name=tool_name,
+                parameters=tool_args,
+                user_id=user_id,
+                session=session,
+                tool_call_id=tool_call_id,
+                disabled_groups=disabled_groups,
+            )
         _emit(state, result)
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=tool_output,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=tool_output,
+            )
         )
     except Exception as e:
         error_output = f"Tool execution error: {e}"
@@ -1103,11 +1168,13 @@ async def _baseline_tool_executor(
                 success=False,
             ),
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=error_output,
-            is_error=True,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=error_output,
+                is_error=True,
+            )
         )
 
 
@@ -1216,9 +1283,7 @@ def _baseline_conversation_updater(
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
-    Also records structured ChatMessage entries in ``state.session_messages``
-    so the full tool-call history is persisted to the session (not just the
-    concatenated assistant text).
+    Also finishes the pending tool round for session persistence.
     """
     _mutate_openai_messages(messages, response, tool_results)
     _record_turn_to_transcript(
@@ -1227,11 +1292,20 @@ def _baseline_conversation_updater(
         transcript_builder=transcript_builder,
         model=model,
     )
-    # Record structured messages for session persistence so tool calls
-    # and tool results survive across turns and mode switches.
     if state is not None and tool_results:
-        assistant_msg = ChatMessage(
+        state.tool_persistence.finish(state.session_messages)
+
+
+def _begin_baseline_tool_round(
+    state: _BaselineStreamState, response: LLMLoopResponse
+) -> None:
+    state.tool_persistence.begin(
+        ChatMessage(
             role="assistant",
+            model=state.model,
+            routing_source=state.routing_source,
+            llm_auth_provider=state.llm_auth_provider,
+            llm_credential_id=state.llm_credential_id,
             content=response.response_text or "",
             tool_calls=[
                 {
@@ -1241,16 +1315,9 @@ def _baseline_conversation_updater(
                 }
                 for tc in response.tool_calls
             ],
-        )
-        state.session_messages.append(assistant_msg)
-        for tr in tool_results:
-            state.session_messages.append(
-                ChatMessage(
-                    role="tool",
-                    content=tr.content,
-                    tool_call_id=tr.tool_call_id,
-                )
-            )
+        ),
+        state.session_messages,
+    )
 
 
 async def _compress_session_messages(
@@ -1269,7 +1336,7 @@ async def _compress_session_messages(
         if msg.content:
             msg_dict["content"] = msg.content
         if msg.tool_calls:
-            msg_dict["tool_calls"] = msg.tool_calls
+            msg_dict["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
         if msg.tool_call_id:
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
@@ -1546,6 +1613,34 @@ async def _upload_final_transcript(
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
 
+async def _fetch_graphiti_context(
+    user_id: str,
+    session: ChatSession,
+    message: str | None,
+) -> str | None:
+    return await fetch_warm_context(
+        user_id,
+        message or "",
+        expert_id=session.expert_id,
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
+
+
 async def stream_chat_completion_baseline(
     session_id: str,
     message: str | None = None,
@@ -1554,9 +1649,9 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
-    mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -1578,6 +1673,13 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
     if session.organization_id is None and organization_id:
@@ -1594,6 +1696,12 @@ async def stream_chat_completion_baseline(
     # Only the server-injected prefix on the first message is trusted.
     if message:
         message = strip_user_context_tags(message)
+
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
 
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
@@ -1639,7 +1747,9 @@ async def stream_chat_completion_baseline(
     # would be rejected by the direct client.  Pass the baseline-side
     # ``config`` so monkeypatch fixtures targeting this module's
     # ``config`` symbol drive the decision.
-    resolved_model = await _resolve_baseline_model(model, user_id)
+    resolved_route = await _resolve_baseline_model(model, user_id)
+    resolved_model = resolved_route.model
+    routing_source = resolved_route.source
     try:
         active_model = normalize_model_for_transport(resolved_model, config)
     except ValueError as exc:
@@ -1660,6 +1770,7 @@ async def stream_chat_completion_baseline(
             active_model = normalize_model_for_transport(tier_default, config)
         except ValueError:
             raise exc
+        routing_source = "env"
         logger.warning(
             "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
@@ -1759,6 +1870,18 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns.  Resolved here rather than at the
+    # tool-filtering site below so the delegation rules can be gated on the
+    # same boolean — a flag-off turn must not be told to call tools its
+    # ``execute_tool`` gate will refuse.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    oversight_supplement = get_expert_oversight_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1768,8 +1891,11 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        + delegation_supplement
+        + oversight_supplement
         + graphiti_supplement
         + builder_session_suffix
+        + expert_session_suffix
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -1779,9 +1905,7 @@ async def stream_chat_completion_baseline(
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
-        from backend.copilot.graphiti.context import fetch_warm_context
-
-        warm_ctx = await fetch_warm_context(user_id, message or "")
+        warm_ctx = await _fetch_graphiti_context(user_id, session, message)
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
@@ -1807,7 +1931,7 @@ async def stream_chat_completion_baseline(
             if msg.content:
                 entry["content"] = msg.content
             if msg.tool_calls:
-                entry["tool_calls"] = msg.tool_calls
+                entry["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
             if msg.content or msg.tool_calls:
                 openai_messages.append(entry)
         elif msg.role == "tool" and msg.tool_call_id:
@@ -1866,6 +1990,7 @@ async def stream_chat_completion_baseline(
             session_ctx=session_ctx_content,
             skills_ctx=skills_ctx,
             user_id=user_id,
+            expert_id=session.expert_id,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
@@ -1961,12 +2086,26 @@ async def stream_chat_completion_baseline(
     if message and is_user_message:
         transcript_builder.append_user(content=user_message_for_transcript or message)
 
-    # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
-    attachment_hint = ""
-    image_blocks: list[dict[str, Any]] = []
     if file_ids and user_id:
         working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+
+    # Propagate execution context so tool handlers can read session-level
+    # flags. This must precede attachment resolution: the workspace manager
+    # derives the expert's file scope from the session set here.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+        envelope=envelope,
+    )
+
+    # --- File attachments (feature parity with SDK path) ---
+    attachment_hint = ""
+    image_blocks: list[dict[str, Any]] = []
+    if file_ids and user_id and working_dir:
         attachment_hint, image_blocks = await _prepare_baseline_attachments(
             file_ids, user_id, session_id, working_dir
         )
@@ -2014,6 +2153,13 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
+    # ``experts_enabled`` was resolved with the system-prompt supplements
+    # above; the role split lives in the shared helper.
+    disabled_tool_groups.extend(
+        expert_tool_disabled_groups(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+    )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
@@ -2033,15 +2179,6 @@ async def stream_chat_completion_baseline(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
 
-    # Propagate execution context so tool handlers can read session-level flags.
-    set_execution_context(
-        user_id,
-        session,
-        sandbox=e2b_sandbox,
-        sdk_cwd=working_dir,
-        permissions=permissions,
-    )
-
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
@@ -2059,7 +2196,16 @@ async def stream_chat_completion_baseline(
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
     _stream_error = False  # Track whether an error occurred during streaming
-    state = _BaselineStreamState(model=active_model)
+    state = _BaselineStreamState(
+        model=active_model,
+        routing_source=routing_source,
+        llm_auth_provider=(
+            session.metadata.llm_auth_provider if session is not None else None
+        ),
+        llm_credential_id=(
+            session.metadata.llm_credential_id if session is not None else None
+        ),
+    )
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2083,6 +2229,7 @@ async def stream_chat_completion_baseline(
             state=state,
             user_id=user_id,
             session=_session_holder[0],
+            disabled_groups=disabled_tool_groups,
         )
 
     _bound_conversation_updater = partial(
@@ -2126,6 +2273,18 @@ async def stream_chat_completion_baseline(
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
+                # Engine switch requested (enter_agent_building_mode): end
+                # the loop at this iteration boundary — the round's tool
+                # results are already folded into the conversation, so the
+                # tool-call rows persist and the processor's derived
+                # building-mode signal holds. The processor dispatches the
+                # SDK continuation turn after the slot is released.
+                if engine_switch.is_pending(session_id):
+                    logger.info(
+                        f"[Baseline] Engine switch pending for "
+                        f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
                 # in-place, so appending here means the model sees the new
@@ -2199,7 +2358,14 @@ async def stream_chat_completion_baseline(
                     current_session = _session_holder[0]
                     if text_only_text.strip():
                         current_session.messages.append(
-                            ChatMessage(role="assistant", content=text_only_text)
+                            ChatMessage(
+                                role="assistant",
+                                content=text_only_text,
+                                model=state.model,
+                                routing_source=state.routing_source,
+                                llm_auth_provider=state.llm_auth_provider,
+                                llm_credential_id=state.llm_credential_id,
+                            )
                         )
                     for _buffered in state.session_messages:
                         current_session.messages.append(_buffered)
@@ -2325,8 +2491,41 @@ async def stream_chat_completion_baseline(
             evt = state.pending_events.get_nowait()
             if evt is not None:
                 yield evt
-        yield StreamError(errorText=error_msg, code="baseline_error")
-        # Still persist whatever we got
+        failure = classify_provider_failure(
+            e,
+            auth_provider=session.metadata.llm_auth_provider if session else None,
+            credential_id=session.metadata.llm_credential_id if session else None,
+            message=error_msg,
+        )
+        # Written before the error is yielded, and deliberately not in
+        # ``finally``. The consumer breaks out of its loop the moment it sees
+        # a StreamError and closes this generator, so the tail of ``finally``
+        # -- including its session upsert -- is cut short at the first await.
+        # A marker appended there is built correctly and then thrown away.
+        #
+        # ``_session_holder[0]`` rather than ``session``: the inner task can
+        # replace the binding mid-turn, and the marker has to land on the
+        # object that is actually current.
+        _failed_session = _session_holder[0]
+        if append_error_marker(
+            _failed_session,
+            error_msg,
+            retryable=failure.retryable if failure is not None else True,
+            failure=failure.as_part() if failure is not None else None,
+        ):
+            try:
+                await upsert_chat_session(_failed_session)
+            except Exception as marker_err:
+                logger.error(
+                    "[Baseline] Failed to persist the error marker: %s", marker_err
+                )
+        if failure is not None:
+            # Before the error, so a client that acts on the envelope has it
+            # in hand by the time the turn is reported failed.
+            yield StreamProviderFailure(failure=failure.as_part())
+            yield StreamError(errorText=error_msg, code=failure.kind.value)
+        else:
+            yield StreamError(errorText=error_msg, code="baseline_error")
     finally:
         # Cancel the inner task if we're unwinding early (client disconnect,
         # unexpected error in the consumer) so it doesn't keep streaming
@@ -2350,6 +2549,7 @@ async def stream_chat_completion_baseline(
         # observe a phantom in-flight call and skip its gate, so this must
         # run unconditionally.
         session.clear_inflight_tool_calls()
+        state.tool_persistence.finish(state.session_messages)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.
@@ -2469,7 +2669,16 @@ async def stream_chat_completion_baseline(
             if final_text.startswith(recorded):
                 final_text = final_text[len(recorded) :]
         if final_text.strip():
-            session.messages.append(ChatMessage(role="assistant", content=final_text))
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=final_text,
+                    model=state.model,
+                    routing_source=state.routing_source,
+                    llm_auth_provider=state.llm_auth_provider,
+                    llm_credential_id=state.llm_credential_id,
+                )
+            )
         try:
             await upsert_chat_session(session)
         except Exception as persist_err:
@@ -2477,17 +2686,16 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-
             # Pass only the final assistant reply (after stripping tool-loop
             # chatter) so derived-finding distillation sees the substantive
             # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
+                _enqueue_graphiti_turn(
                     user_id,
+                    session,
                     session_id,
                     message,
-                    assistant_msg=final_text if state else "",
+                    final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -2546,4 +2754,24 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
+    for event in _engine_switch_finish_events(session_id):
+        yield event
     yield StreamFinish()
+
+
+def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
+    """Terminal events for a turn that registered an engine switch.
+
+    Emitted right before StreamFinish so the frontend learns the engine
+    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
+    exactly once, at the turn boundary where the baseline loop stopped.
+    There is no mode picker to flip any more — the client uses this only to
+    widen its post-finish refetch window, since a switch takes longer to
+    settle.
+    """
+    if not engine_switch.is_pending(session_id):
+        return []
+    return [
+        StreamModeChanged(mode="extended_thinking"),
+        StreamStatus(message="Switching engines for agent building…"),
+    ]

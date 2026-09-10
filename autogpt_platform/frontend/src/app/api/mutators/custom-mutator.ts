@@ -10,17 +10,13 @@ import { getDatafastAttribution } from "@/services/analytics/datafast-attributio
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
-const FRONTEND_BASE_URL =
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
-const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
-
-const getBaseUrl = (): string => {
+function getBaseURL(): string {
   if (!environment.isServerSide()) {
-    return API_PROXY_BASE_URL;
+    return "/api/proxy";
   } else {
     return environment.getAGPTServerBaseUrl();
   }
-};
+}
 
 const getBody = async <T>(c: Response | Request): Promise<T> => {
   // 204 No Content responses (and 200s with Content-Length: 0) have no body.
@@ -90,7 +86,7 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBaseURL();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   // here url also contains encoded query params

@@ -10,8 +10,8 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Props, usePublishAgentModal } from "./usePublishAgentModal";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { getApprovedMarketplaceUrl } from "@/lib/utils";
 import {
   PublishAuthPrompt,
@@ -50,7 +50,7 @@ export function PublishAgentModal({
     preSelectedAgentVersion,
   });
 
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
   const shouldReduceMotion = useReducedMotion();
 
   const stepOrder = React.useMemo(

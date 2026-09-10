@@ -12,24 +12,26 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import {
-  CalendarDotsIcon,
-  CheckCircleIcon,
-  ImagesIcon,
-  InfoIcon,
-  SparkleIcon,
-  StorefrontIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
 import * as React from "react";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import {
+  Album01Icon,
+  AlertCircleIcon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+  SparklesIcon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const DESCRIPTION_MAX = 1000;
 const INSTRUCTIONS_MAX = 2000;
@@ -60,6 +62,8 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
+  const { categories, isUnavailable, placeholder } = useStoreCategories();
+
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
   const [openAccordion, setOpenAccordion] = React.useState("");
@@ -74,18 +78,10 @@ export function AgentInfoStep({
     form.setValue("recommendedScheduleCron", cronExpression);
   };
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const isSubmitDisabled =
     Object.keys(form.formState.errors).length > 0 || isSubmitting;
@@ -135,7 +131,7 @@ export function AgentInfoStep({
             <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
               <div className="mb-4 flex items-start gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-                  <InfoIcon size={18} weight="duotone" />
+                  <Icon icon={InformationCircleIcon} size={18} />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <Text
@@ -183,22 +179,22 @@ export function AgentInfoStep({
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <StorefrontIcon
+                  <Icon
+                    icon={Store01Icon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Listing basics
                   {basicsHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : basicsComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}
@@ -267,7 +263,8 @@ export function AgentInfoStep({
                       labelVariant="body"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      placeholder={placeholder}
+                      disabled={isUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}
@@ -281,22 +278,22 @@ export function AgentInfoStep({
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <ImagesIcon
+                  <Icon
+                    icon={Album01Icon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : thumbnailsComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}
@@ -316,22 +313,22 @@ export function AgentInfoStep({
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <SparkleIcon
+                  <Icon
+                    icon={SparklesIcon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Experience details
                   {experienceHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : experienceComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}
@@ -441,9 +438,9 @@ export function AgentInfoStep({
                         onClick={() => setCronScheduleDialogOpen(true)}
                         className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       >
-                        <CalendarDotsIcon
+                        <Icon
+                          icon={Calendar03Icon}
                           size={16}
-                          weight="duotone"
                           className="shrink-0 text-zinc-500"
                         />
                         <span

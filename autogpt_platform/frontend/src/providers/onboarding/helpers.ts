@@ -31,12 +31,18 @@ export function fromBackendUserOnboarding(
   };
 }
 
+// `completedSteps` stays string[] so legacy stored values pass through, but the
+// step we gate the redirect on is checked against the union: a rename that
+// misses this call site must fail the build, not silently route every
+// onboarded user back into the wizard.
+const ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE" satisfies OnboardingStep;
+
 export function shouldRedirectFromOnboarding(
-  completedSteps: OnboardingStep[],
+  completedSteps: string[],
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes("VISIT_COPILOT") &&
+    completedSteps.includes(ONBOARDING_COMPLETE) &&
     !pathname.startsWith("/onboarding/reset")
   );
 }

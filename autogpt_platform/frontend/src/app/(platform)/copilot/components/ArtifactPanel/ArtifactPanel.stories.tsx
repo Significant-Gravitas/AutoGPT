@@ -24,6 +24,7 @@ function openPanelWith(artifact: ArtifactRef) {
       activeArtifact: artifact,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
     },
   });
 }
@@ -184,6 +185,7 @@ export const Closed: Story = {
           activeArtifact: null,
           history: [],
           activeTab: "files",
+          lastArtifact: null,
         },
       });
       return <Story />;

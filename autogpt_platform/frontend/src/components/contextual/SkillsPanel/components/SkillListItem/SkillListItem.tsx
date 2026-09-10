@@ -3,17 +3,20 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { PublishSkillButton } from "../PublishSkillButton/PublishSkillButton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  BookOpenIcon,
-  DownloadSimpleIcon,
-  EyeIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";
+import {
+  BookOpen01Icon,
+  Delete02Icon,
+  Download04Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   skill: CopilotSkillInfo;
@@ -38,6 +41,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     detail,
     detailErrorMessage,
   } = useSkillListItem({ skill });
+  const isSkillsHubEnabled = useGetFlag(Flag.SKILLS_HUB);
 
   return (
     <div
@@ -47,7 +51,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-violet-50">
-          <BookOpenIcon size={18} className="text-violet-700" weight="bold" />
+          <Icon icon={BookOpen01Icon} size={18} className="text-violet-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -91,7 +95,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-view-button"
           aria-label="View skill"
         >
-          <EyeIcon className="h-4 w-4" />
+          <Icon icon={EyeIcon} className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
@@ -101,8 +105,11 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-download-button"
           aria-label="Download skill"
         >
-          <DownloadSimpleIcon className="h-4 w-4" />
+          <Icon icon={Download04Icon} className="h-4 w-4" />
         </Button>
+        {isSkillsHubEnabled ? (
+          <PublishSkillButton skillName={skill.name} />
+        ) : null}
         <Button
           variant="icon"
           size="icon"
@@ -110,7 +117,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-delete-button"
           aria-label="Delete skill"
         >
-          <TrashIcon className="h-4 w-4" />
+          <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>
       </div>
 

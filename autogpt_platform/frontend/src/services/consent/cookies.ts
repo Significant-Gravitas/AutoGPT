@@ -1,11 +1,18 @@
 import * as Sentry from "@sentry/nextjs";
 import { Key, storage } from "../storage/local-storage";
+import {
+  ANALYTICS_CONSENT_COOKIE,
+  ANALYTICS_CONSENT_GRANTED,
+} from "./constants";
+
+const CONSENT_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 export interface ConsentPreferences {
   hasConsented: boolean;
   timestamp: number;
   analytics: boolean;
   monitoring: boolean;
+  advertising: boolean;
 }
 
 export const DEFAULT_CONSENT: ConsentPreferences = {
@@ -13,6 +20,7 @@ export const DEFAULT_CONSENT: ConsentPreferences = {
   timestamp: Date.now(),
   analytics: false,
   monitoring: false,
+  advertising: false,
 };
 
 export const COOKIE_CATEGORIES = {
@@ -33,12 +41,19 @@ export const COOKIE_CATEGORIES = {
       "Record errors and user sessions to help us fix bugs faster (Sentry - includes screen recording)",
     alwaysActive: false,
   },
+  advertising: {
+    name: "Advertising",
+    description:
+      "Measure which ads bring people to AutoGPT so we only pay for the ones that work (Google Ads conversion tracking)",
+    alwaysActive: false,
+  },
 } as const;
 
 function load(): ConsentPreferences {
   try {
     const stored = storage.get(Key.COOKIE_CONSENT);
     if (!stored) {
+      syncAnalyticsConsentCookie(false);
       return DEFAULT_CONSENT;
     }
 
@@ -53,11 +68,24 @@ function load(): ConsentPreferences {
       console.warn(
         "Invalid consent data in localStorage, resetting to defaults",
       );
+      syncAnalyticsConsentCookie(false);
       return DEFAULT_CONSENT;
     }
 
-    return parsed;
+    // Answers stored before the advertising category existed count as a no
+    // for it rather than being thrown away and asked again.
+    const preferences: ConsentPreferences = {
+      ...parsed,
+      advertising:
+        typeof parsed.advertising === "boolean" ? parsed.advertising : false,
+    };
+
+    syncAnalyticsConsentCookie(
+      preferences.hasConsented && preferences.analytics,
+    );
+    return preferences;
   } catch (error) {
+    syncAnalyticsConsentCookie(false);
     Sentry.captureException(error);
     console.error("Failed to load consent preferences:", error);
     return DEFAULT_CONSENT;
@@ -67,6 +95,9 @@ function load(): ConsentPreferences {
 function save(preferences: ConsentPreferences): void {
   try {
     storage.set(Key.COOKIE_CONSENT, JSON.stringify(preferences));
+    syncAnalyticsConsentCookie(
+      preferences.hasConsented && preferences.analytics,
+    );
   } catch (error) {
     Sentry.captureException(error);
     console.error("Failed to save consent preferences:", error);
@@ -76,6 +107,7 @@ function save(preferences: ConsentPreferences): void {
 function clear(): void {
   try {
     storage.clean(Key.COOKIE_CONSENT);
+    syncAnalyticsConsentCookie(false);
   } catch (error) {
     Sentry.captureException(error);
     console.error("Failed to clear consent preferences:", error);
@@ -101,3 +133,15 @@ export const consent = {
   hasConsented,
   hasConsentFor,
 };
+
+function syncAnalyticsConsentCookie(hasConsent: boolean): void {
+  if (typeof document === "undefined") return;
+
+  const maxAge = hasConsent ? CONSENT_COOKIE_MAX_AGE_SECONDS : 0;
+  const value = hasConsent ? ANALYTICS_CONSENT_GRANTED : "";
+  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secureCookieAttribute()}`;
+}
+
+function secureCookieAttribute(): string {
+  return window.location.protocol === "https:" ? "; Secure" : "";
+}

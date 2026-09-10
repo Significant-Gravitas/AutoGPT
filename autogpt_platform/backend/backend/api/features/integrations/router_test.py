@@ -34,6 +34,9 @@ async def _not_found_handler(
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "test-user-id"
+# The id the mock_jwt_user fixture authenticates as, i.e. what the endpoints
+# must scope every store operation to.
+JWT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 
 def _make_webhook(
@@ -851,3 +854,580 @@ class TestWebhookPingOwnership:
         assert resp.status_code == 200
         assert resp.json() is True
         webhook_manager.trigger_ping.assert_awaited_once()
+
+
+class TestDeviceAuthEndpoints:
+    """POST /{provider}/device-auth/{initiate,poll}.
+
+    The concurrency contract here is load-bearing: `peek` must survive many
+    polls while `consume` must admit exactly one terminal handler, or an
+    approval produces duplicate credentials.
+    """
+
+    PROVIDER = "stripe_link"
+
+    @staticmethod
+    def _initiation():
+        from backend.integrations.oauth.device_base import DeviceAuthInitiation
+
+        return DeviceAuthInitiation(
+            device_code="dev-code-secret",
+            user_code="GLOW-RELISH",
+            verification_url="https://login.link.com/device",
+            verification_url_complete="https://login.link.com/device?code=GLOW-RELISH",
+            expires_in=600,
+            interval=5,
+        )
+
+    @staticmethod
+    def _state(metadata: dict | None = None):
+        from backend.data.model import OAuthState
+
+        return OAuthState(
+            token="state-token",
+            provider="stripe_link",
+            expires_at=9999999999,
+            scopes=["userinfo:read"],
+            state_metadata=(
+                metadata
+                if metadata is not None
+                else {"flow_type": "device_code", "device_code": "dev-code-secret"}
+            ),
+        )
+
+    def _patched(self, handler, mock_mgr):
+        return (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            # Off by default. Every test in this class drives the same user and
+            # provider within the same second, so with a live Redis the
+            # throttle would answer for whichever endpoint ran second. It has
+            # its own tests below.
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+        )
+
+    def test_initiate_does_not_return_the_device_code(self):
+        """The device code is the bearer secret of the flow.
+
+        It is stored encrypted server-side and the browser never needs it, so
+        it must not appear anywhere in the response.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.return_value = ["userinfo:read"]
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate?scopes=userinfo:read"
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["user_code"] == "GLOW-RELISH"
+        assert body["state_token"] == "state-token"
+        assert "device_code" not in body
+        assert "dev-code-secret" not in response.text
+
+    def test_initiate_outlives_the_provider_code(self):
+        """State must expire after the device code, not before.
+
+        Otherwise the poll loop dies with "invalid state token" while the user
+        can still legitimately approve on their phone.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.return_value = ["userinfo:read"]
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            client.post(f"/{self.PROVIDER}/device-auth/initiate")
+
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["expires_in_seconds"] > 600
+        assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
+
+    def test_initiate_does_not_leak_upstream_error_text(self):
+        handler = MagicMock()
+        handler.handle_default_scopes.return_value = []
+        handler.initiate_device_auth = AsyncMock(
+            side_effect=RuntimeError("401 {'secret_hint': 'client_id lwlpk_xyz'}")
+        )
+
+        p1, p2, p3, p4 = self._patched(handler, MagicMock())
+        with p1, p2, p3, p4:
+            response = client.post(f"/{self.PROVIDER}/device-auth/initiate")
+
+        assert response.status_code == 502
+        assert "lwlpk_xyz" not in response.text
+
+    def test_poll_rejects_an_unknown_state_token(self):
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=None)
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "not-a-real-token"},
+            )
+
+        assert response.status_code == 400
+
+    def test_poll_rejects_a_non_device_flow_state_token(self):
+        """A plain OAuth state token has no device code and must not be usable."""
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state({}))
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 400
+
+    def test_pending_poll_does_not_consume_the_state_token(self):
+        """`peek` is non-consuming so the loop can poll for the full 10 minutes."""
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="pending")
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+        mock_mgr.store.consume_state_token = AsyncMock()
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            for _ in range(3):
+                response = client.post(
+                    f"/{self.PROVIDER}/device-auth/poll",
+                    json={"state_token": "state-token"},
+                )
+                assert response.status_code == 200
+                assert response.json()["status"] == "pending"
+
+        mock_mgr.store.consume_state_token.assert_not_awaited()
+
+    def test_poll_race_loser_does_not_create_a_second_credential(self):
+        """Two polls can both see an approval; only the one that consumes wins.
+
+        `consume_state_token` returning None means another poll already handled
+        this terminal state -- storing credentials anyway would duplicate them
+        for a single authorization.
+        """
+        from backend.data.model import OAuth2Credentials
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(
+                status="approved",
+                credentials=OAuth2Credentials(
+                    provider="stripe_link",
+                    access_token=SecretStr("at"),
+                    refresh_token=SecretStr("rt"),
+                    scopes=["userinfo:read"],
+                    title="Stripe Link",
+                ),
+            )
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+        mock_mgr.store.consume_state_token = AsyncMock(return_value=None)
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.api.features.integrations.router._merge_or_create_credential",
+                new=AsyncMock(),
+            ) as mock_merge,
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 200
+        # The winner handled this grant, so the loser must not store a second
+        # credential. It reports the approval without one — a first-time grant
+        # has no credential id to look the stored one up by, and answering
+        # `pending` would send the client back to a state token the winner has
+        # already consumed, where the next poll 400s.
+        assert response.json()["status"] == "approved"
+        assert response.json()["credentials"] is None
+        mock_merge.assert_not_awaited()
+
+    def test_poll_does_not_leak_upstream_error_text(self):
+        handler = MagicMock()
+        handler.poll_for_tokens = AsyncMock(
+            side_effect=RuntimeError("500 {'trace': 'internal-host-1.link.com'}")
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 502
+        assert "internal-host-1" not in response.text
+
+    def test_poll_stores_the_credential_on_the_winning_approval(self):
+        """The primary success path: consume wins, credential is stored.
+
+        Every other approved-status test here makes `consume_state_token`
+        return None to exercise the race loser, so the path that actually
+        stores a credential -- and the scope un-flatten below it -- had no
+        coverage at all.
+        """
+        from backend.data.model import OAuth2Credentials
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        stored = OAuth2Credentials(
+            provider="stripe_link",
+            access_token=SecretStr("tok-access-do-not-leak"),
+            refresh_token=SecretStr("tok-refresh-do-not-leak"),
+            # Link returns RFC 6749 space-delimited scopes; the router
+            # un-flattens them so scope checks compare like with like.
+            scopes=["userinfo:read payment_methods.agentic"],
+            title="Stripe Link",
+        )
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="approved", credentials=stored)
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+        mock_mgr.store.consume_state_token = AsyncMock(return_value=self._state())
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.api.features.integrations.router._merge_or_create_credential",
+                new=AsyncMock(side_effect=lambda *a, **kw: a[2]),
+            ) as mock_merge,
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert body["credentials"] is not None
+        mock_merge.assert_awaited()
+        # The space-delimited scope string is split before storage.
+        assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
+        # And no secret rides along in the response.
+        assert "do-not-leak" not in response.text
+
+    def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
+        """A caller with no backend User row raises a Prisma RecordNotFound in
+        `peek_state_token`. That used to surface as a 500 carrying raw DB text,
+        inconsistent with `initiate`, which already returns a clean message."""
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(
+            side_effect=RuntimeError(
+                "An operation failed because it depends on one or more records "
+                "that were required but not found. Expected a record, found none."
+            )
+        )
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 400
+        assert "Expected a record" not in response.text
+
+    def test_every_state_operation_is_scoped_to_the_authenticated_user(self):
+        """User scoping is the whole authorization control on these endpoints.
+
+        Every other test here hands `creds_manager` a bare MagicMock and never
+        checks which user id reached the store, so a regression that passed a
+        constant — or dropped the argument — would leave the suite green.
+        """
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.handle_default_scopes.return_value = ["userinfo:read"]
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="pending")
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(return_value=("tok", "v"))
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            client.post(f"/{self.PROVIDER}/device-auth/initiate")
+            client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        authenticated = mock_mgr.store.store_state_token.await_args.kwargs["user_id"]
+        assert authenticated == JWT_USER_ID
+        # peek is positional: (user_id, token, provider)
+        assert mock_mgr.store.peek_state_token.await_args.args[0] == JWT_USER_ID
+
+    def test_one_user_cannot_poll_another_users_state_token(self):
+        """The store scopes by user, so a token belonging to someone else reads
+        as absent rather than as someone else's flow."""
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        # What the store returns for a token that is not this user's.
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=None)
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "another-users-token"},
+            )
+
+        assert response.status_code == 400
+        assert mock_mgr.store.peek_state_token.await_args.args[0] == JWT_USER_ID
+        # And the provider is never contacted for a token we could not place.
+        handler.poll_for_tokens.assert_not_called()
+
+    def test_the_throttle_holds_callers_to_the_provider_interval(self):
+        """Every call drives the provider under one public client id shared by
+        the whole platform, so a single looping account can get Stripe Link
+        connect throttled for everyone. Covered here rather than in the other
+        tests, which switch it off so they can drive the same user twice."""
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="pending")
+        )
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            poll = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+            initiate = client.post(f"/{self.PROVIDER}/device-auth/initiate")
+
+        # RFC 8628's own vocabulary, and the provider is never contacted.
+        assert poll.status_code == 200
+        assert poll.json()["status"] == "slow_down"
+        handler.poll_for_tokens.assert_not_called()
+
+        assert initiate.status_code == 429
+
+    async def test_the_throttle_fails_open_when_redis_is_unreachable(self):
+        """It protects an upstream client id; it must never be the reason a
+        request fails or hangs."""
+        import backend.api.features.integrations.router as router_module
+
+        with patch(
+            "backend.data.redis_client.get_redis_async",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ):
+            throttled = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="f"
+            )
+
+        assert throttled is False
+
+    async def test_initiate_and_poll_do_not_share_a_throttle_key(self):
+        """A live poll loop must not lock out starting a new flow.
+
+        Both endpoints claimed one key, and poll re-claims its key every
+        `interval` seconds with the same TTL — so the key never expired and
+        initiate returned 429 for as long as any flow was open. Leaving a
+        dialog open while approving on a phone is the intended behaviour, and
+        it blocked every other surface, including cancel-and-retry.
+        """
+        import backend.api.features.integrations.router as router_module
+
+        claimed: dict[str, int] = {}
+
+        class _Redis:
+            async def set(self, key, value, ex=None, nx=False):
+                if nx and key in claimed:
+                    return None
+                claimed[key] = ex
+                return True
+
+        with patch(
+            "backend.data.redis_client.get_redis_async",
+            new=AsyncMock(return_value=_Redis()),
+        ):
+            first_poll = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-a"
+            )
+            # A poll loop is live; starting a flow must still be allowed.
+            initiate = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 3, scope="initiate"
+            )
+            # And each scope still throttles itself.
+            second_poll = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-a"
+            )
+            # A *different* flow must not be starved by the first one's window.
+            other_flow = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-b"
+            )
+
+        assert first_poll is False
+        assert initiate is False, "an active poll loop blocked initiate"
+        assert second_poll is True
+        assert other_flow is False, "a second concurrent flow was starved"
+        assert len(claimed) == 3, claimed
+
+    async def test_an_unstorable_grant_is_revoked_not_left_live(self):
+        """The device code is spent by the time the store runs, so the state
+        token cannot be replayed to retry. Handing the authorization back is
+        the only way to avoid a live grant with no local record of it."""
+        from backend.data.model import OAuth2Credentials
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        issued = OAuth2Credentials(
+            provider="stripe_link",
+            access_token=SecretStr("at"),
+            refresh_token=SecretStr("rt"),
+            scopes=["userinfo:read"],
+            title="Stripe Link",
+        )
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="approved", credentials=issued)
+        )
+        handler.revoke_tokens = AsyncMock(return_value=True)
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+        mock_mgr.store.consume_state_token = AsyncMock(return_value=self._state())
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.api.features.integrations.router._merge_or_create_credential",
+                new=AsyncMock(side_effect=RuntimeError("db down")),
+            ),
+        ):
+            with pytest.raises(Exception):
+                client.post(
+                    f"/{self.PROVIDER}/device-auth/poll",
+                    json={"state_token": "state-token"},
+                )
+
+        handler.revoke_tokens.assert_awaited_once_with(issued)
+
+    def test_the_race_loser_reports_this_grants_credential_not_the_newest(self):
+        """`get_creds_by_provider` has no ordering contract, and a merged
+        re-auth keeps its position — so picking the last entry could hand the
+        connect modal a different wallet than the user approved."""
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="approved")
+        )
+
+        state = self._state()
+        state.credential_id = "the-right-wallet"
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=state)
+        mock_mgr.store.consume_state_token = AsyncMock(return_value=None)
+        mock_mgr.store.get_creds_by_id = AsyncMock(
+            return_value=_make_oauth2_cred("the-right-wallet", "stripe_link")
+        )
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 200
+        mock_mgr.store.get_creds_by_id.assert_awaited_once_with(
+            JWT_USER_ID, "the-right-wallet"
+        )
+        # And never the "newest for this provider" shortcut.
+        mock_mgr.store.get_creds_by_provider.assert_not_called()

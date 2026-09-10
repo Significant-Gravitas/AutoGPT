@@ -1,4 +1,5 @@
-import { InfoIcon } from "@phosphor-icons/react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   reason?: string;
@@ -11,7 +12,11 @@ export function SharedChatErrorState({ onRetry }: Props) {
       <div className="mx-auto w-full max-w-md p-6">
         <div className="space-y-4 rounded-lg border border-dashed border-zinc-300 p-6 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100">
-            <InfoIcon size={24} className="text-zinc-500" />
+            <Icon
+              icon={InformationCircleIcon}
+              size={24}
+              className="text-zinc-500"
+            />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Share link not found</h3>

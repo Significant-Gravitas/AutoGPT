@@ -17,8 +17,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     isLoggedIn: mockIsLoggedIn,
     isUserLoading: false,
     user: mockIsLoggedIn ? { id: "test-user", email: "u@example.com" } : null,

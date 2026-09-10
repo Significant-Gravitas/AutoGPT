@@ -18,7 +18,11 @@ class User:
             user_id=payload["sub"],
             email=payload.get("email", ""),
             phone_number=payload.get("phone", ""),
-            role=payload["role"],
+            # Default rather than index: a token without a `role` claim is a
+            # token we simply don't grant privileges to, so it should be
+            # treated as an ordinary user — not raise KeyError and surface as
+            # a 500. verify_user already fails closed on the admin check.
+            role=payload.get("role", "user"),
         )
 
 

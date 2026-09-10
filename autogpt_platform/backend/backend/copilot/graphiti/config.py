@@ -25,13 +25,13 @@ _DEFAULT_RERANKER_MODEL = "gpt-4.1-nano"
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
-# default (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``, per
-# ``docs/platform/copilot-local-llm.md`` — 4B params, ~3.4GB resident,
-# 256k native context, vetted for OpenAI-shim structured output). The
+# default (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``, per
+# ``docs/platform/copilot-local-llm.md`` — 9B params, ~5.8GB model file,
+# 262k native context, and OpenAI-compatible tool calling). The
 # reranker reuses the same model since the prompts are simpler than
 # extraction and pulling a second model for it would double the local
 # install's disk + RAM footprint.
-_LOCAL_LLM_MODEL = "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+_LOCAL_LLM_MODEL = "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 _LOCAL_RERANKER_MODEL = _LOCAL_LLM_MODEL
 # Embedder defaults to Ollama's ``nomic-embed-text`` (~270MB, 768-dim
 # vectors, well-supported by the OpenAI ``/v1/embeddings`` shim).
@@ -128,6 +128,28 @@ class GraphitiConfig(BaseSettings):
     semaphore_limit: int = Field(
         default=5,
         description="Max concurrent LLM calls during ingestion (prevents rate limits)",
+    )
+
+    # FalkorDB back-pressure retry. "Max pending queries exceeded" is a
+    # transient, self-clearing rejection when the shared server's pending-query
+    # queue is full under concurrent memory traffic; a bounded jittered backoff
+    # rides out the spike instead of dropping the memory op (and spamming
+    # Sentry). Only an exhausted budget surfaces the error. (SENTRY-1384.)
+    falkordb_query_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Total attempts (including the first) for a FalkorDB query before "
+            "surfacing a 'Max pending queries exceeded' backpressure error."
+        ),
+    )
+    falkordb_query_backoff_base: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Base delay in seconds for jittered exponential backoff between "
+            "FalkorDB pending-queue overflow retries."
+        ),
     )
 
     # Warm context
@@ -253,10 +275,10 @@ class GraphitiConfig(BaseSettings):
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
-        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``
+        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-nano``) → same Qwen slug.
+        - ``reranker_model`` (``gpt-4.1-nano``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →

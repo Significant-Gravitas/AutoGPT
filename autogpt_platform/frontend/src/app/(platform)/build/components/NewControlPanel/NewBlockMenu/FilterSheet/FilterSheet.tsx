@@ -2,13 +2,14 @@ import { FilterChip } from "../FilterChip";
 import { cn } from "@/lib/utils";
 import { CategoryKey } from "../BlockMenuFilters/types";
 import { AnimatePresence, motion } from "framer-motion";
-import { XIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { useFilterSheet } from "./useFilterSheet";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function FilterSheet({
   categories,
@@ -60,7 +61,7 @@ export function FilterSheet({
                 size="icon"
                 onClick={handleCloseButton}
               >
-                <XIcon size={20} />
+                <Icon icon={Cancel01Icon} size={20} />
               </Button>
             </div>
 

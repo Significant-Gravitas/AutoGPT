@@ -3,15 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import {
-  ArrowSquareOutIcon,
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBrokenIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
@@ -27,6 +18,15 @@ import {
 
 import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
@@ -74,7 +74,6 @@ export function SubmissionItem({
   });
 
   const visual = getStatusVisual(submission.status);
-  const StatusIcon = visual.Icon;
   const thumbnail = submission.image_urls?.[0];
 
   return (
@@ -110,7 +109,8 @@ export function SubmissionItem({
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center">
-                <ImageBrokenIcon
+                <UIIcon
+                  icon={ImageNotFound01Icon}
                   size={20}
                   className="pointer-events-none text-zinc-400"
                 />
@@ -134,7 +134,8 @@ export function SubmissionItem({
                   >
                     {submission.name}
                   </Text>
-                  <ArrowSquareOutIcon
+                  <UIIcon
+                    icon={LinkSquare01Icon}
                     size={14}
                     className="shrink-0 text-zinc-500"
                     aria-hidden
@@ -172,7 +173,7 @@ export function SubmissionItem({
         <span
           className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${visual.pillClass}`}
         >
-          <StatusIcon size={12} weight="fill" />
+          <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
@@ -194,7 +195,7 @@ export function SubmissionItem({
               data-testid="submission-actions"
               className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
-              <DotsThreeVerticalIcon size={18} weight="bold" />
+              <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -207,7 +208,7 @@ export function SubmissionItem({
                 onSelect={handleEdit}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <PencilSimpleIcon size={14} />
+                <UIIcon icon={PencilIcon} size={14} />
                 Edit details
               </DropdownMenuItem>
             ) : (
@@ -215,7 +216,7 @@ export function SubmissionItem({
                 onSelect={handleView}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <EyeIcon size={14} />
+                <UIIcon icon={EyeIcon} size={14} />
                 View submission
               </DropdownMenuItem>
             )}
@@ -228,7 +229,7 @@ export function SubmissionItem({
                   className="flex cursor-pointer items-center gap-2"
                   data-testid="submission-marketplace-menu-link"
                 >
-                  <ArrowSquareOutIcon size={14} />
+                  <UIIcon icon={LinkSquare01Icon} size={14} />
                   View on marketplace
                 </Link>
               </DropdownMenuItem>
@@ -240,7 +241,7 @@ export function SubmissionItem({
                   onSelect={() => setConfirmDeleteOpen(true)}
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
-                  <TrashIcon size={14} />
+                  <UIIcon icon={Delete02Icon} size={14} />
                   Delete
                 </DropdownMenuItem>
               </>

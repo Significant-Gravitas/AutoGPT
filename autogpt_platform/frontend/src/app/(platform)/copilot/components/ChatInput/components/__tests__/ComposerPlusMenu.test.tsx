@@ -33,7 +33,7 @@ describe("ComposerPlusMenu", () => {
     const items = await screen.findAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual([
       "Attach file",
-      "Integrations",
+      "Connect service",
       "Skills",
       "Scheduled",
     ]);
@@ -53,7 +53,7 @@ describe("ComposerPlusMenu", () => {
     expect(screen.getByTestId("modal-probe").textContent).toBe("skills");
   });
 
-  it("selecting Scheduled and Integrations open their modals", async () => {
+  it("selecting Scheduled and Connect service open their modals", async () => {
     render(
       <>
         <ComposerPlusMenu onFilesSelected={vi.fn()} />
@@ -68,9 +68,9 @@ describe("ComposerPlusMenu", () => {
 
     openMenu();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: /integrations/i }),
+      await screen.findByRole("menuitem", { name: /connect service/i }),
     );
-    expect(screen.getByTestId("modal-probe").textContent).toBe("integrations");
+    expect(screen.getByTestId("modal-probe").textContent).toBe("connect");
   });
 
   it("adds a flat workspace option after Attach file when its flag is enabled", async () => {
@@ -88,7 +88,7 @@ describe("ComposerPlusMenu", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Attach file",
       "Use File from Workspace",
-      "Integrations",
+      "Connect service",
       "Skills",
       "Scheduled",
     ]);
@@ -99,7 +99,7 @@ describe("ComposerPlusMenu", () => {
     expect(onUseWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the guided prompt for Attach file and Integrations but not Skills or Scheduled", async () => {
+  it("clears the guided prompt for Attach file and Connect service but not Skills or Scheduled", async () => {
     const onClearGuidedPrompt = vi.fn();
     render(
       <ComposerPlusMenu
@@ -116,7 +116,7 @@ describe("ComposerPlusMenu", () => {
 
     openMenu();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: /integrations/i }),
+      await screen.findByRole("menuitem", { name: /connect service/i }),
     );
     expect(onClearGuidedPrompt).toHaveBeenCalledTimes(2);
 

@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock
 
 import prisma.models
 import pytest
+from prisma.enums import ResourceVisibility
 
 from backend.data.execution import (
+    create_graph_execution,
     get_graph_execution,
     get_graph_execution_meta,
     get_graph_executions_paginated,
@@ -21,7 +23,8 @@ VISIBILITY_AND = [
             {"organizationId": "org-1", "teamId": None},
             {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
         ]
-    }
+    },
+    {"OR": [{"expertId": None}, {"userId": "u-1"}]},
 ]
 
 
@@ -87,3 +90,67 @@ async def test_executions_paginated_org_visibility_coexists_with_status_or(
     assert where["AND"] == VISIBILITY_AND
     assert where["OR"] == [{"executionStatus": ExecutionStatus.RUNNING}]
     assert "userId" not in where
+
+
+@pytest.mark.asyncio
+async def test_paginated_list_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_executions_paginated(
+        user_id="u-1",
+        organization_id="org-1",
+    )
+
+    count_where = mock_exec_client.count.call_args.kwargs["where"]
+    list_where = mock_exec_client.find_many.call_args.kwargs["where"]
+    expected_owner_guard = {"OR": [{"expertId": None}, {"userId": "u-1"}]}
+    assert expected_owner_guard in count_where["AND"]
+    assert expected_owner_guard in list_where["AND"]
+
+
+@pytest.mark.asyncio
+async def test_meta_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_execution_meta("u-1", "exec-1", organization_id="org-1")
+
+    where = mock_exec_client.find_first.call_args.kwargs["where"]
+    assert {"OR": [{"expertId": None}, {"userId": "u-1"}]} in where["AND"]
+
+
+@pytest.mark.asyncio
+async def test_detail_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_execution("u-1", "exec-1", organization_id="org-1")
+
+    where = mock_exec_client.find_first.call_args.kwargs["where"]
+    assert {"OR": [{"expertId": None}, {"userId": "u-1"}]} in where["AND"]
+
+
+@pytest.mark.asyncio
+async def test_create_execution_rejects_non_private_expert_before_write(mocker):
+    expert_client = AsyncMock()
+    expert_client.find_first.return_value = None
+    execution_client = AsyncMock()
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+    mocker.patch.object(
+        prisma.models.AgentGraphExecution,
+        "prisma",
+        return_value=execution_client,
+    )
+
+    with pytest.raises(ValueError, match="Expert #shared-expert is unavailable"):
+        await create_graph_execution(
+            graph_id="graph-1",
+            graph_version=1,
+            starting_nodes_input=[],
+            inputs={},
+            user_id="owner",
+            expert_id="shared-expert",
+        )
+
+    expert_client.find_first.assert_awaited_once_with(
+        where={
+            "id": "shared-expert",
+            "ownerUserId": "owner",
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
+    )
+    execution_client.create.assert_not_awaited()

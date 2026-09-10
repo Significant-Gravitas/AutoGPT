@@ -1,48 +1,28 @@
 "use client";
 
-import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
-import { okData } from "@/app/api/helpers";
-import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
-import { AgentActivityDropdown } from "@/components/layout/Navbar/components/AgentActivityDropdown/AgentActivityDropdown";
-import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
-import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
-import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { UsageIndicator } from "@/app/(platform)/PlatformChrome/components/UsageIndicator/UsageIndicator";
+import { StorageUsage } from "@/app/(platform)/artifacts/components/StorageUsage/StorageUsage";
+import { usePathname } from "next/navigation";
+import type { ComponentType } from "react";
+
+// Right-hand companions to the inset header title, keyed the same way as
+// ROUTE_TITLES so a route's title and its header widget stay together.
+const ROUTE_ACTIONS: Record<string, ComponentType> = {
+  "/artifacts": StorageUsage,
+};
 
 export function InsetHeaderActions() {
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
-  const logoutInProgress = isLogoutInProgress();
-  const dynamicMenuItems = getAccountMenuItems(user?.role);
-
-  const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
-    {
-      query: {
-        select: okData,
-        enabled: isLoggedIn && !!user && !logoutInProgress,
-        queryKey: ["/api/store/profile", user?.id],
-      },
-    },
-  );
-
-  if (!isLoggedIn) return null;
-
-  const isLoadingProfile = isProfileLoading || isUserLoading;
+  const pathname = usePathname();
+  const match = pathname
+    ? Object.entries(ROUTE_ACTIONS).find(
+        ([href]) => pathname === href || pathname.startsWith(`${href}/`),
+      )
+    : undefined;
+  if (!match) return null;
+  const Actions = match[1];
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="[&_button:hover]:bg-zinc-200 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_svg]:!size-5">
-        <AgentActivityDropdown />
-      </div>
-      <UsageIndicator />
-      {profile && <Wallet key={profile.username} compact />}
-      <AccountMenu
-        userName={profile?.name || profile?.username}
-        userEmail={user?.email}
-        avatarSrc={profile?.avatar_url ?? ""}
-        menuItemGroups={dynamicMenuItems}
-        isLoading={isLoadingProfile}
-      />
+    <div className="pointer-events-auto ml-auto hidden items-center md:flex">
+      <Actions />
     </div>
   );
 }

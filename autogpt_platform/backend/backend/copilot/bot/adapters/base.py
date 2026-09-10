@@ -133,10 +133,13 @@ class MessageContext:
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
-    # Users the bot is allowed to @-mention back in this turn — populated
-    # from the inbound platform message's mentions (excluding the bot itself).
-    # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
-    # get pinged even if the LLM produces `@theirname` in its output.
+    # Users the bot may @-mention back in this turn: the author and anyone
+    # mentioned in the inbound message (excluding the bot itself), as
+    # `(display_name, platform_user_id)` pairs. An adapter may widen this at
+    # send time to members and roles of the server it is posting in (Discord
+    # does, by looking up the names the model used); it must never widen it to
+    # everyone/here-style broadcasts. Names that resolve to nothing stay plain
+    # text.
     mentionable_users: tuple[tuple[str, str], ...] = ()
     # Other threads/channels the message linked or @-referenced, fetched by the
     # bot up-front so the model has their content without web-fetching Discord.
@@ -361,6 +364,16 @@ class PlatformAdapter(ABC):
         enumerating every channel first.
         """
         ...
+
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        """Open (or fetch) the bot's 1:1 DM channel with ``platform_user_id``.
+
+        Returns a channel ID usable with ``post_channel_message``, or ``None``
+        when the platform/configuration can't DM this user. Default:
+        unsupported — the proactive DM path then reports the platform can't
+        deliver DMs rather than attempting a send.
+        """
+        return None
 
     @abstractmethod
     async def post_channel_message(

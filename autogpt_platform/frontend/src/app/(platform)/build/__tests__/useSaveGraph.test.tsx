@@ -82,7 +82,7 @@ describe("useSaveGraph", () => {
       credentials_input_schema: { properties: {} },
       output_schema: { properties: {} },
     };
-    mockUpdate.mockResolvedValue({ data: updated });
+    mockUpdate.mockResolvedValue({ data: { graph: updated } });
 
     const { result } = renderHook(() => useSaveGraph({ showToast: false }));
 
@@ -97,6 +97,60 @@ describe("useSaveGraph", () => {
     });
     expect(mockSetGraphSchemas).toHaveBeenCalled();
     expect(returned).toBe(updated);
+  });
+
+  it("warns the user when a trigger swap leaves webhook presets behind", async () => {
+    mockCurrentGraph = { id: "graph-1", name: "Agent", version: 1 };
+    const updated = {
+      id: "graph-1",
+      version: 2,
+      input_schema: { properties: {} },
+      credentials_input_schema: { properties: {} },
+      output_schema: { properties: {} },
+    };
+    mockUpdate.mockResolvedValue({
+      data: {
+        graph: updated,
+        skipped_webhook_presets: [
+          { id: "preset-1", name: "GitHub PR trigger", pinned_version: 1 },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+
+    await act(async () => {
+      await result.current.saveGraph();
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: "info",
+        description: expect.stringContaining("GitHub PR trigger"),
+      }),
+    );
+  });
+
+  it("does not warn when no webhook presets are skipped", async () => {
+    mockCurrentGraph = { id: "graph-1", name: "Agent", version: 1 };
+    const updated = {
+      id: "graph-1",
+      version: 2,
+      input_schema: { properties: {} },
+      credentials_input_schema: { properties: {} },
+      output_schema: { properties: {} },
+    };
+    mockUpdate.mockResolvedValue({
+      data: { graph: updated, skipped_webhook_presets: [] },
+    });
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+
+    await act(async () => {
+      await result.current.saveGraph();
+    });
+
+    expect(mockToast).not.toHaveBeenCalled();
   });
 
   it("returns the created graph model when there is no existing graph", async () => {

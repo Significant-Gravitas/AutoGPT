@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
-import {
-  CheckIcon,
-  ClockIcon,
-  RocketLaunchIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
-
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import {
+  Clock01Icon,
+  Rocket01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 type StepState = "done" | "current" | "upcoming";
 
@@ -16,7 +16,7 @@ interface Step {
   description: string;
   note?: string;
   state: StepState;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
 }
 
 const STEPS: Step[] = [
@@ -24,7 +24,7 @@ const STEPS: Step[] = [
     title: "Submitted for review",
     description: "Your listing is queued in the marketplace review pipeline.",
     state: "done",
-    Icon: CheckIcon,
+    Icon: Tick02Icon,
   },
   {
     title: "In review",
@@ -32,14 +32,14 @@ const STEPS: Step[] = [
       "Our team checks the details, media, and safety of your agent.",
     note: "Typically reviewed within 2–3 days.",
     state: "current",
-    Icon: ClockIcon,
+    Icon: Clock01Icon,
   },
   {
     title: "Goes live",
     description:
       "You'll get an email once it's approved. Rejected listings come back with feedback.",
     state: "upcoming",
-    Icon: RocketLaunchIcon,
+    Icon: Rocket01Icon,
   },
 ];
 
@@ -67,7 +67,6 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
       <ol className="flex flex-col">
         {STEPS.map((step, index) => {
           const isLast = index === STEPS.length - 1;
-          const StepIcon = step.Icon;
           return (
             <li key={step.title} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -77,7 +76,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                     NODE_CLASS[step.state],
                   )}
                 >
-                  <StepIcon size={14} weight="bold" />
+                  <Icon icon={step.Icon} size={14} />
                 </span>
                 {!isLast ? (
                   <span

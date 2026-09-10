@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.moonshot import (
     is_moonshot_model,
+    moonshot_context_window,
     moonshot_supports_cache_control,
     override_cost_usd,
     rate_card_usd,
@@ -22,7 +23,8 @@ class TestIsMoonshotModel:
             "moonshotai/kimi-k2-thinking",
             "moonshotai/kimi-k2.5",
             "moonshotai/kimi-k2",
-            "moonshotai/kimi-k3.0",  # Future SKU must match transparently.
+            "moonshotai/kimi-k3",
+            "moonshotai/kimi-k4",  # Future SKU must match transparently.
         ],
     )
     def test_moonshot_slugs_match(self, model: str) -> None:
@@ -50,15 +52,20 @@ class TestIsMoonshotModel:
 
 
 class TestRateCardUsd:
-    """Rate card defaults to the shared Moonshot price for every SKU."""
+    """Shared K2.x default plus per-slug overrides for split-priced SKUs."""
 
     def test_moonshot_default_rate(self) -> None:
         assert rate_card_usd("moonshotai/kimi-k2.6") == (0.60, 2.80)
 
+    def test_kimi_k3_premium_override(self) -> None:
+        # K3 is split-priced ($3/$15 per Mtok) — the override must win
+        # over the shared K2.x default.
+        assert rate_card_usd("moonshotai/kimi-k3") == (3.00, 15.00)
+
     def test_future_moonshot_sku_inherits_default(self) -> None:
         # Verifies the prefix-based fallback — new SKUs don't need a code
         # edit to get a reasonable rate card.
-        assert rate_card_usd("moonshotai/kimi-k3.0") == (0.60, 2.80)
+        assert rate_card_usd("moonshotai/kimi-k4") == (0.60, 2.80)
 
     def test_non_moonshot_returns_none(self) -> None:
         assert rate_card_usd("anthropic/claude-sonnet-4.6") is None
@@ -171,3 +178,31 @@ class TestSupportsCacheControl:
     )
     def test_non_moonshot_does_not_support_cache_control(self, model) -> None:
         assert moonshot_supports_cache_control(model) is False
+
+
+class TestMoonshotContextWindow:
+    """The catalog is the only place the real Kimi window is written down."""
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("moonshotai/kimi-k2.5", 262_144),
+            ("moonshotai/kimi-k2.6", 262_144),
+            ("moonshotai/kimi-k2-thinking", 262_144),
+            ("moonshotai/kimi-k3", 1_048_576),
+        ],
+    )
+    def test_reads_the_catalog_window(self, model, expected) -> None:
+        assert moonshot_context_window(model) == expected
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k9-unreleased",
+            "anthropic/claude-sonnet-5",
+            "",
+            None,
+        ],
+    )
+    def test_none_for_unlisted_and_non_moonshot(self, model) -> None:
+        assert moonshot_context_window(model) is None

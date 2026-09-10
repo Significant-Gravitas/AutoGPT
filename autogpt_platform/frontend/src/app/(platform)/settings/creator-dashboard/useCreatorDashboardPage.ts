@@ -13,7 +13,7 @@ import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmis
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 
 import {
@@ -34,7 +34,7 @@ interface EditState {
 
 export function useCreatorDashboardPage() {
   const queryClient = getQueryClient();
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,

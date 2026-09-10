@@ -1331,3 +1331,47 @@ class TestNavigableToolResultText:
             ]
         )
         assert _navigable_tool_result_text(multi) == multi
+
+
+class TestEmptyArgsCircuitBreaker:
+    """Empty-args calls give file-reference guidance and eventually trip the
+    circuit breaker instead of looping forever."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test",
+            session=None,
+            sandbox=None,
+            sdk_cwd="/tmp/test",
+        )
+
+    def _wrapper(self):
+        async def handler(_args):
+            raise AssertionError("handler must not run on empty args")
+
+        return _make_truncating_wrapper(
+            handler,
+            "create_agent",
+            input_schema={"type": "object", "properties": {"agent_json": {}}},
+            required_args=["agent_json"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_guidance_recommends_file_reference(self):
+        result = await self._wrapper()({})
+        text = _text_from_mcp_result(result)
+        assert result.get("isError") is True
+        assert "@@agptfile" in text
+        assert "truncated by the API" not in text
+
+    @pytest.mark.asyncio
+    async def test_repeated_empty_args_trip_circuit_breaker(self):
+        wrapper = self._wrapper()
+        for _ in range(3):
+            result = await wrapper({})
+            assert "empty arguments" in _text_from_mcp_result(result)
+        result = await wrapper({})
+        text = _text_from_mcp_result(result)
+        assert "STOP" in text
+        assert "Do NOT retry" in text

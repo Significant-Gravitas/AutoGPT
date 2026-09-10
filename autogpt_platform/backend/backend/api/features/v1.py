@@ -27,7 +27,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -36,17 +36,22 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
+from backend.api.features.executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+    hide_activity_summary_if_disabled,
+)
+from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
-    CreateAPIKeyRequest,
-    CreateAPIKeyResponse,
     CreateGraph,
     GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
-    UpdatePermissionsRequest,
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
@@ -66,7 +71,6 @@ from backend.copilot.tools.skills import (
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -101,7 +105,12 @@ from backend.data.execution_cost_summary import (
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    NotificationPreference,
+    NotificationPreferenceDTO,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
@@ -115,6 +124,11 @@ from backend.data.onboarding import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial_billing import (
+    TRIAL_BILLING_EVENTS,
+    sync_trials_for_billing_event,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -123,11 +137,13 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_or_create_user,
+    get_or_create_user_with_status,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
+    verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
@@ -138,9 +154,11 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
-    record_graph_execution,
     record_graph_operation,
 )
+from backend.notifications import lifecycle
+from backend.notifications.queue import queue_pass_work
+from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -149,7 +167,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
@@ -159,6 +177,7 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
+from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -184,21 +203,34 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
+    responses={
+        200: {
+            "description": "Successful Response",
+            "headers": {
+                USER_CREATED_HEADER: {
+                    "description": "Whether this request created a new user",
+                    "schema": {"type": "string", "enum": ["true", "false"]},
+                }
+            },
+        }
+    },
     dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+async def get_or_create_user_route(
+    response: Response, user_data: dict = Security(get_jwt_payload)
+):
+    result = await get_or_create_user_with_status(user_data)
+    response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
+    user = result.user
 
     # Fire-and-forget: populate business understanding from Tally form.
-    # We use created_at proximity instead of an is_new flag because
-    # get_or_create_user is cached — a separate is_new return value would be
-    # unreliable on repeated calls within the cache TTL.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:
@@ -284,6 +316,59 @@ async def update_preferences(
     return output
 
 
+@v1_router.post(
+    "/auth/user/preferences/from-email",
+    summary="Apply a volume-knob choice from a Briefing footer link",
+    tags=["auth"],
+)
+async def apply_email_preference_choice(
+    choice: Annotated[str, Query()],
+    token: Annotated[str, Query()],
+) -> NotificationPreference:
+    """Apply one footer choice, authorised by the token in the link.
+
+    Deliberately not `Security(requires_user)`. The session is the wrong
+    authority here: the settings page applies this on arrival, so a
+    session-authenticated write would let any third party change a logged-in
+    reader's preferences just by getting them to follow a link. The HMAC binds
+    the choice to the recipient we sent it to, exactly as the unsubscribe link
+    does, and works whether or not they happen to be signed in.
+    """
+    user_id = verify_preference_token(token, choice)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+
+    current = await get_user_notification_preference(user_id)
+    updated = _preference_with_choice(current, choice)
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Unknown preference choice")
+    return await update_user_notification_preference(user_id, updated)
+
+
+def _preference_with_choice(
+    current: NotificationPreference, choice: str
+) -> NotificationPreferenceDTO | None:
+    """The volume knob, server-side. "alerts" and "off" both stop the digest;
+    they differ in whether alerts survive."""
+    mapping: dict[str, tuple[BriefingFrequency, bool]] = {
+        "daily": (BriefingFrequency.DAILY, current.alerts_enabled),
+        "weekly": (BriefingFrequency.WEEKLY, current.alerts_enabled),
+        "monthly": (BriefingFrequency.MONTHLY, current.alerts_enabled),
+        "alerts": (BriefingFrequency.OFF, True),
+        "off": (BriefingFrequency.OFF, False),
+    }
+    if choice not in mapping:
+        return None
+    frequency, alerts = mapping[choice]
+    return NotificationPreferenceDTO(
+        email=current.email,
+        briefing_frequency=frequency,
+        alerts_enabled=alerts,
+        store_verdicts_enabled=current.store_verdicts_enabled,
+        daily_limit=current.daily_limit,
+    )
+
+
 ########################################################
 ##################### Onboarding #######################
 ########################################################
@@ -365,7 +450,8 @@ async def is_onboarding_completed(
 ) -> OnboardingStatusResponse:
     user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
+        is_completed=OnboardingStep.ONBOARDING_COMPLETE
+        in user_onboarding.completedSteps,
     )
 
 
@@ -745,6 +831,10 @@ async def configure_user_auto_top_up(
             await credit_model.top_up_credits(user_id, request.amount)
         else:
             await credit_model.top_up_credits(user_id, 0)
+    except NotImplementedError as e:
+        raise HTTPException(
+            status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -785,7 +875,7 @@ class SubscriptionTierRequest(BaseModel):
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["NO_TIER", "TRIAL", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> monthly amount in cents
     tier_costs_yearly: dict[str, int] = Field(
@@ -906,7 +996,7 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     every GET /credits/subscription page load and reduces quota consumption.
     """
     try:
-        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        price = await stripe_call(stripe.Price.retrieve_async, price_id)
         return price.unit_amount or 0
     except stripe.StripeError:
         logger.warning(
@@ -921,7 +1011,11 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
@@ -1081,6 +1175,11 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
+        raise HTTPException(
+            409,
+            "Your accepted plan starts after your trial. Manage the trial in billing.",
+        )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -1107,7 +1206,7 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled = await is_feature_enabled(
+    payment_enabled, payment_flag_authoritative = await evaluate_feature_flag(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
@@ -1140,6 +1239,20 @@ async def update_subscription_tier(
                 # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
+        if not payment_flag_authoritative:
+            # An unreadable flag reads False exactly like payment being off, and
+            # the DB flip below would strand a still-billing Stripe subscription.
+            logger.error(
+                f"Refusing to cancel subscription for user {user_id}: "
+                f"{Flag.ENABLE_PLATFORM_PAYMENT} could not be evaluated"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel your subscription right now. "
+                    "Please try again or contact support."
+                ),
+            )
         await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
@@ -1375,6 +1488,48 @@ async def _claim_stripe_event(event_id: str) -> bool:
         return True
 
 
+async def _notify_checkout_completed(session: dict) -> None:
+    """Hand the completed checkout to the lifecycle emails.
+
+    Failures here must not fail the webhook: the customer has paid, and Stripe
+    retrying the whole event would re-run `fulfill_checkout`, which grants
+    credits. But swallowing the failure lost the welcome permanently — Stripe
+    does not retry a 200, and `customer.subscription.created` deliberately does
+    not send it either.
+
+    So the work is queued rather than done here. The consumer re-reads the
+    session and subscription from Stripe and sends the welcome, with the same
+    retry-with-backoff and dead-letter queue every other notification gets.
+    Publishing is one small call that either succeeds or is logged; the Stripe
+    API round-trip and the email now sit behind a retry instead of a warning.
+    """
+    if session.get("mode") != "subscription":
+        return
+    if not session.get("subscription"):
+        return
+    session_id = session.get("id")
+    if not session_id:
+        return
+    result = await queue_pass_work(
+        PassWorkKind.WELCOME.value,
+        str(session_id),
+        PassWorkEvent(
+            kind=PassWorkKind.WELCOME,
+            user_id="",
+            scheduled_for=datetime.now(tz=timezone.utc),
+            context={"session_id": str(session_id)},
+        ).model_dump_json(),
+    )
+    if not result.success:
+        if (session.get("metadata") or {}).get("trial_enrollment_id"):
+            raise RuntimeError("Could not queue the trial welcome notice")
+        logger.warning(
+            "stripe_webhook: could not queue the welcome email for session %s: %s",
+            session_id,
+            result.message,
+        )
+
+
 async def _release_stripe_event(event_id: str) -> None:
     """Release a previously-claimed dedup key so Stripe's retry can rerun."""
     if not event_id:
@@ -1426,6 +1581,12 @@ async def stripe_webhook(request: Request):
     event_id = event.get("id", "")
     event_type = event.get("type", "")
 
+    if event_type in TRIAL_BILLING_EVENTS:
+        # This idempotent path only reconciles current Stripe state. Do not let
+        # a claim left by a crashed delivery suppress card removal/restoration.
+        await sync_trials_for_billing_event(event_type, event.get("data"))
+        return Response(status_code=200)
+
     # Event-level dedup: short-circuit identical re-deliveries before any
     # handler runs. Stripe retries the same event.id on non-2xx responses, and
     # not every downstream handler is independently idempotent.
@@ -1463,6 +1624,11 @@ async def stripe_webhook(request: Request):
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
             await sync_tier_from_checkout_session(data_object)
+            # Only `checkout.session.completed` drives the welcome email.
+            # `customer.subscription.created` fires at signup too; listening to
+            # both would double-send.
+            if event_type == "checkout.session.completed":
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -1470,6 +1636,12 @@ async def stripe_webhook(request: Request):
             "customer.subscription.deleted",
         ):
             await sync_subscription_from_stripe(data_object)
+            if event_type == "customer.subscription.updated":
+                await lifecycle.on_subscription_updated(
+                    data_object, event_data.get("previous_attributes") or {}
+                )
+            elif event_type == "customer.subscription.deleted":
+                await lifecycle.on_subscription_deleted(data_object)
 
         # `subscription_schedule.updated` is deliberately omitted: our own
         # `SubscriptionSchedule.create` + `.modify` calls in
@@ -1485,9 +1657,16 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_succeeded":
             await handle_subscription_payment_success(data_object)
+            await on_trial_invoice(data_object, paid=True)
+
+        if event_type == "customer.subscription.trial_will_end":
+            await sync_subscription_from_stripe(data_object)
+            await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
+            if not await on_trial_invoice(data_object, paid=False):
+                await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1499,12 +1678,15 @@ async def stripe_webhook(request: Request):
         if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
             invoice_id = data_object.get("invoice")
             if invoice_id:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
+                    await on_trial_invoice(invoice_payload, paid=True)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
+                    if not await on_trial_invoice(invoice_payload, paid=False):
+                        await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1552,6 +1734,7 @@ async def get_credit_history(
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
+    cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
@@ -1562,6 +1745,8 @@ async def get_credit_history(
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
     )
 
 
@@ -1607,6 +1792,33 @@ async def list_invoices(
 
 class DeleteGraphResponse(TypedDict):
     version_counts: int
+
+
+class UpdateGraphResponse(BaseModel):
+    """Response for creating/activating a new graph version.
+
+    Carries the new graph version plus any webhook presets that were left
+    pinned to their old version because the new version's trigger block is
+    incompatible and needs to be reconfigured.
+    """
+
+    graph: graph_db.GraphModel
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
+
+
+class SetActiveGraphVersionResponse(BaseModel):
+    """Response for activating an existing graph version.
+
+    Carries any webhook presets that were left pinned to their old version
+    because the newly activated version's trigger block is incompatible and
+    needs to be reconfigured.
+    """
+
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
 
 
 @v1_router.get(
@@ -1748,7 +1960,7 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> graph_db.GraphModel:
+) -> UpdateGraphResponse:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
@@ -1777,6 +1989,7 @@ async def update_graph(
         team_id=ctx.team_id,
     )
 
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
@@ -1790,11 +2003,11 @@ async def update_graph(
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
         if new_graph_version.webhook_input_node:
-            await library_db.migrate_webhook_presets_to_new_version(
+            migration = await library_db.migrate_webhook_presets_to_new_version(
                 user_id=user_id,
-                graph_id=graph_id,
-                new_version=new_graph_version.version,
+                new_graph=new_graph_version,
             )
+            skipped_webhook_presets = migration.skipped_presets
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -1803,7 +2016,10 @@ async def update_graph(
         include_subgraphs=True,
     )
     assert new_graph_version_with_subgraphs
-    return new_graph_version_with_subgraphs
+    return UpdateGraphResponse(
+        graph=new_graph_version_with_subgraphs,
+        skipped_webhook_presets=skipped_webhook_presets,
+    )
 
 
 @v1_router.put(
@@ -1817,7 +2033,7 @@ async def set_graph_active_version(
     request_body: SetGraphActiveVersion,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-):
+) -> SetActiveGraphVersionResponse:
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
         graph_id, new_active_version, user_id=user_id
@@ -1854,12 +2070,17 @@ async def set_graph_active_version(
 
     # Migrate webhook-attached presets to the new active version so that
     # existing webhook URLs continue to trigger the latest agent version.
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_active_graph.webhook_input_node:
-        await library_db.migrate_webhook_presets_to_new_version(
+        migration = await library_db.migrate_webhook_presets_to_new_version(
             user_id=user_id,
-            graph_id=graph_id,
-            new_version=new_active_version,
+            new_graph=new_active_graph,
         )
+        skipped_webhook_presets = migration.skipped_presets
+
+    return SetActiveGraphVersionResponse(
+        skipped_webhook_presets=skipped_webhook_presets
+    )
 
 
 @v1_router.patch(
@@ -1942,21 +2163,13 @@ async def execute_graph(
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
         )
-        # Record successful graph execution
-        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
-            await complete_onboarding_step(
-                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
-            )
+            await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
         elif source == "builder":
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
-        # Record failed graph execution
-        record_graph_execution(
-            graph_id=graph_id, status="validation_error", user_id=user_id
-        )
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -1969,8 +2182,6 @@ async def execute_graph(
             },
         )
     except Exception:
-        # Record any other failures
-        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
         record_graph_operation(operation="execute", status="error")
         raise
 
@@ -2119,23 +2330,6 @@ async def list_graph_executions(
     )
 
 
-async def hide_activity_summaries_if_disabled(
-    executions: list[execution_db.GraphExecutionMeta], user_id: str
-) -> list[execution_db.GraphExecutionMeta]:
-    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return executions  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    filtered_executions = []
-    for execution in executions:
-        if execution.stats:
-            filtered_stats = execution.stats.without_activity_features()
-            execution = execution.model_copy(update={"stats": filtered_stats})
-        filtered_executions.append(execution)
-    return filtered_executions
-
-
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     summary="Get execution details",
@@ -2179,21 +2373,6 @@ async def get_graph_execution(
         await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
-
-
-async def hide_activity_summary_if_disabled(
-    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
-    user_id: str,
-) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return execution  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    if execution.stats:
-        filtered_stats = execution.stats.without_activity_features()
-        return execution.model_copy(update={"stats": filtered_stats})
-    return execution
 
 
 @v1_router.delete(
@@ -2385,6 +2564,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
+    expert_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
 
 
 @v1_router.post(
@@ -2417,6 +2600,21 @@ async def create_graph_execution_schedule(
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+    # Expert attribution: explicit expert_id must be an active expert owned
+    # by the caller; when omitted, a unique (user, graph) → expert match
+    # keeps attribution for schedules created through the generic UI.
+    expert_id = schedule_params.expert_id
+    if expert_id is not None:
+        expert = await experts_db.get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+        if expert is None or expert.is_archived:
+            raise HTTPException(
+                status_code=404, detail=f"Expert #{expert_id} not found."
+            )
+    else:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
+
     result = await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
@@ -2428,6 +2626,7 @@ async def create_graph_execution_schedule(
         user_timezone=user_timezone,
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
+        expert_id=expert_id,
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -2741,119 +2940,3 @@ async def delete_copilot_skill(
     except SkillNotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
     return {"name": slug}
-
-
-########################################################
-#####################  API KEY ##############################
-########################################################
-
-
-@v1_router.post(
-    "/api-keys",
-    summary="Create new API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def create_api_key(
-    request: CreateAPIKeyRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> CreateAPIKeyResponse:
-    """Create a new API key"""
-    api_key_info, plain_text_key = await api_key_db.create_api_key(
-        name=request.name,
-        user_id=user_id,
-        permissions=request.permissions,
-        description=request.description,
-        organization_id=ctx.org_id,
-    )
-    return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
-
-
-@v1_router.get(
-    "/api-keys",
-    summary="List user API keys",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_keys(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> list[api_key_db.APIKeyInfo]:
-    """List all API keys for the user"""
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
-    )
-
-
-@v1_router.get(
-    "/api-keys/{key_id}",
-    summary="Get specific API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-    if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
-    return api_key
-
-
-@v1_router.delete(
-    "/api-keys/{key_id}",
-    summary="Revoke API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Revoke an API key"""
-    return await api_key_db.revoke_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.post(
-    "/api-keys/{key_id}/suspend",
-    summary="Suspend API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def suspend_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Suspend an API key"""
-    return await api_key_db.suspend_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.put(
-    "/api-keys/{key_id}/permissions",
-    summary="Update key permissions",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def update_permissions(
-    key_id: str,
-    request: UpdatePermissionsRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Update API key permissions"""
-    return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
-    )
