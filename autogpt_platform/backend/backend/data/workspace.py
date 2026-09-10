@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import posixpath
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -15,7 +16,8 @@ from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.data.workspace_scope import (
-    resolve_expert_workspace_scope as resolve_expert_workspace_scope,
+    WorkspaceAccessDeniedError,
+    resolve_expert_workspace_scope,
 )
 from backend.util.json import SafeJson
 
@@ -337,7 +339,7 @@ async def list_workspace_files(
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
     if allowed_path_prefixes:
-        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
+        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
 
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
@@ -349,9 +351,9 @@ async def list_workspace_files(
 
 
 def _path_prefix_filters(prefixes: list[str]) -> list[UserWorkspaceFileWhereInput]:
-    return [
-        {"path": {"startswith": p if p.startswith("/") else f"/{p}"}} for p in prefixes
-    ]
+    """Nested under ``AND`` so the scope filter can never replace another
+    ``OR`` branch a caller adds later; scope prefixes are always rooted."""
+    return [{"path": {"startswith": prefix}} for prefix in prefixes]
 
 
 async def count_workspace_files(
@@ -385,9 +387,36 @@ async def count_workspace_files(
         where_clause["path"] = {"startswith": path_prefix}
 
     if allowed_path_prefixes:
-        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
+        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
+
+
+async def rename_workspace_file(
+    file_id: str,
+    workspace_id: str,
+    name: str,
+) -> Optional[WorkspaceFile]:
+    """Rename a file in place: its virtual path keeps its folder and gets the
+    new name; the storage blob is untouched.
+
+    Raises ``UniqueViolationError`` when another file already lives at the
+    resulting path, so the caller can answer with a conflict.
+
+    Returns the updated file, or None when it does not exist in the workspace.
+    """
+    file = await get_workspace_file(file_id, workspace_id)
+    if file is None:
+        return None
+    new_path = posixpath.join(posixpath.dirname(file.path), name)
+    updated = await UserWorkspaceFile.prisma().update(
+        where={"id": file_id},
+        data={"name": name, "path": new_path},
+    )
+    if updated is None:
+        return None
+    logger.info(f"Renamed workspace file {file_id} to {new_path}")
+    return WorkspaceFile.from_db(updated)
 
 
 async def soft_delete_workspace_file(
@@ -451,6 +480,38 @@ async def resolve_workspace_files(
             "isDeleted": False,
         }
     )
+
+
+async def resolve_attachable_workspace_files(
+    user_id: str,
+    file_ids: list[str],
+    *,
+    session_id: str,
+    expert_id: str | None,
+) -> list[UserWorkspaceFile]:
+    """Resolve attachment IDs for a message sent in ``session_id``.
+
+    Personal AutoPilot sessions may attach any file in the owner's workspace.
+    Expert sessions are confined to the expert's resolved scope: attaching a
+    file from another expert's conversations raises
+    ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface
+    a clear error instead of leaking the file's metadata into the turn.
+
+    Runs in the API server with direct DB access, so the resolver is called
+    in-process; code in the executor must go through ``workspace_db()``.
+    """
+    files = await resolve_workspace_files(user_id, file_ids)
+    if expert_id is None or not files:
+        return files
+    scope = await resolve_expert_workspace_scope(user_id, expert_id)
+    scope = scope.with_session(session_id)
+    denied = [f.name for f in files if not scope.allows_path(f.path)]
+    if denied:
+        raise WorkspaceAccessDeniedError(
+            "These files are outside this expert's conversations and cannot be "
+            f"attached here: {', '.join(denied)}. Upload them in this chat instead."
+        )
+    return files
 
 
 def build_files_block(files: list[UserWorkspaceFile]) -> str:

@@ -137,7 +137,8 @@ model User {
   defaultChatAuthProvider String?
   defaultChatCredentialId String?
 
-  subscriptionTier SubscriptionTier @default(NO_TIER)
+  subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  subscriptionTrial SubscriptionTrial?
 
   // Relations
 
@@ -164,6 +165,8 @@ model User {
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
+  SkillListings         SkillListing[]
+  SkillVersionsReviewed SkillListingVersion[] @relation("SkillVersionsReviewed")
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
@@ -196,11 +199,51 @@ enum ChatSessionStatus {
 
 enum SubscriptionTier {
   NO_TIER
+  TRIAL
   BASIC
   PRO
   MAX
   BUSINESS
   ENTERPRISE
+}
+
+model SubscriptionTrial {
+  id                        String                      @id @default(uuid())
+  userId                    String                      @unique
+  user                      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer                     Json
+  stripeCustomerId          String
+  stripeCheckoutSessionId   String?                     @unique
+  stripeSubscriptionId      String?                     @unique
+  stripeConversionInvoiceId String?                     @unique
+  notificationRevision      Int                         @default(0)
+  checkoutAttempt           Int                         @default(0)
+  checkoutSuccessUrl        String
+  checkoutCancelUrl         String
+  checkoutMetadata          Json                        @default("{}")
+  status                    String                      @default("checkout_pending")
+  rejectionReason           String?
+  cardVerifiedAt            DateTime?
+  startedAt                 DateTime?
+  endsAt                    DateTime?
+  consumedAt                DateTime?
+  convertedAt               DateTime?
+  cancelAtPeriodEnd         Boolean                     @default(false)
+  costMicrodollars          BigInt                      @default(0)
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+
+  @@index([status, endsAt])
+  @@index([stripeCustomerId, id])
+}
+
+// No account/trial foreign key: deleting an account must not reset intro eligibility.
+model SubscriptionTrialClaim {
+  key       String   @id
+  trialId   String
+  createdAt DateTime @default(now())
+
+  @@index([trialId])
 }
 
 model UserOnboarding {
@@ -212,19 +255,19 @@ model UserOnboarding {
   // backend, OpenAPI-generated union on the frontend). Storing as String[]
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
-  completedSteps                String[]         @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      String[]         @default([])
-  rewardedFor                   String[]         @default([])
+  completedSteps                String[]  @default([])
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -289,17 +332,22 @@ model OnboardingBrainDump {
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
   /// is instant — the user has already waited through the loading screen.
-  greeting         String?
+  greeting             String?
   /// List of {title, prompt} objects the user can pick from under the
   /// greeting. JSON so the shape can evolve without a migration.
-  suggestedPrompts Json    @default("[]")
+  suggestedPrompts     Json    @default("[]")
   /// True once the user has sent their first message. The greeting is
   /// never shown again after this, but its content is kept.
-  greetingSeen     Boolean @default(false)
+  greetingSeen         Boolean @default(false)
   /// List of {provider, reason} objects Claude picks from the transcript
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
   recommendedProviders Json?
+  /// The team AutoPilot proposes off the back of the dump: {diagnosis,
+  /// experts, raise_suggestion, source}, where every expert is a live
+  /// roster template. Null until its background job writes a result;
+  /// `source="disabled"` records a run the feature flag switched off.
+  recommendedExperts   Json?
 
   @@index([userId])
 }
@@ -777,6 +825,7 @@ enum NotificationType {
   SUBSCRIPTION_CANCELLED
   SUBSCRIPTION_RESUMED
   SUBSCRIPTION_ENDED
+  TRIAL_UPDATE
 }
 
 // How often the Briefing is delivered. OFF is the "alerts only" / "pause"
@@ -826,7 +875,7 @@ model AlertCondition {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  cause AlertCause
+  cause    AlertCause
   // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
   // id>"), so re-raising the same condition updates one row instead of piling
   // up duplicates, and resolving it can find the row without the payload.
@@ -838,7 +887,7 @@ model AlertCondition {
   resolvedAt DateTime?
   // Set once the condition has been carried into a Briefing's attention
   // block, so the next Briefing doesn't repeat it.
-  briefedAt DateTime?
+  briefedAt  DateTime?
 
   @@unique([userId, causeKey])
   @@index([status, createdAt])
@@ -902,9 +951,9 @@ model PushSubscription {
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   lastRunAt DateTime?
 
   userId String
@@ -996,17 +1045,17 @@ model Expert {
   ownerUserId String?
   OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  name      String
-  avatarUrl String?
+  name             String
+  avatarUrl        String?
   // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
-  color     String   @default("")
-  role      String
-  tagline   String?
-  identity  String
-  bio       String?
-  skills    String[] @default([])
-  voicePreferences String @default("")
-  boundaries       String @default("")
+  color            String   @default("")
+  role             String
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
 
   toolProfile Json?
 
@@ -1020,7 +1069,7 @@ model Expert {
   // Weekly credit guardrail: null = platform default from config.
   // Spend is tracked per ISO week in Redis and reconciled from
   // CreditTransaction via the execution's expertId.
-  weeklyBudget Int?
+  weeklyBudget      Int?
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
@@ -1699,6 +1748,7 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
   StoreListings StoreListing[]
+  SkillListings SkillListing[]
 
   @@index([userId])
 }
@@ -1970,6 +2020,98 @@ model StoreListingVersion {
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
+  @@index([organizationId])
+}
+
+// A marketplace listing for a knowledge skill: instructions and examples the
+// copilot reads, never a runnable graph. Separate from StoreListing because
+// that model's agentGraphId is required and its StoreAgent view exposes the
+// graph as non-null.
+model SkillListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted          Boolean @default(false)
+  hasApprovedVersion Boolean @default(false)
+
+  // Globally unique, not scoped to a creator: a platform listing has no
+  // creator segment to disambiguate it, so the URL is /marketplace/skills/{slug}.
+  slug String @unique
+
+  activeVersionId String?              @unique
+  ActiveVersion   SkillListingVersion? @relation("SkillActiveVersion", fields: [activeVersionId], references: [id])
+
+  // Popularity for browse ordering. Skills have no executions, so there is no
+  // run count to aggregate — installs are counted on the row instead.
+  installCount Int @default(0)
+
+  // Null for platform-authored starter listings, the way a roster Expert has
+  // no owner until it is hired. A creator listing carries both.
+  owningUserId   String?
+  OwningUser     User?    @relation(fields: [owningUserId], references: [id])
+  CreatorProfile Profile? @relation(fields: [owningUserId], references: [userId], map: "SkillListing_owner_Profile_fkey", onDelete: Cascade)
+
+  Versions SkillListingVersion[] @relation("SkillListingVersions")
+
+  // Tenancy
+  owningOrgId String?
+  OwningOrg   Organization? @relation("OrgSkillListings", fields: [owningOrgId], references: [id])
+
+  @@index([isDeleted, hasApprovedVersion])
+  @@index([owningUserId])
+  @@index([owningOrgId])
+}
+
+model SkillListingVersion {
+  id        String   @id @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // The SKILL.md this version publishes: frontmatter fields plus the body.
+  // Snapshotted at submission, so editing the creator's library skill never
+  // changes what installers get.
+  name        String
+  description String
+  body        String
+  triggers    String[] @default([])
+  categories  String[]
+
+  // Integrations the skill's instructions assume the installer has connected;
+  // provider names as used by the credentials system.
+  requiredProviders String[] @default([])
+
+  // The creator's own library skill slug this was published from, so a
+  // re-publish can find its listing again. Null once that skill is deleted.
+  sourceSkillSlug String?
+
+  isDeleted   Boolean @default(false)
+  isAvailable Boolean @default(true)
+
+  submissionStatus SubmissionStatus @default(DRAFT)
+  submittedAt      DateTime?
+
+  skillListingId String
+  SkillListing   SkillListing @relation("SkillListingVersions", fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  ActiveFor SkillListing? @relation("SkillActiveVersion")
+
+  changesSummary String?
+
+  reviewerId       String?
+  Reviewer         User?     @relation("SkillVersionsReviewed", fields: [reviewerId], references: [id])
+  internalComments String?
+  reviewComments   String?
+  reviewedAt       DateTime?
+
+  // Tenancy
+  organizationId String?
+
+  @@unique([skillListingId, version])
+  @@index([skillListingId, submissionStatus, isAvailable])
+  @@index([submissionStatus])
+  @@index([reviewerId])
   @@index([organizationId])
 }
 
@@ -2254,6 +2396,7 @@ model Organization {
   CreditTransactions OrgCreditTransaction[]
   Invitations        OrgInvitation[]
   StoreListings      StoreListing[]               @relation("OrgStoreListings")
+  SkillListings      SkillListing[]               @relation("OrgSkillListings")
   Credentials        IntegrationCredential[]
   Profile            OrganizationProfile?
   Subscription       OrganizationSubscription?

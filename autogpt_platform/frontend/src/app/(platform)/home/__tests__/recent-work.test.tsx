@@ -114,6 +114,7 @@ const recentWork: HomeRecentWork = {
       actor: {
         kind: "workflow",
         name: "Release Note Generator",
+        image_url: "https://example.com/release-notes.png",
         link: "/library/agents/lib-1",
       },
       latest_at: NOW,
@@ -145,7 +146,7 @@ const recentWork: HomeRecentWork = {
       integration_count: 1,
     },
     {
-      actor: { kind: "autopilot", name: "Autopilot", link: "/copilot" },
+      actor: { kind: "autopilot", name: "AutoPilot", link: "/copilot" },
       latest_at: NOW,
       runs: [],
       items: [
@@ -174,6 +175,7 @@ const dashboard: HomeDashboardResponse = {
     failed_count: 0,
     routine_count: 0,
     outcomes: [],
+    author: { kind: "autopilot", name: "AutoPilot", role: "Head of AI" },
   },
   active_tasks: [],
   upcoming_tasks: [],
@@ -252,13 +254,13 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(within(workflowGroup).getByText("Send Email")).toBeDefined();
   expect(within(workflowGroup).getByText(/google/)).toBeDefined();
 
-  const autopilotGroup = screen.getByRole("article", { name: "Autopilot" });
+  const autopilotGroup = screen.getByRole("article", { name: "AutoPilot" });
   expect(
     within(autopilotGroup).getByText("competitor-pricing.csv"),
   ).toBeDefined();
 });
 
-test("puts the team first and workflows in their own section below", async () => {
+test("puts the team first and the workflows that ran on their own after them", async () => {
   mockDashboard(dashboard);
 
   render(<HomePage />);
@@ -270,23 +272,28 @@ test("puts the team first and workflows in their own section below", async () =>
     within(tile)
       .getAllByRole("article")
       .map((article) => article.getAttribute("aria-label")),
-  ).toEqual(["Maria", "Autopilot", "Release Note Generator"]);
+  ).toEqual(["Maria", "AutoPilot", "Release Note Generator"]);
+  // The kind chip says which half a group belongs to, so the rows run
+  // straight on without a caption between them.
+  expect(within(tile).queryByText("Workflows")).toBeNull();
+});
 
-  const label = within(tile).getByText("Workflows");
-  const autopilotGroup = within(tile).getByRole("article", {
-    name: "Autopilot",
-  });
-  const workflowGroup = within(tile).getByRole("article", {
+test("marks a workflow group with its own picture and kind", async () => {
+  mockDashboard(dashboard);
+
+  render(<HomePage />);
+
+  await screen.findByRole("heading", { name: "Recent work" });
+  const workflowGroup = screen.getByRole("article", {
     name: "Release Note Generator",
   });
-  expect(
-    autopilotGroup.compareDocumentPosition(label) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
-  expect(
-    label.compareDocumentPosition(workflowGroup) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  expect(within(workflowGroup).getByText("Workflow")).toBeDefined();
+  const picture = await within(workflowGroup).findByRole("img", {
+    name: "Release Note Generator",
+  });
+  expect(picture.getAttribute("src")).toBe(
+    "https://example.com/release-notes.png",
+  );
 });
 
 test("links each actor to its home and thread work to its session", async () => {

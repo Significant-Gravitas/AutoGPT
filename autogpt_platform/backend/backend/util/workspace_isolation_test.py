@@ -83,17 +83,12 @@ async def test_explicit_paths_cannot_escape_scope(db, path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "/skills/autopilot/SKILL.md",
-        "/skills/autopilot/references/private.txt",
-        "/experts/expert-b/skills/theirs/SKILL.md",
+        "/experts/expert-a/skills/mine/SKILL.md",
+        "/experts/expert-a/skills/mine/references/file.txt",
     ],
 )
-async def test_other_owners_skill_files_are_denied(db, path: str):
-    with pytest.raises(WorkspaceAccessDeniedError):
-        await _skills_manager().read_file(path)
-    with pytest.raises(WorkspaceAccessDeniedError):
-        await _skills_manager().write_file(b"x", "f", path=path, overwrite=True)
-    db.get_workspace_file_by_path.assert_not_awaited()
+async def test_own_skills_folder_is_readable(db, storage, path: str):
+    assert await _skills_manager().read_file(path) == b"allowed"
 
 
 @pytest.mark.parametrize(
@@ -111,12 +106,18 @@ async def test_own_and_delegated_paths_are_readable(db, storage, path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "/experts/expert-a/skills/mine/SKILL.md",
-        "/experts/expert-a/skills/mine/references/file.txt",
+        "/skills/autopilot/SKILL.md",
+        "/skills/autopilot/references/file.txt",
+        "/experts/expert-b/skills/theirs/SKILL.md",
+        "/root-file.txt",
     ],
 )
-async def test_own_skill_files_are_readable(db, storage, path: str):
-    assert await _skills_manager().read_file(path) == b"allowed"
+async def test_paths_outside_any_grant_are_denied(db, path: str):
+    with pytest.raises(WorkspaceAccessDeniedError):
+        await _skills_manager().read_file(path)
+    with pytest.raises(WorkspaceAccessDeniedError):
+        await _skills_manager().write_file(b"x", "f", path=path, overwrite=True)
+    db.get_workspace_file_by_path.assert_not_awaited()
 
 
 async def test_delegated_session_is_not_writable(db):
@@ -144,3 +145,28 @@ async def test_owner_without_scope_keeps_full_access(db, storage):
     assert await manager.read_file_by_id("foreign-file") == b"allowed"
     await manager.list_files(include_all_sessions=True)
     assert db.list_workspace_files.call_args.kwargs["allowed_path_prefixes"] is None
+
+
+async def test_requested_prefixes_are_narrowed_to_the_scope(db):
+    manager = _expert_manager()
+    await manager.list_files(
+        include_all_sessions=True,
+        allowed_path_prefixes=["/sessions/expert-a/", "/sessions/expert-b/"],
+    )
+    assert db.list_workspace_files.call_args.kwargs["allowed_path_prefixes"] == [
+        "/sessions/expert-a/"
+    ]
+    await manager.get_file_count(
+        include_all_sessions=True, allowed_path_prefixes=["/sessions/expert-b/"]
+    )
+    assert db.count_workspace_files.call_args.kwargs["allowed_path_prefixes"] == []
+
+
+async def test_owner_without_scope_lists_the_requested_prefixes(db):
+    manager = WorkspaceManager("user-1", "ws-1", "personal")
+    await manager.list_files(
+        include_all_sessions=True, allowed_path_prefixes=["/sessions/expert-b/"]
+    )
+    assert db.list_workspace_files.call_args.kwargs["allowed_path_prefixes"] == [
+        "/sessions/expert-b/"
+    ]

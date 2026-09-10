@@ -32,15 +32,16 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
               {expert.name}
             </h1>
+            {/* Same pill as the marketplace expert card. */}
             <Text
-              variant="body-medium"
+              variant="small-medium"
               as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5",
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5",
                 accent.pill,
               )}
             >
-              <Icon icon={accent.roleIcon} size={14} />
+              <Icon icon={accent.roleIcon} size={12} />
               {expert.role}
             </Text>
           </div>
@@ -48,7 +49,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={PencilEdit02Icon}
             onClick={onEditSoul}
           >
@@ -56,7 +57,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           </Button>
           <Button
             variant="primary"
-            size="xs"
+            size="small"
             leadingIcon={BubbleChatIcon}
             onClick={onChat}
           >

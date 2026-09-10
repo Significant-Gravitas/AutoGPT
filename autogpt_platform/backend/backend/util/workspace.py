@@ -91,8 +91,20 @@ class WorkspaceManager:
     def _authorize_file(self, file: WorkspaceFile, *, write: bool = False) -> None:
         self._authorize_path(file.path, write=write)
 
-    def _allowed_prefixes(self) -> Optional[list[str]]:
-        return None if self.scope is None else self.scope.read_prefixes
+    def _allowed_prefixes(
+        self, requested: Optional[list[str]] = None
+    ) -> Optional[list[str]]:
+        """Prefixes a listing may span: the scope's, narrowed to ``requested``.
+
+        A requested prefix survives only if it lies inside a scope prefix, so
+        this argument can narrow an expert's reach but never widen it.
+        """
+        if self.scope is None:
+            return requested
+        allowed = self.scope.read_prefixes
+        if requested is None:
+            return allowed
+        return [p for p in requested if any(p.startswith(a) for a in allowed)]
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -388,6 +400,7 @@ class WorkspaceManager:
         metadata_not_equals: Optional[dict] = None,
         folder_id: Optional[str] = None,
         root_only: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -412,6 +425,9 @@ class WorkspaceManager:
                 this object (Artifacts "Generated" filter).
             folder_id: If set, only return files in this folder.
             root_only: If True, only return root-level files (folderId IS NULL).
+            allowed_path_prefixes: Only list files under these prefixes. When
+                the manager carries a scope the prefixes are intersected with
+                it (see :meth:`_allowed_prefixes`).
 
         Returns:
             List of WorkspaceFile instances
@@ -430,7 +446,7 @@ class WorkspaceManager:
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
             root_only=root_only,
-            allowed_path_prefixes=self._allowed_prefixes(),
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -507,7 +523,14 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            WorkspaceFile instance or None
+            WorkspaceFile instance, or None when no such file exists.
+
+        Raises:
+            WorkspaceAccessDeniedError: the file exists but lies outside this
+                manager's scope. Deliberately not folded into ``None`` so an
+                expert sees "access denied" rather than "not found" for a
+                file it cannot reach; every caller either surfaces it as such
+                or treats it like any other failure to read the file.
         """
         db = workspace_db()
         file = await db.get_workspace_file(file_id, self.workspace_id)
@@ -537,6 +560,7 @@ class WorkspaceManager:
         self,
         path: Optional[str] = None,
         include_all_sessions: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> int:
         """
         Get number of files in workspace.
@@ -558,5 +582,5 @@ class WorkspaceManager:
         return await db.count_workspace_files(
             self.workspace_id,
             path_prefix=effective_path,
-            allowed_path_prefixes=self._allowed_prefixes(),
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )

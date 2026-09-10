@@ -264,7 +264,7 @@ test("keeps the onboarding surface and recipient picker with the experts flag on
 
   // The composer's expert picker is the only way to address an expert from
   // the home, and it only renders behind the experts flag.
-  expect(await screen.findByText("Autopilot")).toBeDefined();
+  expect(await screen.findByText("AutoPilot")).toBeDefined();
   // Suggestion themes come from EmptySession, not the briefing block.
   expect(screen.getByPlaceholderText(/./)).toBeDefined();
 });

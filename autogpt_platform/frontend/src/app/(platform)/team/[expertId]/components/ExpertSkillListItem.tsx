@@ -23,10 +23,10 @@ export function ExpertSkillListItem({
   const triggers = entry.skill?.triggers ?? [];
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
       data-testid="expert-skill-row"
     >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <div
           className={cn(
             "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-violet-50 text-violet-700",
@@ -66,7 +66,7 @@ export function ExpertSkillListItem({
             as="NextLink"
             href="/library/skills"
             variant="ghost"
-            size="xs"
+            size="small"
           >
             Open in library
           </Button>
@@ -74,7 +74,7 @@ export function ExpertSkillListItem({
         {onRemove ? (
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={Delete02Icon}
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}

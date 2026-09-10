@@ -6,7 +6,12 @@ import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAtten
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import HomePage from "../page";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
@@ -125,6 +130,7 @@ const dashboard: HomeDashboardResponse = {
     failed_count: 1,
     routine_count: 13,
     outcomes: [cameraResearch, schedulingFailure],
+    author: { kind: "autopilot", name: "AutoPilot", role: "Head of AI" },
   },
   active_tasks: [
     {
@@ -226,6 +232,35 @@ test("renders every Home tile from the aggregate API", async () => {
     screen.getAllByText("Checking recurring subscriptions").length,
   ).toBeGreaterThan(0);
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
+});
+
+test("says which workflow is running now and shows its picture", async () => {
+  mockDashboard({
+    ...dashboard,
+    active_tasks: [
+      {
+        id: "active-2",
+        title: "Tell me a fact!",
+        status: "running",
+        image_url: "https://example.com/tell-me-a-fact.png",
+        started_at: new Date("2026-08-09T11:52:00Z"),
+        link: "/library",
+      },
+    ],
+    upcoming_tasks: [],
+  });
+
+  render(<HomePage />);
+
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(within(tile).getByText("Tell me a fact!")).toBeDefined();
+  expect(within(tile).getByText("workflow")).toBeDefined();
+  const picture = await within(tile).findByRole("img", {
+    name: "Tell me a fact!",
+  });
+  expect(picture.getAttribute("src")).toBe(
+    "https://example.com/tell-me-a-fact.png",
+  );
 });
 
 test("shows weekly spend per agent and on the team line", async () => {
@@ -400,6 +435,25 @@ test("opens the briefing with the AI-written narrative when there is one", async
     ),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
+});
+
+test("bylines the briefing to AutoPilot, not to the expert it reports on", async () => {
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      narrative: "Maria finished your camera research overnight.",
+    },
+  });
+
+  render(<HomePage />);
+
+  const byline = within(await screen.findByTestId("briefing-byline"));
+  expect(byline.getByText("AutoPilot")).toBeDefined();
+  expect(byline.getByText("Head of AI")).toBeDefined();
+  // Maria's run is reported all over the page; the byline is the one place
+  // she must not appear as the author of.
+  expect(byline.queryByText("Maria")).toBeNull();
 });
 
 test("renders the briefing unchanged when no narrative was generated", async () => {
