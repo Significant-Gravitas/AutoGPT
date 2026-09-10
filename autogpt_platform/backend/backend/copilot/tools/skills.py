@@ -837,14 +837,15 @@ async def _copy_assigned_skills_not_yet_owned(
         if folder is None:
             continue
         try:
-            copied = await copy_skill_to_expert(user_id, expert_id, folder) or copied
+            if await copy_skill_to_expert(user_id, expert_id, folder):
+                copied = True
         except Exception:
             logger.exception(
                 "[skills] failed to copy assigned skill %r to expert #%s",
                 name,
                 expert_id,
             )
-    return bool(copied)
+    return copied
 
 
 async def read_user_skill_with_body(
