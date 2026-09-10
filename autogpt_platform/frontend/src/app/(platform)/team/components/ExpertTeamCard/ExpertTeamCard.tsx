@@ -189,7 +189,11 @@ export function ExpertTeamCard({
             <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
             <span className="truncate">{expert.role}</span>
           </Text>
-          <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
+          <Text
+            variant="body"
+            tone="muted"
+            className="mt-1 line-clamp-3 min-h-[3lh]"
+          >
             {blurb}
           </Text>
         </div>

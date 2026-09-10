@@ -78,7 +78,11 @@ export function AutopilotCard({
             <Icon icon={SparklesIcon} size={12} />
             {AUTOPILOT_ROLE}
           </Text>
-          <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
+          <Text
+            variant="body"
+            tone="muted"
+            className="mt-1 line-clamp-3 min-h-[3lh]"
+          >
             {AUTOPILOT_BLURB}
           </Text>
         </div>

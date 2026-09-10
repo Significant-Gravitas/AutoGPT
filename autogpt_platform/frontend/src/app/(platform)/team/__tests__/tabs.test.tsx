@@ -231,7 +231,7 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).queryByText("Skills")).toBeNull();
     expect(within(autopilot).queryByText("Schedules")).toBeNull();
     expect(within(autopilot).queryByText("Workflows")).toBeNull();
-    expect(within(autopilot).getByText("Built in")).toBeDefined();
+    expect(within(autopilot).queryByText("Built in")).toBeNull();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(
       within(autopilot).getByRole("button", { name: "Chat" }),
