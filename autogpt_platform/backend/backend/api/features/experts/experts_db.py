@@ -60,7 +60,7 @@ from backend.copilot.tools.skills import (
     SkillNotFoundError,
     copy_skill_to_expert,
     delete_user_skill,
-    find_user_skill_slug,
+    find_user_skill_slugs,
     get_default_skill_with_body,
 )
 from backend.data.db import execute_raw_with_schema
@@ -337,6 +337,17 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
         )
         > 0
     )
+
+
+async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
+    """True iff *user_id* owns *expert_id* as a live, private hire.
+
+    Stricter than :func:`owns_active_expert` by the visibility filter, which
+    is what the per-expert resource routes need: a TEAM/ORG expert has no
+    sharing rules yet, so writing its folder would mutate an expert the chat
+    side resolves to no grants at all.
+    """
+    return await _owned_active_expert(user_id, expert_id) is not None
 
 
 async def get_expert(
@@ -939,12 +950,22 @@ async def _copy_library_skills(
     was raised with. Defaults and marketplace names have nothing to copy.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
+    candidates = [
+        name
+        for name in names
+        if get_default_skill_with_body(name.strip().lower()) is None
+    ]
+    folders = await find_user_skill_slugs(user_id, candidates)
     failed: list[str] = []
-    for name in names:
-        if get_default_skill_with_body(name.strip().lower()) is not None:
+    for name in candidates:
+        folder = folders.get(name.strip().lower())
+        if folder is None:
+            # A marketplace attachment: no library folder to copy, and the
+            # name is legitimate, so it stays on the row.
             continue
         try:
-            await copy_skill_to_expert(user_id, expert_id, name)
+            if await copy_skill_to_expert(user_id, expert_id, folder) is None:
+                failed.append(name)
         except Exception:
             logger.exception(f"Failed to copy skill {name!r} to expert #{expert_id}")
             failed.append(name)
@@ -1033,9 +1054,12 @@ async def update_skills(
     # Resolve every name before any write, so a bad name rejects the whole
     # request instead of leaving a half-applied prefix of copies behind.
     current = {name.lower(): name for name in row.skills or []}
-    plan = [
-        await _plan_skill(user_id, current.get(name.lower()), name) for name in skills
-    ]
+    # One library listing for the whole request: resolving per name turned a
+    # single PUT into a storage scan per name.
+    folders = await find_user_skill_slugs(
+        user_id, [current.get(name.lower()) or name for name in skills]
+    )
+    plan = [_plan_skill(current.get(name.lower()), name, folders) for name in skills]
     marketplace = [
         await _resolve_marketplace_skill_name(listing_id)
         for listing_id in marketplace_listing_ids or []
@@ -1054,9 +1078,12 @@ async def update_skills(
     kept = {r.lower() for r in resolved}
     for dropped in [name for name in current.values() if name.lower() not in kept]:
         await _detach_expert_skill(user_id, expert_id, dropped)
-    await prisma.models.Expert.prisma().update(
-        where={"id": row.id}, data={"skills": resolved}
-    )
+        await remove_expert_skill_name(user_id, expert_id, dropped)
+    # Per-name atomic writes, not one full-array set: the expert can append to
+    # its own row with store_skill while the copies above run, and a blind
+    # overwrite computed from the pre-copy read would silently drop that.
+    for name in resolved:
+        await add_expert_skill_name(user_id, expert_id, name)
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
@@ -1076,8 +1103,8 @@ async def _resolve_marketplace_skill_name(store_listing_version_id: str) -> str:
     return listing.name
 
 
-async def _plan_skill(
-    user_id: str, kept_name: str | None, name: str
+def _plan_skill(
+    kept_name: str | None, name: str, folders: dict[str, str]
 ) -> tuple[str, str | None]:
     """Decide the stored name and which AutoPilot folder, if any, to copy.
 
@@ -1091,7 +1118,7 @@ async def _plan_skill(
     default = get_default_skill_with_body(slug)
     if default is not None:
         return default.name, None
-    folder = await find_user_skill_slug(user_id, slug)
+    folder = folders.get(slug)
     if kept_name is not None:
         return kept_name, folder
     if folder is None:

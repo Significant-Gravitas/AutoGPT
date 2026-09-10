@@ -1719,7 +1719,7 @@ async def test_update_skills_attaches_library_skills_and_keeps_existing(
 async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
     server: SpinTestServer, test_user, monkeypatch
 ):
-    monkeypatch.setattr(experts_db, "find_user_skill_slug", _slug("deep-research"))
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _slugs("deep-research"))
     monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -1731,9 +1731,9 @@ async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
     assert updated.skills == ["deep-research"]
 
 
-def _slug(slug):
-    async def _find(*_args, **_kwargs):
-        return slug
+def _slugs(slug):
+    async def _find(_user_id, names):
+        return {name.strip().lower(): slug for name in names}
 
     return _find
 
@@ -3999,14 +3999,14 @@ async def test_update_skills_resolves_every_name_before_copying(
 ):
     copies: list[str] = []
 
-    async def _find(user_id, name):
-        return None if name == "missing" else name
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names if n != "missing"}
 
     async def _copy(user_id, expert_id, name):
         copies.append(name)
         return name
 
-    monkeypatch.setattr(experts_db, "find_user_skill_slug", _find)
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
     monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)

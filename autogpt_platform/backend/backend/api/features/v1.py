@@ -2779,7 +2779,7 @@ async def _require_skill_owner(user_id: str, expert_id: str | None) -> None:
     experts; personal AutoPilot (``None``) needs no check."""
     if expert_id is None:
         return
-    if not await experts_db.owns_active_expert(user_id, expert_id):
+    if not await experts_db.owns_private_active_expert(user_id, expert_id):
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Expert '{expert_id}' not found"
         )

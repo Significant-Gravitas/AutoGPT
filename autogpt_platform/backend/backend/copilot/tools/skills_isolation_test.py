@@ -74,6 +74,40 @@ def _personal_session() -> ChatSession:
     return ChatSession.new("user-1", dry_run=False)
 
 
+async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(world):
+    """An expert hired before ownership existed lists names that live only in
+    AutoPilot's folder; without a copy it would drop to the defaults."""
+    fake, experts = world
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["mine"]
+        )
+    )
+
+    ctx = await build_skills_context("user-1", expert_id="expert-a")
+
+    assert "name: mine" in ctx
+    assert "/experts/expert-a/skills/mine/SKILL.md" in fake.files
+    # AutoPilot keeps its own copy; ownership is a copy, never a move.
+    assert AUTOPILOT in fake.files
+
+
+async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(world):
+    """A marketplace attachment has no folder to copy, and a storage blip is
+    indistinguishable from one, so the name must survive either way."""
+    fake, experts = world
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["a-marketplace-skill"]
+        )
+    )
+
+    ctx = await build_skills_context("user-1", expert_id="expert-a")
+
+    assert "name: a-marketplace-skill" not in ctx
+    experts.remove_expert_skill_name.assert_not_awaited()
+
+
 async def test_expert_index_holds_defaults_plus_its_own_skills_only(world):
     ctx = await build_skills_context("user-1", expert_id="expert-a")
     assert "agent_building_guide" in ctx

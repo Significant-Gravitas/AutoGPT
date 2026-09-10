@@ -540,7 +540,7 @@ async def store_user_skill(
         # because no new slot is consumed.  When the lock FAILED to acquire,
         # the check is no longer atomic, so refuse any write at-or-above the
         # cap defensively (the caller can retry; a Redis blip is rare).
-        existing = await list_user_skills(user_id, expert_id)
+        existing = await list_user_skills(user_id, expert_id, scope)
         existing_slugs = {s.name for s in existing}
         at_cap = len(existing_slugs) >= MAX_USER_SKILLS
         is_new = name not in existing_slugs
@@ -644,7 +644,9 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
 
 
 async def _list_user_skills_from_workspace(
-    user_id: str, expert_id: str | None = None
+    user_id: str,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
 ) -> list[ParsedSkill]:
     """Workspace-side listing — no caching.  Body fields are always empty
     because the index never needs them; :func:`read_user_skill_with_body`
@@ -655,7 +657,7 @@ async def _list_user_skills_from_workspace(
     any file missing the metadata (older skills, or skills written by a
     deployment before the metadata-cache change shipped).
     """
-    manager = await _get_user_skill_manager(user_id)
+    manager = await _get_user_skill_manager(user_id, scope)
     files = await manager.list_files(
         path=f"{skill_folder(expert_id)}/",
         limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
@@ -777,7 +779,9 @@ async def invalidate_skills_index_cache(
 
 
 async def list_user_skills(
-    user_id: str, expert_id: str | None = None
+    user_id: str,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
 ) -> list[ParsedSkill]:
     """Return the skills owned by *expert_id* (personal AutoPilot when ``None``).
 
@@ -791,9 +795,56 @@ async def list_user_skills(
     cached = await _read_skills_cache(user_id, expert_id)
     if cached is not None:
         return cached
-    skills = await _list_user_skills_from_workspace(user_id, expert_id)
+    skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+    if expert_id is not None and await _copy_assigned_skills_not_yet_owned(
+        user_id, expert_id, skills
+    ):
+        skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     await _write_skills_cache(user_id, skills, expert_id)
     return skills
+
+
+async def _copy_assigned_skills_not_yet_owned(
+    user_id: str, expert_id: str, owned: list[ParsedSkill]
+) -> bool:
+    """Give the expert a copy of every skill its row lists but its folder
+    lacks, and report whether anything landed.
+
+    Assignments made before skills were owned per expert point at AutoPilot's
+    library and have no copy anywhere, so without this an existing expert
+    silently drops to the built-in defaults. Runs only on a cache miss, and
+    only while something is actually missing. A name that resolves to nothing
+    is left on the row: a marketplace attachment has no folder to copy by
+    design, and a storage blip must not delete an assignment.
+    """
+    expert = await experts_db().get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        return False
+    have = {s.name.strip().lower() for s in owned}
+    missing = [
+        name
+        for name in expert.skills or []
+        if name.strip()
+        and name.strip().lower() not in have
+        and name.strip().lower() not in _DEFAULT_SKILLS_BY_NAME
+    ]
+    if not missing:
+        return False
+    folders = await find_user_skill_slugs(user_id, missing)
+    copied = False
+    for name in missing:
+        folder = folders.get(name.strip().lower())
+        if folder is None:
+            continue
+        try:
+            copied = await copy_skill_to_expert(user_id, expert_id, folder) or copied
+        except Exception:
+            logger.exception(
+                "[skills] failed to copy assigned skill %r to expert #%s",
+                name,
+                expert_id,
+            )
+    return bool(copied)
 
 
 async def read_user_skill_with_body(
@@ -853,27 +904,50 @@ async def list_user_skill_sibling_paths(
 
 
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
-    """Folder slug of personal AutoPilot's skill called *name*.
+    """Folder slug of personal AutoPilot's skill called *name*."""
+    return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
+
+
+async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:
+    """Folder slug per requested name, keyed by the lowercased name.
 
     Matches the folder first, then the frontmatter name — a skill written by
-    hand may be listed under a name that differs from its folder.
+    hand may be listed under a name that differs from its folder. One listing
+    covers the whole batch, and a folder carrying store-time metadata is
+    matched without reading it, so only hand-written skills cost a fetch.
     """
-    slug = name.strip().lower()
-    if not slug:
-        return None
+    wanted = {n.strip().lower() for n in names if n.strip()}
+    if not wanted:
+        return {}
     manager = await _get_user_skill_manager(user_id)
-    if await manager.get_file_info_by_path(_skill_md_path(slug)):
-        return slug
     files = await manager.list_files(
         path=f"{SKILL_FOLDER}/", limit=MAX_USER_SKILLS * 4, include_all_sessions=True
     )
+    found: dict[str, str] = {}
+    unnamed: list[Any] = []
     for f in files:
         if not f.path.endswith("/SKILL.md"):
             continue
-        parsed = await _parse_skill_from_workspace(manager, f.path)
-        if parsed is not None and parsed.name.strip().lower() == slug:
-            return f.path.rsplit("/", 2)[-2]
-    return None
+        folder = f.path.rsplit("/", 2)[-2]
+        if folder.strip().lower() in wanted:
+            found[folder.strip().lower()] = folder
+            continue
+        meta = f.metadata if isinstance(f.metadata, dict) else {}
+        if meta.get(_META_KIND) != _META_KIND_VALUE:
+            unnamed.append(f)
+    missing = wanted - set(found)
+    if not missing or not unnamed:
+        return found
+    parsed = await asyncio.gather(
+        *(_parse_skill_from_workspace(manager, f.path) for f in unnamed)
+    )
+    for f, entry in zip(unnamed, parsed):
+        if entry is None:
+            continue
+        name = entry.name.strip().lower()
+        if name in missing:
+            found.setdefault(name, f.path.rsplit("/", 2)[-2])
+    return found
 
 
 async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str | None:
@@ -967,7 +1041,9 @@ def get_default_skills() -> list[ParsedSkill]:
 
 
 async def list_all_skills(
-    user_id: str | None, expert_id: str | None = None
+    user_id: str | None,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
 ) -> list[ParsedSkill]:
     """Default seeded skills first, then the owner's own skills.
 
@@ -982,7 +1058,7 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        skills.extend(await list_user_skills(user_id, expert_id))
+        skills.extend(await list_user_skills(user_id, expert_id, scope))
     return skills
 
 
@@ -1502,6 +1578,7 @@ class ListSkillsTool(BaseTool):
                 session_id=session.session_id,
             )
         owner_id: str | None = None
+        owner_scope: WorkspaceScope | None = None
         if user_id:
             owner = await resolve_skill_owner(user_id, session, expert_id)
             if isinstance(owner, str):
@@ -1509,7 +1586,8 @@ class ListSkillsTool(BaseTool):
                     message=owner, error="access_denied", session_id=session.session_id
                 )
             owner_id = owner.expert_id
-        skills = await list_all_skills(user_id, owner_id)
+            owner_scope = owner.scope
+        skills = await list_all_skills(user_id, owner_id, owner_scope)
         payload = [
             {
                 "name": s.name,

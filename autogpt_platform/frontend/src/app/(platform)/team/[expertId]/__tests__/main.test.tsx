@@ -618,6 +618,33 @@ describe("ExpertDetailPage", () => {
     expect(screen.queryByRole("link", { name: "Open in library" })).toBeNull();
   });
 
+  test("falls back to the library entry for an expert assigned a skill before it owned one", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        skills: ["content-strategy"],
+      })),
+      getListCopilotSkillsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("expert_id") === maria.id
+          ? []
+          : [
+              {
+                name: "content-strategy",
+                description: "How we plan the content calendar",
+                triggers: ["content plan"],
+              },
+            ],
+      ),
+    );
+    render(<ExpertDetailPage />);
+    await openTab("Skills");
+    expect(
+      await screen.findByText("How we plan the content calendar"),
+    ).toBeDefined();
+    expect(screen.getByText("content plan")).toBeDefined();
+    expect(screen.queryByText("Skill details unavailable.")).toBeNull();
+  });
+
   test("lists the expert's skills with library details and adds one", async () => {
     const user = userEvent.setup();
     const puts: string[][] = [];
