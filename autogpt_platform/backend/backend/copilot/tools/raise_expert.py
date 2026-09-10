@@ -26,6 +26,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
+from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -88,19 +89,7 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Propose a brand-new expert when no roster template fits. Give "
-            "them a personal first name (the role field carries the job "
-            "title), a one-line tagline and an accent color, then write "
-            "their charter: what they own, what good looks like, and where "
-            "they stop (always fill boundaries — an expert without them "
-            "oversteps). This tool never writes; it returns the proposed "
-            "expert plus a one-time confirmation_id. "
-            "The user sees the whole charter on a card with Approve and "
-            "Decline buttons, so never repeat it in text — one short line "
-            "at most, then wait. Only after the user approves, call "
-            "confirm_expert_change with that id."
-        )
+        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -110,9 +99,7 @@ class RaiseExpertTool(BaseTool):
                 "name": {
                     "type": "string",
                     "description": (
-                        "A personal first name the user will call them — "
-                        "like a teammate's name, never a job title. The "
-                        "role field carries the title."
+                        "Personal first name, not a job title (use role for that)."
                     ),
                 },
                 "role": {
@@ -122,25 +109,30 @@ class RaiseExpertTool(BaseTool):
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "One line, third person, what they do for the user "
-                        "— e.g. 'Finds your leads and their decision-makers.' "
-                        "Under 120 characters. This is what the user reads "
-                        "on their card; the charter is for the expert."
+                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
+                    "description": ("Accent token for the avatar and chat theme."),
+                },
+                "avatar_shape": {
+                    "type": "string",
+                    "enum": AVATAR_SHAPES,
+                    "description": ("Avatar silhouette; omit for a name-seeded shape."),
+                },
+                "avatar_accessory": {
+                    "type": "string",
+                    "enum": AVATAR_ACCESSORIES,
                     "description": (
-                        "Accent color for their avatar and chat theme. "
-                        "Pick one that fits their personality."
+                        "One accessory suited to their role or personality; omit for a name-seeded choice."
                     ),
                 },
                 "about": {
                     "type": "string",
                     "description": (
-                        "Their charter in second person: what they own, how "
-                        "they work, what good looks like. Becomes identity."
+                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
                     ),
                 },
                 "boundaries": {
@@ -171,6 +163,8 @@ class RaiseExpertTool(BaseTool):
         role: str = "",
         tagline: str = "",
         color: str = "",
+        avatar_shape: str = "",
+        avatar_accessory: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -188,6 +182,24 @@ class RaiseExpertTool(BaseTool):
                 message=(
                     "Invalid expert charter — color must be one of: "
                     + ", ".join(COLOR_TOKENS)
+                ),
+                session_id=session_id,
+            )
+        avatar_shape = avatar_shape.strip()
+        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_shape must be one of: "
+                    + ", ".join(AVATAR_SHAPES)
+                ),
+                session_id=session_id,
+            )
+        avatar_accessory = avatar_accessory.strip()
+        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_accessory must be one of: "
+                    + ", ".join(AVATAR_ACCESSORIES)
                 ),
                 session_id=session_id,
             )
@@ -252,6 +264,12 @@ class RaiseExpertTool(BaseTool):
             role=params.role,
             tagline=params.tagline,
             color=params.color,
+            avatar_url=build_avatar_url(
+                params.name,
+                shape=avatar_shape or None,
+                accessory=avatar_accessory or None,
+                color_token=params.color or None,
+            ),
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",

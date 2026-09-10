@@ -6,7 +6,6 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
@@ -15,6 +14,12 @@ import {
   TooltipPortal,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  AUTOPILOT_AVATAR,
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,6 +45,8 @@ interface Props {
   label: string;
   avatarUrl: string | null;
   newChatHref: string | null;
+  color?: string | null;
+  isAutopilot?: boolean;
   sessions: SessionSummaryResponse[];
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
@@ -48,6 +55,8 @@ export function ExpertChatGroup({
   label,
   avatarUrl,
   newChatHref,
+  color,
+  isAutopilot,
   sessions,
   renderItem,
 }: Props) {
@@ -71,14 +80,29 @@ export function ExpertChatGroup({
           aria-label={`${label} chats`}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900"
         >
-          <Avatar className="h-6 w-6">
-            {avatarUrl ? (
-              <AvatarImage src={avatarUrl} alt={label} width={48} height={48} />
-            ) : null}
-            <AvatarFallback>
-              <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-4" />
-            </AvatarFallback>
-          </Avatar>
+          {isUploadedAvatar(avatarUrl) ? (
+            <Avatar className="h-6 w-6">
+              <AvatarImage
+                src={avatarUrl ?? undefined}
+                alt={label}
+                width={48}
+                height={48}
+              />
+              <AvatarFallback>{label}</AvatarFallback>
+            </Avatar>
+          ) : (
+            <BotAvatar
+              config={
+                isAutopilot
+                  ? AUTOPILOT_AVATAR
+                  : expertAvatarConfig({ name: label, avatarUrl, color })
+              }
+              size={24}
+              animated={false}
+              showBadge={false}
+              title={label}
+            />
+          )}
           <span className="truncate">{label}</span>
           {newChatHref && (
             <span

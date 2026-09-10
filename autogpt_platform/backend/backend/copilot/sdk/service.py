@@ -119,6 +119,7 @@ from ..permissions import (
 from ..prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
+    get_team_building_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -1698,6 +1699,7 @@ async def _apply_building_mode_restart(
     base_system_prompt: str,
     delegation_supplement: str,
     oversight_supplement: str,
+    team_building_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1736,6 +1738,7 @@ async def _apply_building_mode_restart(
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
         + oversight_supplement
+        + team_building_supplement
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -4797,6 +4800,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         oversight_supplement = get_expert_oversight_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        team_building_supplement = get_team_building_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4813,6 +4819,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
             + oversight_supplement
+            + team_building_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -5481,17 +5488,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
-                state.query_message, state.compaction_stats = (
-                    await _build_query_message(
-                        budget_status + current_message,
-                        session,
-                        state.use_resume,
-                        state.transcript_msg_count,
-                        session_id,
-                        session_msg_ceiling=_pre_drain_msg_count,
-                        target_tokens=state.target_tokens,
-                        expect_compaction=True,
-                    )
+                # Keep the ``budget_status +`` prefix through any reflow of this
+                # call: dropping it silently un-ships the retry path's budget line.
+                (
+                    state.query_message,
+                    state.compaction_stats,
+                ) = await _build_query_message(
+                    budget_status + current_message,
+                    session,
+                    state.use_resume,
+                    state.transcript_msg_count,
+                    session_id,
+                    session_msg_ceiling=_pre_drain_msg_count,
+                    target_tokens=state.target_tokens,
+                    expect_compaction=True,
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -5590,6 +5600,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
                     oversight_supplement=oversight_supplement,
+                    team_building_supplement=team_building_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
