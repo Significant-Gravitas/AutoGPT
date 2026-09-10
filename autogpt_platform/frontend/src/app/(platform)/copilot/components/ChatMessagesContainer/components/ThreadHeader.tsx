@@ -18,7 +18,7 @@ import { useSessionActivity } from "../../WorkspaceFileCards/useSessionActivity"
 import { ExpertAvatar } from "./ExpertAvatar/ExpertAvatar";
 import { ExpertIntegrations } from "./ExpertIntegrations/ExpertIntegrations";
 
-// Autopilot's product-facing title when a session carries no expert identity.
+// AutoPilot's product-facing title when a session carries no expert identity.
 const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
@@ -43,7 +43,7 @@ interface Props {
  *  underneath. On narrow viewports the gutter disappears and the chip simply
  *  overlaps the message column, which its translucency is built for. An
  *  expert session wears the expert's identity and every other session is
- *  Autopilot's, so the thread is never anonymous. Clicking the identity
+ *  AutoPilot's, so the thread is never anonymous. Clicking the identity
  *  opens the session activity card (files, runs, schedules) on the right;
  *  the expert's integration logos sit beside it with their own popover. */
 export function ThreadHeader({
@@ -55,9 +55,9 @@ export function ThreadHeader({
   hasFloatingControls = false,
 }: Props) {
   // While the roster loads, the chip shows a quiet placeholder rather than
-  // Autopilot's identity, which would be wrong for an expert session.
+  // AutoPilot's identity, which would be wrong for an expert session.
   const isResolving = isResolvingExpertIdentity && !expertIdentity;
-  const name = expertIdentity?.name ?? "Autopilot";
+  const name = expertIdentity?.name ?? "AutoPilot";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   // Assistive tech gets a loading identity too, not Autopilot's.
   const identityLabel = isResolving ? "Loading expert" : `${name}, ${role}`;

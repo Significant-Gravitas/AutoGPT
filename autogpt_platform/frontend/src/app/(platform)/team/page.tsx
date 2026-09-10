@@ -12,15 +12,13 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { KanbanIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { UserGroupIcon } from "@hugeicons/core-free-icons";
 import { notFound } from "next/navigation";
 import { useState } from "react";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
-import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
-import { PodBoard } from "./components/PodBoard/PodBoard";
 import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
@@ -35,7 +33,6 @@ const MAIN_CLASS =
 
 const TABS = [
   { value: "overview", label: "Overview", icon: UserGroupIcon },
-  { value: "pods", label: "Pod board", icon: KanbanIcon },
 ] as const;
 
 type TeamTab = (typeof TABS)[number]["value"];
@@ -44,9 +41,6 @@ export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
-    pods,
-    podForExpert,
-    podGroups,
     schedulesForExpert,
     isLoading,
     isError,
@@ -62,12 +56,6 @@ export default function TeamPage() {
     chatDrawerKey,
     openChat,
     closeChat,
-    isNewPodOpen,
-    openNewPod,
-    closeNewPod,
-    createPod,
-    isCreatingPod,
-    assignPod,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
   const [tab, setTab] = useState<TeamTab>("overview");
   const roster = useTeamRosterView({
@@ -97,12 +85,9 @@ export default function TeamPage() {
         key={expert.id}
         expert={expert}
         schedules={schedulesForExpert(expert)}
-        pods={pods}
-        currentPod={podForExpert(expert)}
         onInstallWorkflow={installWorkflow}
         onEditSoul={openSoul}
         onChat={openChat}
-        onAssignPod={assignPod}
       />
     );
   }
@@ -119,7 +104,7 @@ export default function TeamPage() {
               Autopilot and your hired experts, ready to work.
             </Text>
           </div>
-          <TeamHeaderActions onNewPod={openNewPod} />
+          <TeamHeaderActions />
         </div>
 
         {isError ? (
@@ -175,15 +160,6 @@ export default function TeamPage() {
               <EmptyTeamState />
             ) : null}
           </TabsLineContent>
-
-          <TabsLineContent value="pods">
-            <PodBoard
-              isLoading={isLoading}
-              podGroups={podGroups}
-              onNewPod={openNewPod}
-              renderCard={renderCard}
-            />
-          </TabsLineContent>
         </TabsLine>
 
         <InstallWorkflowPicker
@@ -191,12 +167,6 @@ export default function TeamPage() {
           expertId={pickerExpertId ?? undefined}
           open={pickerExpertId !== null}
           onClose={closeWorkflowPicker}
-        />
-        <NewPodDialog
-          open={isNewPodOpen}
-          onClose={closeNewPod}
-          onCreate={createPod}
-          isCreating={isCreatingPod}
         />
       </main>
 

@@ -41,6 +41,7 @@ from backend.copilot.model import (
     get_chat_session,
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -54,6 +55,7 @@ from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     apply_delegated_expert,
+    discard_unused_sub_session,
     list_sub_workspace_files,
     response_from_outcome,
 )
@@ -193,8 +195,22 @@ class DelegateToExpertTool(BaseTool):
                 f"delegate:{session.session_id}" if session.session_id else "delegate"
             ),
             tool_name="delegate_to_expert",
+            # A teammate keeps their own teammates; depth still bounds the chain.
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
+        discarded = (
+            not delegated_session_id.strip()
+            and await discard_unused_sub_session(inner_session_id, user_id, outcome)
+        )
+        if discarded:
+            # The thread is gone; handing back its id would send the model to
+            # poll a delegation that no longer exists.
+            return self._error(
+                result.refusal or f"{target.name} could not start this task.",
+                session,
+            )
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"

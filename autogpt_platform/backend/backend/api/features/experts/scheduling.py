@@ -370,8 +370,9 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
 
 
 async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
-    """Run-start gate for expert-attributed executions (schedules and
-    triggers; chat runs never carry an expert_id and are never gated).
+    """Run-start gate for expert-attributed executions: schedules, triggers,
+    and agent runs launched from an expert's chat (``run_agent`` passes the
+    session's expert_id). Chat turns and ``run_block`` are not executions.
 
     Raises ExpertRunPausedError when the expert is archived, paused, or has
     hit her weekly credit budget — breaching pauses her and posts an

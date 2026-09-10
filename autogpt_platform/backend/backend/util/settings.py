@@ -2,7 +2,7 @@ import json
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -224,6 +224,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
+    expert_spend_approval_threshold_default: int = Field(
+        default=250,
+        ge=0,
+        description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
+    )
+    expert_spend_approval_window: Literal["week", "day"] = Field(
+        default="week",
+        description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",

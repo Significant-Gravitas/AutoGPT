@@ -15,6 +15,7 @@ from .base import BaseTool
 from .helpers import (
     BlockPreparation,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
     prepare_block_for_execution,
 )
@@ -280,6 +281,11 @@ class RunBlockTool(BaseTool):
                 ),
                 user_authenticated=True,
             )
+
+        if not dry_run:
+            spend_gate = await check_spend_approval(prep, user_id, session)
+            if spend_gate is not None:
+                return spend_gate
 
         hitl_or_err = await check_hitl_review(
             prep,
