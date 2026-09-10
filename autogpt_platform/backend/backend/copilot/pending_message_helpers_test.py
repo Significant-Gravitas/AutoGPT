@@ -1,5 +1,6 @@
 """Unit tests for pending_message_helpers."""
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,6 +21,7 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 # ── check_pending_call_rate ────────────────────────────────────────────
 
@@ -190,7 +192,9 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
     rate_mock = AsyncMock(return_value=1)
     monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
     monkeypatch.setattr(
-        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+        helpers_module,
+        "resolve_attachable_workspace_files",
+        AsyncMock(return_value=[]),
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -200,6 +204,7 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
             message="hi",
             context=None,
             file_ids=None,
+            expert_id=None,
         )
     assert exc_info.value.status_code == 409
     rate_mock.assert_not_awaited()
@@ -219,7 +224,9 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
     rate_mock = AsyncMock(return_value=PENDING_CALL_LIMIT)
     monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
     monkeypatch.setattr(
-        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+        helpers_module,
+        "resolve_attachable_workspace_files",
+        AsyncMock(return_value=[]),
     )
 
     result = await queue_pending_for_http(
@@ -228,6 +235,7 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
         message="hi",
         context=None,
         file_ids=None,
+        expert_id=None,
     )
 
     assert result is response
@@ -255,7 +263,9 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
         AsyncMock(return_value=PENDING_CALL_LIMIT + 1),
     )
     monkeypatch.setattr(
-        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+        helpers_module,
+        "resolve_attachable_workspace_files",
+        AsyncMock(return_value=[]),
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -265,6 +275,7 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
             message="hi",
             context=None,
             file_ids=None,
+            expert_id=None,
         )
     assert exc_info.value.status_code == 429
     queue_mock.assert_awaited_once()
@@ -835,3 +846,69 @@ async def test_persist_pending_swallows_requeue_errors(
     )
     # Still returns False (rolled back) — exception was logged + swallowed.
     assert ok is False
+
+
+# ── queue_pending_for_http: expert file scope ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_rejects_file_outside_expert_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+    monkeypatch.setattr(
+        helpers_module,
+        "resolve_attachable_workspace_files",
+        AsyncMock(side_effect=WorkspaceAccessDeniedError("outside: secret.pdf")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            message="hi",
+            context=None,
+            file_ids=["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            expert_id="expert-a",
+        )
+    assert exc_info.value.status_code == 400
+    assert "secret.pdf" in exc_info.value.detail
+    queue_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_resolves_files_against_the_session_expert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = QueuePendingMessageResponse(
+        buffer_length=1,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    monkeypatch.setattr(
+        helpers_module, "queue_user_message", AsyncMock(return_value=response)
+    )
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+    resolve_mock = AsyncMock(return_value=[SimpleNamespace(id="file-1")])
+    monkeypatch.setattr(
+        helpers_module, "resolve_attachable_workspace_files", resolve_mock
+    )
+
+    await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=["file-1"],
+        expert_id="expert-a",
+    )
+
+    resolve_mock.assert_awaited_once_with(
+        "user-1", ["file-1"], session_id="sess-1", expert_id="expert-a"
+    )

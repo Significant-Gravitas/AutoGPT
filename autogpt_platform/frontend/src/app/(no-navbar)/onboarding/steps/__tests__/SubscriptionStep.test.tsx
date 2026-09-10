@@ -25,6 +25,7 @@ const postHog = vi.hoisted(() => ({
 
 vi.mock("@posthog/react", () => ({
   useFeatureFlagVariantKey: () => postHog.variant,
+  usePostHog: () => undefined,
 }));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({

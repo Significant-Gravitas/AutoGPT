@@ -9,6 +9,7 @@ import psutil
 from backend.util.process import AppProcess
 
 from .chat import chat
+from .store import store
 from .test import test
 
 
@@ -19,6 +20,7 @@ def main():
 
 
 main.add_command(chat)
+main.add_command(store)
 main.add_command(test)
 
 
