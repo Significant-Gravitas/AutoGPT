@@ -32,6 +32,7 @@ from backend.copilot.prompting import (
     get_expert_oversight_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
@@ -134,6 +135,10 @@ def chat_system_prompt(expert: Expert | None) -> str:
         + get_sdk_supplement(use_e2b=True)
         + (get_delegation_supplement() if DELEGATION_ENABLED else "")
         + get_expert_oversight_supplement(
+            experts_enabled=DELEGATION_ENABLED,
+            expert_id=expert.id if expert else None,
+        )
+        + get_team_building_supplement(
             experts_enabled=DELEGATION_ENABLED,
             expert_id=expert.id if expert else None,
         )

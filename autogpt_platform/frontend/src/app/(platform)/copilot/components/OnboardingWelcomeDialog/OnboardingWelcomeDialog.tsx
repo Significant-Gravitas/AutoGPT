@@ -2,9 +2,11 @@
 
 import { usePostV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { Button } from "@/components/atoms/Button/Button";
+import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   ArrowLeft01Icon,
@@ -12,13 +14,14 @@ import {
   ElectricPlugsIcon,
   GraduationCapIcon,
   SparklesIcon,
+  Sun01Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
-import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
 import { isKey } from "@/lib/keyboard";
 
 interface Props {
@@ -30,7 +33,7 @@ interface CapabilityCard {
   title: string;
   // Capped at 20 words — an icon, short title, one sentence.
   body: string;
-  /** Stage art: big duotone-violet icon in a white tile. */
+  /** Stage art: a zinc icon in a white tile. */
   icon?: IconSvgElement;
   /** Expands the dialog into the embedded provider picker. */
   cta?: { label: string };
@@ -60,8 +63,35 @@ const CARDS: CapabilityCard[] = [
   },
 ];
 
+// With the team feature on the deck stops being about Otto's own
+// abilities: Otto is the Head of AI, and what the user is about to
+// meet on the greeting page is a team.
+const TEAM_CARDS: CapabilityCard[] = [
+  {
+    title: "Meet your Head of AI.",
+    body: "Otto is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
+    icon: SparklesIcon,
+  },
+  {
+    title: "Hire an expert, or raise your own.",
+    body: "Pick a ready-made expert for marketing, sales or ops, or describe a role and raise one from scratch.",
+    icon: UserGroupIcon,
+  },
+  {
+    title: "It works inside your tools.",
+    body: "Slack, Gmail, Notion, GitHub and 40+ more. 500+ blocks under the hood.",
+    icon: ElectricPlugsIcon,
+    cta: { label: "Connect your tools" },
+  },
+  {
+    title: "Every morning, a briefing.",
+    body: "What the team did, what needs you, what's next — before you open a tab.",
+    icon: Sun01Icon,
+  },
+];
+
 // First-run capability cards on the copilot home (ChatGPT/Claude style):
-// a tinted stage on top carrying the card's icon, copy below,
+// a stage on top carrying the card's icon, copy below,
 // skippable at any card, shown once — completion is recorded server-side
 // as the CAPABILITY_CARDS onboarding step. It also buys the background
 // pipeline its last seconds: the greeting is only fetched, and only
@@ -84,15 +114,21 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
         }),
     },
   });
-  const card = CARDS[cardIndex];
-  const isLastCard = cardIndex === CARDS.length - 1;
+  // Child of HIRE_EXPERTS: without hiring there is no team to promise.
+  const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
+  const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
+  const isTeamEnabled = Boolean(isExpertTeamFlagOn && isHireExpertsFlagOn);
+  const deck = isTeamEnabled ? "team" : "autopilot";
+  const cards = isTeamEnabled ? TEAM_CARDS : CARDS;
+  const card = cards[cardIndex];
+  const isLastCard = cardIndex === cards.length - 1;
 
   function finish(outcome: "completed" | "skipped") {
     trackBrainDump(
       outcome === "completed"
         ? "capability_cards_completed"
         : "capability_cards_skipped",
-      { card_index: cardIndex },
+      { card_index: cardIndex, deck },
     );
     completeStep({ params: { step: "CAPABILITY_CARDS" } });
     onClose();
@@ -111,14 +147,17 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, cardIndex, isConnectOpen]);
+  }, [isOpen, cardIndex, isConnectOpen, deck]);
 
   function handleNext() {
     if (isLastCard) {
       finish("completed");
       return;
     }
-    trackBrainDump("capability_card_viewed", { card_index: cardIndex + 1 });
+    trackBrainDump("capability_card_viewed", {
+      card_index: cardIndex + 1,
+      deck,
+    });
     setCardIndex(cardIndex + 1);
   }
 
@@ -137,15 +176,15 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           aria-label="Welcome to Otto"
         >
           <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.97, maxWidth: "26rem" }}
+            initial={{ opacity: 0, y: 16, scale: 0.97, maxWidth: "20rem" }}
             animate={{
               opacity: 1,
               y: 0,
               scale: 1,
-              maxWidth: isConnectOpen ? "30rem" : "26rem",
+              maxWidth: isConnectOpen ? "30rem" : "20rem",
             }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)] outline-none"
+            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-none"
             ref={dialogRef}
             tabIndex={-1}
           >
@@ -182,22 +221,19 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
-                      {/* Tinted stage: the card's icon floats here. */}
-                      <div className="relative h-44 bg-gradient-to-br from-[#e6dbff] via-[#ddccff] to-[#d0b9ff]">
+                      {/* Stage: the card's icon floats here. */}
+                      <div className="relative h-36 bg-gradient-to-br from-violet-100 via-violet-200 to-violet-300">
                         <GlassPixelBackdrop />
-                        <span className="absolute left-5 top-4 z-10 flex items-center gap-1 text-xs font-medium text-[#5b21b6]/70">
-                          {cardIndex > 0 && (
-                            <button
-                              type="button"
-                              aria-label="Previous card"
-                              onClick={() => setCardIndex(cardIndex - 1)}
-                              className="-ml-1 flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-white/50"
-                            >
-                              <Icon icon={ArrowLeft01Icon} size={13} />
-                            </button>
-                          )}
-                          {cardIndex + 1} of {CARDS.length}
-                        </span>
+                        {cardIndex > 0 && (
+                          <button
+                            type="button"
+                            aria-label="Previous card"
+                            onClick={() => setCardIndex(cardIndex - 1)}
+                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-violet-800/70 transition-colors hover:bg-white/50"
+                          >
+                            <Icon icon={ArrowLeft01Icon} size={13} />
+                          </button>
+                        )}
                         <AnimatePresence mode="wait">
                           <motion.div
                             key={cardIndex}
@@ -210,10 +246,10 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                           >
                             {card.icon && (
                               <div className="flex h-full items-center justify-center">
-                                <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
+                                <div className="flex size-14 items-center justify-center rounded-2xl bg-white shadow-md">
                                   <Icon
                                     icon={card.icon}
-                                    size={40}
+                                    size={28}
                                     className="text-violet-600"
                                   />
                                 </div>
@@ -224,56 +260,55 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       </div>
 
                       {/* Copy + controls, reference-style white lower half. */}
-                      <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
-                        <Text
-                          variant="h3"
-                          className="!text-[1.25rem] text-zinc-900"
-                        >
+                      <div className="flex flex-col gap-2 px-5 pb-5 pt-4 text-left">
+                        <Text variant="h5" tone="primary">
                           {card.title}
                         </Text>
-                        <Text
-                          variant="body"
-                          className="!text-[0.9375rem] !text-zinc-600"
-                        >
+                        <Text variant="body" tone="secondary">
                           {card.body}
                         </Text>
                         {card.cta && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="-ml-2.5 w-fit"
                             onClick={() => setIsConnectOpen(true)}
-                            className="w-fit text-sm font-medium text-violet-600 underline-offset-4 hover:underline"
                           >
                             {card.cta.label}
-                          </button>
+                          </Button>
                         )}
 
                         <div className="mt-3 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {CARDS.map((_, index) => (
+                          <div className="flex items-center gap-1.5">
+                            {cards.map((_, index) => (
                               <span
                                 key={index}
                                 className={
                                   index === cardIndex
-                                    ? "h-2 w-6 rounded-full bg-violet-500 transition-all"
-                                    : "h-2 w-2 rounded-full bg-zinc-200 transition-all"
+                                    ? "h-1.5 w-4 rounded-full bg-zinc-900 transition-all"
+                                    : "size-1.5 rounded-full bg-zinc-300 transition-all"
                                 }
                               />
                             ))}
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             <Button
-                              variant="secondary"
-                              size="small"
+                              variant="ghost"
+                              size="xs"
                               onClick={() => finish("skipped")}
                             >
                               Skip
                             </Button>
                             <Button
                               variant="primary"
-                              size="small"
+                              size="xs"
                               onClick={handleNext}
                             >
-                              {isLastCard ? "Meet Otto" : "Next"}
+                              {!isLastCard
+                                ? "Next"
+                                : isTeamEnabled
+                                  ? "Meet your team"
+                                  : "Meet Otto"}
                             </Button>
                           </div>
                         </div>
