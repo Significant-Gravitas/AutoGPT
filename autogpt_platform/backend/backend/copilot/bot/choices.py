@@ -104,14 +104,14 @@ async def clear_choice(platform: str, token: str) -> None:
     await redis.delete(_key(platform, token))
 
 
-def _owner_of(raw: str) -> Optional[str]:
+def _owner_of(raw: bytes | str) -> Optional[str]:
     try:
         return str(json.loads(raw)["owner"])
     except (ValueError, TypeError, KeyError):
         return None
 
 
-def _options_of(raw: str) -> list[str]:
+def _options_of(raw: bytes | str) -> list[str]:
     try:
         return [str(option) for option in json.loads(raw)["options"]]
     except (ValueError, TypeError, KeyError):
