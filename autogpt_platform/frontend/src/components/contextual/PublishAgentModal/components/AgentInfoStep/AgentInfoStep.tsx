@@ -232,10 +232,9 @@ export function AgentInfoStep({
                           id={field.name}
                           labelVariant="body"
                           label="Tagline"
-                          labelTooltip="Shown under the agent name and as the one-line subtitle on preview cards, so keep it to a single short line."
+                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
                           type="text"
                           placeholder="Find decision-makers at any company in seconds"
-                          hint="Say what the agent does for the user, starting with a verb."
                           error={form.formState.errors.subheader?.message}
                           required
                           {...field}

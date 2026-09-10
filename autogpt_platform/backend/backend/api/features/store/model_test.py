@@ -10,17 +10,6 @@ from .model import (
 SUBMISSION_MODELS = [StoreSubmissionRequest, StoreSubmissionEditRequest]
 
 
-def build(model: type[pydantic.BaseModel], sub_heading: str):
-    common = {
-        "name": "Lead Finder",
-        "sub_heading": sub_heading,
-        "categories": ["sales"],
-    }
-    if model is StoreSubmissionRequest:
-        common |= {"graph_id": "graph-1", "graph_version": 1, "slug": "lead-finder"}
-    return model(**common)
-
-
 @pytest.mark.parametrize("model", SUBMISSION_MODELS)
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n "])
 def test_a_blank_sub_heading_is_rejected(model, blank):
@@ -64,3 +53,14 @@ def test_sub_heading_has_no_default(model):
             }
         )
     assert any(e["loc"] == ("sub_heading",) for e in exc.value.errors())
+
+
+def build(model: type[pydantic.BaseModel], sub_heading: str):
+    common = {
+        "name": "Lead Finder",
+        "sub_heading": sub_heading,
+        "categories": ["sales"],
+    }
+    if model is StoreSubmissionRequest:
+        common |= {"graph_id": "graph-1", "graph_version": 1, "slug": "lead-finder"}
+    return model(**common)
