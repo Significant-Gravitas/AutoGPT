@@ -20,6 +20,12 @@ interface PodGroup {
   experts: Expert[];
 }
 
+export const AUTOPILOT_NAME = "Otto";
+
+export const AUTOPILOT_AVATAR_URL = "/experts/otto.svg";
+
+export const AUTOPILOT_AVATAR_BG_CLASS = "bg-cyan-100";
+
 export const AUTOPILOT_ROLE = "Head of AI";
 
 export const AUTOPILOT_BLURB =

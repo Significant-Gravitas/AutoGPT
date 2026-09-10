@@ -202,7 +202,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const autopilot = await screen.findByText("Autopilot");
+    const autopilot = await screen.findByText("Otto");
     expect(screen.getByText("Head of AI")).toBeDefined();
 
     const maria = await screen.findByText("Maria");
@@ -279,10 +279,10 @@ describe("TeamPage", () => {
 
     await user.click(autopilotChat);
     const autopilotPanel = await screen.findByRole("complementary", {
-      name: "Chat with Autopilot",
+      name: "Chat with Otto",
     });
     expect(
-      within(autopilotPanel).getByPlaceholderText("Message Autopilot…"),
+      within(autopilotPanel).getByPlaceholderText("Message Otto…"),
     ).toBeDefined();
     await waitFor(() => {
       expect(
@@ -942,7 +942,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    expect(await screen.findByText("Autopilot")).toBeDefined();
+    expect(await screen.findByText("Otto")).toBeDefined();
     const link = await screen.findByRole("link", {
       name: "Browse the marketplace",
     });
@@ -974,7 +974,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await screen.findByText("Autopilot");
+    await screen.findByText("Otto");
     expect(await screen.findByText("Maria")).toBeDefined();
   });
 

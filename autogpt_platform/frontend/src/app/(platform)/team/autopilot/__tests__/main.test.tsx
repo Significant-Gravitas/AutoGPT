@@ -216,9 +216,7 @@ describe("AutopilotPage", () => {
   test("renders the Autopilot profile with a chat link and a way back", async () => {
     render(<AutopilotPage />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(screen.getByText("Head of AI")).toBeDefined();
     expect(screen.getByText("Built in")).toBeDefined();
     expect(screen.getByText("Identity")).toBeDefined();
@@ -234,7 +232,7 @@ describe("AutopilotPage", () => {
 
   test("lists the team's schedules", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Schedules");
 
@@ -246,11 +244,11 @@ describe("AutopilotPage", () => {
 
   test("lists the library workflows no expert owns as Autopilot's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
 
-    expect(screen.getByText("Autopilot's Workflows")).toBeDefined();
+    expect(screen.getByText("Otto's Workflows")).toBeDefined();
     const rows = await screen.findAllByTestId("expert-workflow-row");
     expect(
       rows.map((row) => within(row).getByText(/Job|Triage/).textContent),
@@ -289,7 +287,7 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
     await openTab("Workflows");
 
     expect(await screen.findByText("Nobody's Job")).toBeDefined();
@@ -298,12 +296,12 @@ describe("AutopilotPage", () => {
 
   test("lists the library skills no expert has claimed as Autopilot's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Skills");
 
-    expect(screen.getByText("Autopilot's Skills")).toBeDefined();
-    const list = screen.getByRole("list", { name: "Autopilot skills" });
+    expect(screen.getByText("Otto's Skills")).toBeDefined();
+    const list = screen.getByRole("list", { name: "Otto skills" });
     const rows = within(list).getAllByTestId("expert-skill-row");
     expect(
       rows.map(
@@ -323,7 +321,7 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
     expect(screen.getByText(/No workflows yet/)).toBeDefined();
@@ -354,9 +352,7 @@ describe("AutopilotPage", () => {
     ).toBeDefined();
     await user.click(screen.getByRole("button", { name: /try again/i }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(failures).toBe(2);
   });
 
