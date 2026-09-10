@@ -641,34 +641,57 @@ async def _send_native_choices(
     """Send every question as native choice buttons; False if any didn't land.
 
     An adapter may either return False or raise (Telegram and Teams have no
-    non-raising failure path at all). Both must mean "fall back to text": an
-    exception here escapes into the caller's generic handler, which reports
-    "AutoGPT ran into an error", abandons the half-consumed turn, and leaves
-    the choice token alive for its full TTL — with the question delivered in
-    no form at all, not even as numbered text.
+    non-raising failure path at all), and Redis can fail under either
+    ``store_choice`` or ``clear_choice``. Every one of those must mean "fall
+    back to text": an exception escaping here reaches the caller's generic
+    handler, which reports "AutoGPT ran into an error", abandons the
+    half-consumed turn, and leaves any token alive for its full TTL — with
+    the question delivered in no form at all, not even as numbered text.
+
+    On failure every token minted for this payload is cleared, not just the
+    one that failed. A question already sent natively is about to be
+    re-rendered as text, and a live button beside that text would answer the
+    turn a second time; a cleared token makes the stale button report that
+    it has expired, which is exactly right next to the text version.
     """
-    for question in questions:
-        options = _question_options(question)
-        text = str(question.get("question") or "").strip()
-        token = await choices.store_choice(adapter.platform_name, options)
-        try:
-            sent = await adapter.send_choice_buttons(
+    minted: list[str] = []
+    try:
+        for question in questions:
+            options = _question_options(question)
+            text = str(question.get("question") or "").strip()
+            token = await choices.store_choice(adapter.platform_name, options)
+            minted.append(token)
+            if not await adapter.send_choice_buttons(
                 target_id,
                 _native_question_text(text),
                 options,
                 token,
                 mentionable_users=ctx.mentionable_users,
-            )
+            ):
+                break
+        else:
+            return True
+    except Exception:
+        logger.exception(
+            "Native choice delivery failed on %s; falling back to text",
+            adapter.platform_name,
+        )
+    await _discard_choice_tokens(adapter.platform_name, minted)
+    return False
+
+
+async def _discard_choice_tokens(platform: str, tokens: list[str]) -> None:
+    """Invalidate tokens whose questions are about to be re-sent as text.
+
+    Never raises: this runs on the failure path, and letting Redis take the
+    text fallback down with it is the failure this whole path exists to
+    prevent. A token that outlives its clear expires on its own TTL.
+    """
+    for token in tokens:
+        try:
+            await choices.clear_choice(platform, token)
         except Exception:
-            logger.exception(
-                "%s rejected native choice buttons; falling back to text",
-                adapter.platform_name,
-            )
-            sent = False
-        if not sent:
-            await choices.clear_choice(adapter.platform_name, token)
-            return False
-    return True
+            logger.exception("Could not clear choice token on %s", platform)
 
 
 def _question_options(question: dict[str, Any]) -> list[str]:

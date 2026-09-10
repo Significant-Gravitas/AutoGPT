@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
-from .turn_stream import DraftStreamer, TurnStreamer
+from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
 
 _MODULE = "backend.copilot.bot.turn_stream"
 
@@ -199,8 +199,6 @@ def _patch_choices():
 
 
 async def _clarify(adapter, questions):
-    from .turn_stream import _send_clarification
-
     with _patch_choices() as choices_mock:
         await _send_clarification(adapter, "42", _ctx(), {"questions": questions})
     return choices_mock
@@ -333,4 +331,73 @@ class TestNativeChoices:
         await _clarify(adapter, [{"question": "Region?", "options": "EU"}])
 
         adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_store_choice_failing_still_falls_back_to_text(self):
+        # A Redis failure minting the token used to escape before the
+        # adapter was ever called, reaching the generic stream error.
+        adapter = _choice_adapter()
+        with patch(
+            f"{_MODULE}.choices",
+            new=MagicMock(
+                store_choice=AsyncMock(side_effect=RuntimeError("redis down")),
+                clear_choice=AsyncMock(),
+            ),
+        ):
+            await _send_clarification(
+                adapter,
+                "42",
+                _ctx(),
+                {"questions": [{"question": "Q", "options": ["a"]}]},
+            )
+
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clear_choice_failing_still_falls_back_to_text(self):
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(return_value=False)
+        with patch(
+            f"{_MODULE}.choices",
+            new=MagicMock(
+                store_choice=AsyncMock(return_value="tok"),
+                clear_choice=AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+        ):
+            await _send_clarification(
+                adapter,
+                "42",
+                _ctx(),
+                {"questions": [{"question": "Q", "options": ["a"]}]},
+            )
+
+        adapter.send_message.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_partial_native_delivery_clears_every_token(self):
+        # Q1 sends, Q2 fails, so both are re-rendered as text. Q1's button is
+        # still on screen above that text and must not answer the turn again.
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(side_effect=[True, False])
+        tokens = iter(["tok-1", "tok-2"])
+        choices_mock = MagicMock(
+            store_choice=AsyncMock(side_effect=lambda *a, **k: next(tokens)),
+            clear_choice=AsyncMock(),
+        )
+        with patch(f"{_MODULE}.choices", new=choices_mock):
+            await _send_clarification(
+                adapter,
+                "42",
+                _ctx(),
+                {
+                    "questions": [
+                        {"question": "Q1", "options": ["a", "b"]},
+                        {"question": "Q2", "options": ["c", "d"]},
+                    ]
+                },
+            )
+
+        cleared = {c.args[1] for c in choices_mock.clear_choice.await_args_list}
+        assert cleared == {"tok-1", "tok-2"}
         adapter.send_message.assert_awaited()
