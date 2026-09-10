@@ -119,6 +119,7 @@
 * [Slack Blocks](block-integrations/slack/blocks.md)
 * [Slant3D Filament](block-integrations/slant3d/filament.md)
 * [Slant3D Order](block-integrations/slant3d/order.md)
+* [Slant3D Order Status](block-integrations/slant3d/order_status.md)
 * [Slant3D Slicing](block-integrations/slant3d/slicing.md)
 * [Slant3D Webhook](block-integrations/slant3d/webhook.md)
 * [Smartlead Campaign](block-integrations/smartlead/campaign.md)
