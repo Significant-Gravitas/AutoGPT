@@ -13,7 +13,7 @@ export function PrivacyNote() {
       <Icon icon={LockIcon} size={14} className="shrink-0 text-zinc-400" />
       <Text
         variant="small"
-        className="text-center !text-sm !text-zinc-400 sm:whitespace-nowrap"
+        className="text-center text-zinc-400 sm:whitespace-nowrap"
       >
         {PRIVACY_COPY}
       </Text>

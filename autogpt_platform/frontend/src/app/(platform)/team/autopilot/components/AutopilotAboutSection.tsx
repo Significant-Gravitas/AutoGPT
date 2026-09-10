@@ -1,4 +1,4 @@
-import { Text } from "@/components/atoms/Text/Text";
+import { ProfileEntry } from "../../[expertId]/components/ProfileEntry";
 import { AUTOPILOT_BLURB } from "../../helpers";
 
 const ENTRIES = [
@@ -25,14 +25,11 @@ export function AutopilotAboutSection() {
     <section className="space-y-5">
       <dl className="space-y-4">
         {ENTRIES.map((entry) => (
-          <div key={entry.label}>
-            <Text variant="body-medium" as="dt" tone="primary">
-              {entry.label}
-            </Text>
-            <Text variant="body" as="dd" tone="secondary" className="mt-1">
-              {entry.value}
-            </Text>
-          </div>
+          <ProfileEntry
+            key={entry.label}
+            label={entry.label}
+            value={entry.value}
+          />
         ))}
       </dl>
     </section>
