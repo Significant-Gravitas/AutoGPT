@@ -65,7 +65,8 @@ export function collectCurrentTurn(session: SessionDetailResponse) {
           name,
           input: parseArguments(call.function?.arguments),
           displayName: call.display_name,
-          output: typeof call.id === "string" ? outputs.get(call.id) : undefined,
+          output:
+            typeof call.id === "string" ? outputs.get(call.id) : undefined,
         });
     }
     if (
