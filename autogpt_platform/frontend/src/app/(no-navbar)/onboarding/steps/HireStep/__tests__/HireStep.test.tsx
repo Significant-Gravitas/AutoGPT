@@ -139,6 +139,9 @@ describe("HireStep — the team", () => {
     expect(
       await screen.findByText("Here's my read on your team"),
     ).toBeDefined();
+    expect(screen.getByTestId("hire-step-diagnosis").textContent).toBe(
+      "Hard to say what eats your week yet.",
+    );
     expect(screen.queryAllByTestId("hire-step-expert")).toHaveLength(0);
     expect(
       screen.getByRole("button", { name: "I'll add members later" }),
@@ -300,11 +303,12 @@ it("stops waiting after the deadline if transient errors persist", async () => {
   render(<HireStep />);
   expect(
     await screen.findByText(
-      "Here's my read on your team",
+      "Nothing to hire yet — you can add members later",
       {},
       { timeout: 22000 },
     ),
   ).toBeDefined();
+  expect(screen.queryByTestId("hire-step-diagnosis")).toBeNull();
   expect(calls).toBeGreaterThan(1);
   const stoppedAt = calls;
   await new Promise((resolve) => setTimeout(resolve, 3000));
