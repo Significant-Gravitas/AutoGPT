@@ -4,6 +4,10 @@ export const HIRE_TITLE_LLM = "Based on what you told me, here's who I'd hire";
 export const HIRE_TITLE_FALLBACK =
   "Based on your role, here's who I'd hire first";
 export const HIRE_TITLE_EMPTY = "Here's my read on your team";
+// No experts and no diagnosis to show: the title must not promise a read
+// that never renders.
+export const HIRE_TITLE_EMPTY_NO_READ =
+  "Nothing to hire yet — you can add members later";
 export const HIRE_TITLE_PENDING = "Thinking about who you'd need…";
 
 export const RECOMMENDATIONS_POLL_MS = 2_500;
@@ -17,8 +21,20 @@ export function hireTitle(
   isPending: boolean,
 ): string {
   if (isPending) return HIRE_TITLE_PENDING;
-  if ((team?.experts?.length ?? 0) === 0) return HIRE_TITLE_EMPTY;
+  if ((team?.experts?.length ?? 0) === 0) {
+    return team?.diagnosis ? HIRE_TITLE_EMPTY : HIRE_TITLE_EMPTY_NO_READ;
+  }
   return team?.source === "llm" ? HIRE_TITLE_LLM : HIRE_TITLE_FALLBACK;
+}
+
+// The diagnosis is the "read" the empty-state title promises; with cards on
+// screen the cards themselves are the read, so it stays out of the way.
+export function hireDiagnosis(
+  team: ExpertRecommendations | null,
+  isPending: boolean,
+): string | null {
+  if (isPending || (team?.experts?.length ?? 0) > 0) return null;
+  return team?.diagnosis?.trim() || null;
 }
 
 export function continueLabel(hiredCount: number): string {
