@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { notFound } from "next/navigation";
 import { prefetchGetV2GetAgentByStoreIdQuery } from "@/app/api/__generated__/endpoints/library/library";
 import {
   getV2GetSpecificAgent,
@@ -22,7 +24,7 @@ export async function generateMetadata({
   params: Promise<MarketplaceAgentPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const { data } = await getV2GetSpecificAgent(params.creator, params.slug);
+  const { data } = await getAgentOrNotFound(params.creator, params.slug);
   const agent = data as StoreAgentDetails;
 
   return buildPageMetadata({
@@ -54,7 +56,7 @@ export default async function MarketplaceAgentPage({
   ]);
 
   const { user } = await getServerUser();
-  const { data: creator_agent, status } = await getV2GetSpecificAgent(
+  const { data: creator_agent, status } = await getAgentOrNotFound(
     creator_lower,
     params.slug,
   ); // Already cached in above prefetch
@@ -75,4 +77,15 @@ export default async function MarketplaceAgentPage({
       <MainAgentPage params={params} />
     </HydrationBoundary>
   );
+}
+
+async function getAgentOrNotFound(creator: string, slug: string) {
+  try {
+    return await getV2GetSpecificAgent(creator, slug);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
 }
