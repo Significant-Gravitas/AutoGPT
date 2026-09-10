@@ -931,6 +931,26 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
             )
 
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        if execution.status == ExecutionStatus.REVIEW:
+            # Parked for spend approval (SECRT-2599): it runs once the user
+            # approves it on Home or the run page. Not a successful run yet.
+            return ExecutionStartedResponse(
+                message=(
+                    f"Agent '{library_agent.name}' is waiting for the user's "
+                    "approval to spend more credits (spend threshold reached). "
+                    f"It runs once they approve it on Home or at "
+                    f"{library_agent_link}. {MSG_DO_NOT_RUN_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=execution.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=ExecutionStatus.REVIEW.value,
+            )
+
         # Track successful run (dry runs don't count against the session limit)
         if not dry_run:
             session.successful_agent_runs[library_agent.graph_id] = (
@@ -946,8 +966,6 @@ class RunAgentTool(BaseTool):
             execution_id=execution.id,
             library_agent_id=library_agent.id,
         )
-
-        library_agent_link = f"/library/agents/{library_agent.id}"
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:

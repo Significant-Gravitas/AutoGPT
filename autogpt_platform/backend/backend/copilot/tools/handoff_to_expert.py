@@ -35,8 +35,10 @@ from backend.copilot.model import (
 )
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
+    SessionResult,
     run_copilot_turn_via_queue,
 )
+from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -176,7 +178,7 @@ class HandoffToExpertTool(BaseTool):
             handed_off_from_expert_id=session.expert_id,
             origin=child_session_origin(session.metadata),
         )
-        outcome = await self._queue_task(
+        outcome, result = await self._queue_task(
             user_id, session, inner.session_id, prompt, context
         )
         if outcome not in _OWNERSHIP_TAKEN:
@@ -192,7 +194,10 @@ class HandoffToExpertTool(BaseTool):
                     inner.session_id,
                     exc_info=True,
                 )
-            return self._error(_refused_transfer_message(target.name, outcome), session)
+            return self._error(
+                _refused_transfer_message(target.name, outcome, result.refusal),
+                session,
+            )
         return apply_delegated_expert(
             _transferred_response(
                 inner_session_id=inner.session_id,
@@ -216,10 +221,10 @@ class HandoffToExpertTool(BaseTool):
         inner_session_id: str,
         prompt: str,
         context: str,
-    ) -> SessionOutcome:
+    ) -> tuple[SessionOutcome, SessionResult]:
         """Push the framed task onto the target's session. Never waits."""
         caller = await self._caller_name(user_id, session.expert_id)
-        outcome, _result = await run_copilot_turn_via_queue(
+        return await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
             message=_transfer_message(caller, context, prompt),
@@ -229,8 +234,9 @@ class HandoffToExpertTool(BaseTool):
                 f"handoff:{session.session_id}" if session.session_id else "handoff"
             ),
             tool_name="handoff_to_expert",
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
         )
-        return outcome
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -327,13 +333,20 @@ def _transferred_response(
     )
 
 
-def _refused_transfer_message(target_name: str, outcome: SessionOutcome) -> str:
+def _refused_transfer_message(
+    target_name: str, outcome: SessionOutcome, refusal: str = ""
+) -> str:
     """Say plainly that nothing moved, so the model doesn't announce a handoff
     that never happened and then drop the task."""
     if outcome == "rejected_concurrent_turn_cap":
         return (
             f"The handoff to {target_name} did not happen — the task is still "
             f"yours. {running_turn_limit_message()}"
+        )
+    if outcome == "refused" and refusal:
+        return (
+            f"The handoff to {target_name} did not happen — the task is still "
+            f"yours. {refusal}"
         )
     return (
         f"The handoff to {target_name} did not happen — their session could not "

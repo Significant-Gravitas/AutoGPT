@@ -696,6 +696,28 @@ def get_delegation_supplement() -> str:
 """
 
 
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Autopilot session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
+"""
+
+
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 
