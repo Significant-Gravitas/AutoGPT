@@ -825,6 +825,53 @@ class TestCollectMentionableUsers:
         assert not any(token == "1000" for _, token in result)
 
     @pytest.mark.asyncio
+    async def test_typed_prefix_pings_a_member_with_a_decorated_name(self):
+        """The written "@Bently" must ping "Bently [SOMN]".
+
+        Discord matches `query` as a prefix, so the member is found — but
+        listing only their full display name and username meant the text the
+        author actually wrote matched neither, and the mention rendered as
+        plain text that pings nobody.
+        """
+        adapter, _ = _bare_adapter(bot_id=1000)
+        member = _mention(3000, "Bently [SOMN]")
+        member.name = "bentlybro"
+        member.bot = False
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[member])
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        pairs = await adapter._mentionables_for(channel, "Paging @Bently", ())
+        rendered, allowed = _resolve_mentions("Paging @Bently", pairs)
+
+        assert rendered == "Paging <@3000>"
+        assert [obj.id for obj in allowed.users] == [3000]
+
+    @pytest.mark.asyncio
+    async def test_an_ambiguous_prefix_stays_plain_text(self):
+        # Two members share the typed prefix, so there is no way to know who
+        # was meant — pinging whichever sorts first would be worse than not
+        # pinging at all.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        one = _mention(3000, "Bently [SOMN]")
+        one.name = "bentlybro"
+        one.bot = False
+        two = _mention(4000, "Bently Two")
+        two.name = "bently2"
+        two.bot = False
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[one, two])
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        pairs = await adapter._mentionables_for(channel, "Paging @Bently", ())
+        rendered, allowed = _resolve_mentions("Paging @Bently", pairs)
+
+        assert rendered == "Paging @Bently"
+        assert allowed.users is False
+
+    @pytest.mark.asyncio
     async def test_send_time_lookup_in_a_dm_keeps_only_known_users(self):
         adapter, _ = _bare_adapter(bot_id=1000)
         channel = MagicMock(spec=discord.DMChannel)
