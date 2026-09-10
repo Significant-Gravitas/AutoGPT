@@ -148,14 +148,11 @@ export function ExpertPage() {
             systemProviders,
           )}
         />
-        <div className="flex flex-col gap-3">
-          <ExpertPlanNote
-            name={firstName}
-            weeklyBudget={expert.weekly_budget ?? null}
-            accent={accent}
-          />
-          <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
-        </div>
+        <ExpertPlanNote
+          name={firstName}
+          weeklyBudget={expert.weekly_budget ?? null}
+        />
+        <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
       </div>
 
       {/* The voice pick follows a successful hire when the persona ships

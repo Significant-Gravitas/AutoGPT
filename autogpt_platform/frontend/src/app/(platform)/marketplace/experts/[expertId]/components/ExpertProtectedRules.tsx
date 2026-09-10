@@ -1,5 +1,6 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { LockIcon } from "@hugeicons/core-free-icons";
+import { ExpertSection } from "./ExpertSection";
 
 interface Props {
   rules: string[];
@@ -12,32 +13,26 @@ export function ExpertProtectedRules({ rules }: Props) {
   if (rules.length === 0) return null;
 
   return (
-    <section className="rounded-xl bg-zinc-50 px-4 py-3.5">
-      <h2 className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-        <Icon
-          icon={LockIcon}
-          size={16}
-          aria-hidden="true"
-          className="text-zinc-500"
-        />
-        Rules this expert cannot break
-      </h2>
-      <ul className="mt-2 space-y-1.5">
+    <ExpertSection
+      title="Rules this expert cannot break"
+      description="Part of every expert's soul, and not editable by anyone."
+    >
+      <ul className="flex flex-col gap-2">
         {rules.map((rule) => (
           <li
             key={rule}
-            className="flex gap-2 text-[13px] leading-5 text-zinc-600"
+            className="flex gap-2.5 text-[15px] leading-6 text-zinc-600"
           >
             <Icon
               icon={LockIcon}
-              size={14}
+              size={16}
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-zinc-400"
+              className="mt-1 shrink-0 text-zinc-400"
             />
             <span>{rule}</span>
           </li>
         ))}
       </ul>
-    </section>
+    </ExpertSection>
   );
 }

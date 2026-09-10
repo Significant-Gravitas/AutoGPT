@@ -64,25 +64,14 @@ describe("getExpertAccessProviders", () => {
   const systemProviders = ["anthropic", "openai", "jina", "webshare_proxy"];
 
   test("keeps only what the viewer has to connect themselves", () => {
-    // Maria's real chain on dev: three model and infrastructure providers the
-    // platform supplies, and one the user connects.
+    // Maria's real providers on dev: three the platform supplies, one not.
     const blogWriter = makeWorkflow({
       id: "wf-1",
-      chain: [
-        { kind: "integration", provider: "openai" },
-        { kind: "integration", provider: "dataforseo" },
-        { kind: "integration", provider: "anthropic" },
-      ],
+      integration_providers: ["openai", "dataforseo", "anthropic"],
     });
     const copyImprover = makeWorkflow({
       id: "wf-2",
-      chain: [
-        { kind: "integration", provider: "openai" },
-        { kind: "integration", provider: "jina" },
-        // A named non-integration step: the access list is what the user has
-        // to connect, so it must not pick this up.
-        { kind: "mcp", provider: "notion" },
-      ],
+      integration_providers: ["openai", "jina"],
     });
 
     expect(
@@ -90,17 +79,35 @@ describe("getExpertAccessProviders", () => {
     ).toEqual(["dataforseo"]);
   });
 
+  test("reads the untruncated list, not the three-item display chain", () => {
+    // The chain caps at three, so a fourth integration is missing from it.
+    // Reading the chain here would drop airtable and tell the user to connect
+    // three services when they have to connect four.
+    const workflow = makeWorkflow({
+      id: "wf-1",
+      chain: [
+        { kind: "integration", provider: "google" },
+        { kind: "integration", provider: "dataforseo" },
+        { kind: "integration", provider: "openai" },
+      ],
+      integration_providers: ["airtable", "dataforseo", "google", "openai"],
+    });
+
+    expect(getExpertAccessProviders([workflow], systemProviders)).toEqual([
+      "airtable",
+      "dataforseo",
+      "google",
+    ]);
+  });
+
   test("dedupes a provider named by more than one workflow", () => {
     const first = makeWorkflow({
       id: "wf-1",
-      chain: [{ kind: "integration", provider: "linkedin" }],
+      integration_providers: ["linkedin"],
     });
     const second = makeWorkflow({
       id: "wf-2",
-      chain: [
-        { kind: "integration", provider: "linkedin" },
-        { kind: "integration", provider: "google" },
-      ],
+      integration_providers: ["linkedin", "google"],
     });
 
     expect(getExpertAccessProviders([first, second], systemProviders)).toEqual([
@@ -111,19 +118,14 @@ describe("getExpertAccessProviders", () => {
 
   test("is empty when there is nothing to connect", () => {
     expect(getExpertAccessProviders([], systemProviders)).toEqual([]);
-    // A template served before the listing-graph fallback landed has no chain
-    // at all, and the section has to disappear rather than throw.
+    // A template served before the listing-graph fallback landed carries no
+    // providers at all, and the section has to disappear rather than throw.
     expect(
       getExpertAccessProviders([makeWorkflow({ id: "wf-1" })], systemProviders),
     ).toEqual([]);
     expect(
       getExpertAccessProviders(
-        [
-          makeWorkflow({
-            id: "wf-2",
-            chain: [{ kind: "integration", provider: "anthropic" }],
-          }),
-        ],
+        [makeWorkflow({ id: "wf-2", integration_providers: ["anthropic"] })],
         systemProviders,
       ),
     ).toEqual([]);
@@ -133,10 +135,7 @@ describe("getExpertAccessProviders", () => {
     // Better to say nothing than to tell someone they must connect Anthropic.
     const workflow = makeWorkflow({
       id: "wf-1",
-      chain: [
-        { kind: "integration", provider: "anthropic" },
-        { kind: "integration", provider: "dataforseo" },
-      ],
+      integration_providers: ["anthropic", "dataforseo"],
     });
 
     expect(getExpertAccessProviders([workflow], undefined)).toEqual([]);

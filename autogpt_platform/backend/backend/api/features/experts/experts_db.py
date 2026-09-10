@@ -50,7 +50,10 @@ from backend.api.features.experts.models import (
     RaiseResult,
     decode_voice_preferences,
 )
-from backend.api.features.experts.workflow_chain import build_workflow_chain
+from backend.api.features.experts.workflow_chain import (
+    build_workflow_chain,
+    integration_providers,
+)
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
@@ -120,7 +123,7 @@ _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
 _TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
         "include": {
-            "LibraryAgent": True,
+            "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": {
                 "include": {"AgentGraph": {"include": {"Nodes": True}}}
             },
@@ -147,6 +150,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         name, description = _library_agent_labels(library_agent)
     else:
         name, description = None, None
+    nodes = _chain_nodes(row)
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
@@ -156,7 +160,8 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
-        chain=build_workflow_chain(_chain_nodes(row)),
+        chain=build_workflow_chain(nodes),
+        integration_providers=integration_providers(nodes),
     )
 
 

@@ -140,13 +140,13 @@ export function getDayOneWorkflow(
 
 /** The integrations an expert's workflows will ask this viewer to connect.
  *
- *  Two subtractions make it honest. Providers the platform already pays for
- *  are dropped — the roster's workflows lean on Anthropic, OpenAI, Jina and a
- *  Webshare proxy, none of which anyone connects — and only the summary chain
- *  is read, so this is what the profile can promise rather than every
- *  credential a run may eventually touch. Without the system list it returns
- *  nothing, because naming a provider the platform supplies is worse than
- *  naming none. */
+ *  Reads `integration_providers`, never `chain`: the chain is a three-item
+ *  display summary, so a workflow with a fourth integration silently loses
+ *  one, picked by node counts rather than by whether anyone connects it.
+ *  Providers the platform already pays for are then subtracted — the roster
+ *  leans on Anthropic, OpenAI, Jina and a Webshare proxy, none of which a user
+ *  ever connects. Without the system list this returns nothing, because naming
+ *  a provider the platform supplies is worse than naming none. */
 export function getExpertAccessProviders(
   workflows: ExpertWorkflowRef[],
   systemProviders: string[] | undefined,
@@ -154,13 +154,7 @@ export function getExpertAccessProviders(
   if (!systemProviders) return [];
   const supplied = new Set(systemProviders);
   const providers = workflows
-    .flatMap((workflow) => workflow.chain ?? [])
-    .flatMap((item) =>
-      item.kind === "integration" &&
-      item.provider &&
-      !supplied.has(item.provider)
-        ? [item.provider]
-        : [],
-    );
+    .flatMap((workflow) => workflow.integration_providers ?? [])
+    .filter((provider) => !supplied.has(provider));
   return [...new Set(providers)];
 }

@@ -17,15 +17,15 @@ export function ExpertDayOne({ name, workflow, accent }: Props) {
   return (
     <ExpertSection
       title={`What ${name} sets up on day one`}
-      description="Running for you from the first conversation, with nothing to build."
+      description={`Installed and scheduled before your first conversation, so ${name} has something running from the start.`}
     >
       <div
         className={cn(
-          "flex items-start gap-3 rounded-xl border border-zinc-200/80 px-4 py-3.5",
+          "flex items-center gap-3 rounded-xl border border-zinc-200/80 px-4 py-3.5",
           accent.wash,
         )}
       >
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-inset ring-zinc-200/70">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-inset ring-zinc-200/70">
           <Icon
             icon={FlashIcon}
             size={16}
@@ -33,17 +33,10 @@ export function ExpertDayOne({ name, workflow, accent }: Props) {
             className={accent.icon}
           />
         </span>
-        <div className="min-w-0">
-          <div className="break-words text-[15px] font-medium text-zinc-900">
-            {workflow.name}
-          </div>
-          {/* A listing description is a full marketing page; the spotlight gets
-              the same two lines the workflow cards below it get. */}
-          {workflow.description ? (
-            <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-zinc-600">
-              {workflow.description}
-            </p>
-          ) : null}
+        {/* Name only: the card in the Workflows grid below carries the same
+            description, and repeating it here reads as duplication. */}
+        <div className="min-w-0 break-words text-[15px] font-medium text-zinc-900">
+          {workflow.name}
         </div>
       </div>
     </ExpertSection>

@@ -88,10 +88,7 @@ const mariaTemplate: Expert = {
       store_listing_version_id: null,
       library_agent_id: null,
       graph_id: null,
-      chain: [
-        { kind: "integration", provider: "anthropic" },
-        { kind: "integration", provider: "jina" },
-      ],
+      integration_providers: ["anthropic", "jina"],
     },
     {
       id: "wf-2",
@@ -100,10 +97,7 @@ const mariaTemplate: Expert = {
       store_listing_version_id: null,
       library_agent_id: null,
       graph_id: null,
-      chain: [
-        { kind: "integration", provider: "openai" },
-        { kind: "integration", provider: "dataforseo" },
-      ],
+      integration_providers: ["dataforseo", "openai"],
     },
   ],
 };
@@ -198,11 +192,13 @@ describe("Marketplace expert page", () => {
       name: "What Maria sets up on day one",
     });
     expect(within(dayOne).getByText("LinkedIn Post Generator")).toBeDefined();
+    // The Workflows grid below carries the description; repeating it in the
+    // spotlight read as duplication rather than emphasis.
     expect(
-      within(dayOne).getByText(
+      within(dayOne).queryByText(
         "Create research-driven LinkedIn posts in minutes.",
       ),
-    ).toBeDefined();
+    ).toBeNull();
 
     // Only what the viewer connects: Anthropic, OpenAI and Jina are on the
     // platform's own credentials and must not be asked for.
@@ -216,9 +212,7 @@ describe("Marketplace expert page", () => {
     expect(
       screen.getByRole("heading", { name: "Included with your plan" }),
     ).toBeDefined();
-    expect(
-      screen.getByText(/capped at \$5 a week until you change it/),
-    ).toBeDefined();
+    expect(screen.getByText(/capped at \$5 a week/)).toBeDefined();
 
     expect(
       screen.getByText(
