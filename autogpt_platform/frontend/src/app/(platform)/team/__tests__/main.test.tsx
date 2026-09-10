@@ -1064,6 +1064,34 @@ describe("TeamPage - setup needed card", () => {
     expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
   });
 
+  test("excludes MCP presets from native setup actions while keeping the unmet item", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({ providers: ["mcp_notion"] }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "mcp_notion",
+          display_name: "Notion",
+          supported_auth_types: [],
+          mcp_server: {
+            server_url: "https://mcp.notion.com/mcp",
+            documentation_url: "https://developers.notion.com/guides/mcp",
+            setup_instructions: "Sign in to Notion.",
+            connection_mode: "hosted",
+            auth_mode: "oauth",
+          },
+        },
+      ]),
+    );
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(within(card).getByText("Setup needed (1)")).toBeDefined();
+    expect(await within(card).findByText("Needs a platform key")).toBeDefined();
+    expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
   test("Allow grants the existing credential to that expert", async () => {
     let granted: {
       expertId: string;

@@ -18,6 +18,40 @@ function makeMeta(overrides: Partial<ProviderMetadata> = {}): ProviderMetadata {
 }
 
 describe("toConnectableProviders", () => {
+  test("keeps official MCP presets separate from native auth providers", () => {
+    const mcpServer = {
+      server_url: "https://mcp.notion.com/mcp",
+      documentation_url: "https://developers.notion.com/docs/mcp",
+      setup_instructions: "Sign in to your Notion workspace.",
+      connection_mode: "hosted" as const,
+      auth_mode: "oauth" as const,
+      icon_id: "notion",
+    };
+    const preset = {
+      name: "mcp_notion",
+      display_name: "Notion",
+      description: "Search and edit workspace content",
+      supported_auth_types: [],
+      mcp_server: mcpServer,
+    };
+    const result = toConnectableProviders([
+      makeMeta({ name: "notion" }),
+      preset,
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(
+      result.find((provider) => provider.id === "mcp_notion"),
+    ).toMatchObject({
+      name: "Notion",
+      mcpServer,
+      supportedAuthTypes: [],
+    });
+    expect(
+      result.find((provider) => provider.id === "notion")?.supportedAuthTypes,
+    ).toEqual(["oauth2", "api_key"]);
+  });
+
   test("formats provider name and preserves description and supported types", () => {
     const result = toConnectableProviders([
       makeMeta({ name: "github", description: "Issues and PRs" }),

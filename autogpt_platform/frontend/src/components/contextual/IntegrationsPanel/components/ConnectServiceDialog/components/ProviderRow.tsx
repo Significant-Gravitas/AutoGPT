@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ConnectableProvider } from "../helpers";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Badge } from "@/components/atoms/Badge/Badge";
 
 interface Props {
   provider: ConnectableProvider;
@@ -12,7 +13,7 @@ interface Props {
 }
 
 export function ProviderRow({ provider, onSelect }: Props) {
-  const src = `/integrations/${provider.id}.png`;
+  const src = `/integrations/${provider.mcpServer?.icon_id ?? provider.id}.png`;
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
   const broken = brokenSrc === src;
 
@@ -20,7 +21,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex h-16 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100"
     >
       {broken ? (
         <div
@@ -41,8 +42,19 @@ export function ProviderRow({ provider, onSelect }: Props) {
         />
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
-          {provider.name}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-medium leading-[22px] text-zinc-800">
+          <span>{provider.name}</span>
+          {provider.mcpServer && (
+            <Badge variant="info" size="small">
+              MCP
+            </Badge>
+          )}
+          {provider.mcpServer &&
+            provider.mcpServer.connection_mode !== "hosted" && (
+              <Badge variant="warning" size="small">
+                Setup required
+              </Badge>
+            )}
         </span>
         <span className="truncate text-[12px] leading-[20px] text-zinc-500">
           {provider.description ?? provider.id}

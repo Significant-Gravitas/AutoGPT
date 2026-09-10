@@ -38,6 +38,7 @@ from backend.copilot.service import strip_server_injected_tags
 from backend.data.db_accessors import workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.integrations.mcp_guide import render_mcp_guide
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
 
@@ -254,7 +255,7 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     """Read a default skill's body from disk (cached at module level
     via :func:`functools.lru_cache` would re-read on test reloads, so
     we hit the disk each call — these files are small)."""
-    return skill.body_path.read_text(encoding="utf-8")
+    return render_mcp_guide(skill.body_path.read_text(encoding="utf-8"))
 
 
 def get_default_skill_with_body(name: str) -> ParsedSkill | None:

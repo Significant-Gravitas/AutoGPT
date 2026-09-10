@@ -14,6 +14,7 @@ export interface ConnectableProvider {
   supportedAuthTypes: AuthMethod[];
   authProviderByType?: Partial<Record<AuthMethod, string>>;
   searchTerms?: string[];
+  mcpServer?: ProviderMetadata["mcp_server"];
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -41,10 +42,11 @@ export function toConnectableProviders(
     const existing = byDisplayProvider.get(displayProvider);
     const provider = existing ?? {
       id: displayProvider,
-      name: formatProviderName(displayProvider),
+      name: item.display_name ?? formatProviderName(displayProvider),
       description: item.description,
       supportedAuthTypes: [],
     };
+    if (item.mcp_server) provider.mcpServer = item.mcp_server;
 
     for (const authType of authTypes) {
       const alreadySupported = provider.supportedAuthTypes.includes(authType);

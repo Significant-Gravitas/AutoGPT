@@ -23871,6 +23871,48 @@
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
+      "MCPServerMetadata": {
+        "properties": {
+          "server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Url"
+          },
+          "documentation_url": {
+            "type": "string",
+            "title": "Documentation Url"
+          },
+          "setup_instructions": {
+            "type": "string",
+            "title": "Setup Instructions"
+          },
+          "connection_mode": {
+            "type": "string",
+            "enum": ["hosted", "custom", "unavailable"],
+            "title": "Connection Mode"
+          },
+          "auth_mode": {
+            "type": "string",
+            "enum": ["oauth", "token", "none", "unknown"],
+            "title": "Auth Mode"
+          },
+          "icon_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+              { "type": "null" }
+            ],
+            "title": "Icon Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documentation_url",
+          "setup_instructions",
+          "connection_mode",
+          "auth_mode"
+        ],
+        "title": "MCPServerMetadata"
+      },
       "MCPStoreTokenRequest": {
         "properties": {
           "server_url": {
@@ -26107,6 +26149,18 @@
             "type": "string",
             "title": "Name",
             "description": "Provider slug (e.g. ``github``)"
+          },
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name",
+            "description": "Human-readable provider name"
+          },
+          "mcp_server": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MCPServerMetadata" },
+              { "type": "null" }
+            ],
+            "description": "Official MCP catalog connection and setup metadata"
           },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

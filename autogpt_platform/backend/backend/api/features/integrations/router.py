@@ -67,6 +67,7 @@ from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvi
 from backend.integrations.managed_providers.ayrshare import (
     settings_available as ayrshare_settings_available,
 )
+from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
@@ -1897,8 +1898,9 @@ async def list_providers(
     a ``description`` declared via ``ProviderBuilder.with_description(...)`` in
     the provider's ``_config.py``.
 
-    Note: The complete list of provider names is also available as a constant
-    in the generated TypeScript client via PROVIDER_NAMES.
+    Official MCP catalog entries are appended as display metadata and use the
+    generic MCP connection flow. They are not registered credential providers,
+    so PROVIDER_NAMES continues to contain only credential-provider names.
     """
     # Ensure all block modules (and therefore every provider's _config.py) are
     # imported before we read from AutoRegistry. Cached on first call.
@@ -1921,6 +1923,14 @@ async def list_providers(
             supported_auth_types=get_supported_auth_types(name),
         )
         for name in all_providers
+    ] + [
+        ProviderMetadata(
+            name=entry.name,
+            display_name=entry.display_name,
+            description=entry.description,
+            mcp_server=entry.mcp_server,
+        )
+        for entry in get_mcp_catalog()
     ]
 
 

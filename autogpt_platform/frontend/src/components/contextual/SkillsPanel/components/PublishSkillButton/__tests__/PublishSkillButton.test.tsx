@@ -47,6 +47,31 @@ describe("PublishSkillButton", () => {
     expect(submit.hasAttribute("disabled")).toBe(true);
   });
 
+  test("excludes MCP presets from native credential requirements", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler200([
+        { name: "google", description: "Google" },
+        {
+          name: "mcp_notion",
+          display_name: "Notion",
+          supported_auth_types: [],
+          mcp_server: {
+            server_url: "https://mcp.notion.com/mcp",
+            documentation_url: "https://developers.notion.com/guides/mcp",
+            setup_instructions: "Sign in to Notion.",
+            connection_mode: "hosted",
+            auth_mode: "oauth",
+          },
+        },
+      ]),
+    );
+    render(<PublishSkillButton skillName="brand-voice-guide" />);
+    await user().click(screen.getByTestId("skill-publish-button"));
+
+    expect(await screen.findByText("Google")).toBeDefined();
+    expect(screen.queryByText(/Notion/)).toBeNull();
+  });
+
   test("submits the skill with its category and integrations", async () => {
     const u = user();
     let body: unknown = null;

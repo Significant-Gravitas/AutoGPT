@@ -73,7 +73,9 @@ export function useExpertConnectServiceDialog({
     }
   }, [open, initialProviderId]);
 
-  const allProviders = toConnectableProviders(providersQuery.data ?? []);
+  const allProviders = toConnectableProviders(
+    (providersQuery.data ?? []).filter((provider) => !provider.mcp_server),
+  );
   const credentials = credentialsQuery.data ?? [];
   const connectedProviders = new Set(
     credentials.map((credential) => credential.provider),

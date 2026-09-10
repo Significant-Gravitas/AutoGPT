@@ -17,8 +17,18 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
-export function useIntegrationsList() {
-  const [query, setQuery] = useState("");
+interface Args {
+  query?: string;
+  onQueryChange?: (query: string) => void;
+}
+
+export function useIntegrationsList({
+  query: controlledQuery,
+  onQueryChange,
+}: Args = {}) {
+  const [localQuery, setLocalQuery] = useState("");
+  const query = controlledQuery ?? localQuery;
+  const setQuery = onQueryChange ?? setLocalQuery;
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const credentialsQuery = useGetV1ListCredentials({

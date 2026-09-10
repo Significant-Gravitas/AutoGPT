@@ -110,6 +110,37 @@ beforeEach(() => {
 });
 
 describe("ConnectToolsPanel — picking a provider", () => {
+  it("excludes MCP presets from the native-method picker", async () => {
+    stubPanel();
+    server.use(
+      http.get(PROVIDERS_URL, () =>
+        HttpResponse.json([
+          ...REGISTRY,
+          {
+            name: "mcp_notion",
+            display_name: "Notion",
+            supported_auth_types: [],
+            mcp_server: {
+              server_url: "https://mcp.notion.com/mcp",
+              documentation_url: "https://developers.notion.com/guides/mcp",
+              setup_instructions: "Sign in to Notion.",
+              connection_mode: "hosted",
+              auth_mode: "oauth",
+            },
+          },
+        ]),
+      ),
+    );
+    renderPanel();
+    await screen.findByRole("button", { name: /GitHub/ });
+
+    await userEvent.type(screen.getByLabelText("Search services"), "Notion");
+
+    expect(await screen.findByText('No services match "Notion"')).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Notion/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  });
+
   it("opens the connect step with only the methods the provider supports", async () => {
     stubPanel();
     renderPanel();
@@ -206,7 +237,7 @@ describe("ConnectToolsPanel — inline API key flow", () => {
     );
 
     await user.type(screen.getByLabelText("Name"), "Work key");
-    await user.type(apiKeyField, "sk-live-123");
+    await user.type(apiKeyField, "<test-api-key>");
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Continue" })).toHaveProperty(
@@ -245,7 +276,7 @@ describe("ConnectToolsPanel — inline API key flow", () => {
     await user.type(await screen.findByLabelText("Name"), "Work key");
     await user.type(
       screen.getByLabelText("API key", { selector: "input" }),
-      "sk-live-123",
+      "<test-api-key>",
     );
 
     await user.click(screen.getByRole("button", { name: "Continue" }));
@@ -256,7 +287,7 @@ describe("ConnectToolsPanel — inline API key flow", () => {
       provider: "github",
       type: "api_key",
       title: "Work key",
-      api_key: "sk-live-123",
+      api_key: "<test-api-key>",
     });
     expect(toastSpy).toHaveBeenCalledWith({
       title: "API key saved",

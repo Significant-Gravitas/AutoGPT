@@ -22,12 +22,11 @@ Use these URLs directly without asking the user:
 
 | Service | URL |
 |---|---|
-| Notion | `https://mcp.notion.com/mcp` |
 | Linear | `https://mcp.linear.app/mcp` |
 | Stripe | `https://mcp.stripe.com` |
-| Intercom | `https://mcp.intercom.com/mcp` |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
-| Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
+
+<!-- official-mcp-catalog -->
 
 For other services, **web-search for the service's official MCP server URL**
 (e.g. "`<service>` MCP server URL") — many vendors host an MCP server even
