@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { consent } from "@/services/consent/cookies";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { analytics, flushDatafastQueue } from "./index";
 
 vi.mock("@/services/consent/cookies", () => ({
@@ -155,5 +159,30 @@ describe("sendDatafastEvent", () => {
     );
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe("sendGAEvent", () => {
+  afterEach(() => {
+    removeGtagShim();
+  });
+
+  it("routes the command through the tag's own gtag shim", () => {
+    // Regression: the arguments used to be spread into the dataLayer as a
+    // plain array, and gtag.js only executes real `arguments` objects — so
+    // every custom GA event was silently dropped.
+    const calls = installGtagShim();
+
+    analytics.sendGAEvent("event", "tour_start", { scenario: "chat" });
+
+    expect(calls).toEqual([["event", "tour_start", { scenario: "chat" }]]);
+  });
+
+  it("drops the event when the tag never loaded", () => {
+    removeGtagShim();
+
+    expect(() =>
+      analytics.sendGAEvent("event", "tour_start", {}),
+    ).not.toThrow();
   });
 });

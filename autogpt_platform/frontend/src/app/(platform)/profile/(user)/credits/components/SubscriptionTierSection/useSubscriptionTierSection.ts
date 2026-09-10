@@ -9,6 +9,10 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTierLabel } from "./helpers";
+import {
+  getSubscriptionValue,
+  trackAdsConversion,
+} from "@/services/analytics/google-ads";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
@@ -69,7 +73,10 @@ export function useSubscriptionTierSection() {
   async function changeTier(tier: string) {
     setTierError(null);
     try {
-      const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
+      // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+      // report the subscription to Google Ads. This surface has no cycle
+      // toggle, so the backend default (monthly) is what gets charged.
+      const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=monthly`;
       const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
       const result = await doUpdateTier({
         data: {
@@ -79,6 +86,9 @@ export function useSubscriptionTierSection() {
         },
       });
       if (result.status === 200 && result.data.url) {
+        trackAdsConversion("begin_checkout", {
+          value: getSubscriptionValue(tier, "monthly"),
+        });
         window.location.href = result.data.url;
         return;
       }

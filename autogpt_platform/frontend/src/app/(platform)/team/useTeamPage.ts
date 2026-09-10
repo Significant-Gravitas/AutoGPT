@@ -15,8 +15,14 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  AUTOPILOT_CHAT_TARGET,
+  ChatTarget,
+  expertToChatTarget,
+} from "./components/ExpertChatDrawer/helpers";
+import {
   getAssignToastTitle,
   getExpertSchedules,
+  getHiredExperts,
   groupExpertsByPods,
 } from "./helpers";
 
@@ -29,6 +35,8 @@ export function useTeamPage({ enabled }: Args) {
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
+  const [chatDrawerKey, setChatDrawerKey] = useState(0);
   const [isNewPodOpen, setIsNewPodOpen] = useState(false);
 
   const expertsQuery = useListExperts({
@@ -127,11 +135,9 @@ export function useTeamPage({ enabled }: Args) {
     },
   });
 
-  const hiredExperts = (expertsQuery.data ?? []).filter(
-    (expert) => !expert.is_template && !expert.is_archived,
-  );
+  const hiredExperts = getHiredExperts(expertsQuery.data ?? []);
   const schedules = schedulesQuery.data ?? [];
-  const { groups, ungrouped } = groupExpertsByPods(hiredExperts, pods);
+  const { groups } = groupExpertsByPods(hiredExperts, pods);
 
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedules);
@@ -158,8 +164,20 @@ export function useTeamPage({ enabled }: Args) {
   }
 
   function openSoul(expertId: string) {
+    setChatTarget(null);
     setSoulExpertId(expertId);
     setSoulDrawerKey((current) => current + 1);
+  }
+
+  function openChat(expertId: string | null) {
+    const expert = hiredExperts.find((candidate) => candidate.id === expertId);
+    setSoulExpertId(null);
+    setChatTarget(expert ? expertToChatTarget(expert) : AUTOPILOT_CHAT_TARGET);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function closeChat() {
+    setChatTarget(null);
   }
 
   function createPod(name: string) {
@@ -183,7 +201,6 @@ export function useTeamPage({ enabled }: Args) {
     pods,
     podForExpert,
     podGroups: groups,
-    ungroupedExperts: ungrouped,
     schedules,
     schedulesForExpert,
     isLoading:
@@ -202,6 +219,10 @@ export function useTeamPage({ enabled }: Args) {
     soulDrawerKey,
     openSoul,
     closeSoul,
+    chatTarget,
+    chatDrawerKey,
+    openChat,
+    closeChat,
     isNewPodOpen,
     openNewPod,
     closeNewPod,

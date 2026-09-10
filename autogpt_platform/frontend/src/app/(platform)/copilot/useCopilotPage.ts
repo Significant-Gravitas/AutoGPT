@@ -6,7 +6,7 @@ import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import { getLatestAssistantStatusMessage } from "./helpers";
+import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
@@ -64,10 +64,10 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const [newThreadParam] = useQueryState("new", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
@@ -117,17 +117,20 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
     setSessionId,
+    sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,
@@ -139,7 +142,11 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun, expertId });
+  } = useChatSession({
+    dryRun: isDryRun,
+    expertId,
+    adoptLatestExpertThread: !newThreadParam,
+  });
 
   // An open session owns its identity: the URL param only describes who the
   // NEXT session will address, and it is absent whenever a thread is reached
@@ -167,19 +174,29 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     isUserStoppingRef,
     isUserStopping,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
   } = useCopilotStream({
     userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
+    rawSessionMessages,
+    sessionAuthProvider: sessionLlmAuthProvider,
+    sessionCredentialId: sessionLlmCredentialId,
+    activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
-    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+    // Sent whenever the picker can set it. The tier control is not behind
+    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
+    // so gating the value on that flag silently ran the turn on the tier the
+    // user had not chosen. Entitlement is the server's call, not the flag's.
+    copilotModel: copilotLlmModel,
   });
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
@@ -386,6 +403,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -408,6 +426,8 @@ export function useCopilotPage() {
     turnStats,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
     // sessionDryRun is the CURRENT session's immutable dry_run flag from API,
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.

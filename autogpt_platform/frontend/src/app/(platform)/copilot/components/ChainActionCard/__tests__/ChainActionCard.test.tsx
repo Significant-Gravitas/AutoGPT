@@ -80,6 +80,7 @@ function connectorRequest(
     ],
     selected: {},
     onChange: vi.fn(),
+    onConnected: vi.fn(),
     ...overrides,
   };
 }
@@ -95,6 +96,7 @@ function mcpRequest(
     loading: false,
     error: null,
     showManualToken: false,
+    authScheme: "bearer",
     onConnect: vi.fn(),
     onUseToken: vi.fn(),
     ...overrides,
@@ -137,6 +139,7 @@ function renderCard(
       mcp={[]}
       inputs={[]}
       questions={[]}
+      manualProceed={false}
       isReady
       onProceed={onProceed}
       {...overrides}
@@ -200,6 +203,81 @@ describe("ChainActionCard", () => {
       expect(screen.queryByText("Connect")).toBeNull();
     });
 
+    it("keeps a selection while the providers context is still loading", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+
+      render(
+        // `null` is the provider context's "still loading" sentinel, so every
+        // credential lookup misses — clearing then drops a good selection.
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      await screen.findByText("GitHub");
+      expect(request.onChange).not.toHaveBeenCalled();
+    });
+
+    it("clears the selection once loading reveals no matching credential", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+      const loadedWithNoMatch = {
+        github: { savedCredentials: [] },
+      } as unknown as CredentialsProvidersContextType;
+
+      const { rerender } = render(
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+      expect(request.onChange).not.toHaveBeenCalled();
+
+      rerender(
+        <CredentialsProvidersContext.Provider value={loadedWithNoMatch}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      // Neither the credential nor the selection changed across this
+      // transition, so only `allProviders` can re-run the effect.
+      await waitFor(() =>
+        expect(request.onChange).toHaveBeenCalledWith("credentials", undefined),
+      );
+    });
+
     it("auto-selects a saved credential from the providers context", async () => {
       const request = connectorRequest();
       const providers = {
@@ -222,6 +300,7 @@ describe("ChainActionCard", () => {
             mcp={[]}
             inputs={[]}
             questions={[]}
+            manualProceed={false}
             isReady
             onProceed={vi.fn()}
           />
@@ -307,7 +386,7 @@ describe("ChainActionCard", () => {
       expect(useToken?.disabled).toBe(false);
 
       fireEvent.click(useToken!);
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
     });
 
     it("submits the manual token on Enter", () => {
@@ -318,7 +397,77 @@ describe("ChainActionCard", () => {
       fireEvent.change(input, { target: { value: "secret-token" } });
       fireEvent.keyDown(input, { key: "Enter" });
 
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
+    });
+
+    it("prefixes a Basic credential selected in the chain row", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "basic" } },
+      );
+      fireEvent.change(
+        screen.getByLabelText("Basic authentication token for Notion"),
+        { target: { value: "  cGstbGYtYWJjZA==  " } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Basic cGstbGYtYWJjZA==");
+    });
+
+    it("refuses an unencoded user:password before calling onUseToken", () => {
+      // The other three manual-credential surfaces validate before storing.
+      // Without it this one sent the raw pair, and the user got the backend's
+      // 422 instead of the message that names the Base64 step.
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "basic" } },
+      );
+      fireEvent.change(
+        screen.getByLabelText("Basic authentication token for Notion"),
+        { target: { value: "pk-lf-abc:sk-lf-xyz" } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /unencoded user:password/,
+      );
+    });
+
+    it("points the credential input at both its hint and its error", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      const input = screen.getByLabelText("API token for Notion");
+      const hintId = input.getAttribute("aria-describedby");
+      expect(hintId).toBeTruthy();
+      // The hint is the only place the Base64 step is explained, and nothing
+      // carried the id the input pointed at.
+      expect(document.getElementById(hintId as string)?.textContent).toMatch(
+        /Bearer authentication/,
+      );
+    });
+
+    it("uses the selector when it differs from a pasted prefix", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(screen.getByLabelText("API token for Notion"), {
+        target: { value: "Basic encoded-value" },
+      });
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "bearer" } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer encoded-value");
     });
   });
 
@@ -377,6 +526,7 @@ describe("ChainActionCard", () => {
           mcp={[]}
           inputs={[inputsRequest()]}
           questions={[]}
+          manualProceed={false}
           isReady
           onProceed={onProceed}
         />,
@@ -508,6 +658,517 @@ describe("ChainActionCard", () => {
 
       fireEvent.keyDown(screen.getByDisplayValue("Europe"), { key: "Enter" });
       expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("renders options as choices and selects one on click", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      expect(screen.queryByPlaceholderText("Type your answer")).toBeNull();
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+    });
+
+    it("marks the option matching the answer as selected", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      expect(
+        screen
+          .getByRole("radio", { name: "Europe" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      expect(
+        screen
+          .getByRole("radio", { name: "Americas" })
+          .getAttribute("aria-checked"),
+      ).toBe("false");
+    });
+
+    it("swaps to free text via Type something and clears a picked option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+
+      fireEvent.click(screen.getByText("Choose from options instead"));
+      expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+    });
+
+    it("opens in free text when the answer matches no option", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Antarctica" },
+          }),
+        ],
+      });
+
+      expect(screen.getByDisplayValue("Antarctica")).toBeDefined();
+    });
+
+    it("clears a custom answer when going back to the options", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Antarctica" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Choose from options instead"));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+    });
+
+    it("names the option group after the question", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(
+        screen.getByRole("radiogroup", { name: "Which region?" }),
+      ).toBeDefined();
+    });
+
+    it("moves and selects between options with the arrow keys", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowDown",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+    });
+
+    it("keeps only the active option in the tab order", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Americas" },
+          }),
+        ],
+      });
+
+      expect(
+        screen
+          .getByRole("radio", { name: "Americas" })
+          .getAttribute("tabindex"),
+      ).toBe("0");
+      expect(
+        screen.getByRole("radio", { name: "Europe" }).getAttribute("tabindex"),
+      ).toBe("-1");
+    });
+
+    it("does not steal focus when the first question opens in free text", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Antarctica" },
+          }),
+        ],
+      });
+
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it("focuses the free-text box when the user asks to type", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText("Type your answer"),
+      );
+    });
+
+    it("focuses the active option when the pager reaches a question", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              { question: "Which region?", keyword: "region" },
+              {
+                question: "Which channel?",
+                keyword: "channel",
+                options: ["Email", "Slack"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: "Email" }),
+      );
+    });
+
+    it("does not leak the free-text toggle between same-keyword requests", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            id: "questions-1",
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+          questionRequest({
+            id: "questions-2",
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Notion", "Drive"],
+              },
+            ],
+            answers: {},
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+      expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
+    });
+
+    it("moves focus onto the option the arrow keys select", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowDown",
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: "Americas" }),
+      );
+    });
+
+    it("selects backwards with ArrowUp and ArrowLeft", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Asia" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowUp",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowLeft",
+      });
+      expect(request.onAnswer).toHaveBeenLastCalledWith("region", "Americas");
+    });
+
+    it("wraps around at both ends of the option list", () => {
+      // Without the modulo, ArrowUp on the first option reads options[-1] and
+      // answers the question with undefined.
+      const first = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [first] });
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowUp",
+      });
+      expect(first.onAnswer).toHaveBeenCalledWith("region", "Asia");
+
+      cleanup();
+
+      const last = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Asia" },
+      });
+      renderCard({ questions: [last] });
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowDown",
+      });
+      expect(last.onAnswer).toHaveBeenCalledWith("region", "Europe");
+    });
+
+    it("submits from the option list on Enter once an option is selected", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      const { onProceed } = renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "Enter",
+      });
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("selects rather than submits on Enter when nothing is chosen yet", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed } = renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "Enter",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(onProceed).not.toHaveBeenCalled();
+    });
+
+    it("matches the selected option against the trimmed answer", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "  Europe  " },
+          }),
+        ],
+      });
+
+      expect(
+        screen
+          .getByRole("radio", { name: "Europe" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+
+    it("does not replay the declined options as the free-text placeholder", () => {
+      // The backend sets example to the joined options, so echoing it back to
+      // someone who just left the option list would be pure noise.
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                example: "Europe, Americas",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+      expect(screen.queryByPlaceholderText("e.g. Europe, Americas")).toBeNull();
+    });
+
+    it("gates the send button on an option actually being picked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Add answers to message",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      const send = screen.getByRole("button", {
+        name: "Add answers to message",
+      }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+      fireEvent.click(send);
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("keeps two same-keyword questions on their own cards", () => {
+      // Keywords are unique only within a request, so the pager keys on
+      // position — sharing an id would stop the field remounting, leaving the
+      // second question's options blank while the first one's answer submits.
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which source channel?",
+                keyword: "channel",
+                options: ["Email", "Slack"],
+              },
+              {
+                question: "Which destination channel?",
+                keyword: "channel",
+                options: ["Notion", "Drive"],
+              },
+            ],
+            answers: { channel: "Email" },
+          }),
+        ],
+      });
+
+      expect(screen.getByRole("radio", { name: "Email" })).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+
+      // Remounted: "Email" matches neither option here, so the field opens in
+      // free text with the stray value visible instead of silently hiding it.
+      expect(screen.getByDisplayValue("Email")).toBeDefined();
+      expect(screen.queryByRole("radio", { name: "Notion" })).toBeNull();
     });
 
     it("keeps the questions card sendable when an unready sibling exists", () => {

@@ -1,0 +1,52 @@
+{#- Plain-text part of the Verdict, built from the same context as the HTML. -#}
+{%- set approved = (outcome == 'approved') -%}
+{%- set has_note = comments and comments | trim | length > 0 -%}
+STORE REVIEW - VERSION {{ version | default(1) }}{% if not approved %} - CHANGES NEEDED{% endif %}
+
+
+{{ subject }}
+
+{% if approved %}
+{{ reviewer_name }} approved version {{ version | default(1) }} on {{ reviewed_at_label }}.
+{{ agent_name }} is live in the AutoGPT Store: anyone can find it, install it
+and run it.
+{% else %}
+{{ reviewer_name }} reviewed version {{ version | default(1) }} on {{ reviewed_at_label }} and found
+something to fix before {{ agent_name }} can go live. Nothing is lost: your
+submission is saved and you can resubmit as soon as it is fixed.
+{% endif %}
+{% if not approved and changes %}
+
+{{ changes | length }} {{ 'THING' if changes | length == 1 else 'THINGS' }} TO CHANGE
+{% for c in changes %}
+{{ loop.index }}. {{ c }}
+{% endfor %}
+{% if closing_note %}
+
+{{ closing_note }}
+{% endif %}
+{% elif not approved %}
+
+WHAT NEEDS TO CHANGE
+{{ comments if has_note else 'The reviewer did not leave a written note. Reply to this email and it goes straight to them.' }}
+{% elif has_note %}
+
+NOTE FROM {{ reviewer_name | upper }}
+{{ comments }}
+{% endif %}
+
+{% if approved %}
+View it in the Store: {{ store_url }}
+{% if share_url %}
+Share it: {{ share_url }}
+{% endif %}
+{% else %}
+Update and resubmit: {{ resubmit_url }}
+{% endif %}
+
+--
+Notification settings: {{ urls.settings }}
+
+This review update is for the AutoGPT account {{ user_email }}.
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+Unsubscribe: {{ urls.unsubscribe }}

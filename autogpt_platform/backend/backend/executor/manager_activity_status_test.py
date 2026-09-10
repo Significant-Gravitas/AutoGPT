@@ -53,7 +53,6 @@ def test_continued_execution_clears_prior_terminal_analysis():
         patch("backend.executor.manager.get_db_client", return_value=db_client),
         patch("backend.executor.manager.send_execution_update"),
         patch("backend.executor.manager.update_graph_execution_state"),
-        patch("backend.executor.manager.billing.handle_agent_run_notif"),
         patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
     ):
         processor.on_graph_execution(

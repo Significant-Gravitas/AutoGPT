@@ -4,18 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
 
-const flagState = vi.hoisted(() => ({ newToolUI: false }));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.NEW_TOOL_UI ? flagState.newToolUI : false,
-  };
+  return { ...actual, useGetFlag: () => false };
 });
 
 const mockScrollEl = {
@@ -73,7 +67,9 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: () => <div data-testid="chain-message-parts" />,
+  ChainMessageParts: ({ parts }: { parts: unknown[] }) => (
+    <div data-testid="chain-message-parts" data-parts={JSON.stringify(parts)} />
+  ),
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -85,9 +81,6 @@ vi.mock("../components/QueueBadge", () => ({
 }));
 
 vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
-vi.mock("../components/CollapsedToolGroup", () => ({
-  CollapsedToolGroup: () => null,
-}));
 vi.mock("../components/MessageAttachments", () => ({
   MessageAttachments: () => null,
 }));
@@ -116,7 +109,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
-  buildRenderSegments: () => [],
+  getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
   parseSpecialMarkers: (text: string) => {
@@ -131,11 +124,6 @@ vi.mock("../helpers", () => ({
     }
     return { markerType: null };
   },
-  shouldShowTaskListNotice: () => false,
-  splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoning: [],
-    response: parts,
-  }),
 }));
 
 vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
@@ -176,7 +164,7 @@ const baseProps = {
   onRetry: vi.fn(),
 };
 
-describe("ChatMessagesContainer — tool UI dispatch", () => {
+describe("ChatMessagesContainer — assistant rendering", () => {
   const messages = [
     {
       id: "assistant-tools",
@@ -186,24 +174,38 @@ describe("ChatMessagesContainer — tool UI dispatch", () => {
   ];
 
   afterEach(() => {
-    flagState.newToolUI = false;
     cleanup();
   });
 
-  it("uses chain rendering when the new tool UI flag is enabled", () => {
-    flagState.newToolUI = true;
-
+  it("renders assistant messages through the chain renderer", () => {
     render(<ChatMessagesContainer {...baseProps} messages={messages} />);
 
     expect(screen.getByTestId("chain-message-parts")).toBeDefined();
   });
 
-  it("keeps the legacy renderer when the flag is off", () => {
-    flagState.newToolUI = false;
+  it("shows the thinking indicator inside a submitted assistant turn", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+      />,
+    );
 
-    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
 
-    expect(screen.queryByTestId("chain-message-parts")).toBeNull();
+  it("keeps the thinking indicator out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 });
 
@@ -693,6 +695,52 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     cleanup();
     vi.unstubAllGlobals();
   });
+
+  it.each([false, true])(
+    "applies streamed tool names before stripping bookkeeping parts (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "assistant-display",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-run_agent",
+                  toolCallId: "call-one",
+                  state: "input-available",
+                  input: { library_agent_id: "library-id" },
+                },
+                {
+                  type: "data-tool-display",
+                  id: "call-one",
+                  data: {
+                    toolCallId: "call-one",
+                    displayName: "Daily briefing",
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+      const renderedParts = JSON.parse(
+        screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+      );
+      expect(renderedParts).toEqual([
+        {
+          type: "tool-run_agent",
+          toolCallId: "call-one",
+          state: "input-available",
+          input: { library_agent_id: "library-id" },
+          title: "Daily briefing",
+        },
+      ]);
+    },
+  );
 
   it("hides the load-older-messages sentinel even when more history exists", () => {
     render(

@@ -40,6 +40,7 @@ export function useCookieConsent() {
     handleUpdateConsent({
       analytics: true,
       monitoring: true,
+      advertising: true,
     });
   }, [handleUpdateConsent]);
 
@@ -47,6 +48,7 @@ export function useCookieConsent() {
     handleUpdateConsent({
       analytics: false,
       monitoring: false,
+      advertising: false,
     });
   }, [handleUpdateConsent]);
 

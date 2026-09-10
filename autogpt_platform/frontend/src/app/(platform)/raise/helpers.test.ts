@@ -64,7 +64,7 @@ describe("raise helpers", () => {
       "No weekly limit",
     );
     expect(kitBudgetLabel({ weeklyBudget: 500, attachments: [] })).toBe(
-      "500 credits ($5/week)",
+      "$5 / week",
     );
     expect(
       kitToolsLabel({

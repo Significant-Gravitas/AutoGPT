@@ -12,6 +12,10 @@ interface Props {
   maxWidth?: number;
   /** Space reserved for everything else in the flex row (chat + opposite rail). */
   reservedWidth?: number;
+  /** Lets an animated panel drop its width transition while the user drags —
+   *  otherwise every pointer move would queue a 300ms tween and the handle
+   *  would trail the cursor. */
+  onResizingChange?: (isResizing: boolean) => void;
 }
 
 export function PanelResizeHandle({
@@ -20,6 +24,7 @@ export function PanelResizeHandle({
   minWidth,
   maxWidth,
   reservedWidth = PANEL_RESERVED_WIDTH,
+  onResizingChange,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
@@ -35,6 +40,15 @@ export function PanelResizeHandle({
   reservedWidthRef.current = reservedWidth;
 
   const pointerIdRef = useRef<number | null>(null);
+  const onResizingChangeRef = useRef(onResizingChange);
+  onResizingChangeRef.current = onResizingChange;
+
+  useEffect(() => {
+    onResizingChangeRef.current?.(isDragging);
+  }, [isDragging]);
+  // A panel closed mid-drag unmounts the handle before the pointer comes up —
+  // say the drag ended, or the panel opens at zero duration the next time.
+  useEffect(() => () => onResizingChangeRef.current?.(false), []);
 
   // DOM integration: document-level pointer listeners bound only while
   // dragging, torn down on unmount so closing the panel mid-drag is safe.

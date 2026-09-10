@@ -214,6 +214,15 @@ Correct flow for *any* integration request:
    SendAuthenticatedWebRequestBlock / browser automation / feature request.
 ```
 
+### Asking the user questions — use `ask_question`
+When your turn ends blocked on the user's input — a decision, a missing
+detail, an approval — ask via the `ask_question` tool (with concrete
+`options` when the choices are known) instead of only writing the question
+as prose. Questions asked only in text are invisible to the user's Home
+"Needs You" feed, so if they have stepped away the work stalls silently;
+the tool call is what parks the question for them. A short closing sentence
+may restate it, but never replace the tool call with prose.
+
 ### Complex multi-step work
 - Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
 - Delegate self-contained subtasks to `run_sub_session` to keep their
@@ -352,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -375,6 +384,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+**4. Connecting is not running.** When the user only asks to connect or
+sign in to a service, call `connect_integration(provider=...)` — never
+`run_block` or `run_agent`, which commit to an action the user has not
+asked for. Call those only when the user asks for the action itself.
+
+**5. The card asks for credentials, not inputs.** A setup card never
+renders a form for a block's or agent's inputs (the one exception is a
+picker-backed field, see above). Collect every other input in the chat:
+if you do not have a value, ask the user for it via `ask_question`, then
+call the tool with it once they connect. Do not tell the user to fill
+anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -439,6 +465,21 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
   Actions), pass the required scopes: e.g.
   `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
+
+
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
 
 
 # Environment-specific supplement templates
@@ -617,6 +658,64 @@ def get_sdk_supplement(use_e2b: bool) -> str:
         else _get_local_storage_supplement("/tmp/copilot-<session-id>")
     )
     return base + _USER_FOLLOW_UP_NOTE
+
+
+def get_delegation_supplement() -> str:
+    """Delegation rules, appended only when the expert-team tools are enabled.
+
+    Kept out of ``SHARED_TOOL_NOTES`` — that constant is concatenated
+    unconditionally by both engines, so leaving these rules there told
+    flag-off users to call tools their turn cannot execute.  Gate this at
+    the call site on the same ``experts_enabled`` boolean that feeds
+    ``expert_tool_disabled_groups``, the way ``get_graphiti_supplement``
+    is gated on its own tool group.
+    """
+    return """
+
+### Delegating to a teammate
+- When a subtask needs a *teammate's* skills, workflows, or integrations
+  rather than your own, use `delegate_to_expert` instead of
+  `run_sub_session` — it runs under that expert's identity, memory, and
+  budget. Only experts listed in `<team_context>` can be delegated to.
+- Say who you are delegating to before you do it. Delegation is allowed;
+  silent delegation is not.
+- **Delegated work is yours to land.** When the user asked for an outcome,
+  a delegation that returns partial, blocked, or still-running is your
+  next step, not your final answer:
+  - Still running / timed out → keep polling `get_sub_session_result`
+    until it resolves.
+  - Completed but the outcome is not met → re-delegate into the SAME
+    `delegated_session_id`, naming exactly what remains.
+  - The expert asks something this conversation already answers (stack,
+    scope, paths, budget) → answer on the user's behalf in the follow-up;
+    only surface questions you genuinely cannot answer.
+  - Stop only when the outcome is met, you are blocked on information
+    only the user holds, or you are relaying a hard failure. Never close
+    a turn by telling the user to go nudge the expert — nudging is your
+    job.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Autopilot session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
+"""
 
 
 def get_graphiti_supplement() -> str:

@@ -1,6 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render as baseRender,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
@@ -57,6 +62,26 @@ function toolPart(
 function getPanel(header: HTMLElement): HTMLElement | null {
   const panelId = header.getAttribute("aria-controls");
   return panelId ? document.getElementById(panelId) : null;
+}
+
+// An action row shares its label with the chain heading, and both are
+// collapse toggles now — only the chain header owns the panel.
+function getChainHeader(name: RegExp): HTMLElement {
+  const header = screen
+    .getAllByRole("button", { name })
+    .find((button) => button.hasAttribute("aria-controls"));
+  if (!header) throw new Error(`No chain header matching ${name}`);
+  return header;
+}
+
+// The row's own toggle is the one without a panel — its `aria-expanded` says
+// whether the row's card is showing.
+function getRowToggle(name: RegExp): HTMLElement {
+  const toggle = screen
+    .getAllByRole("button", { name })
+    .find((button) => !button.hasAttribute("aria-controls"));
+  if (!toggle) throw new Error(`No row toggle matching ${name}`);
+  return toggle;
 }
 
 describe("ToolChain", () => {
@@ -176,6 +201,26 @@ describe("ToolChain", () => {
     expect(screen.getByText("Weighing the trade-offs")).toBeDefined();
   });
 
+  it("renders the canonical agent name in both the live heading and its row", () => {
+    const { container } = render(
+      <ToolChain
+        parts={[
+          toolPart("run_agent", "input-available", {
+            title: "Daily briefing",
+            input: { library_agent_id: "b71fd24c-7623-4a73-a000-000000000000" },
+          }),
+        ]}
+        isStreaming
+      />,
+    );
+
+    expect(getChainHeader(/running agent "Daily briefing"/i)).toBeDefined();
+    expect(screen.getAllByText('Running agent "Daily briefing"…')).toHaveLength(
+      2,
+    );
+    expect(container.textContent).not.toContain("b71fd24c");
+  });
+
   it("renders the provider icon when the tool output names a provider", async () => {
     const user = userEvent.setup();
     const { container } = render(
@@ -267,14 +312,36 @@ describe("ToolChain", () => {
       />,
     );
 
-    const header = screen.getByRole("button", {
-      name: /review send email/i,
-    });
+    const header = getChainHeader(/review send email/i);
     expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
 
     expect(screen.getAllByText("Review Send Email").length).toBeGreaterThan(1);
     expect(screen.queryByText('Searched the web for "copilot"')).toBeNull();
     expect(screen.getByText("Send Email")).toBeDefined();
+  });
+
+  // A live row mounts before its output exists, so "needs you" is only known
+  // on a later render — the reveal has to react to it, not read it once.
+  it("reveals an action row when its output arrives mid-stream", () => {
+    const pending = toolPart("run_block", "input-available");
+    const { rerender } = render(
+      <ToolChain parts={[pending]} isStreaming={true} />,
+    );
+
+    rerender(
+      <ToolChain
+        parts={[
+          toolPart("run_block", "output-available", {
+            output: { type: "review_required", block_name: "Send Email" },
+          }),
+        ]}
+        isStreaming={true}
+      />,
+    );
+
+    expect(
+      getRowToggle(/review send email/i).getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("drafts answered questions into the chat input and dismisses on send", async () => {
@@ -406,3 +473,22 @@ describe("ToolChain", () => {
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
   });
 });
+
+// ToolChain sends the chain's follow-up turn itself, so it needs the actions
+// provider its production parents always supply.
+function render(ui: React.ReactElement) {
+  const { rerender, ...rest } = baseRender(
+    <CopilotChatActionsProvider onSend={vi.fn()}>
+      {ui}
+    </CopilotChatActionsProvider>,
+  );
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) =>
+      rerender(
+        <CopilotChatActionsProvider onSend={vi.fn()}>
+          {next}
+        </CopilotChatActionsProvider>,
+      ),
+  };
+}

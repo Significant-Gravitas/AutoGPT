@@ -1,6 +1,8 @@
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import {
   quoted,
-  str,
+  quotedName,
+  strField,
   type ToolInput,
   type ToolMeta,
 } from "./toolCatalog.shared";
@@ -126,8 +128,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "block",
     running: "Running block",
     done: "Ran block",
-    subject: (input) =>
-      quoted(input, "block_name") ?? quoted(input, "block_id", 20),
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
   schedule_agent: {
     category: "agent",
@@ -138,6 +140,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "block",
     running: "Continuing block run",
     done: "Continued block run",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
   run_mcp_tool: {
     category: "mcp",
@@ -160,7 +164,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "docs",
     running: "Reading doc page",
     done: "Read doc page",
-    subject: (input) => str(input, "path"),
+    subject: (input) => strField(input, "path"),
   },
   store_skill: {
     category: "skill",
@@ -189,7 +193,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "integration",
     running: "Connecting",
     done: "Connected",
-    subject: (input) => str(input, "provider"),
+    subject: (input) => strField(input, "provider"),
   },
   search_feature_requests: {
     category: "feature",

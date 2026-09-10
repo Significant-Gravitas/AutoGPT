@@ -4,7 +4,6 @@ import { useCopilotUIStore } from "../../store";
 
 export function useContextPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
-  const setActiveTab = useCopilotUIStore((s) => s.setActiveTab);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const contextPanelWidth = useCopilotUIStore((s) => s.contextPanelWidth);
   const setContextPanelWidth = useCopilotUIStore((s) => s.setContextPanelWidth);
@@ -18,7 +17,6 @@ export function useContextPanel() {
     isOpen: artifactPanel.isOpen,
     activeTab: artifactPanel.activeTab,
     showExpanded,
-    setActiveTab,
     closeArtifactPanel,
     contextPanelWidth,
     setContextPanelWidth,
