@@ -1394,6 +1394,7 @@ async def test_hire_existing_team_expert_fails_closed():
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -1444,6 +1445,7 @@ async def test_hire_raced_org_expert_fails_closed():
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -3153,6 +3155,7 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
         "avatar_url": None,
         "bio": "",
         "skills": [],
+        "categories": [],
         "identity": template.identity,
         "preloads": [{"slug": listing.slug, "cron": "40 7 * * *"}],
     }
@@ -3195,6 +3198,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a senior marketing strategist.",
         "skills": ["Content strategy", "SEO writing"],
+        "categories": ["marketing"],
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
@@ -3209,6 +3213,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
     assert refreshed.skills == ["Content strategy", "SEO writing"]
+    assert refreshed.categories == ["marketing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
 

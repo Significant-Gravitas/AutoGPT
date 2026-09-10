@@ -139,11 +139,29 @@ def test_list_expert_templates(
     assert len(data) == 1
     assert data[0]["id"] == "template-1"
     assert data[0]["is_template"] is True
-    mock_list.assert_awaited_once_with()
+    mock_list.assert_awaited_once_with(search_query=None, category=None)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_templates_list"
     )
+
+
+def test_list_expert_templates_forwards_search_and_category(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The chip and the search box only work if both reach the db layer."""
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_templates",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get(
+        "/experts/templates", params={"search_query": "Maria", "category": "marketing"}
+    )
+
+    assert response.status_code == 200
+    mock_list.assert_awaited_once_with(search_query="Maria", category="marketing")
 
 
 # ─── Hire ──────────────────────────────────────────────────────────────
