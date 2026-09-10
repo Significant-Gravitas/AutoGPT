@@ -155,16 +155,14 @@ export function getWeeklySpend(expert: Expert) {
 
 export type ExpertRosterStatus = "idle" | "working" | "needs-you";
 
-export function getExpertRosterStatus(
-  expert: Expert,
-  needsSetupCount: number,
-): ExpertRosterStatus {
+// Missing setup is not a card status: the Setup needed card above the
+// roster names it and offers the fix.
+export function getExpertRosterStatus(expert: Expert): ExpertRosterStatus {
   const runStatus = expert.last_run_status?.toUpperCase();
 
   if (runStatus === "RUNNING" || runStatus === "QUEUED") return "working";
   if (
     expert.schedules_paused_at ||
-    needsSetupCount > 0 ||
     runStatus === "FAILED" ||
     runStatus === "TERMINATED" ||
     runStatus === "REVIEW"
