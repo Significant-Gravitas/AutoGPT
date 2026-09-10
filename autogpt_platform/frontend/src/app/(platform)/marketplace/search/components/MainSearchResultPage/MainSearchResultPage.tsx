@@ -7,6 +7,9 @@ import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
+import { SectionHeader } from "../../../components/SectionHeader";
+import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
+import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -23,13 +26,17 @@ export const MainSearchResultPage = ({
   const {
     agents,
     creators,
+    skills,
     totalCount,
     agentsCount,
     creatorsCount,
+    skillsCount,
     handleFilterChange,
     handleSortChange,
     showAgents,
     showCreators,
+    showSkills,
+    isSkillsHubEnabled,
     isAgentsLoading,
     isCreatorsLoading,
     isAgentsError,
@@ -90,6 +97,7 @@ export const MainSearchResultPage = ({
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
+                skillsCount={isSkillsHubEnabled ? skillsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
               <div className="mt-4 md:!mt-0">
@@ -101,6 +109,26 @@ export const MainSearchResultPage = ({
               {showAgents && agentsCount > 0 && agents && (
                 <AgentsSection agents={agents} />
               )}
+              {showSkills && skillsCount > 0 ? (
+                <section aria-labelledby="search-skills-heading">
+                  <SectionHeader
+                    titleIcon={
+                      <Icon icon={BookOpen01Icon} size={30} aria-hidden />
+                    }
+                    title="Skills"
+                    titleId="search-skills-heading"
+                  />
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {skills.map((skill) => (
+                      <SkillCard
+                        key={skill.slug}
+                        skill={skill}
+                        isInstalled={false}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
                 <FeaturedCreators

@@ -93,6 +93,12 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "This private expert session must be reopened in its personal workspace."
         )
+    return render_expert_identity_suffix(expert)
+
+
+def render_expert_identity_suffix(expert: Expert) -> str:
+    """Render ``<expert_identity>`` for an already-loaded, already-validated
+    expert. Pure, so the style eval can prompt with production rendering."""
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
@@ -210,7 +216,10 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
+    return render_expert_workflows_block(expert) + teammates
 
+
+def render_expert_workflows_block(expert: Expert) -> str:
     if expert.workflows:
         workflow_lines = "\n".join(
             f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} "
@@ -221,15 +230,22 @@ async def _expert_session_context(
     else:
         workflow_lines = "- No workflows installed yet."
 
-    workflows_block = (
+    return (
         f"<expert_workflows>\n"
         f"Workflows installed on this expert. For requests that match a "
         f"workflow's purpose, prefer running it with `run_agent` using the "
         f"IDs below over building something new:\n"
         f"{workflow_lines}\n"
+        # The skip comes after the kickoff message's ask, so the rule lives in
+        # session context, which every later turn sees, not in that message.
+        f"If the user skips or declines a connection a workflow needs, do the "
+        f"part of the job public data allows (research, drafts) and save it as "
+        f"a workspace file with its sources; say what stays blocked and which "
+        f"one connection would unlock it. If public data does not support "
+        f"useful work, say so. Never report a workflow as run, or a step as "
+        f"completed, when it was blocked or failed.\n"
         f"</expert_workflows>\n\n"
     )
-    return workflows_block + teammates
 
 
 async def _team_context(
@@ -253,6 +269,19 @@ async def _team_context(
     naming a tool the turn cannot execute is worse than saying nothing.
     """
     experts = await experts_db().list_experts(user_id, with_metrics=False)
+    return render_team_context(
+        experts,
+        delegation_enabled=delegation_enabled,
+        exclude_expert_id=exclude_expert_id,
+    )
+
+
+def render_team_context(
+    experts: list[Expert],
+    *,
+    delegation_enabled: bool,
+    exclude_expert_id: str | None = None,
+) -> str:
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
         return ""
