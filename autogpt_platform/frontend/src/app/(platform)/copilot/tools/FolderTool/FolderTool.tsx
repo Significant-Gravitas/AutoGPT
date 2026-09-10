@@ -2,14 +2,6 @@
 
 import type { ToolUIPart } from "ai";
 import {
-  FileIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  FoldersIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
-import {
   File as TreeFile,
   Folder as TreeFolder,
   Tree,
@@ -40,6 +32,16 @@ import {
   type FolderToolOutput,
   type FolderTreeInfo,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Folder01Icon,
+  FolderAddIcon,
+  FolderLibraryIcon,
+  FolderOpenIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: ToolUIPart;
@@ -57,14 +59,12 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return <FolderIcon size={14} weight="regular" className="text-neutral-400" />;
+  return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,7 +82,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <FolderIcon size={14} weight="fill" className="text-neutral-600" />
+            <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -96,9 +96,9 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <FileIcon
+              <Icon
+                icon={FileEmpty02Icon}
                 size={12}
-                weight="duotone"
                 className="text-neutral-600"
               />
               <span className="text-xs text-zinc-600">{a.name}</span>
@@ -147,10 +147,10 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        <FolderIcon size={16} weight="fill" className="text-neutral-600" />
+        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
       }
       closeIcon={
-        <FolderIcon size={16} weight="duotone" className="text-neutral-600" />
+        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
       }
       className="max-h-64"
     >
@@ -167,7 +167,7 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
-          <FileIcon size={14} weight="duotone" className="text-neutral-600" />
+          <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
         }
       >
         <span className="text-sm text-zinc-700">{element.name}</span>
@@ -253,11 +253,10 @@ function getAccordionTitle(output: FolderToolOutput): string {
 }
 
 function getAccordionIcon(output: FolderToolOutput) {
-  if (isFolderCreated(output))
-    return <FolderPlusIcon size={32} weight="light" />;
-  if (isFolderList(output)) return <FoldersIcon size={32} weight="light" />;
-  if (isFolderDeleted(output)) return <TrashIcon size={32} weight="light" />;
-  return <FolderIcon size={32} weight="light" />;
+  if (isFolderCreated(output)) return <Icon icon={FolderAddIcon} size={32} />;
+  if (isFolderList(output)) return <Icon icon={FolderLibraryIcon} size={32} />;
+  if (isFolderDeleted(output)) return <Icon icon={Delete02Icon} size={32} />;
+  return <Icon icon={Folder01Icon} size={32} />;
 }
 
 export function FolderTool({ part }: Props) {

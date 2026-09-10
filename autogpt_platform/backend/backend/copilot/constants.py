@@ -1,5 +1,10 @@
 """Shared constants for the CoPilot module."""
 
+# AutoPilot is the account's built-in helper — the identity every session
+# without an expert speaks as, and the fixed author of the morning briefing.
+AUTOPILOT_NAME = "AutoPilot"
+AUTOPILOT_ROLE = "Head of AI"
+
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
 # impossible, avoiding false-positive marker detection in normal conversation.
@@ -42,6 +47,7 @@ COPILOT_NODE_EXEC_ID_SEPARATOR = ":"
 
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
+COMPACTION_DROPPED_MSG = "Earlier messages were dropped to fit within context limits."
 COMPACTION_TOOL_NAME = "context_compaction"
 
 

@@ -3,16 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import {
-  ArrowSquareOutIcon,
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBrokenIcon,
-  PencilSimpleIcon,
-  StarIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -28,6 +18,16 @@ import {
 import type { EditPayload } from "../../helpers";
 import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "../SubmissionItem/useSubmissionItem";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   submission: StoreSubmission;
@@ -70,7 +70,6 @@ export function MobileSubmissionItem({
   });
 
   const visual = getStatusVisual(submission.status);
-  const StatusIcon = visual.Icon;
   const thumbnail = submission.image_urls?.[0];
   const hasRating =
     !!submission.review_avg_rating && submission.review_avg_rating > 0;
@@ -107,7 +106,8 @@ export function MobileSubmissionItem({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <ImageBrokenIcon
+              <UIIcon
+                icon={ImageNotFound01Icon}
                 size={18}
                 className="pointer-events-none text-zinc-400"
               />
@@ -132,7 +132,8 @@ export function MobileSubmissionItem({
                 >
                   {submission.name}
                 </Text>
-                <ArrowSquareOutIcon
+                <UIIcon
+                  icon={LinkSquare01Icon}
                   size={14}
                   className="shrink-0 text-zinc-500"
                   aria-hidden
@@ -170,7 +171,7 @@ export function MobileSubmissionItem({
               data-testid="submission-actions"
               className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:active:scale-100"
             >
-              <DotsThreeVerticalIcon size={18} weight="bold" />
+              <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -183,7 +184,7 @@ export function MobileSubmissionItem({
                 onSelect={handleEdit}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <PencilSimpleIcon size={14} />
+                <UIIcon icon={PencilIcon} size={14} />
                 Edit details
               </DropdownMenuItem>
             ) : (
@@ -191,7 +192,7 @@ export function MobileSubmissionItem({
                 onSelect={handleView}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <EyeIcon size={14} />
+                <UIIcon icon={EyeIcon} size={14} />
                 View submission
               </DropdownMenuItem>
             )}
@@ -204,7 +205,7 @@ export function MobileSubmissionItem({
                   className="flex cursor-pointer items-center gap-2"
                   data-testid="submission-marketplace-menu-link"
                 >
-                  <ArrowSquareOutIcon size={14} />
+                  <UIIcon icon={LinkSquare01Icon} size={14} />
                   View on marketplace
                 </Link>
               </DropdownMenuItem>
@@ -216,7 +217,7 @@ export function MobileSubmissionItem({
                   onSelect={() => setConfirmDeleteOpen(true)}
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
-                  <TrashIcon size={14} />
+                  <UIIcon icon={Delete02Icon} size={14} />
                   Delete
                 </DropdownMenuItem>
               </>
@@ -229,7 +230,7 @@ export function MobileSubmissionItem({
         <span
           className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${visual.pillClass}`}
         >
-          <StatusIcon size={10} weight="fill" />
+          <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
         <span className="whitespace-nowrap text-xs text-zinc-500">
@@ -248,7 +249,7 @@ export function MobileSubmissionItem({
             </span>
             <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-zinc-500">
               {submission.review_avg_rating!.toFixed(1)}
-              <StarIcon size={10} weight="fill" className="text-amber-500" />
+              <UIIcon icon={StarIcon} size={10} className="text-amber-500" />
             </span>
           </>
         ) : null}

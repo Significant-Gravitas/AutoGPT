@@ -21,6 +21,7 @@ def _adapter(
     channel_server: str | None = None,
     posted: PostedRef | None = None,
     thread: PostedRef | None = None,
+    dm_channel: str | None = None,
 ) -> AsyncMock:
     adapter = AsyncMock()
     # Sync classifier — mirrors Discord's numeric-snowflake grammar so
@@ -32,6 +33,7 @@ def _adapter(
     adapter.get_channel_server_id.return_value = channel_server
     adapter.post_channel_message.return_value = posted
     adapter.create_channel_thread.return_value = thread
+    adapter.open_dm_channel.return_value = dm_channel
     return adapter
 
 
@@ -185,6 +187,63 @@ async def test_create_thread_failure():
     )
     assert result.ok is False
     assert result.error == "thread_failed"
+
+
+def _dm_api(dm_user_id: str | None) -> AsyncMock:
+    api = AsyncMock()
+    api.get_dm_user_id.return_value = dm_user_id
+    return api
+
+
+@pytest.mark.asyncio
+async def test_deliver_dm_happy_path():
+    adapter = _adapter(dm_channel="dm-42", posted=PostedRef(id="100", url="https://x"))
+    result = await outbound.deliver_dm(adapter, _dm_api("pu1"), "discord", "u1", "hi")
+    assert result.ok is True
+    assert result.kind == "dm"
+    assert result.channel_id == "dm-42"
+    assert result.ref_id == "100"
+    adapter.open_dm_channel.assert_awaited_once_with("pu1")
+    adapter.post_channel_message.assert_awaited_once_with("dm-42", "hi")
+
+
+@pytest.mark.asyncio
+async def test_deliver_dm_without_link_is_rejected():
+    adapter = _adapter(dm_channel="dm-42", posted=PostedRef(id="100"))
+    result = await outbound.deliver_dm(adapter, _dm_api(None), "discord", "u1", "hi")
+    assert result.ok is False
+    assert result.error == "no_dm_link"
+    adapter.open_dm_channel.assert_not_awaited()
+    adapter.post_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deliver_dm_unopenable_channel():
+    adapter = _adapter(dm_channel=None, posted=PostedRef(id="100"))
+    result = await outbound.deliver_dm(adapter, _dm_api("pu1"), "discord", "u1", "hi")
+    assert result.ok is False
+    assert result.error == "dm_unavailable"
+    adapter.post_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deliver_dm_send_failure():
+    adapter = _adapter(dm_channel="dm-42", posted=None)
+    result = await outbound.deliver_dm(adapter, _dm_api("pu1"), "discord", "u1", "hi")
+    assert result.ok is False
+    assert result.error == "send_failed"
+    assert result.channel_id == "dm-42"
+
+
+@pytest.mark.asyncio
+async def test_deliver_dm_empty_content_is_distinct_error():
+    adapter = _adapter(dm_channel="dm-42")
+    api = _dm_api("pu1")
+    result = await outbound.deliver_dm(adapter, api, "discord", "u1", "  ")
+    assert result.ok is False
+    assert result.error == "empty_content"
+    api.get_dm_user_id.assert_not_awaited()
+    adapter.post_channel_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -10,6 +9,8 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import { Cancel01Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
@@ -120,7 +121,7 @@ export function FloatingReviewsPanel({
           onClick={() => setIsOpen(true)}
           size="large"
           variant="primary"
-          leftIcon={<ClockIcon size={20} />}
+          leftIcon={<Icon icon={Clock01Icon} size={20} />}
         >
           {pendingReviews.length} Review
           {pendingReviews.length !== 1 ? "s" : ""} Pending
@@ -135,7 +136,7 @@ export function FloatingReviewsPanel({
             size="icon"
             className="absolute right-4 top-4 z-10"
           >
-            <XIcon size={16} />
+            <Icon icon={Cancel01Icon} size={16} />
           </Button>
 
           <div className="flex-1 overflow-y-auto">

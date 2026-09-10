@@ -1,4 +1,3 @@
-import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,
@@ -9,8 +8,18 @@ import {
   FaTwitter,
 } from "react-icons/fa";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
+import {
+  Globe02Icon,
+  Key01Icon,
+  LockIcon,
+  LockPasswordIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
-export const fallbackIcon = KeyIcon;
+export const fallbackIcon = createIconComponent(Key01Icon);
+const globeIcon = createIconComponent(Globe02Icon);
+const lockIcon = createIconComponent(LockIcon);
+const lockPasswordIcon = createIconComponent(LockPasswordIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -75,12 +84,14 @@ export function countSupportedTypes(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): number {
   return [
     supportsOAuth2,
     supportsApiKey,
     supportsUserPassword,
     supportsHostScoped,
+    supportsDeviceCode,
   ].filter(Boolean).length;
 }
 
@@ -89,9 +100,11 @@ export function getSupportedTypes(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): CredentialsType[] {
   const types: CredentialsType[] = [];
   if (supportsOAuth2) types.push("oauth2");
+  if (supportsDeviceCode) types.push("device_code");
   if (supportsApiKey) types.push("api_key");
   if (supportsUserPassword) types.push("user_password");
   if (supportsHostScoped) types.push("host_scoped");
@@ -103,6 +116,7 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
   api_key: "API Key",
   user_password: "Password",
   host_scoped: "Headers",
+  device_code: "Device Auth",
 };
 
 export function getCredentialTypeLabel(type: CredentialsType): string {
@@ -116,14 +130,14 @@ export function getCredentialTypeIcon(
   provider?: string,
 ): CredentialIcon {
   if (type === "oauth2" && provider) {
-    const icon = providerIcons[provider];
-    if (icon) return icon as CredentialIcon;
-    return GlobeSimple as CredentialIcon;
+    return providerIcons[provider] ?? globeIcon;
   }
-  if (type === "api_key") return KeyIcon as CredentialIcon;
-  if (type === "user_password") return Password as CredentialIcon;
-  if (type === "host_scoped") return Lock as CredentialIcon;
-  return KeyIcon as CredentialIcon;
+  if (type === "device_code" && provider) {
+    return providerIcons[provider] ?? globeIcon;
+  }
+  if (type === "user_password") return lockPasswordIcon;
+  if (type === "host_scoped") return lockIcon;
+  return fallbackIcon;
 }
 
 export function getActionButtonText(
@@ -132,6 +146,8 @@ export function getActionButtonText(
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
+  provider?: string,
+  supportsDeviceCode: boolean = false,
 ): string {
   const multipleTypes =
     countSupportedTypes(
@@ -139,20 +155,29 @@ export function getActionButtonText(
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     ) > 1;
 
   if (multipleTypes) {
     return hasExistingCredentials ? "Add another credential" : "Add credential";
   }
 
+  if (provider === "codex" && supportsOAuth2) {
+    return hasExistingCredentials
+      ? "Reconnect ChatGPT"
+      : "Sign in with ChatGPT";
+  }
+
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
+    if (supportsDeviceCode) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
     if (supportsHostScoped) return "Update headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
+    if (supportsDeviceCode) return "Add account";
     if (supportsApiKey) return "Add API key";
     if (supportsUserPassword) return "Add username and password";
     if (supportsHostScoped) return "Add headers";
@@ -161,12 +186,30 @@ export function getActionButtonText(
 }
 
 export function getCredentialDisplayName(
-  credential: { title?: string; username?: string },
+  credential: { title?: string | null; username?: string },
   displayName: string,
 ): string {
   return (
     credential.title || credential.username || `Your ${displayName} account`
   );
+}
+
+export function getRemovedCredentialMessage(
+  removedCredentialTitle: string,
+  selectedCredential:
+    | { id: string; title?: string | null; username?: string }
+    | undefined,
+  providerName: string,
+): string {
+  if (!selectedCredential?.id) {
+    return `${removedCredentialTitle} was removed. Choose a connection to keep this agent running.`;
+  }
+
+  const replacement = getCredentialDisplayName(
+    selectedCredential,
+    providerName,
+  );
+  return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
@@ -259,6 +302,7 @@ export function hasExistingHostCredential<
 export type ActionTarget =
   | "type_selector"
   | "oauth"
+  | "device_code"
   | "api_key"
   | "user_password"
   | "host_scoped"
@@ -270,9 +314,11 @@ export function resolveActionTarget(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): ActionTarget {
   if (hasMultipleCredentialTypes) return "type_selector";
   if (supportsOAuth2) return "oauth";
+  if (supportsDeviceCode) return "device_code";
   if (supportsApiKey) return "api_key";
   if (supportsUserPassword) return "user_password";
   if (supportsHostScoped) return "host_scoped";

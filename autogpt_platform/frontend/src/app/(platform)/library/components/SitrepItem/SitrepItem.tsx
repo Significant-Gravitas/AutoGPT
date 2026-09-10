@@ -2,16 +2,6 @@
 
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  WarningCircleIcon,
-  ClockCountdownIcon,
-  CheckCircleIcon,
-  ChatCircleDotsIcon,
-  EarIcon,
-  CalendarDotsIcon,
-  MoonIcon,
-  EyeIcon,
-} from "@phosphor-icons/react";
 import NextLink from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -19,6 +9,18 @@ import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
 import styles from "./SitrepItem.module.css";
 import { buildAutoPilotPrompt } from "./helpers";
+import {
+  AlertCircleIcon,
+  Calendar03Icon,
+  Chatting01Icon,
+  CheckmarkCircle02Icon,
+  ClockFadingIcon,
+  EarIcon,
+  EyeIcon,
+  MoonIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   item: SitrepItemData;
@@ -27,14 +29,14 @@ interface Props {
 const PRIORITY_CONFIG: Record<
   SitrepPriority,
   {
-    icon?: typeof WarningCircleIcon;
+    icon?: IconSvgElement;
     color: string;
     bg: string;
     cssSpinner?: boolean;
   }
 > = {
   error: {
-    icon: WarningCircleIcon,
+    icon: AlertCircleIcon,
     color: "text-red-500",
     bg: "bg-red-50",
   },
@@ -44,12 +46,12 @@ const PRIORITY_CONFIG: Record<
     cssSpinner: true,
   },
   stale: {
-    icon: ClockCountdownIcon,
+    icon: ClockFadingIcon,
     color: "text-yellow-600",
     bg: "bg-yellow-50",
   },
   success: {
-    icon: CheckCircleIcon,
+    icon: CheckmarkCircle02Icon,
     color: "text-green-600",
     bg: "bg-green-50",
   },
@@ -59,7 +61,7 @@ const PRIORITY_CONFIG: Record<
     bg: "bg-purple-50",
   },
   scheduled: {
-    icon: CalendarDotsIcon,
+    icon: Calendar03Icon,
     color: "text-yellow-600",
     bg: "bg-yellow-50",
   },
@@ -109,7 +111,7 @@ export function SitrepItem({ item }: Props) {
               />
             ) : (
               config.icon && (
-                <config.icon size={14} className={config.color} weight="fill" />
+                <Icon icon={config.icon} size={14} className={config.color} />
               )
             )}
           </div>
@@ -133,7 +135,7 @@ export function SitrepItem({ item }: Props) {
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
           >
-            <EyeIcon size={14} className="shrink-0" />
+            <Icon icon={EyeIcon} size={14} className="shrink-0" />
             See task
           </NextLink>
         ) : (
@@ -148,7 +150,7 @@ export function SitrepItem({ item }: Props) {
           onClick={handleAskAutoPilot}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
         >
-          <ChatCircleDotsIcon size={14} className="shrink-0" />
+          <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
           Ask AutoPilot
         </button>
       </div>

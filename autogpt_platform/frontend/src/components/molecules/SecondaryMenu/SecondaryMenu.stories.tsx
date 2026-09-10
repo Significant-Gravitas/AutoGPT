@@ -3,12 +3,6 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import {
-  ArrowSquareOutIcon,
-  CopyIcon,
-  DotsThreeOutlineVerticalIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {
@@ -19,6 +13,13 @@ import {
   SecondaryMenuItem,
   SecondaryMenuSeparator,
 } from "./SecondaryMenu";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const meta: Meta = {
   title: "Molecules/SecondaryMenu",
@@ -39,11 +40,19 @@ export const ContextMenuExample: Story = {
         </ContextMenu.Trigger>
         <SecondaryMenuContent>
           <SecondaryMenuItem onSelect={() => alert("Copy")}>
-            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
+            <Icon
+              icon={Copy01Icon}
+              size={20}
+              className="mr-2 dark:text-gray-100"
+            />
             <span className="dark:text-gray-100">Copy</span>
           </SecondaryMenuItem>
           <SecondaryMenuItem onSelect={() => alert("Open agent")}>
-            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
+            <Icon
+              icon={LinkSquare01Icon}
+              size={20}
+              className="mr-2 dark:text-gray-100"
+            />
             <span className="dark:text-gray-100">Open agent</span>
           </SecondaryMenuItem>
           <SecondaryMenuSeparator />
@@ -51,7 +60,8 @@ export const ContextMenuExample: Story = {
             variant="destructive"
             onSelect={() => alert("Delete")}
           >
-            <TrashIcon
+            <Icon
+              icon={Delete02Icon}
               size={20}
               className="mr-2 text-red-500 dark:text-red-400"
             />
@@ -69,16 +79,24 @@ export const DropdownMenuExample: Story = {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" size="small">
-            <DotsThreeOutlineVerticalIcon size={16} weight="fill" />
+            <Icon icon={MoreVerticalIcon} size={16} />
           </Button>
         </DropdownMenuTrigger>
         <SecondaryDropdownMenuContent side="right" align="start">
           <SecondaryDropdownMenuItem onClick={() => alert("Copy")}>
-            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
+            <Icon
+              icon={Copy01Icon}
+              size={20}
+              className="mr-2 dark:text-gray-100"
+            />
             <span className="dark:text-gray-100">Copy</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuItem onClick={() => alert("Open agent")}>
-            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
+            <Icon
+              icon={LinkSquare01Icon}
+              size={20}
+              className="mr-2 dark:text-gray-100"
+            />
             <span className="dark:text-gray-100">Open agent</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuSeparator />
@@ -86,7 +104,8 @@ export const DropdownMenuExample: Story = {
             variant="destructive"
             onClick={() => alert("Delete")}
           >
-            <TrashIcon
+            <Icon
+              icon={Delete02Icon}
               size={20}
               className="mr-2 text-red-500 dark:text-red-400"
             />

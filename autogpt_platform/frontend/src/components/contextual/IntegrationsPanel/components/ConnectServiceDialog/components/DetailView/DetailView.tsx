@@ -1,8 +1,7 @@
 "use client";
-
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -14,20 +13,23 @@ import {
 
 import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
 import { McpConnectPanel } from "./McpConnectPanel";
-import { MethodPanel, TAB_LABEL } from "./MethodPanel";
+import { getAuthMethodLabel, MethodPanel } from "./MethodPanel";
 import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const MCP_PROVIDER_ID = "mcp";
 
 interface Props {
   provider: ConnectableProvider;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 const TAB_PRIORITY: AuthMethod[] = [
   AuthType.oauth2,
+  AuthType.device_code,
   AuthType.api_key,
   AuthType.user_password,
   AuthType.host_scoped,
@@ -62,7 +64,7 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
           className="size-9"
           withTooltip={false}
         >
-          <ArrowLeftIcon size={18} />
+          <Icon icon={ArrowLeft02Icon} size={18} />
         </Button>
         <ProviderAvatar id={provider.id} name={provider.name} />
         <div className="flex min-w-0 flex-col gap-1">
@@ -98,7 +100,7 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
           <TabsLineList>
             {tabs.map((method) => (
               <TabsLineTrigger key={method} value={method}>
-                {TAB_LABEL[method]}
+                {getAuthMethodLabel(provider, method)}
               </TabsLineTrigger>
             ))}
           </TabsLineList>

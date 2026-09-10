@@ -288,3 +288,171 @@ async def test_missing_user_returns_error(tool, session):
     )
 
     assert isinstance(result, ErrorResponse)
+
+
+def _write_graph_patches(lib_db, graph_json):
+    """Patches for the agent_id + write_graph_to flow."""
+    mock_record = MagicMock()
+    mock_record.path = "/agent.json"
+    mock_manager = MagicMock()
+    mock_manager.write_file = AsyncMock(return_value=mock_record)
+    return (
+        mock_manager,
+        patch("backend.copilot.tools.agent_search.library_db", return_value=lib_db),
+        patch(
+            "backend.copilot.tools.find_library_agent.get_agent_as_json",
+            new=AsyncMock(return_value=graph_json),
+        ),
+        patch(
+            "backend.copilot.tools.agent_json_input.get_workspace_manager",
+            new=AsyncMock(return_value=mock_manager),
+        ),
+    )
+
+
+def _lookup_lib_db() -> MagicMock:
+    lib_db = MagicMock()
+    lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    lib_db.get_library_agent = AsyncMock(
+        return_value=_mock_library_agent("lib-1", "Weather Bot")
+    )
+    return lib_db
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_returns_file_ref_not_inline_graph(tool, session):
+    """write_graph_to writes the graph to a workspace file and puts an
+    @@agptfile ref in the message instead of inlining the graph."""
+    graph = {"nodes": [{"id": "n1"}], "links": []}
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), graph)
+
+    with p1, p2, p3:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert "@@agptfile:workspace:///agent.json" in result.message
+    assert result.agents[0].graph is None
+
+    written = manager.write_file.call_args.kwargs
+    assert written["filename"] == "agent.json"
+    assert written["overwrite"] is True
+    assert b'\n  "nodes"' in written["content"]  # pretty-printed
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_suppresses_include_graph(tool, session):
+    """include_graph is ignored when the graph goes to a file — the point is
+    to keep the graph out of context."""
+    graph = {"nodes": [{"id": "n1"}], "links": []}
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), graph)
+
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "backend.copilot.tools.agent_search._enrich_agents_with_graph",
+            new=AsyncMock(return_value=None),
+        ) as enrich,
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            include_graph=True,
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    enrich.assert_not_awaited()
+    manager.write_file.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_unloadable_graph_notes_fallback(tool, session):
+    """When the graph can't be loaded for writing, the response still carries
+    the agent info plus a note steering to include_graph=true."""
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), None)
+
+    with p1, p2, p3:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert "could not load" in result.message
+    assert "include_graph=true" in result.message
+    manager.write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_without_agent_id_is_rejected(tool, session):
+    """write_graph_to must not be silently discarded on the search path."""
+    with patch(
+        "backend.copilot.tools.find_library_agent.search_agents",
+        new=AsyncMock(),
+    ) as mock_search:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            query="weather",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert "agent_id" in result.message
+    mock_search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_loader_exception_notes_fallback(tool, session):
+    """An exception while loading the graph degrades to the fallback note —
+    the successful lookup result must not be replaced by a generic error."""
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), None)
+
+    with (
+        p1,
+        p3,
+        patch(
+            "backend.copilot.tools.find_library_agent.get_agent_as_json",
+            new=AsyncMock(side_effect=RuntimeError("db hiccup")),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert "could not load" in result.message
+    manager.write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_write_failure_notes_fallback(tool, session):
+    """A workspace write failure degrades to a note, not an error response."""
+    graph = {"nodes": [{"id": "n1"}], "links": []}
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), graph)
+    manager.write_file = AsyncMock(side_effect=RuntimeError("disk full"))
+
+    with p1, p2, p3:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert "could not write" in result.message
+    assert "include_graph=true" in result.message

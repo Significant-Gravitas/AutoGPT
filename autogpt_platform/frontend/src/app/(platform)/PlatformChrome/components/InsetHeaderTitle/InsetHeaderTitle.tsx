@@ -1,11 +1,13 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { FolderIcon, type Icon } from "@phosphor-icons/react";
 import { usePathname } from "next/navigation";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
-const ROUTE_TITLES: Record<string, { title: string; icon: Icon }> = {
-  "/artifacts": { title: "Files", icon: FolderIcon },
+const ROUTE_TITLES: Record<string, { title: string; icon: IconSvgElement }> = {
+  "/artifacts": { title: "Files", icon: Folder01Icon },
 };
 
 export function getRouteTitle(pathname: string | null) {
@@ -22,11 +24,9 @@ export function InsetHeaderTitle() {
 
   if (!entry) return null;
 
-  const TitleIcon = entry.icon;
-
   return (
     <div className="flex items-center gap-2">
-      <TitleIcon className="size-5 text-zinc-800" />
+      <Icon icon={entry.icon} className="size-5 text-zinc-800" />
       <Text variant="large-medium">{entry.title}</Text>
     </div>
   );

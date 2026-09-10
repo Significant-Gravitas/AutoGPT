@@ -16,6 +16,43 @@ vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
 }));
 
+vi.mock(
+  "@/app/api/__generated__/endpoints/chat/chat",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/app/api/__generated__/endpoints/chat/chat")
+      >();
+    return {
+      ...actual,
+      useGetV2ListChatTransports: () => ({
+        data: {
+          status: 200,
+          data: {
+            transports: [
+              {
+                auth_provider: "platform",
+                credential_id: null,
+                label: "AutoGPT Platform",
+                available: true,
+                default: true,
+              },
+              {
+                auth_provider: "codex",
+                credential_id: "credential-1",
+                label: "ChatGPT",
+                available: true,
+                default: false,
+              },
+            ],
+          },
+        },
+        isError: false,
+      }),
+    };
+  },
+);
+
 function renderChatSession(target?: NewChatExecutionTarget) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -68,6 +105,7 @@ function mockCreatedSession(executionTarget: { kind: string } | null = null) {
 
 afterEach(() => {
   useCopilotUIStore.setState({
+    copilotLlmAuth: null,
     newChatExecutionTarget: { kind: "cloud" },
     isExecutionTargetPickerOpen: false,
     executionTargetError: null,
@@ -95,41 +133,53 @@ describe("useChatSession execution target", () => {
     });
   });
 
-  it("sends the exact selected machine and opaque folder references", async () => {
-    let requestBody: unknown;
-    mockCreatedSession({ kind: "local" });
-    server.use(
-      http.post(SESSIONS_URL, async ({ request }) => {
-        requestBody = await request.json();
-        return HttpResponse.json(createdSession({ kind: "local" }));
-      }),
-    );
+  it.each([false, true])(
+    "sends the selected machine and folder with explicit ChatGPT connection=%s",
+    async (useCodex) => {
+      if (useCodex) {
+        useCopilotUIStore.getState().setCopilotLlmAuth({
+          authProvider: "codex",
+          credentialId: "credential-1",
+        });
+      }
+      let requestBody: unknown;
+      mockCreatedSession({ kind: "local" });
+      server.use(
+        http.post(SESSIONS_URL, async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(createdSession({ kind: "local" }));
+        }),
+      );
 
-    const session = renderChatSession({
-      kind: "local",
-      machineID: "machine-1",
-      machineLabel: "Workstation",
-      connectionID: "connection-1",
-      browseID: "browse-1",
-      directoryRef: "directory-1",
-      displayPath: "C:\\Users\\Ada\\Projects",
-    });
-    await act(async () => {
-      await session.result.current.createSession();
-    });
-
-    await waitFor(() => {
-      expect(requestBody).toEqual({
-        execution_target: {
-          kind: "local",
-          machine_id: "machine-1",
-          expected_connection_id: "connection-1",
-          browse_id: "browse-1",
-          directory_ref: "directory-1",
-        },
+      const session = renderChatSession({
+        kind: "local",
+        machineID: "machine-1",
+        machineLabel: "Workstation",
+        connectionID: "connection-1",
+        browseID: "browse-1",
+        directoryRef: "directory-1",
+        displayPath: "C:\\Users\\Ada\\Projects",
       });
-    });
-  });
+      await act(async () => {
+        await session.result.current.createSession();
+      });
+
+      await waitFor(() => {
+        expect(requestBody).toEqual({
+          ...(useCodex
+            ? { llm_auth_provider: "codex", llm_credential_id: "credential-1" }
+            : {}),
+          execution_target: {
+            kind: "local",
+            machine_id: "machine-1",
+            expected_connection_id: "connection-1",
+            browse_id: "browse-1",
+            directory_ref: "directory-1",
+          },
+        });
+      });
+    },
+  );
 
   it("fails closed on stale Local PC selection without retrying in Cloud", async () => {
     const requestBodies: unknown[] = [];

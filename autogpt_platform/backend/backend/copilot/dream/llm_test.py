@@ -232,6 +232,62 @@ class TestStructuredCompletionDelegation:
         assert kwargs["force_json_output"] is True
 
     @pytest.mark.asyncio
+    async def test_caller_supplied_phase_timeout_reaches_call_provider(self):
+        """Recombine/sanitize carry 16384-token output budgets because
+        real responses exceed 8192 tokens — at real decode speeds those
+        responses take far longer than the shared 120s default, so the
+        orchestrator passes a per-phase wall-clock budget. The wrapper
+        must thread it through to ``call_provider`` verbatim, otherwise
+        the token-cap raise is dead letter: any long response dies on
+        TimeoutError instead of finishing."""
+        fake = ProviderResponse(
+            content='{"facts": [{"content": "x", "confidence": 0.9}]}',
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+        call_provider_mock = AsyncMock(return_value=fake)
+
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            await structured_completion(
+                model="anthropic/claude-opus-4-7",
+                messages=[{"role": "user", "content": "hi"}],
+                response_model=_SampleOutput,
+                timeout_seconds=600,
+            )
+
+        assert call_provider_mock.call_args.kwargs["timeout_seconds"] == 600
+
+    @pytest.mark.asyncio
+    async def test_omitted_timeout_defers_to_call_provider(self):
+        """Callers that don't pass a phase budget (none in-tree, but the
+        signature allows it) keep the conservative shared default rather
+        than an unbounded request."""
+        fake = ProviderResponse(
+            content='{"facts": [{"content": "x", "confidence": 0.9}]}',
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+        call_provider_mock = AsyncMock(return_value=fake)
+
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            await structured_completion(
+                model="anthropic/claude-sonnet-4-6",
+                messages=[{"role": "user", "content": "hi"}],
+                response_model=_SampleOutput,
+            )
+
+        # Forwards the sentinel rather than a def-time snapshot of the setting,
+        # so call_provider resolves the live value — same contract as every
+        # other entry point.
+        assert call_provider_mock.call_args.kwargs["timeout_seconds"] is None
+
+    @pytest.mark.asyncio
     async def test_routes_to_ollama_under_local_transport(self):
         """Local transport: dispatch becomes ``provider="ollama"`` with
         ``ollama_host`` derived from ``CHAT_BASE_URL`` (sans the

@@ -6,28 +6,55 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
+import { AccountMenuNewLayout } from "./AccountMenuNewLayout";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
-import { getAccountMenuPhosphorIcon } from "./helpers";
+import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   hideNavBarUsername?: boolean;
   menuItemGroups: MenuItemGroup[];
   isLoading?: boolean;
+  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag,
+  // opted into only by the (flag-gated) sidebar. Classic Navbar keeps the
+  // original menu below.
+  newLayout?: boolean;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 }
 
 export function AccountMenu({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   menuItemGroups,
   isLoading = false,
+  newLayout = false,
+  side,
+  align,
 }: Props) {
   const popupId = React.useId();
+
+  if (newLayout) {
+    return (
+      <AccountMenuNewLayout
+        userName={userName}
+        userHandle={userHandle}
+        userEmail={userEmail}
+        avatarSrc={avatarSrc}
+        menuItemGroups={menuItemGroups}
+        isLoading={isLoading}
+        side={side}
+        align={align}
+      />
+    );
+  }
 
   return (
     <Popover>
@@ -40,7 +67,12 @@ export function AccountMenu({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
         </button>
       </PopoverTrigger>
 
@@ -52,7 +84,11 @@ export function AccountMenu({
         data-testid="account-menu-popover"
       >
         <div className="flex items-center gap-3 px-4 py-3">
-          <InitialAvatar src={avatarSrc} name={userName} />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             {isLoading || !userName || !userEmail ? (
               <>
@@ -80,7 +116,7 @@ export function AccountMenu({
             {menuItemGroups.map((group, groupIndex) =>
               group.items.map((item, itemIndex) => {
                 const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                const icon = getAccountMenuPhosphorIcon(item.icon);
+                const icon = getAccountMenuIcon(item.icon);
 
                 if (item.text === "Log out") {
                   return (

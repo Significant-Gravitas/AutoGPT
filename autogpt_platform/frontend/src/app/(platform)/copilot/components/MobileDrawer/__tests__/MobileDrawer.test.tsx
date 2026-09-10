@@ -13,8 +13,8 @@ import {
 import { useCopilotUIStore } from "../../../store";
 import { MobileDrawer } from "../MobileDrawer";
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {

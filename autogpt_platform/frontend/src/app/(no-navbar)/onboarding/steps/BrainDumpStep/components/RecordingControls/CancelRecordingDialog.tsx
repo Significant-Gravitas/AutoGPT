@@ -1,0 +1,50 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+
+interface Props {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}
+
+export function CancelRecordingDialog({
+  isOpen,
+  onOpenChange,
+  onConfirm,
+}: Props) {
+  return (
+    <Dialog
+      title="Discard recording?"
+      className="min-w-0 max-w-[30rem] rounded-2xl"
+      controlled={{ isOpen, set: onOpenChange }}
+    >
+      <Dialog.Content>
+        <Text variant="body">
+          This permanently deletes your current take. You can keep recording or
+          discard it and start again.
+        </Text>
+        <Dialog.Footer>
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => onOpenChange(false)}
+            className="h-10 rounded-xl"
+          >
+            Keep recording
+          </Button>
+          <Button
+            variant="destructive"
+            size="small"
+            onClick={onConfirm}
+            className="h-10 rounded-xl"
+          >
+            Discard recording
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog>
+  );
+}

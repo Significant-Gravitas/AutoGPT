@@ -78,6 +78,12 @@ describe("customMutator — impersonation header", () => {
     expect(headers[IMPERSONATION_HEADER_NAME]).toBeUndefined();
   });
 
+  it("routes browser requests through the same-origin API proxy", async () => {
+    await customMutator("/test", { method: "GET" });
+
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/test", expect.any(Object));
+  });
+
   it("coexists with pre-existing caller-supplied headers without overwriting them", async () => {
     mockGetSystemHeaders.mockReturnValue({
       [IMPERSONATION_HEADER_NAME]: "impersonated-user-abc",
@@ -261,5 +267,53 @@ describe("customMutator — empty body handling", () => {
     }>("/api/foo", { method: "GET" });
 
     expect(result.data).toEqual({ ok: true });
+  });
+});
+
+describe("customMutator validation errors", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+  });
+
+  it.each([
+    [
+      {
+        detail: [
+          { msg: "Field required", loc: ["body", "name"] },
+          { msg: "Invalid value" },
+        ],
+      },
+      "Field required; Invalid value",
+    ],
+    [{ detail: "Not allowed" }, "Not allowed"],
+    [{ detail: { reason: "Invalid input" } }, '{"reason":"Invalid input"}'],
+    [
+      { detail: [{ reason: "Invalid input" }, null] },
+      '{"reason":"Invalid input"}; null',
+    ],
+    [{ detail: null, message: "Fallback message" }, "Fallback message"],
+    [{ detail: [], message: "Fallback message" }, "Fallback message"],
+    [{ message: "Missing detail" }, "Missing detail"],
+  ])("formats response %j as a readable message", async (body, message) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Entity",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => body,
+      }),
+    );
+
+    await expect(
+      customMutator("/test", { method: "POST" }),
+    ).rejects.toMatchObject({
+      message,
+      status: 422,
+    });
   });
 });

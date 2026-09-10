@@ -7,12 +7,18 @@ import Image from "next/image";
 import { IconPersonFill } from "@/components/__legacy__/ui/icons";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { postV2UpdateUserProfile } from "@/app/api/__generated__/endpoints/store/store";
-import { postV2UploadSubmissionMedia } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  isFileTooLarge,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
 import { Button } from "./Button";
 
 export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState<ProfileDetails>(profile);
 
@@ -42,11 +48,13 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
   }
 
   async function handleImageUpload(file: File) {
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
+      return;
+
     try {
-      const mediaRes = await resolveResponse(
-        postV2UploadSubmissionMedia({ file }),
-      );
-      const mediaUrl = String(mediaRes ?? "");
+      const mediaUrl = await uploadSubmissionMediaDirect(file);
 
       const updatedProfile = {
         ...profileData,
@@ -58,7 +66,11 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
       );
       if (returnedProfile) setProfileData(returnedProfile);
     } catch (error) {
-      console.error("Error uploading image:", error);
+      toast({
+        title: "Failed to upload photo",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
     }
   }
 

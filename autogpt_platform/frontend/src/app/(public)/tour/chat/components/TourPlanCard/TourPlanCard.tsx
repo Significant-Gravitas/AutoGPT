@@ -6,12 +6,13 @@ import {
 } from "@/app/(platform)/copilot/components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "@/app/(platform)/copilot/components/ToolAccordion/ToolAccordion";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CheckCircleIcon,
-  CubeIcon,
-  PlusCircleIcon,
-} from "@phosphor-icons/react";
 import type { TourPlan, TourPlanStep } from "../../script/types";
+import {
+  CheckmarkCircle02Icon,
+  CubeIcon,
+  PlusSignCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const STEP_STAGGER_MS = 200;
 
@@ -21,7 +22,7 @@ const STEP_STAGGER_MS = 200;
 export function TourPlanCard({ plan }: { plan: TourPlan }) {
   return (
     <ToolAccordion
-      icon={<PlusCircleIcon size={32} weight="light" />}
+      icon={<Icon icon={PlusSignCircleIcon} size={32} />}
       title={`Build Plan — ${plan.steps.length} steps`}
       description={plan.goal}
       defaultExpanded
@@ -59,9 +60,9 @@ function TourPlanStepItem({
       className="flex items-start gap-3 py-1.5 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       style={{ animationDelay: `${index * STEP_STAGGER_MS}ms` }}
     >
-      <CheckCircleIcon
+      <Icon
+        icon={CheckmarkCircle02Icon}
         size={18}
-        weight="fill"
         aria-label="completed"
         className="mt-0.5 shrink-0 text-emerald-500 duration-300 animate-in fade-in zoom-in-50 fill-mode-both"
         style={{ animationDelay: `${index * STEP_STAGGER_MS + 200}ms` }}
@@ -71,7 +72,7 @@ function TourPlanStepItem({
           {index + 1}. {step.description}
         </Text>
         <div className="mt-0.5 flex items-center gap-1">
-          <CubeIcon size={12} className="text-muted-foreground" />
+          <Icon icon={CubeIcon} size={12} className="text-muted-foreground" />
           <Text
             variant="small"
             className="font-mono text-xs text-muted-foreground"

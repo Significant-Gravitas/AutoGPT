@@ -7,7 +7,6 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   AnimatePresence,
@@ -24,6 +23,8 @@ import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
+import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -189,7 +190,7 @@ export function LibraryAgentList({
               onClick={() => onFolderSelect(null)}
               className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
             >
-              <ArrowLeftIcon className="h-4 w-4" />
+              <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
             </button>
             {currentFolder && (
@@ -210,7 +211,7 @@ export function LibraryAgentList({
           </div>
         ) : isFavoritesTab && agents.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-zinc-500">
-            <HeartIcon className="h-10 w-10" />
+            <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite agents yet</Text>
           </div>
         ) : isPristineEmpty ? (

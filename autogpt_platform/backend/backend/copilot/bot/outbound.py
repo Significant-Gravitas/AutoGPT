@@ -34,7 +34,7 @@ class DeliveryResult(BaseModel):
     """
 
     ok: bool
-    kind: Literal["message", "thread"]
+    kind: Literal["message", "thread", "dm"]
     channel_id: Optional[str] = None
     ref_id: Optional[str] = None
     url: Optional[str] = None
@@ -83,6 +83,37 @@ async def deliver_message(
         )
     return DeliveryResult(
         ok=True, kind="message", channel_id=channel_id, ref_id=ref.id, url=ref.url
+    )
+
+
+async def deliver_dm(
+    adapter: PlatformAdapter,
+    api: BotBackend,
+    platform: str,
+    user_id: str,
+    content: str,
+) -> DeliveryResult:
+    """Send ``content`` to ``user_id``'s own DM with the bot.
+
+    Authorization is the DM link itself: the target is always the calling
+    user's linked platform account, never a caller-supplied recipient — so a
+    user can only ever DM themself.
+    """
+    if not content or not content.strip():
+        return DeliveryResult(ok=False, kind="dm", error="empty_content")
+    platform_user_id = await api.get_dm_user_id(platform, user_id)
+    if platform_user_id is None:
+        return DeliveryResult(ok=False, kind="dm", error="no_dm_link")
+    channel_id = await adapter.open_dm_channel(platform_user_id)
+    if channel_id is None:
+        return DeliveryResult(ok=False, kind="dm", error="dm_unavailable")
+    ref = await adapter.post_channel_message(channel_id, content)
+    if ref is None:
+        return DeliveryResult(
+            ok=False, kind="dm", channel_id=channel_id, error="send_failed"
+        )
+    return DeliveryResult(
+        ok=True, kind="dm", channel_id=channel_id, ref_id=ref.id, url=ref.url
     )
 
 

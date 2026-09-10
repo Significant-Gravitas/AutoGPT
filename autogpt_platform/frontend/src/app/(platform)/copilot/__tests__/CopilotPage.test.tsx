@@ -1,5 +1,11 @@
 import { Key, storage } from "@/services/storage/local-storage";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  cleanup,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { useCopilotUIStore } from "../store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotPage } from "../CopilotPage";
 
@@ -52,8 +58,9 @@ vi.mock("../components/FileDropZone/FileDropZone", () => ({
     <div>{children}</div>
   ),
 }));
+const viewportState = vi.hoisted(() => ({ isMobile: false }));
 vi.mock("../useIsMobile", () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => viewportState.isMobile,
 }));
 vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
   ScaleLoader: () => <div data-testid="scale-loader" />,
@@ -84,10 +91,20 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     }
     return { data: undefined, isSuccess: false, isError: false };
   },
+  // The provider-limit dialog reads connections to find somewhere to
+  // continue. It only renders on a failure, which this page test never
+  // provokes, so an empty result is the honest stand-in.
+  useGetV2ListChatConnections: () => ({ data: undefined }),
+  getGetV2ListChatConnectionsQueryKey: () => ["chat", "connections"],
+  usePutV2ChangeTheConnectionAnExistingChatRunsOn: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),
 }));
+const flagState = vi.hoisted(() => ({ artifacts: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
@@ -95,16 +112,21 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     LOCAL_PC_EXECUTOR: "LOCAL_PC_EXECUTOR",
     WORKFLOW_RECORDING: "WORKFLOW_RECORDING",
+    TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
   useGetFlag: (flag: string) =>
-    flag === "LOCAL_PC_EXECUTOR" ? mockFeatureFlags.localPCEnabled : false,
+    flag === "LOCAL_PC_EXECUTOR"
+      ? mockFeatureFlags.localPCEnabled
+      : flag === "ARTIFACTS"
+        ? flagState.artifacts
+        : false,
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in
 // user so the page renders past its loading gate.
-const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => mockSupabase(),
+const mockUseAuth = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => mockUseAuth(),
 }));
 
 // sessionId is read via nuqs to key the chat-host subtree; stub it so
@@ -161,12 +183,47 @@ afterEach(() => {
   mockFeatureFlags.localPCEnabled = false;
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
-  mockSupabase.mockReset();
-  mockSupabase.mockImplementation(() => ({
+  mockUseAuth.mockReset();
+  mockUseAuth.mockImplementation(() => ({
     isUserLoading: false,
     isLoggedIn: true,
   }));
   mockSessionIdForQueryState = null;
+  viewportState.isMobile = false;
+  flagState.artifacts = false;
+});
+
+describe("CopilotPage context panel reset", () => {
+  it("forgets the previous chat's artifact on session entry even on mobile", async () => {
+    viewportState.isMobile = true;
+    flagState.artifacts = true;
+    mockSessionIdForQueryState = "session-b";
+    mockUseCopilotPage.mockReturnValue({
+      ...basePageState,
+      sessionId: "session-b",
+    });
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: true,
+        lastArtifact: {
+          id: "session-a-file",
+          title: "from-chat-a.md",
+          mimeType: "text/markdown",
+          sourceUrl: "/api/proxy/api/workspace/files/session-a-file/download",
+          origin: "agent",
+        },
+      },
+    }));
+
+    render(<CopilotPage />);
+
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.lastArtifact,
+      ).toBeNull(),
+    );
+  });
 });
 
 describe("CopilotPage test-mode banner", () => {
@@ -216,8 +273,8 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows loading spinner when user is loading", () => {
-    // Auth check moved to CopilotPage — mock useSupabase directly.
-    mockSupabase.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
+    // Auth check moved to CopilotPage — mock useAuth directly.
+    mockUseAuth.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();

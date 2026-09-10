@@ -7,7 +7,7 @@ Follow these steps to connect **AI/ML API** with the **AutoGPT** platform for hi
 
 ## ✅ Prerequisites
 
-1. Make sure you have gone through and completed the [AutoGPT Setup Guide](https://docs.agpt.co/platform/getting-started/), and AutoGPT is running locally at `http://localhost:3000`.
+1. Make sure you have gone through and completed the [AutoGPT Setup Guide](https://agpt.co/docs/platform/getting-started), and AutoGPT is running locally at `http://localhost:3000`.
 2. You have an **API key** from [AI/ML API](https://aimlapi.com/app/keys?utm_source=autogpt&utm_medium=github&utm_campaign=integration).
 
 ---
@@ -17,7 +17,7 @@ Follow these steps to connect **AI/ML API** with the **AutoGPT** platform for hi
 ### 1. Start AutoGPT Locally
 
 Follow the official guide:
-[📖 AutoGPT Getting Started Guide](https://docs.agpt.co/platform/getting-started/)
+[📖 AutoGPT Getting Started Guide](https://agpt.co/docs/platform/getting-started)
 
 Make sure AutoGPT is running and accessible at:
 [http://localhost:3000](http://localhost:3000)

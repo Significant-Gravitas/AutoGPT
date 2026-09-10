@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, TypeAlias, TypeGuard
 from backend.copilot.local_executor import LocalPCExecutorMarker
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
     from backend.copilot.permissions import CopilotPermissions
     from backend.copilot.tools.local_pc_shim import LocalPCShim
+    from backend.copilot.tree import TurnEnvelope
 
     ExecutorSandbox: TypeAlias = AsyncSandbox | LocalPCShim
 else:
@@ -62,6 +64,12 @@ _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
     "_current_permissions", default=None
 )
 
+# The running turn's tree envelope. Spawn tools derive a child's envelope
+# from this — never from a session row — so a child can only ever narrow it.
+_current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
+    "_current_envelope", default=None
+)
+
 
 def encode_cwd_for_cli(cwd: str) -> str:
     """Encode a working directory path the same way the Claude CLI does.
@@ -83,6 +91,7 @@ def set_execution_context(
     sandbox: ExecutorSandbox | None = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -91,6 +100,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -101,6 +111,11 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
+
+
+def get_current_envelope() -> "TurnEnvelope | None":
+    """The running turn's tree envelope; None outside an executor turn."""
+    return _current_envelope.get()
 
 
 def get_current_sandbox() -> ExecutorSandbox | None:
@@ -345,15 +360,43 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
+async def current_workspace_scope(
+    user_id: str, session_id: str
+) -> WorkspaceScope | None:
+    """Resolve the file grants for the turn currently executing.
+
+    The scope derives from the server-resolved session the executor placed
+    in the execution context — never from a session or expert ID a tool
+    argument names. Personal AutoPilot turns are unrestricted: the account
+    owner is acting. Without an executing session nobody can be attributed,
+    so access fails closed to ``session_id`` alone.
+    """
+    _, session = get_execution_context()
+    if session is None:
+        return WorkspaceScope(session_ids=[session_id])
+    if session.user_id != user_id:
+        raise WorkspaceAccessDeniedError(
+            "Workspace access denied: the executing session belongs to another user."
+        )
+    if session.expert_id is None:
+        return None
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        user_id, session.expert_id
+    )
+    return scope.with_session(session.session_id)
+
+
 async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
     """Create a session-scoped :class:`WorkspaceManager`.
 
     Placed here (rather than in ``tools/workspace_files``) so that modules
     like ``sdk/file_ref`` can import it without triggering the heavy
-    ``tools/__init__`` import chain.
+    ``tools/__init__`` import chain. Expert turns get a manager confined to
+    the expert's resolved scope (see :func:`current_workspace_scope`).
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    scope = await current_workspace_scope(user_id, session_id)
+    return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:

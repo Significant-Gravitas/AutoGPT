@@ -1,5 +1,6 @@
 import {
   getV2GetSession,
+  usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { fetchAndExportChat } from "@/app/(platform)/copilot/helpers/exportChatAsMarkdown";
@@ -36,6 +37,22 @@ export function useRecentChats() {
     cancelDelete,
   } = useSessionDeletion();
 
+  const { mutate: setSessionPinned } = usePatchV2UpdateSessionPinned({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+      },
+      onError: (error) => {
+        toast({
+          title: "Failed to update chat",
+          description:
+            error instanceof Error ? error.message : "An error occurred",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
       onSuccess: () => {
@@ -53,6 +70,10 @@ export function useRecentChats() {
       },
     },
   });
+
+  function togglePin(id: string, isPinned: boolean) {
+    setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
+  }
 
   function startRename(id: string, title: string | null | undefined) {
     setEditingSessionId(id);
@@ -99,6 +120,7 @@ export function useRecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
+    togglePin,
     editingSessionId,
     editingTitle,
     setEditingTitle,

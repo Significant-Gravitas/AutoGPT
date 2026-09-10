@@ -16,6 +16,7 @@ from .permissions import (
     check_org_permission,
     check_team_permission,
 )
+from .service import requires_frontend_service
 
 __all__ = [
     "verify_settings",
@@ -26,6 +27,7 @@ __all__ = [
     "get_request_context",
     "requires_org_permission",
     "requires_team_permission",
+    "requires_frontend_service",
     "add_auth_responses_to_openapi",
     "User",
     "RequestContext",

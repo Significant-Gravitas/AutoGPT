@@ -18,6 +18,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
+    _current_envelope,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -55,11 +56,13 @@ from .e2b_file_tools import (
     get_read_tool_handler,
     get_write_tool_handler,
 )
+from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -139,6 +143,7 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
+        envelope: The turn's tree envelope; spawn tools derive children from it.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -146,6 +151,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
@@ -722,6 +728,7 @@ def _make_truncating_wrapper(
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -741,7 +748,7 @@ def _make_truncating_wrapper(
     Swapping this order would cause the frontend to lose ``is_dry_run``.
     """
 
-    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+    async def execute(args: dict[str, Any]) -> dict[str, Any]:
         # Detect empty-args truncation: args is empty AND the original tool
         # declared at least one *required* property. Tools whose params are all
         # optional (filters-only tools like list_schedules) legitimately accept
@@ -752,20 +759,25 @@ def _make_truncating_wrapper(
         # the wrapper instead.
         if not args and required_args:
             logger.warning(
-                "[MCP] %s called with empty args (likely output "
-                "token truncation) — returning guidance",
-                tool_name,
+                f"[MCP] {tool_name} called with empty args (truncated or "
+                f"schema-rejected input) — returning guidance"
             )
+            stop_msg = _check_circuit_breaker(tool_name, args)
+            _record_tool_failure(tool_name, args)
+            if stop_msg:
+                return _mcp_error(stop_msg)
             return _mcp_error(
-                f"Your call to {tool_name} had empty arguments — "
-                f"this means your previous response was too long and "
-                f"the tool call input was truncated by the API. "
-                f"To fix this: break your work into smaller steps. "
-                f"For large content, first write it to a file using "
-                f"bash_exec with cat >> (append section by section), "
-                f"then pass it via @@agptfile:filename reference. "
-                f"Do NOT retry with the same approach — it will "
-                f"be truncated again."
+                f"Your call to {tool_name} arrived with empty arguments. "
+                f"This means the arguments were dropped in transit: either "
+                f"your response hit the output-token limit mid-call, or an "
+                f"argument value did not match the parameter's declared "
+                f"type. Do NOT retry the same call — it will fail the same "
+                f"way. Instead, write the large argument value to a file "
+                f"first (bash_exec with cat >>, appending section by "
+                f"section, or reuse a file you already wrote), then call "
+                f'{tool_name} again passing the string "@@agptfile:<path>" '
+                f"as that argument's value. Object parameters such as "
+                f"agent_json accept this file-reference string directly."
             )
 
         original_args = args
@@ -819,6 +831,12 @@ def _make_truncating_wrapper(
             truncated = _strip_llm_fields(truncated)
 
         return truncated
+
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        if tool_display_bridge is None:
+            return await execute(args)
+        with tool_display_bridge.execution_context(tool_name, args) as clean_args:
+            return await execute(clean_args)
 
     return wrapper
 
@@ -900,6 +918,7 @@ def create_copilot_mcp_server(
     use_local_pc_computer: bool = False,
     local_pc_computer_tool_names: Iterable[str] | None = None,
     use_recording: bool = False,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -963,7 +982,11 @@ def create_copilot_mcp_server(
             annotations=_PARALLEL_ANNOTATION,
         )(
             _make_truncating_wrapper(
-                handler, tool_name, input_schema=schema, required_args=required
+                handler,
+                tool_name,
+                input_schema=schema,
+                required_args=required,
+                tool_display_bridge=tool_display_bridge,
             )
         )
         sdk_tools.append(decorated)

@@ -3,7 +3,8 @@ import React from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
 import { Button } from "@/components/__legacy__/ui/button";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface BlockMenuSearchBarProps {
   className?: string;
@@ -29,7 +30,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       )}
     >
       <div className="flex h-6 w-6 items-center justify-center">
-        <MagnifyingGlassIcon
+        <Icon
+          icon={Search01Icon}
           className="h-6 w-6 text-zinc-700"
           strokeWidth={2}
         />
@@ -55,7 +57,11 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           onClick={handleClear}
           className="p-0 hover:bg-transparent"
         >
-          <XIcon className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+          <Icon
+            icon={Cancel01Icon}
+            className="h-6 w-6 text-zinc-700"
+            strokeWidth={2}
+          />
         </Button>
       )}
     </div>

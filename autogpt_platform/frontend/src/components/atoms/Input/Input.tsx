@@ -2,18 +2,20 @@ import {
   Input as BaseInput,
   type InputProps,
 } from "@/components/__legacy__/ui/input";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useInput } from "./useInput";
+import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps extends Omit<InputProps, "size"> {
+export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
   label: string;
   id: string;
   hideLabel?: boolean;
@@ -36,6 +38,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "textarea"
     | "date"
     | "datetime-local";
+  // Widened over InputProps, which only describes the <input> branch, so the
+  // handler is callable with either element's event and needs no cast.
+  onKeyDown?: React.KeyboardEventHandler<InputElement>;
   // Textarea-specific props
   rows?: number;
   amountPrefix?: string;
@@ -58,10 +63,20 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     wrapperClassName,
     amountPrefix,
     amountSuffix,
+    onKeyDown,
     ...props
   },
   ref,
 ) {
+  // Consumers never see keydowns an IME is still composing; see AGENTS.md
+  // "Keyboard handling". Left undefined when the consumer passes no handler, so
+  // we don't attach a listener that does nothing.
+  function handleKeyDown(e: React.KeyboardEvent<InputElement>) {
+    if (isComposingEvent(e)) return;
+    onKeyDown?.(e);
+  }
+  const guardedOnKeyDown = onKeyDown ? handleKeyDown : undefined;
+
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
       type: props.type,
@@ -106,7 +121,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] rounded-xl",
+            "-mb-1 h-auto min-h-[2.875rem]",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -121,16 +136,15 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
-          onKeyDown={
-            props.onKeyDown as
-              | React.KeyboardEventHandler<HTMLTextAreaElement>
-              | undefined
-          }
+          onKeyDown={guardedOnKeyDown}
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
           id={props.id}
           disabled={props.disabled}
           value={props.value}
+          maxLength={props.maxLength}
+          name={props.name}
+          required={props.required}
         />
       );
     }
@@ -167,6 +181,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
+          onKeyDown={guardedOnKeyDown}
           prefix={amountPrefix}
           suffix={amountSuffix}
         />
@@ -197,6 +212,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
         {...props}
+        onKeyDown={guardedOnKeyDown}
         type={inputType}
       />
     );
@@ -214,7 +230,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600"
           aria-label="Press and hold to show password"
         >
-          {showPassword ? <Eye size={16} /> : <EyeSlash size={16} />}
+          {showPassword ? (
+            <Icon icon={EyeIcon} size={16} />
+          ) : (
+            <Icon icon={EyeOffIcon} size={16} />
+          )}
         </button>
       )}
     </div>

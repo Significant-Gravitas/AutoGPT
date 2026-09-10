@@ -3,9 +3,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { SelectedViewLayout } from "../SelectedViewLayout";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -36,7 +37,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
             onClick={onClearSelectedRun}
             className="w-[2.375rem]"
           >
-            <ArrowLeftIcon />
+            <Icon icon={ArrowLeft02Icon} />
           </Button>
           <Text variant="h2">Agent Settings</Text>
         </div>

@@ -9,7 +9,7 @@ flex), or new structured-output handling lands once and every caller
 picks it up.
 
 This module is intentionally agnostic to the caller's surrounding
-framework: it doesn't depend on the block layer's ``LlmModel`` enum,
+framework: it doesn't depend on the block layer's ``LLMModel`` enum,
 the executor's ``NodeExecutionStats``, or the dream-pass's Pydantic
 validation. Callers wrap it with their own typed entry points.
 """

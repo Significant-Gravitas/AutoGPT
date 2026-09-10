@@ -8,6 +8,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
 import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface UseAgentInfoProps {
@@ -79,19 +80,10 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
     try {
       const { data: file } = await downloadAgent();
 
-      const jsonData = JSON.stringify(file, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `agent_${storeListingVersionId}.json`;
-
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      window.URL.revokeObjectURL(url);
+      exportAsJSONFile(
+        file as object,
+        agentGraphExportFilename(file, agentName),
+      );
 
       analytics.sendDatafastEvent("download_agent", {
         name: agentName,

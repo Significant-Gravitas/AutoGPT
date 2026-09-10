@@ -4,9 +4,14 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ChatCircleTextIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useFollowupListItem } from "./useFollowupListItem";
+import {
+  Comment01Icon,
+  Delete02Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   followup: CopilotTurnJobInfo;
@@ -43,11 +48,7 @@ export function FollowupListItem({ followup }: Props) {
   const detailContent = (
     <>
       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
-        <ChatCircleTextIcon
-          size={18}
-          className="text-yellow-700"
-          weight="bold"
-        />
+        <Icon icon={Comment01Icon} size={18} className="text-yellow-700" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
         <Text
@@ -102,7 +103,7 @@ export function FollowupListItem({ followup }: Props) {
           data-testid="followup-view-button"
           aria-label="View follow-up"
         >
-          <EyeIcon className="mr-1 h-4 w-4" />
+          <Icon icon={EyeIcon} className="mr-1 h-4 w-4" />
           View
         </Button>
         <Button
@@ -112,7 +113,7 @@ export function FollowupListItem({ followup }: Props) {
           data-testid="followup-delete-button"
           aria-label="Delete follow-up"
         >
-          <TrashIcon className="mr-1 h-4 w-4" />
+          <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
           Delete
         </Button>
       </div>

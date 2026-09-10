@@ -4,10 +4,16 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import NextLink, { type LinkProps } from "next/link";
 import React from "react";
-import { ButtonProps, extendedButtonVariants } from "./helpers";
+import {
+  BUTTON_ICON_SIZE,
+  ButtonProps,
+  extendedButtonVariants,
+  ICON_ONLY_SIZES,
+} from "./helpers";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function Button(props: ButtonProps) {
   const {
@@ -16,6 +22,7 @@ export function Button(props: ButtonProps) {
     size,
     loading = false,
     withTooltip = true,
+    leadingIcon,
     leftIcon,
     rightIcon,
     children,
@@ -35,8 +42,18 @@ export function Button(props: ButtonProps) {
   const ariaLabel =
     "aria-label" in restProps ? restProps["aria-label"] : undefined;
 
-  const shouldShowTooltip =
-    variant === "icon" && ariaLabel && !loading && withTooltip;
+  const isIconOnly =
+    variant === "icon" || (size != null && ICON_ONLY_SIZES.has(size));
+  const shouldShowTooltip = isIconOnly && ariaLabel && !loading && withTooltip;
+  const resolvedLeftIcon = leadingIcon ? (
+    <Icon
+      icon={leadingIcon}
+      size={BUTTON_ICON_SIZE[size ?? "large"]}
+      aria-hidden
+    />
+  ) : (
+    leftIcon
+  );
 
   // Helper to wrap button with tooltip if needed
   const wrapWithTooltip = (buttonElement: React.ReactElement) => {
@@ -54,9 +71,9 @@ export function Button(props: ButtonProps) {
   const buttonContent = (
     <>
       {loading && (
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
       )}
-      {!loading && leftIcon}
+      {!loading && resolvedLeftIcon}
       {children}
       {!loading && rightIcon}
     </>
@@ -105,15 +122,23 @@ export function Button(props: ButtonProps) {
           className={loadingClassName}
           aria-disabled="true"
         >
-          <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+          <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
           {children}
         </NextLink>
       );
     }
 
+    // Spread first so `className` and `disabled` below still win. Without this
+    // the loading branch silently drops every extra prop the caller passed —
+    // aria-label, data-testid, analytics data-* — the moment a click flips it
+    // into loading, which is exactly when a click listener needs to read them.
     const loadingButton = (
-      <button className={loadingClassName} disabled>
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+      <button
+        {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        className={loadingClassName}
+        disabled
+      >
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
         {children}
       </button>
     );

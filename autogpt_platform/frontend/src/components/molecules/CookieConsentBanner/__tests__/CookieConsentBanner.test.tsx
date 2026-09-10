@@ -1,4 +1,4 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 let pathname = "/marketplace";
@@ -37,5 +37,16 @@ describe("CookieConsentBanner", () => {
     // the positive case needs before asserting absence.
     await Promise.resolve();
     expect(screen.queryByText("We use cookies")).toBeNull();
+  });
+
+  test("lets the visitor decide on advertising cookies separately", async () => {
+    pathname = "/marketplace";
+    render(<CookieConsentBanner />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+
+    expect(
+      await screen.findByLabelText("Toggle advertising cookies"),
+    ).toBeDefined();
+    expect(screen.getByText("Advertising")).toBeDefined();
   });
 });

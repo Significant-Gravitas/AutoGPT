@@ -3,7 +3,6 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes, useCallback, useState } from "react";
 import { highlightText } from "./helpers";
-import { PlusIcon } from "@phosphor-icons/react";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { blockDragPreviewStyle } from "./style";
@@ -14,6 +13,8 @@ import {
   MCPToolDialog,
   type MCPToolDialogResult,
 } from "@/app/(platform)/build/components/MCPToolDialog";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -186,7 +187,7 @@ export const Block: BlockComponent = ({
             "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
           )}
         >
-          <PlusIcon className="h-5 w-5 text-zinc-50" />
+          <Icon icon={PlusSignIcon} className="h-5 w-5 text-zinc-50" />
         </div>
       </Button>
       {isMCPBlock && (

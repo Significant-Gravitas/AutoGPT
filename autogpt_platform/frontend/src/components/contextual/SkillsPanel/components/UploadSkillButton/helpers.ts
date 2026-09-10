@@ -1,7 +1,7 @@
 // Mirrors backend limits in backend/copilot/tools/skills.py — kept in sync
 // manually. These bound the per-turn `<available_skills>` index the copilot
 // sees, so the cap is deliberate (see backend MAX_DESCRIPTION_CHARS).
-export const MAX_SKILL_DESCRIPTION_CHARS = 250;
+export const MAX_SKILL_DESCRIPTION_CHARS = 1024;
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 
@@ -28,9 +28,15 @@ export function getSkillUploadError(content: string): string | null {
     return "File is not a valid SKILL.md — frontmatter must include a non-empty name and description.";
   }
 
-  if (description && description.length > MAX_SKILL_DESCRIPTION_CHARS) {
-    const over = description.length - MAX_SKILL_DESCRIPTION_CHARS;
-    return `Description is ${description.length}/${MAX_SKILL_DESCRIPTION_CHARS} characters — trim at least ${over}. It appears in the copilot's per-turn skills index, so it's kept short.`;
+  const descriptionLength = description
+    ? Array.from(description).length
+    : undefined;
+  if (
+    descriptionLength !== undefined &&
+    descriptionLength > MAX_SKILL_DESCRIPTION_CHARS
+  ) {
+    const over = descriptionLength - MAX_SKILL_DESCRIPTION_CHARS;
+    return `Description is ${descriptionLength}/${MAX_SKILL_DESCRIPTION_CHARS} characters — trim at least ${over}. It appears in the copilot's per-turn skills index, so it's kept short.`;
   }
 
   return null;
@@ -64,7 +70,10 @@ function readScalarField(frontmatter: string, key: string): string | undefined {
     try {
       return JSON.parse(raw);
     } catch {
-      return raw.slice(1, -1);
+      // YAML supports escape sequences that JSON does not (for example,
+      // `\U0001F600`). If we cannot decode the scalar confidently, defer its
+      // validation to the backend instead of measuring the encoded text.
+      return undefined;
     }
   }
   // Single-quoted YAML escapes a quote by doubling it (`''`).

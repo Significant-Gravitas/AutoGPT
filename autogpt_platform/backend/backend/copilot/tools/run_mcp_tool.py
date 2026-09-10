@@ -1,5 +1,6 @@
 """Tool for discovering and executing MCP (Model Context Protocol) server tools."""
 
+import json
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -9,6 +10,7 @@ from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
     server_host,
@@ -19,11 +21,22 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
 )
-from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url_host
+from backend.copilot.tools.utils import (
+    build_missing_credentials_from_field_info,
+    sanitize_provider_message,
+)
+from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    validate_url_host,
+)
 
 from .base import BaseTool
 from .models import (
+    CredentialRejection,
     ErrorResponse,
     MCPToolInfo,
     MCPToolOutputResponse,
@@ -36,8 +49,14 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# HTTP status codes that indicate authentication is required
-_AUTH_STATUS_CODES = {401, 403}
+# Discovery-response size caps: keep multi-tool catalogs small enough that a
+# 20-tool server doesn't consume a meaningful share of the context window.
+# All inputs here are server-controlled, so every dimension is bounded:
+# tool count, description length, and per-tool params-summary length.
+_TOOL_DESCRIPTION_MAX_CHARS = 300
+_ERROR_SCHEMA_MAX_CHARS = 4000
+_DISCOVERY_MAX_TOOLS = 100
+_PARAMS_SUMMARY_MAX_CHARS = 400
 
 
 def _service_name(host: str) -> str:
@@ -205,7 +224,11 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        auth_token = creds.access_token.get_secret_value() if creds else None
+        client = (
+            MCPClient(server_url, authorization=mcp_authorization_header(creds))
+            if creds is not None
+            else None
+        )
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's
@@ -226,15 +249,21 @@ class RunMCPToolTool(BaseTool):
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
-            if creds is not None:
-                probe_client = MCPClient(server_url, auth_token=auth_token)
+            rejection: CredentialRejection | None = None
+            if client is not None and creds is not None:
+                probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in _AUTH_STATUS_CODES:
-                            await invalidate_mcp_credential(user_id, creds.id)
+                        if probe_err.status_code in AUTH_STATUS_CODES:
                             connected = False
+                            if (
+                                probe_err.status_code
+                                in CREDENTIAL_REJECTED_STATUS_CODES
+                            ):
+                                rejection = _rejection(creds, probe_err)
+                                await invalidate_mcp_credential(user_id, creds.id)
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -265,10 +294,11 @@ class RunMCPToolTool(BaseTool):
                     # errors.
                     await probe_client.close()
             return self._build_setup_requirements(
-                server_url, session_id, connected=connected
+                server_url, session_id, connected=connected, rejection=rejection
             )
 
-        client = MCPClient(server_url, auth_token=auth_token)
+        if client is None:
+            client = MCPClient(server_url)
 
         try:
             await client.initialize()
@@ -289,18 +319,29 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES:
-                # 401/403 → user needs to (re)authenticate.  Fire the setup
-                # card whether or not we have a stored credential row: when
-                # `creds` is None the user has never connected, and when it
-                # is non-None the stored token has been revoked / expired
-                # server-side without us knowing (refresh_if_needed only
-                # refreshes when local `access_token_expires_at` says so).
-                # If we have a stale row, delete it so the next attempt
-                # doesn't loop on the same dead token.
-                if creds is not None:
+            if e.status_code in AUTH_STATUS_CODES:
+                credential_rejected = e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
+                # Fire the setup card whether or not a credential row exists.
+                rejected = (
+                    _rejection(creds, e)
+                    if creds is not None and credential_rejected
+                    else None
+                )
+                if creds is not None and credential_rejected:
                     await invalidate_mcp_credential(user_id, creds.id)
-                return self._build_setup_requirements(server_url, session_id)
+                # A 403 over a credential we deliberately kept means "this
+                # token is fine, it just may not call *this* tool". Rendering
+                # a bare Connect button there invites the user to re-paste the
+                # same working token: ``/token``'s probe 403s too, which is
+                # not a rejection, so it stores, returns 2xx and greens the
+                # pill — and the next call 403s again. Reporting it as
+                # connected breaks that loop.
+                return self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    connected=creds is not None and not credential_rejected,
+                    rejection=rejected,
+                )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
@@ -326,6 +367,9 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+        finally:
+            # Release any legacy session; a no-op on stateless servers.
+            await client.close()
 
     async def _discover_tools(
         self,
@@ -340,19 +384,39 @@ class RunMCPToolTool(BaseTool):
         inspect tool schemas and choose one to execute in a follow-up call.
         """
         tools = await client.list_tools()
+        # Full input schemas are deliberately omitted: a server like Notion
+        # exposes 20 tools whose schemas total ~67KB (~17K tokens) — enough
+        # to trigger context compaction on its own. The compact per-tool
+        # param summary covers tool selection; the full schema of a single
+        # tool is delivered on demand via the execution error path.
+        # Tool count and params-summary length are bounded too — both are
+        # server-controlled and would otherwise be unbounded context cost.
+        dropped_tools = max(0, len(tools) - _DISCOVERY_MAX_TOOLS)
         tool_infos = [
             MCPToolInfo(
                 name=t.name,
-                description=t.description,
-                input_schema=t.input_schema,
+                description=(t.description or "")[:_TOOL_DESCRIPTION_MAX_CHARS],
+                params=_summarize_params(t.input_schema),
             )
-            for t in tools
+            for t in tools[:_DISCOVERY_MAX_TOOLS]
         ]
         host = server_host(server_url)
+        truncation_note = (
+            f" NOTE: {dropped_tools} additional tool(s) were omitted from "
+            "this listing to bound context size."
+            if dropped_tools
+            else ""
+        )
         return MCPToolsDiscoveredResponse(
             message=(
-                f"Discovered {len(tool_infos)} tool(s) on {host}. "
-                "Call run_mcp_tool again with tool_name and tool_arguments to execute one."
+                f"Discovered {len(tool_infos)} tool(s) on {host}."
+                f"{truncation_note} Full input "
+                "schemas are omitted to save context — `params` lists each "
+                "tool's argument names with required ones marked `*`. Call "
+                "run_mcp_tool again with tool_name and tool_arguments to "
+                "execute one; if the arguments are wrong, the error response "
+                "includes a schema hint for that tool. Do NOT re-run "
+                "discovery after an argument error."
             ),
             server_url=server_url,
             tools=tool_infos,
@@ -385,6 +449,7 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
             input_schema = await self._lookup_tool_schema(client, tool_name)
             try:
@@ -400,7 +465,9 @@ class RunMCPToolTool(BaseTool):
                     session_id=session_id,
                 )
 
-        result = await client.call_tool(tool_name, tool_arguments)
+        result = await client.call_tool(
+            tool_name, tool_arguments, input_schema=input_schema
+        )
 
         if result.is_error:
             error_text = " ".join(
@@ -408,8 +475,12 @@ class RunMCPToolTool(BaseTool):
                 for item in result.content
                 if item.get("type") == "text"
             )
+            hint = await self._build_error_hint(client, tool_name)
             return ErrorResponse(
-                message=f"MCP tool '{tool_name}' returned an error: {error_text or 'Unknown error'}",
+                message=(
+                    f"MCP tool '{tool_name}' returned an error: "
+                    f"{error_text or 'Unknown error'}{hint}"
+                ),
                 session_id=session_id,
             )
 
@@ -423,6 +494,31 @@ class RunMCPToolTool(BaseTool):
             success=True,
             session_id=session_id,
         )
+
+    async def _build_error_hint(self, client: MCPClient, tool_name: str) -> str:
+        """Self-correction hint appended to tool-error responses.
+
+        Discovery omits full input schemas (context cost), so this is where
+        the model gets the one schema it actually needs: the failed tool's.
+        For a misspelled tool name, list the available names instead. Both
+        beat the model's fallback of re-running discovery, which re-injects
+        the entire multi-tool catalog into context.
+        """
+        try:
+            tools = await client.list_tools()
+            match = next((t for t in tools if t.name == tool_name), None)
+            if match is not None:
+                schema_json = _bounded_schema_hint(match.input_schema)
+                return f" Input schema for '{tool_name}': {schema_json}"
+            names = ", ".join(t.name for t in tools[:40])
+            return (
+                f" No tool named '{tool_name}' exists on this server. "
+                f"Available tools: {names}"
+            )
+        except Exception:
+            # Best-effort — a failed hint lookup must not mask the original
+            # tool error.
+            return ""
 
     async def _lookup_tool_schema(
         self,
@@ -457,6 +553,7 @@ class RunMCPToolTool(BaseTool):
         server_url: str,
         session_id: str,
         connected: bool = False,
+        rejection: CredentialRejection | None = None,
     ) -> SetupRequirementsResponse | ErrorResponse:
         """Build a SetupRequirementsResponse for an MCP server credential.
 
@@ -497,11 +594,16 @@ class RunMCPToolTool(BaseTool):
 
         host = server_host(server_url)
         service = _service_name(host)
-        message = (
-            f"You're connected to {service}. Use Reconnect to swap accounts."
-            if connected
-            else f"To continue, sign in to {service} and approve access."
-        )
+        if rejection:
+            status = f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+            message = (
+                f"{service} rejected the saved credential{status}. "
+                "Sign in again to continue."
+            )
+        elif connected:
+            message = f"You're connected to {service}. Use Reconnect to swap accounts."
+        else:
+            message = f"To continue, sign in to {service} and approve access."
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -524,4 +626,73 @@ class RunMCPToolTool(BaseTool):
             ),
             graph_id=None,
             graph_version=None,
+            rejection=rejection,
         )
+
+
+def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
+    return CredentialRejection(
+        provider=ProviderName.MCP.value,
+        detail=sanitize_provider_message(str(error)),
+        status_code=error.status_code,
+        credential_id=creds.id,
+        credential_title=creds.title,
+    )
+
+
+def _summarize_params(schema: dict | None) -> str | None:
+    """Compact one-line argument summary for a tool's input schema.
+
+    Returns ``"query*, limit, filter"`` style output — top-level property
+    names with required ones marked ``*`` — or ``None`` when the schema has
+    no usable properties. Nested structure is intentionally dropped; the
+    full schema is available via the execution error path.
+    """
+    if not isinstance(schema, dict):
+        return None
+    properties = schema.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return None
+    required = schema.get("required")
+    required_names = set(required) if isinstance(required, list) else set()
+    summary = ", ".join(
+        f"{name}*" if name in required_names else name for name in properties
+    )
+    if len(summary) > _PARAMS_SUMMARY_MAX_CHARS:
+        summary = summary[:_PARAMS_SUMMARY_MAX_CHARS] + "…"
+    return summary
+
+
+def _bounded_schema_hint(schema: dict | None) -> str:
+    """Serialize *schema* for an error hint, bounded to a parseable size.
+
+    Small schemas pass through verbatim. Oversized ones are reduced
+    structurally — top-level properties keep only their ``type`` and a
+    shortened ``description``, plus the ``required`` list and a
+    ``$truncated`` marker — so the hint stays valid JSON instead of a
+    sliced string.
+    """
+    full = json.dumps(schema)
+    if len(full) <= _ERROR_SCHEMA_MAX_CHARS:
+        return full
+    if not isinstance(schema, dict):
+        return full[:_ERROR_SCHEMA_MAX_CHARS]
+
+    properties = schema.get("properties")
+    reduced_props: dict[str, Any] = {}
+    if isinstance(properties, dict):
+        for name, prop in properties.items():
+            entry: dict[str, Any] = {}
+            if isinstance(prop, dict):
+                if "type" in prop:
+                    entry["type"] = prop["type"]
+                if isinstance(prop.get("description"), str):
+                    entry["description"] = prop["description"][:120]
+            reduced_props[name] = entry
+    reduced = {
+        "type": schema.get("type", "object"),
+        "properties": reduced_props,
+        "required": schema.get("required", []),
+        "$truncated": "nested structure omitted to bound context size",
+    }
+    return json.dumps(reduced)

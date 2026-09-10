@@ -20,20 +20,40 @@ from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    WorkspaceFileInfoData,
+)
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
+    apply_delegated_expert,
     response_from_outcome,
 )
 
 
-def _session(user_id: str = "u", session_id: str = "s1") -> MagicMock:
+def _session(
+    user_id: str = "u",
+    session_id: str = "s1",
+    expert_id: str | None = None,
+    origin: str | None = "interactive",
+) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
+    sess.user_id = user_id
     sess.dry_run = False
     sess.organization_id = None
     sess.team_id = None
+    sess.metadata.llm_auth_provider = "platform"
+    sess.metadata.llm_credential_id = None
+    sess.metadata.origin = origin
+    # Explicit: a bare MagicMock attribute is "not None", which would make a
+    # legacy sub look like one with provenance and fail the creator check.
+    sess.metadata.delegated_by_session_id = None
+    sess.metadata.handed_off_from_expert_id = None
+    sess.expert_id = expert_id
     return sess
 
 
@@ -134,13 +154,26 @@ def mock_model(monkeypatch):
         dry_run: bool,
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: str = "platform",
+        llm_credential_id: str | None = None,
+        expert_id: str | None = None,
+        origin: str = "interactive",
+        delegated_by_expert_id: str | None = None,
+        delegated_by_session_id: str | None = None,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
+        sess.metadata.origin = origin
+        sess.metadata.delegated_by_expert_id = delegated_by_expert_id
+        sess.metadata.delegated_by_session_id = delegated_by_session_id
+        sess.metadata.handed_off_from_expert_id = None
         sess.user_id = user_id
         sess.dry_run = dry_run
         sess.organization_id = organization_id
         sess.team_id = team_id
+        sess.metadata.llm_auth_provider = llm_auth_provider
+        sess.metadata.llm_credential_id = llm_credential_id
+        sess.expert_id = expert_id
         sess.messages = []
         created.append(sess)
         return sess
@@ -226,6 +259,176 @@ class TestRunSubSession:
         assert mock_model["created"][0].dry_run is True
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("parent_origin", ["automation", "interactive"])
+    async def test_fresh_sub_is_always_an_automation(
+        self, parent_origin, mock_queue, mock_waiter, mock_model
+    ):
+        """A sub is machine-driven whatever opened it.
+
+        Its prompt is written by the parent model, not typed by the user, and
+        nothing restricts which tools it may call — so inheriting an
+        ``interactive`` origin would let a parent that read attacker-supplied
+        content reach the staffing tools one hop from the gate that refuses
+        them directly.
+        """
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin=parent_origin),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_model["created"], "create_chat_session was never awaited"
+        assert mock_model["created"][0].metadata.origin == "automation"
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_inherits_expert_scope(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        parent = _session("alice", expert_id="expert-a")
+
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert mock_model["created"][0].expert_id == "expert-a"
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_different_expert_scope(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        other_scope = _session("alice", "other-session", expert_id="expert-b")
+
+        async def fake_get(_session_id: str):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "current memory scope" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_mismatched_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Resuming must hold the line the fresh-sub branch holds.
+
+        Subs are created as automations, so only a sub may be resumed as one.
+        Naming an interactive session the caller happens to own would run the
+        machine-authored prompt under the origin
+        ``autopilot_session_guard`` lets reach the staffing tools.
+        """
+        interactive_sub = _session("alice", "other-session", origin="interactive")
+        # Passes the creator check so the origin check is what refuses.
+        interactive_sub.metadata.delegated_by_session_id = "s1"
+
+        async def fake_get(_session_id: str):
+            return interactive_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="interactive"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "started by a person" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_accepts_legacy_sub_without_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """A sub started before ``origin`` shipped reads back as ``None``.
+
+        Every parent that stored a sub session id and re-feeds it holds one of
+        those, so refusing an unknown origin here would break live sub-sessions
+        to close a hole they never opened — the staffing guard is where an
+        unknown origin fails closed instead.
+        """
+        legacy_sub = _session("alice", "other-session", origin=None)
+        legacy_sub.messages = []
+        # Deliberately no provenance: this is the pre-provenance sub the
+        # resume path has to keep accepting at deploy.
+        assert legacy_sub.metadata.delegated_by_session_id is None
+
+        async def fake_get(_session_id: str):
+            return legacy_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+            wait_for_result=0,
+        )
+
+        assert not isinstance(result, ErrorResponse)
+        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
+
+    @pytest.mark.asyncio
+    async def test_resume_requires_the_creating_session(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Same scope is not enough: a sibling (or the sub itself) must not be
+        able to queue a prompt into a sub it did not open."""
+        someone_elses_sub = _session("alice", "other-session", origin="automation")
+        someone_elses_sub.metadata.delegated_by_session_id = "sibling-session"
+
+        async def fake_get(_session_id: str):
+            return someone_elses_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "not started by this session" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_records_its_creator(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1", expert_id="expert-a"),
+            prompt="do it",
+            wait_for_result=0,
+        )
+        created = mock_model["created"][0]
+        assert created.metadata.delegated_by_session_id == "s1"
+        assert created.metadata.delegated_by_expert_id == "expert-a"
+
+    @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
         self, monkeypatch, mock_queue, mock_waiter, mock_model
     ):
@@ -271,8 +474,8 @@ class TestRunSubSession:
         self, mock_queue, mock_waiter, mock_model
     ):
         """When the queue primitive returns 'completed' + a SessionResult,
-        the tool surfaces response_text + tool_calls directly — no DB
-        round-trip needed for the content."""
+        the tool surfaces response_text directly — no DB round-trip
+        needed for the content."""
 
         res = SessionResult()
         res.response_text = "the answer"
@@ -296,9 +499,63 @@ class TestRunSubSession:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "completed"
         assert r.response == "the answer"
-        assert r.tool_calls is not None and len(r.tool_calls) == 1
-        assert r.tool_calls[0]["tool_name"] == "foo"
+        assert r.sub_tool_call_count == 1
         mock_waiter.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_large_sub_tool_output_does_not_come_back(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """``BaseTool.execute`` serialises this whole model into the parent's
+        context, so the hand-back's serialised size is the thing to pin."""
+        res = SessionResult()
+        res.response_text = "read the schema, wrote the graph"
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="get_block_schema",
+                input={"block_id": "b-1"},
+                output="SCHEMA_BODY_" + ("x" * 200_000),
+                success=True,
+            )
+        ]
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        serialised = r.model_dump_json(exclude_none=True)
+        assert "SCHEMA_BODY_" not in serialised
+        assert len(serialised) < 2_000, f"hand-back grew to {len(serialised)} chars"
+        assert r.sub_tool_call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_completed_run_with_no_tool_calls_reports_zero(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """``BaseTool.execute`` serialises with ``exclude_none=True``, so a
+        None count would drop the field and read as "not applicable" rather
+        than "the sub used no tools"."""
+        res = SessionResult()
+        res.response_text = "answered from what I already knew"
+        res.tool_calls = []
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="what is 2+2",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.sub_tool_call_count == 0
+        assert "sub_tool_call_count" in r.model_dump_json(exclude_none=True)
 
     @pytest.mark.asyncio
     async def test_completed_surfaces_workspace_file_manifest(
@@ -400,7 +657,7 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_other_user_cannot_access(self, monkeypatch):
         """Cross-user lookups are indistinguishable from 'not found'."""
-        foreign = MagicMock(user_id="bob", messages=[])
+        foreign = MagicMock(user_id="bob", expert_id=None, messages=[])
 
         async def foreign_get(_sid):
             return foreign
@@ -416,8 +673,31 @@ class TestGetSubSessionResult:
         assert "No sub-session" in r.message
 
     @pytest.mark.asyncio
+    async def test_other_expert_scope_cannot_access(self, monkeypatch):
+        other_scope = _session("alice", "expert-b-session", expert_id="expert-b")
+        other_scope.messages = []
+
+        async def fake_get(_sid):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+
+        result = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            sub_session_id="expert-b-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "No sub-session" in result.message
+
+    @pytest.mark.asyncio
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
-        sub = MagicMock(user_id="alice", messages=[])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -449,7 +729,10 @@ class TestGetSubSessionResult:
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
 
-        sub = MagicMock(user_id="alice", messages=[])  # not terminal-looking
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[]
+        )  # not terminal-looking
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -486,7 +769,8 @@ class TestGetSubSessionResult:
         in flight, the tool returns 'completed' without ever calling
         wait_for_session_result — it rebuilds the response from the
         persisted message instead."""
-        sub = MagicMock(user_id="alice")
+        sub = MagicMock(user_id="alice", expert_id=None)
+        sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "already done"
@@ -532,7 +816,8 @@ class TestGetSubSessionResult:
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
-        sub = MagicMock(user_id="alice", messages=[prior])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -571,7 +856,8 @@ class TestGetSubSessionResult:
     ):
         """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
         without waiting for the sub to finish (the worker will finalise)."""
-        sub = MagicMock(user_id="alice", messages=[])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -601,7 +887,8 @@ class TestGetSubSessionResult:
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
 
-        sub = MagicMock(user_id="alice")
+        sub = MagicMock(user_id="alice", expert_id=None)
+        sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
@@ -778,3 +1065,161 @@ class TestHollowResponseRepro:
         )
         assert r.sub_workspace_files is None
         assert "workspace file" not in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# actor parameter — response_from_outcome builds the message once instead of
+# relying on a post-hoc string substitution against its own wording.
+# ---------------------------------------------------------------------------
+
+
+class TestActorParameter:
+    def test_default_actor_is_sub_autopilot(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+
+    @pytest.mark.parametrize(
+        "outcome,expected_prefix",
+        [
+            ("running", "Bea is still running"),
+            ("failed", "Bea failed"),
+            ("completed", "Bea completed"),
+        ],
+    )
+    def test_actor_names_the_delegate_in_every_terminal_message(
+        self, outcome, expected_prefix
+    ):
+        r = response_from_outcome(
+            outcome=outcome,
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        assert r.message is not None and r.message.startswith(expected_prefix)
+
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
+        """When the caller already passed the delegate's name as ``actor``,
+        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
+        find nothing to substitute — the message was already built correctly
+        by response_from_outcome, not patched up afterwards."""
+        response = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        expert = DelegatedExpertInfo(
+            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+        )
+        result = apply_delegated_expert(response, expert)
+        assert result.message == response.message
+        assert "Sub-AutoPilot" not in (result.message or "")
+
+
+class TestSpawnEnvelopeArguments:
+    """The spawn shape each tool asks for is a security property, not a
+    detail: flipping shares_memory to False silently regrants an isolate
+    memory_store under the parent's identity, and allow_queue=True lets a
+    prompt run under another turn's envelope. Neither was asserted anywhere.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_sub_session_spawns_a_memory_sharing_isolate_and_never_queues(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1"),
+            prompt="do it",
+            wait_for_result=0,
+        )
+        kwargs = mock_waiter.await_args.kwargs
+        assert kwargs["allow_queue"] is False
+        assert kwargs["spawn"].shares_memory is True
+        assert kwargs["spawn"].may_spawn is True
+
+
+@pytest.mark.asyncio
+class TestRefusedSpawnCleanup:
+    """A refusal arrives after the sub's session row exists. Without cleanup
+    the user's history fills with empty threads for turns that never ran.
+    """
+
+    async def test_a_refused_spawn_deletes_the_thread_it_opened(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        deleted.assert_awaited_once_with("inner-1", "alice")
+
+    async def test_a_refused_spawn_returns_no_handle_to_the_deleted_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "over budget" in result.message
+        assert "inner-1" not in result.model_dump_json()
+
+    async def test_a_failed_turn_keeps_its_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        # The turn ran and errored, so the thread is the only record of it.
+        mock_waiter.return_value = ("failed", SessionResult())
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        deleted.assert_not_awaited()
+
+    async def test_a_refused_resume_keeps_the_prior_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        parent = _session("alice", "s1")
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=parent, prompt="first", wait_for_result=0
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="again",
+            sub_autopilot_session_id="inner-1",
+        )
+
+        deleted.assert_not_awaited()

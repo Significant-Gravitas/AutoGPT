@@ -1,11 +1,11 @@
 "use client";
-
-import { LightningIcon } from "@phosphor-icons/react";
 import { useTourStore } from "../../tourStore";
 import type { useTourCopilot } from "../../useTourCopilot";
 import { TourEndCard } from "../TourEndCard/TourEndCard";
 import { TourMessageList } from "../TourMessageList/TourMessageList";
 import { TourPromptBar } from "../TourPromptBar/TourPromptBar";
+import { FlashIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   chat: ReturnType<typeof useTourCopilot>;
@@ -33,7 +33,7 @@ export function TourChatContainer({ chat }: Props) {
               }
             />
             <p className="mt-2 flex items-center justify-center gap-1 text-sm text-zinc-400">
-              <LightningIcon className="size-3.5 shrink-0" weight="fill" />
+              <Icon icon={FlashIcon} className="size-3.5 shrink-0" />
               Simulated demo — pick a scenario above to watch Autopilot build a
               different agent
             </p>
