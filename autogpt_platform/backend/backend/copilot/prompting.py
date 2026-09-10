@@ -670,8 +670,7 @@ def get_delegation_supplement() -> str:
     ``expert_tool_disabled_groups``, the way ``get_graphiti_supplement``
     is gated on its own tool group.
     """
-    return (
-        """
+    return """
 
 ### Delegating to a teammate
 - When a subtask needs a *teammate's* skills, workflows, or integrations
@@ -695,18 +694,21 @@ def get_delegation_supplement() -> str:
     a turn by telling the user to go nudge the expert — nudging is your
     job.
 """
-        + get_team_building_supplement()
-    )
 
 
-def get_team_building_supplement() -> str:
+def get_team_building_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
     """Head-of-AI rules for growing the roster, not just using it.
 
-    Folded into ``get_delegation_supplement`` so it inherits the same
-    ``experts_enabled`` gate at both call sites — naming ``hire_expert`` to a
-    cohort whose turn cannot execute it is the failure this file exists to
-    avoid.
+    Gated like ``get_expert_oversight_supplement`` rather than folded into
+    ``get_delegation_supplement``: ``hire_expert`` and ``raise_expert`` sit in
+    the ``expert_admin`` tool group, which an expert session's ``execute_tool``
+    refuses, so only a plain AutoPilot turn with the team flag on is told to
+    grow the roster. Naming the tools to anyone else advertises a refusal.
     """
+    if not experts_enabled or expert_id:
+        return ""
     return """
 
 ### Building the team

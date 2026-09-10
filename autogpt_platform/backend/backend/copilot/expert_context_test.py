@@ -467,6 +467,27 @@ class TestBuildExpertContextExpertSession:
         assert "<team_context>" not in result
 
     @pytest.mark.asyncio
+    async def test_solo_expert_in_onboarding_cohort_gets_no_hiring_roster(self):
+        """An expert session's empty teammate list is a solo roster, not a
+        user without a team: even with the onboarding-team flag on it must
+        not be handed the Head-of-AI block or pay for the template read."""
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        mock_db.list_templates = AsyncMock(return_value=[_template()])
+        with (
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(ONBOARDING_EXPERT_TEAM=True)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" not in result
+        assert "Head of AI" not in result
+        mock_db.list_templates.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_teammate_lookup_failure_keeps_workflows(self):
         from backend.copilot.expert_context import build_expert_context
 
