@@ -155,15 +155,19 @@ export function ExpertTeamCard({
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
-          {/* `truncate` clips at the padding box, so descenders in a name like
-              "Fiona Gray" need a little room below the line box. */}
-          <Text
-            variant="lead-medium"
-            tone="primary"
-            className="w-full truncate pb-1"
-          >
-            {expert.name}
-          </Text>
+          <div className="flex w-full items-center gap-2">
+            {/* `truncate` clips at the padding box, so descenders in a name like
+                "Fiona Gray" need a little room below the line box; the negative
+                margin hands that room back so the logos centre on the text. */}
+            <Text
+              variant="lead-medium"
+              tone="primary"
+              className="-mb-1 min-w-0 truncate pb-1"
+            >
+              {expert.name}
+            </Text>
+            <IntegrationIcons providers={expert.credential_providers ?? []} />
+          </div>
           {/* Same pill as the expert page header and the marketplace card. */}
           <Text
             variant="small-medium"
@@ -202,7 +206,6 @@ export function ExpertTeamCard({
               count={expert.workflows.length}
             />
           </CardStats>
-          <IntegrationIcons providers={expert.credential_providers ?? []} />
         </div>
       </Link>
 

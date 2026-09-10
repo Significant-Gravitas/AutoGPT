@@ -27,7 +27,7 @@ export function IntegrationIcons({ providers }: Props) {
   const hiddenNames = hidden.map(formatProviderName).join(", ");
 
   return (
-    <ul aria-label="Integrations" className="flex items-center gap-1.5">
+    <ul aria-label="Integrations" className="flex shrink-0 items-center gap-1">
       {shown.map((provider) => (
         <li key={provider} className="flex">
           <ProviderLogo provider={provider} />
@@ -67,7 +67,7 @@ function ProviderLogo({ provider }: LogoProps) {
       <span
         role="img"
         aria-label={name}
-        className="flex size-4 shrink-0 items-center justify-center rounded bg-zinc-100 text-[9px] font-semibold uppercase leading-none text-zinc-600"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-semibold uppercase leading-none text-zinc-600 ring-1 ring-zinc-200"
       >
         {name.charAt(0)}
       </span>
@@ -77,10 +77,10 @@ function ProviderLogo({ provider }: LogoProps) {
     <Image
       src={`/integrations/${provider}.png`}
       alt={name}
-      width={16}
-      height={16}
+      width={20}
+      height={20}
       loading="lazy"
-      className="size-4 shrink-0 object-contain"
+      className="size-5 shrink-0 rounded-full bg-white object-cover ring-1 ring-zinc-200"
       onError={() => setIsBroken(true)}
     />
   );
