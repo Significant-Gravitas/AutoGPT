@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
   credentialNotApplicable,
@@ -25,6 +25,38 @@ const githubSchema: BlockIOCredentialsSubSchema = {
 };
 
 describe("getCredentialProviderFromSchema", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const multiProviderSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["openai", "anthropic"],
+    credentials_types: ["api_key"],
+    discriminator: "model",
+    discriminator_mapping: { "model-a": "openai", "model-b": "anthropic" },
+  };
+
+  it("quietly hides credentials before a provider choice is made", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(getCredentialProviderFromSchema({}, multiProviderSchema)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+    expect(
+      getCredentialProviderFromSchema(
+        { model: "model-a" },
+        multiProviderSchema,
+      ),
+    ).toBe("openai");
+  });
+
+  it("still rejects a multi-provider schema with no discriminator", () => {
+    expect(() =>
+      getCredentialProviderFromSchema(
+        {},
+        { ...multiProviderSchema, discriminator: undefined },
+      ),
+    ).toThrow("Multi-provider credential input requires discriminator");
+  });
+
   it("hides the input when a single-provider field's value is unmapped", () => {
     // Regression: this returned "codex" regardless of the transport, so
     // selecting `platform` still rendered — and auto-selected — a ChatGPT
