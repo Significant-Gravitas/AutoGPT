@@ -27,6 +27,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store.categories import StoreCategory
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
@@ -3994,3 +3995,127 @@ def test_expert_soul_fields_patch_strips_and_preserves_none():
     assert patch.voice_preferences == ""
     assert patch.boundaries == "Keep it short."
     assert patch.identity is None
+
+
+async def _template(name: str, **fields) -> prisma.models.Expert:
+    return await prisma.models.Expert.prisma().create(
+        data={
+            "name": name,
+            "role": fields.pop("role", "Writer"),
+            "identity": f"You are {name}.",
+            "isTemplate": True,
+            **fields,
+        }
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_filters_by_category(server: SpinTestServer):
+    """A category chip narrows the roster, and never widens it: an expert
+    filed under another category must not surface under an unrelated chip."""
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mira {suffix}", categories=["marketing"])
+    seller = await _template(f"Sal {suffix}", categories=["sales"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="marketing")}
+    assert marketer.id in listed
+    assert seller.id not in listed
+
+    assert marketer.categories == ["marketing"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_category_filter_accepts_a_legacy_alias(
+    server: SpinTestServer,
+):
+    """`category_match_values` folds aliases, so a chip stored as "seo"
+    still matches an expert filed under the canonical "marketing"."""
+    marketer = await _template(f"Mo {uuid.uuid4().hex[:8]}", categories=["marketing"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="seo")}
+    assert marketer.id in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_without_a_category_keeps_uncategorised_experts(
+    server: SpinTestServer,
+):
+    """The unfiltered roster is the whole roster. `category_filter_values`
+    would narrow it to experts that HAVE a canonical category once
+    `marketplace_require_canonical_category` is on, hiding this one."""
+    plain = await _template(f"Nil {uuid.uuid4().hex[:8]}")
+
+    assert plain.categories == []
+    assert plain.id in {t.id for t in await experts_db.list_templates()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_searches_name_role_tagline_and_bio(
+    server: SpinTestServer,
+):
+    suffix = uuid.uuid4().hex[:8]
+    by_name = await _template(f"Marigold {suffix}")
+    by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
+    by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
+
+    async def ids_for(query: str) -> set[str]:
+        return {t.id for t in await experts_db.list_templates(search_query=query)}
+
+    assert by_name.id in await ids_for("marigold")
+    assert by_role.id in await ids_for(f"podcaster {suffix}")
+    assert by_tagline.id in await ids_for(f"books {suffix}")
+    assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
+
+    # One term, four templates: the OR spans the four searchable columns.
+    assert await ids_for(suffix) >= {
+        by_name.id,
+        by_role.id,
+        by_tagline.id,
+        by_bio.id,
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_misses_return_nothing(server: SpinTestServer):
+    await _template(f"Quiet {uuid.uuid4().hex[:8]}")
+
+    assert await experts_db.list_templates(search_query=uuid.uuid4().hex) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_combines_search_and_category(server: SpinTestServer):
+    suffix = uuid.uuid4().hex[:8]
+    matching = await _template(f"Both {suffix}", categories=["marketing"])
+    wrong_category = await _template(f"Both {suffix} too", categories=["sales"])
+
+    listed = {
+        t.id
+        for t in await experts_db.list_templates(
+            search_query=f"both {suffix}", category="marketing"
+        )
+    }
+    assert listed == {matching.id}
+    assert wrong_category.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_copies_the_template_categories(server: SpinTestServer, test_user):
+    template = await _template(f"Cat {uuid.uuid4().hex[:8]}", categories=["operations"])
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.categories == ["operations"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_files_every_template_under_a_canonical_category(
+    server: SpinTestServer,
+):
+    await _load_roster_store_assets()
+    ids = await seed.seed_roster()
+    seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
+
+    for entry in seed.ROSTER:
+        assert seeded[entry["name"]].categories == entry["categories"]
+        assert set(entry["categories"]) <= {c.value for c in StoreCategory}

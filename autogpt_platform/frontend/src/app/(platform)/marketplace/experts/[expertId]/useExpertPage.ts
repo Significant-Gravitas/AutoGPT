@@ -20,7 +20,7 @@ export function useExpertPage({ expertId }: Args) {
   const isHiringOpen = Boolean(enabled);
   const canHire = isLoggedIn && isHiringOpen;
 
-  const templatesQuery = useListExpertTemplates({
+  const templatesQuery = useListExpertTemplates(undefined, {
     query: { select: (x) => x.data as Expert[] },
   });
   const expertsQuery = useListExperts({

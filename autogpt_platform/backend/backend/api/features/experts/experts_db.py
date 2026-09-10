@@ -53,6 +53,7 @@ from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -188,6 +189,7 @@ def _to_model(
         tagline=row.tagline,
         bio=row.bio,
         skills=row.skills or [],
+        categories=row.categories or [],
         identity=row.identity,
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
@@ -220,12 +222,35 @@ async def _latest_runs(
     return {row.expertId: row for row in rows if row.expertId is not None}
 
 
-async def list_templates() -> list[Expert]:
+async def list_templates(
+    search_query: str | None = None,
+    category: str | None = None,
+) -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
-        where={"isTemplate": True, "isArchived": False},
+        where=_template_where(search_query, category),
         include=_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+def _template_where(
+    search_query: str | None, category: str | None
+) -> prisma.types.ExpertWhereInput:
+    where: prisma.types.ExpertWhereInput = {"isTemplate": True, "isArchived": False}
+    if category:
+        # `category_match_values`, not `category_filter_values`: the latter
+        # narrows an unasked-for filter to rows that HAVE a canonical category
+        # once `marketplace_require_canonical_category` is on, which would hide
+        # an uncategorised expert from the roster's default view.
+        where["categories"] = {"has_some": category_match_values(category)}
+    if search_query and (needle := search_query.strip()):
+        where["OR"] = [
+            {"name": {"contains": needle, "mode": "insensitive"}},
+            {"role": {"contains": needle, "mode": "insensitive"}},
+            {"tagline": {"contains": needle, "mode": "insensitive"}},
+            {"bio": {"contains": needle, "mode": "insensitive"}},
+        ]
+    return where
 
 
 # Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
@@ -703,6 +728,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "tagline": template.tagline,
         "bio": template.bio,
         "skills": template.skills or [],
+        "categories": template.categories or [],
         "identity": template.identity,
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,

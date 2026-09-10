@@ -171,6 +171,8 @@ class Expert(BaseModel):
     tagline: str | None
     bio: str | None
     skills: list[str]
+    # Canonical marketplace categories the roster is filtered by.
+    categories: list[str] = []
     identity: str
     voice_preferences: str
     # Populated only on roster templates so the hire flow can offer a voice

@@ -8,7 +8,13 @@ import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsRespons
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 import { GetV2ListStoreCreatorsParams } from "@/app/api/__generated__/models/getV2ListStoreCreatorsParams";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import {
+  Flag,
+  useFlagStatus,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useExpertsSection } from "../../../components/ExpertsSection/useExpertsSection";
 import { useState, useMemo } from "react";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
@@ -26,7 +32,14 @@ export const useMainSearchResultPage = ({
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
   const [showSkills, setShowSkills] = useState(true);
+  const [showExperts, setShowExperts] = useState(true);
   const skillsHub = useFlagStatus(Flag.SKILLS_HUB);
+  const { isLoggedIn, isUserLoading } = useAuth();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  // Same gate as the marketplace shelf: expert pages are public, hiring is
+  // not, so a signed-in user outside the beta sees neither surface.
+  const isExpertsVisible =
+    !isUserLoading && (!isLoggedIn || isHireExpertsEnabled);
   const [clientSortBy, setClientSortBy] = useState<string>(
     sort ?? "updated_at",
   );
@@ -88,6 +101,11 @@ export const useMainSearchResultPage = ({
       },
     );
 
+  const { templates: experts, hiredTemplateIds } = useExpertsSection({
+    searchQuery: searchTerm,
+    enabled: isExpertsVisible,
+  });
+
   // This is the strategy, we are using for sorting the agents and creators.
   // currently we are doing it client side but maybe we will shift it to the server side.
   // we will store the sortBy state in the url params, and then refetch the data with the new sortBy.
@@ -124,12 +142,14 @@ export const useMainSearchResultPage = ({
   const agentsCount = agents?.length ?? 0;
   const creatorsCount = creators?.length ?? 0;
   const skillsCount = skills.length;
-  const totalCount = agentsCount + creatorsCount + skillsCount;
+  const expertsCount = isExpertsVisible ? experts.length : 0;
+  const totalCount = agentsCount + creatorsCount + skillsCount + expertsCount;
 
   const handleFilterChange = (value: string) => {
     setShowAgents(value === "all" || value === "agents");
     setShowCreators(value === "all" || value === "creators");
     setShowSkills(value === "all" || value === "skills");
+    setShowExperts(value === "all" || value === "experts");
   };
 
   const handleSortChange = (sortValue: string) => {
@@ -140,15 +160,20 @@ export const useMainSearchResultPage = ({
     agents,
     creators,
     skills,
+    experts,
+    hiredTemplateIds,
     handleFilterChange,
     handleSortChange,
     agentsCount,
     creatorsCount,
     skillsCount,
+    expertsCount,
     totalCount,
     showAgents,
     showCreators,
     showSkills,
+    showExperts,
+    isExpertsVisible,
     isSkillsHubEnabled: skillsHub.ready && skillsHub.enabled,
     isAgentsLoading,
     isCreatorsLoading,
