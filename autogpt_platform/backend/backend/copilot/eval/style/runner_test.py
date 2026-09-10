@@ -31,6 +31,7 @@ from .runner import (
     prompt_scores,
     run,
     separation,
+    separation_verdict,
     summarize,
     summarize_expert,
     wrong_spec_rows,
@@ -266,6 +267,23 @@ def test_separation_compares_own_spec_with_the_controls():
     assert sep.paired is not None and sep.paired.n == 1
     assert not sep.separated, "one comparison decides nothing"
     assert separation([_row("Maria", 85.0)]) is None
+
+
+def test_separation_with_nothing_to_compare_is_not_a_failed_judge():
+    """Without --cross-spec there is no wrong-spec arm, and printing that as
+    NOT separated reports a judge failure nobody measured."""
+    rows = [
+        _row("Maria", 85.0, prompt_id="p1"),
+        _row("Maria", 50.0, arm="no_suffix", prompt_id="p1"),
+    ]
+    sep = separation(rows)
+    assert sep is not None and sep.separated is None
+    assert separation_verdict(sep) == "not assessed"
+    assert separation_verdict(sep.model_copy(update={"separated": True})) == "separated"
+    assert (
+        separation_verdict(sep.model_copy(update={"separated": False}))
+        == "NOT separated"
+    )
 
 
 def _paired_rows(own: list[float], wrong: list[float]) -> list[ScoredResponse]:

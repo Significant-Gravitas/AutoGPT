@@ -29,6 +29,7 @@ from backend.copilot.eval.metrics import mean, percentile
 from backend.copilot.model_normalize import normalize_model_for_transport
 
 from .assembly import (
+    DELEGATION_ENABLED,
     attach_workflows,
     chat_system_prompt,
     fingerprint,
@@ -410,6 +411,7 @@ def new_baseline(
         ts=result.ts,
         chat_model=result.chat_model,
         judge_model=result.judge_model,
+        delegation_enabled=DELEGATION_ENABLED,
         cost_usd=result.cost_usd,
         fingerprint=result.fingerprint,
         parts=parts,
@@ -564,8 +566,7 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
         print(
             f"separation: own-spec {sep.right_spec_mean} (sd {sep.right_spec_sd}), "
             f"wrong-spec {sep.wrong_spec_mean}, no-suffix {sep.no_suffix_mean}, "
-            f"gap {sep.gap}, {paired}"
-            f"-> {'separated' if sep.separated else 'NOT separated'}"
+            f"gap {sep.gap}, {paired}-> {separation_verdict(sep)}"
         )
     for c in result.comparison:
         if c.baseline_mean is None:
@@ -583,6 +584,15 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
         f"cost ${result.cost_usd:.4f}{known}; tokens in {result.input_tokens} "
         f"out {result.output_tokens}; results {out}"
     )
+
+
+def separation_verdict(sep: Separation) -> str:
+    """``separated`` is None when nothing was compared — without --cross-spec
+    there is no wrong-spec arm, and reading that as NOT separated reports a
+    judge failure that was never measured."""
+    if sep.separated is None:
+        return "not assessed"
+    return "separated" if sep.separated else "NOT separated"
 
 
 def _print_dry_run(experts: list[Expert], fixtures: list[ExpertFixture]) -> None:

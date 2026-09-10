@@ -46,7 +46,7 @@ from backend.copilot.tools.models import (
 from backend.copilot.tools.workspace_files import WorkspaceFileListResponse
 from backend.util.llm.conversions import extract_openrouter_cost
 
-from .assembly import chat_system_prompt
+from .assembly import DELEGATION_ENABLED, chat_system_prompt
 from .models import Usage
 from .scorer import to_usage
 
@@ -95,7 +95,7 @@ def expert_tools(expert: Expert | None) -> list[ChatCompletionToolParam]:
     """Production's tool surface for the session (hire-experts on, memory on):
     an expert loses the staffing tools, plain AutoPilot the expert-only ones."""
     disabled = expert_tool_disabled_groups(
-        experts_enabled=True, expert_id=expert.id if expert else None
+        experts_enabled=DELEGATION_ENABLED, expert_id=expert.id if expert else None
     )
     return get_available_tools(disabled_groups=disabled)
 

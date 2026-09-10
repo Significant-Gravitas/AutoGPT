@@ -10,10 +10,14 @@ from backend.copilot.expert_context import (
     build_expert_context,
     build_expert_identity_suffix,
 )
-from backend.copilot.prompting import get_sdk_supplement
+from backend.copilot.prompting import (
+    get_expert_oversight_supplement,
+    get_sdk_supplement,
+)
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 from .assembly import (
+    DELEGATION_ENABLED,
     HARNESS_MODULES,
     STYLE_DIR,
     attach_workflows,
@@ -111,9 +115,32 @@ def test_chat_prompt_is_base_plus_sdk_supplements_plus_suffix():
     assert prompt.startswith(CACHEABLE_SYSTEM_PROMPT)
     assert get_sdk_supplement(use_e2b=True) in prompt
     assert prompt.endswith("</expert_identity>")
-    assert chat_system_prompt(None).endswith(
-        get_sdk_supplement(use_e2b=True)[-40:]
-    ) or ("<expert_identity>" not in chat_system_prompt(None))
+    assert "<expert_identity>" not in chat_system_prompt(None)
+
+
+def test_the_control_prompt_carries_autopilots_oversight_block():
+    """``sdk/service.py`` appends it between the delegation and graphiti
+    supplements, and it is non-empty only for a session with no expert — so
+    leaving it out changed the very arm it applies to."""
+    oversight = get_expert_oversight_supplement(experts_enabled=True, expert_id=None)
+    assert oversight
+    assert oversight in chat_system_prompt(None)
+    expert = roster_experts(["Frankie"])[0]
+    assert (
+        get_expert_oversight_supplement(experts_enabled=True, expert_id=expert.id) == ""
+    )
+
+
+def test_the_baseline_records_which_delegation_state_it_measured():
+    """hire-experts off renders a different team rule, drops the delegation
+    supplement and hides the expert tools, so a score means nothing without
+    the state it was measured in."""
+    assert load_baseline().delegation_enabled is DELEGATION_ENABLED
+    experts, fixtures, rubric = roster_experts(), load_fixtures(), load_rubric()
+    parts = fingerprint_parts(
+        experts, fixtures, rubric, chat_model="m", judge_model="j"
+    )
+    assert parts["delegation"]
 
 
 @pytest.mark.asyncio

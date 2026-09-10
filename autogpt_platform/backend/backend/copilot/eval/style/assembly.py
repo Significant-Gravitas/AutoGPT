@@ -29,6 +29,7 @@ from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import ModelMode, resolve_model_route
 from backend.copilot.prompting import (
     get_delegation_supplement,
+    get_expert_oversight_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -44,6 +45,11 @@ BASELINE_PATH = STYLE_DIR / "baseline.json"
 # runs under, the judge's own prompt, and the rules that decide which rows are
 # scored at all.
 HARNESS_MODULES = ("generation.py", "runner.py", "scorer.py")
+# The state every scored turn is sent in. An expert exists only because
+# hire-experts was on when it was hired, so that is the state its writing is
+# measured in; turning the flag off afterwards leaves a session this check
+# does not cover, which the baseline records rather than implies.
+DELEGATION_ENABLED = True
 
 
 class RoutedModel(BaseModel):
@@ -110,9 +116,11 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
     (``build_expert_context``): the expert's installed workflows and the rest
     of the roster as teammates; plain AutoPilot gets the whole roster."""
     if expert is None:
-        return render_team_context(roster, delegation_enabled=True)
+        return render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
     return render_expert_workflows_block(expert) + render_team_context(
-        roster, delegation_enabled=True, exclude_expert_id=expert.id
+        roster,
+        delegation_enabled=DELEGATION_ENABLED,
+        exclude_expert_id=expert.id,
     )
 
 
@@ -124,7 +132,11 @@ def chat_system_prompt(expert: Expert | None) -> str:
     return (
         CACHEABLE_SYSTEM_PROMPT
         + get_sdk_supplement(use_e2b=True)
-        + get_delegation_supplement()
+        + (get_delegation_supplement() if DELEGATION_ENABLED else "")
+        + get_expert_oversight_supplement(
+            experts_enabled=DELEGATION_ENABLED,
+            expert_id=expert.id if expert else None,
+        )
         + get_graphiti_supplement()
         + suffix
     )
@@ -176,6 +188,7 @@ def fingerprint_parts(
         "autopilot": _sha(chat_system_prompt(None) + user_prefix(None, experts)),
         "rubric": _sha(rubric.model_dump_json()),
         "models": _sha(f"{chat_model}|{judge_model}"),
+        "delegation": _sha(str(DELEGATION_ENABLED)),
         "harness": harness_fingerprint(STYLE_DIR / m for m in HARNESS_MODULES),
         **{key: _sha(value) for key, value in sorted(by_name.items())},
     }

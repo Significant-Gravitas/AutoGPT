@@ -3,6 +3,7 @@
   "ts": "2026-09-07T16:02:48.416336Z",
   "chat_model": "anthropic/claude-sonnet-5",
   "judge_model": "anthropic/claude-haiku-4-5",
+  "delegation_enabled": true,
   "cost_usd": 5.1,
   "note": "One pass, 2026-09-07, on the 27 chat prompts per expert. Six turns that were still calling tools at the round cap are excluded as errors and two judge calls failed, so 73 of 81 responses are scored. The run predates both the tool-stub fix and dev's current prompts, which is why a dry run reports the harness and prompt components as changed: these are recorded scores, not current ones.",
   "fingerprint": "2dd3c1d36d6f4c6efc1fa6133f67a6e844f577937859e278d4b6cb3982743959",
