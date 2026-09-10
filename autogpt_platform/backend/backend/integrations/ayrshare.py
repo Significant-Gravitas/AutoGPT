@@ -518,9 +518,7 @@ class AyrshareClient:
             payload["notes"] = notes
 
         headers = dict(self.headers)
-        if profile_key:
-            profile_key = _normalize_profile_key(profile_key)
-        if profile_key:
+        if profile_key := _normalize_profile_key(profile_key or ""):
             headers["Profile-Key"] = profile_key
 
         response = await self._requests.post(
