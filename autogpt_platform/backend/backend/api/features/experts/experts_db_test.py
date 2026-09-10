@@ -4035,10 +4035,15 @@ async def test_list_templates_category_filter_accepts_a_legacy_alias(
 ):
     """`category_match_values` folds aliases, so a chip stored as "seo"
     still matches an expert filed under the canonical "marketing"."""
-    marketer = await _template(f"Mo {uuid.uuid4().hex[:8]}", categories=["marketing"])
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mo {suffix}", categories=["marketing"])
+    seller = await _template(f"So {suffix}", categories=["sales"])
 
     listed = {t.id for t in await experts_db.list_templates(category="seo")}
     assert marketer.id in listed
+    # Without the exclusion this passes on an unfiltered list, which would
+    # prove nothing about the alias.
+    assert seller.id not in listed
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -4093,6 +4098,9 @@ async def test_list_templates_combines_search_and_category(server: SpinTestServe
     suffix = uuid.uuid4().hex[:8]
     matching = await _template(f"Both {suffix}", categories=["marketing"])
     wrong_category = await _template(f"Both {suffix} too", categories=["sales"])
+    # Right category, wrong name: without the search half this one leaks in,
+    # which is what makes the test load-bearing for both filters at once.
+    wrong_name = await _template(f"Neither {suffix}", categories=["marketing"])
 
     listed = {
         t.id
@@ -4102,6 +4110,7 @@ async def test_list_templates_combines_search_and_category(server: SpinTestServe
     }
     assert listed == {matching.id}
     assert wrong_category.id not in listed
+    assert wrong_name.id not in listed
 
 
 @pytest.mark.asyncio(loop_scope="session")
