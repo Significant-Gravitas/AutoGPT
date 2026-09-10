@@ -1094,6 +1094,7 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
     identity_ids = {item.id for item in identities}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
+    assert identity.color == hired.expert.color
     assert identity.is_archived is True
     active_identity = next(
         item for item in identities if item.id == active_hired.expert.id
@@ -1199,7 +1200,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
     model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
     assert model is not None, "Expert model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
-    assert {"id", "name", "avatarUrl", "role", "isArchived"} <= fields
+    assert {"id", "name", "avatarUrl", "color", "role", "isArchived"} <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
 

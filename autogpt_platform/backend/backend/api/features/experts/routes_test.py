@@ -718,6 +718,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             id="expert-1",
             name="Maria",
             avatar_url=None,
+            color="orange-500",
             role="Marketing Specialist",
             is_archived=True,
         )
@@ -736,6 +737,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "id": "expert-1",
             "name": "Maria",
             "avatar_url": None,
+            "color": "orange-500",
             "role": "Marketing Specialist",
             "is_archived": True,
         }

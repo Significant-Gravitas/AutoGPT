@@ -20729,6 +20729,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
           "role": { "type": "string", "title": "Role" },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },

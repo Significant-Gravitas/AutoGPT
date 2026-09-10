@@ -43,6 +43,7 @@ export function useRecipientPicker() {
       id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatarUrl,
+      color: expert.color,
     })),
   ];
 

@@ -1,4 +1,5 @@
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -44,8 +45,14 @@ export function AutopilotCard({
         <ExpertCover color={undefined} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="relative z-10 -mt-11 ml-1 flex size-[5.25rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
-            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-11" />
+          <span className="relative z-10 -mt-12 ml-1 flex size-[5.5rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
+            <BotAvatar
+              config={AUTOPILOT_AVATAR}
+              size={80}
+              trackPointer
+              title="Autopilot"
+              showBadge={false}
+            />
           </span>
         </div>
 
