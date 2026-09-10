@@ -403,6 +403,10 @@ describe("TeamPage", () => {
     ).not.toBeNull();
     const maria = screen.getByRole("link", { name: "View Maria" });
     expect(maria.querySelector('img[src^="/experts/covers/"]')).toBeNull();
+    // No colour of her own and no seeded art, so the palette fills in.
+    expect(maria.querySelector('[class*="-200"]')?.className).toMatch(
+      /bg-[a-z]+-200/,
+    );
   });
 
   test("shows no integrations item on a card with none granted", async () => {

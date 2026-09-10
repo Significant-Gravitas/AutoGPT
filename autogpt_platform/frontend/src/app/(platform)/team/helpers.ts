@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -40,11 +41,26 @@ const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
   },
 };
 
-export function getExpertCover(expert: Pick<Expert, "avatar_url" | "color">) {
+/** A raised expert with no colour of its own still gets a pastel, picked
+ *  from the palette by its id so it is the same on every render and page. */
+function getFallbackCoverColor(expertId: string) {
+  let hash = 0;
+  for (const char of expertId) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return COLOR_OPTIONS[hash % COLOR_OPTIONS.length].id;
+}
+
+export function getExpertCover(
+  expert: Pick<Expert, "id" | "avatar_url" | "color">,
+) {
   const seeded = expert.avatar_url
     ? SEEDED_COVERS[expert.avatar_url]
     : undefined;
-  return { art: seeded?.art ?? null, color: expert.color || seeded?.color };
+  return {
+    art: seeded?.art ?? null,
+    color: expert.color || seeded?.color || getFallbackCoverColor(expert.id),
+  };
 }
 
 export const AUTOPILOT_BLURB =
