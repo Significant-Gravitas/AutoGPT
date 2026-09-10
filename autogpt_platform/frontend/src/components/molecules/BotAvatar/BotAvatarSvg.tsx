@@ -24,7 +24,7 @@ interface Props {
   isLive: boolean;
   isBlinking: boolean;
   els: SvgEls;
-  /** Prefix for the clip/gradient ids — unique per instance on a page. */
+  /** Prefix for the gradient id — unique per instance on a page. */
   idPrefix: string;
   size?: number;
   outline?: boolean;
@@ -53,7 +53,6 @@ export function BotAvatarSvg({
   className,
   svgRef,
 }: Props) {
-  const clipId = `${idPrefix}-clip-${config.shape}`;
   const gradientId = `${idPrefix}-body-${config.color}`;
   const shape = findShape(config.shape);
   const color = findColor(config.color);
@@ -79,9 +78,6 @@ export function BotAvatarSvg({
       className={cn("shrink-0 overflow-visible", className)}
     >
       <defs>
-        <clipPath id={clipId}>
-          <path d={shape.path} />
-        </clipPath>
         <radialGradient id={gradientId} cx="50%" cy="45%" r="62%">
           <stop offset="0%" stopColor={color.body} />
           <stop offset="100%" stopColor={color.light} />
