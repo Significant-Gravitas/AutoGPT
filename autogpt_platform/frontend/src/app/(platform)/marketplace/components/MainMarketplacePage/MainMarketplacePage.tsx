@@ -67,9 +67,8 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {/* Above all three shelves, because it narrows all three: a filter
-            that sits under the content it governs changes what the reader
-            has already scrolled past. */}
+        {/* Above all three shelves because it narrows all three: a filter
+            below its content changes what the reader has scrolled past. */}
         <CategoryFilter selected={category} onSelect={setCategory} />
         {showExperts ? <ExpertsSection category={category} /> : null}
         {skillsHub.ready && skillsHub.enabled ? (

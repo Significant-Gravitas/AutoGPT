@@ -238,10 +238,8 @@ def _template_where(
 ) -> prisma.types.ExpertWhereInput:
     where: prisma.types.ExpertWhereInput = {"isTemplate": True, "isArchived": False}
     if category:
-        # `category_match_values`, not `category_filter_values`: the latter
-        # narrows an unasked-for filter to rows that HAVE a canonical category
-        # once `marketplace_require_canonical_category` is on, which would hide
-        # an uncategorised expert from the roster's default view.
+        # Not `category_filter_values`: with the canonical-category setting
+        # on, that one hides uncategorised experts from the unfiltered roster.
         where["categories"] = {"has_some": category_match_values(category)}
     if search_query and (needle := search_query.strip()):
         where["OR"] = [

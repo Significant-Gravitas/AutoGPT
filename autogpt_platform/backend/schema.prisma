@@ -1054,9 +1054,8 @@ model Expert {
   identity         String
   bio              String?
   skills           String[] @default([])
-  // Canonical marketplace categories, so a category chip narrows the roster
-  // the way it narrows workflows. Free-text `role` cannot: "Ops" folds onto
-  // no canonical value, and a raised expert's role is whatever its owner typed.
+  // Free-text `role` cannot stand in: "Ops" folds onto no canonical
+  // category, and a raised expert's role is whatever its owner typed.
   categories       String[] @default([])
   voicePreferences String   @default("")
   boundaries       String   @default("")
