@@ -14,7 +14,6 @@ import {
   Calendar03Icon,
   FlashIcon,
   PencilEdit02Icon,
-  PlugSocketIcon,
   PlusSignIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
@@ -24,6 +23,7 @@ import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
+import { IntegrationIcons } from "./components/IntegrationIcons";
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
@@ -161,8 +161,8 @@ export function ExpertTeamCard({
           </Text>
         </div>
 
-        <div className="w-full px-2 pl-5">
-          <CardStats className="mt-3 w-full">
+        <div className="mt-3 flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-5">
+          <CardStats>
             <CardStat
               icon={Calendar03Icon}
               label="Schedules"
@@ -181,13 +181,8 @@ export function ExpertTeamCard({
               singular="workflow"
               count={expert.workflows.length}
             />
-            <CardStat
-              icon={PlugSocketIcon}
-              label="Integrations"
-              singular="integration"
-              count={expert.credential_count ?? 0}
-            />
           </CardStats>
+          <IntegrationIcons providers={expert.credential_providers ?? []} />
         </div>
       </Link>
 

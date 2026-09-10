@@ -16,7 +16,7 @@ from backend.api.features.experts import raise_attachments, scheduling
 
 # Re-exported so `db_accessors.experts_db()` resolves the same attribute name
 # on both branches: the module here, and the RPC client stub in db_manager.
-from backend.api.features.experts.credential_counts import count_expert_credentials
+from backend.api.features.experts.credential_counts import expert_credential_providers
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
@@ -280,14 +280,21 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
     try:
-        credential_counts = await count_expert_credentials(user_id, rows)
+        credential_providers = await expert_credential_providers(user_id, rows)
     except Exception:
-        logger.exception("Failed to read credential counts for expert roster")
-        credential_counts = {}
+        logger.exception("Failed to read credential providers for expert roster")
+        credential_providers = {}
     return [
         _to_model(
             row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
-        ).model_copy(update={"credential_count": credential_counts.get(row.id, 0)})
+        ).model_copy(
+            update={
+                "credential_count": len(credential_providers.get(row.id, [])),
+                "credential_providers": list(
+                    dict.fromkeys(credential_providers.get(row.id, []))
+                ),
+            }
+        )
         for row in rows
     ]
 

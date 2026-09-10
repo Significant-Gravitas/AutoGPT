@@ -295,10 +295,23 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("counts the integrations an expert has been granted", async () => {
+  test("shows an expert's integrations as logos, the rest behind +N more", async () => {
+    const user = userEvent.setup();
     const credentialRequests = vi.fn();
     server.use(
-      getListExpertsMockHandler([{ ...hiredMaria, credential_count: 2 }]),
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 5,
+          credential_providers: [
+            "github",
+            "linear",
+            "figma",
+            "notion",
+            "slack",
+          ],
+        },
+      ]),
       http.get("*/api/experts/:expertId/credentials", () => {
         credentialRequests();
         return HttpResponse.json([]);
@@ -308,8 +321,43 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const card = await screen.findByRole("link", { name: "View Maria" });
-    await waitFor(() => expect(getStatValue(card, "Integrations")).toBe("2"));
+    const integrations = within(card).getByRole("list", {
+      name: "Integrations",
+    });
+    const logos = within(integrations).getAllByRole("img");
+    expect(logos.map((logo) => logo.getAttribute("alt"))).toEqual([
+      "GitHub",
+      "Linear",
+      "Figma",
+    ]);
+    expect(logos.map((logo) => logo.getAttribute("src"))).toEqual([
+      "/integrations/github.png",
+      "/integrations/linear.png",
+      "/integrations/figma.png",
+    ]);
+    // The roster response already carries the providers; no per-card fetch.
     expect(credentialRequests).not.toHaveBeenCalled();
+
+    await user.hover(within(integrations).getByText("+2 more"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain("Notion");
+    expect(tooltip.textContent).toContain("Slack");
+  });
+
+  test("shows no integrations item on a card with none granted", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, credential_count: 0, credential_providers: [] },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(getStatValue(card, "Workflows")).toBe("2");
+    expect(
+      within(card).queryByRole("list", { name: "Integrations" }),
+    ).toBeNull();
   });
 
   test("counts an expert's schedules on their card", async () => {

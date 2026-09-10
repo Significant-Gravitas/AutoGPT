@@ -20586,6 +20586,14 @@
             "title": "Credential Count",
             "default": 0
           },
+          "credential_providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Credential Providers",
+            "default": []
+          },
           "last_run_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
