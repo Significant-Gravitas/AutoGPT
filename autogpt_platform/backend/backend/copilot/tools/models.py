@@ -130,6 +130,7 @@ class ResponseType(str, Enum):
     TEAM_ROSTER = "team_roster"
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
+    EXPERT_ONBOARDING = "expert_onboarding"
 
 
 # Base response model
@@ -732,6 +733,25 @@ class ClarificationNeededResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
+class ExpertOnboardingStep(BaseModel):
+    """One step of a freshly hired expert's intake card."""
+
+    question: str
+    keyword: str
+    # Tappable answers. The card always offers a free-text escape as well, so
+    # an empty list simply means "this one is open-ended".
+    options: list[str] = Field(default_factory=list)
+
+
+class ExpertOnboardingResponse(ToolResponseBase):
+    """The intake card a freshly hired expert opens its first turn with."""
+
+    type: ResponseType = ResponseType.EXPERT_ONBOARDING
+    expert_id: str
+    greeting: str
+    steps: list[ExpertOnboardingStep] = Field(default_factory=list)
 
 
 class SuggestedGoalResponse(ToolResponseBase):

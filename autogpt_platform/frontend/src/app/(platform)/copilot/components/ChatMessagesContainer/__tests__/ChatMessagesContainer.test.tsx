@@ -858,7 +858,7 @@ describe("ChatMessagesContainer — expert kickoff", () => {
             parts: [
               {
                 type: "text",
-                text: "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+                text: "You were just hired. Call expert_onboarding once, and nothing else",
               },
             ],
           },

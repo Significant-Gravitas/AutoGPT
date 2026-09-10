@@ -26,6 +26,7 @@ from .delegate_to_expert import DelegateToExpertTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
+from .expert_onboarding import ExpertOnboardingTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -165,6 +166,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # The hire's first turn (expert sessions only): greeting + intake card.
+    "expert_onboarding": ExpertOnboardingTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
@@ -202,6 +205,8 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # Soul edits only make sense in an expert-scoped session; the engines
     # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
+    # The intake card names the expert it belongs to, so it needs one.
+    "expert_onboarding": "experts",
     "confirm_expert_soul_update": "experts",
     # A handoff transfers a task between experts, so it needs a caller with
     # an expert identity to hand it off from.

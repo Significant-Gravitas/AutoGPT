@@ -66,10 +66,10 @@ describe("buildKickoffMessage", () => {
       "attempt-1",
     );
     expect(message.text).toContain("You were just hired.");
-    expect(message.text).toContain("Introduce yourself in 2-3 sentences");
-    expect(message.text).toContain("run_agent");
-    expect(message.text).toContain("If no workflow is installed");
-    expect(message.text).toContain("Never pretend a run succeeded.");
+    expect(message.text).toContain("expert_onboarding");
+    // The hire's first turn is an intake, not a first job.
+    expect(message.text).toContain("Do not run a workflow");
+    expect(message.text).not.toContain("run_agent");
     expect(message.text).not.toContain("EXPERT_KICKOFF");
     expect(message.text).not.toContain(EXPERT_ID);
   });
@@ -98,7 +98,7 @@ describe("kickoff message identification", () => {
       isKickoffMessage(
         userMessage(
           "m2",
-          "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+          "You were just hired. Call expert_onboarding once, and nothing else",
         ),
       ),
     ).toBe(false);
