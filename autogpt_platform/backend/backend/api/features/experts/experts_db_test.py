@@ -18,6 +18,7 @@ import pytest
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import (
+    ExpertBundledSkill,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     HireResult,
@@ -27,9 +28,12 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
+from backend.copilot.tools.skills import read_user_skill_with_body
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
@@ -256,6 +260,7 @@ async def _seed_template(
     name: str,
     preload_listings: list[str],
     preload_crons: dict[str, str] | None = None,
+    skills: list[str] | None = None,
 ) -> prisma.models.Expert:
     """Create an Expert roster template plus ExpertWorkflow preload rows.
 
@@ -270,6 +275,7 @@ async def _seed_template(
             "role": f"{name}'s role",
             "identity": f"You are {name}, an expert.",
             "isTemplate": True,
+            "skills": skills or [],
         }
     )
     for slv_id in preload_listings:
@@ -291,6 +297,96 @@ async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
     assert first.expert.id == second.expert.id
     assert not first.expert.is_template
     assert first.expert.source_template_id == template.id
+
+
+@pytest.fixture
+async def hub_listing(server: SpinTestServer):
+    slug = f"bundled-{uuid.uuid4().hex[:8]}"
+    listing = await _make_listing(slug)
+    yield slug
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"skillListingId": listing.id}
+    )
+    await prisma.models.SkillListing.prisma().delete(where={"id": listing.id})
+
+
+@pytest.fixture
+def skills_hub_on(monkeypatch):
+    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=True))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_templates_link_names_that_normalise_to_a_live_hub_slug(
+    server: SpinTestServer, hub_listing, skills_hub_on
+):
+    padded = f" {hub_listing.upper()} "
+    template = await _seed_template(
+        name="Maria", preload_listings=[], skills=["Content strategy", padded]
+    )
+
+    [linked] = await experts_db.with_bundled_skills(
+        [experts_db._to_model(template)], None
+    )
+
+    assert linked.bundled_skills == [
+        ExpertBundledSkill(
+            name=padded,
+            slug=hub_listing,
+            title=hub_listing.replace("-", " ").title(),
+            description=f"{hub_listing} description",
+        )
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_installs_the_hub_skills_the_template_bundles(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on
+):
+    template = await _seed_template(
+        name="Maria", preload_listings=[], skills=["Content strategy", hub_listing]
+    )
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        installed = await read_user_skill_with_body(
+            test_user.id, hub_listing, expert_id=hired.expert.id
+        )
+
+    assert installed is not None
+    assert installed.description == f"{hub_listing} description"
+    assert hired.expert.skills == ["Content strategy", hub_listing]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+):
+    install = AsyncMock(side_effect=RuntimeError("storage down"))
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    template = await _seed_template(
+        name="Maria", preload_listings=[], skills=[hub_listing]
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    install.assert_awaited_once()
+    assert hired.expert.skills == [hub_listing]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_installs_nothing_while_the_hub_is_off(
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
+):
+    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
+    install = AsyncMock()
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    template = await _seed_template(
+        name="Maria", preload_listings=[], skills=[hub_listing]
+    )
+
+    await experts_db.hire_expert(test_user.id, template.id, None)
+
+    install.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -25,6 +25,7 @@ from backend.api.features.experts.models import (
     ExpertSetupItem,
     ExpertSkillsUpdate,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -128,8 +129,11 @@ class CreateRaisedExpertRequest(BaseModel):
 
 
 @public_router.get("/templates", operation_id="list_expert_templates")
-async def list_expert_templates() -> list[Expert]:
-    return await experts_db.list_templates()
+async def list_expert_templates(
+    user_id: str | None = Security(autogpt_auth_lib.get_optional_user_id),
+) -> list[ExpertTemplate]:
+    templates = await experts_db.list_templates()
+    return await experts_db.with_bundled_skills(templates, user_id)
 
 
 @router.post(

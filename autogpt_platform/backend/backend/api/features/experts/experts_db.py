@@ -36,6 +36,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertBundledSkill,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -43,6 +44,7 @@ from backend.api.features.experts.models import (
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -53,6 +55,8 @@ from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.store import skill_db
+from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -84,6 +88,7 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -230,6 +235,44 @@ async def list_templates() -> list[Expert]:
         include=_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+async def with_bundled_skills(
+    templates: list[Expert], user_id: str | None
+) -> list[ExpertTemplate]:
+    """Attach to each template the live Skills Hub listings its ``skills``
+    names resolve to — exactly what ``hire_expert`` installs."""
+    live = await _live_bundled_skills(
+        user_id, [name for template in templates for name in template.skills]
+    )
+    return [
+        ExpertTemplate(
+            **template.model_dump(),
+            bundled_skills=[
+                ExpertBundledSkill(
+                    name=name,
+                    slug=skill.slug,
+                    title=skill.name,
+                    description=skill.description,
+                )
+                for name in template.skills
+                if (skill := live.get(name.strip().lower()))
+            ],
+        )
+        for template in templates
+    ]
+
+
+async def _live_bundled_skills(
+    user_id: str | None, names: list[str]
+) -> dict[str, MarketplaceSkill]:
+    slugs = sorted({name.strip().lower() for name in names} - {""})
+    # The Hub routes' key, so nothing is linked or installed that would 404.
+    if not slugs or not await is_feature_enabled(
+        Flag.SKILLS_HUB, user_id or "anonymous"
+    ):
+        return {}
+    return await skill_db.get_live_skills(slugs)
 
 
 # Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
@@ -742,6 +785,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
+    await _install_bundled_skills(user_id, expert.id, template.skills or [])
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1471,6 +1515,23 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _install_bundled_skills(
+    user_id: str, expert_id: str, names: list[str]
+) -> None:
+    """Install the Hub skills a template bundles into the new expert's folder.
+
+    A failed install is logged and leaves the name on the row, where the
+    skills heal and dialog already handle a name with no folder.
+    """
+    for slug in await _live_bundled_skills(user_id, names):
+        try:
+            await skill_db.install_marketplace_skill(user_id, slug, expert_id=expert_id)
+        except Exception:
+            logger.exception(
+                f"Failed to install bundled skill {slug!r} on expert #{expert_id}"
+            )
 
 
 async def install_workflow(

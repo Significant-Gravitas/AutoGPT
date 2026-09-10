@@ -13,7 +13,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
-from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
@@ -37,7 +37,9 @@ from backend.api.features.experts.models import (
     RaiseResult,
 )
 from backend.api.features.experts.routes import public_router, router
+from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
@@ -143,6 +145,75 @@ def test_list_expert_templates(
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_templates_list"
+    )
+
+
+@pytest.mark.parametrize(
+    ("user_id", "flag_key"), [(None, "anonymous"), ("user-1", "user-1")]
+)
+def test_list_expert_templates_links_live_hub_skills(
+    mocker: pytest_mock.MockerFixture, user_id: str | None, flag_key: str
+) -> None:
+    app.dependency_overrides[get_optional_user_id] = lambda: user_id
+    flag = _mock_templates_with_hub_skill(mocker, hub_on=True)
+
+    response = client.get("/experts/templates")
+
+    assert response.status_code == 200
+    assert response.json()[0]["bundled_skills"] == [
+        {
+            "name": "Brand-Voice-Guide",
+            "slug": "brand-voice-guide",
+            "title": "Brand voice guide",
+            "description": "Keeps every draft on-brand.",
+        }
+    ]
+    flag.assert_awaited_once_with(Flag.SKILLS_HUB, flag_key)
+
+
+def test_list_expert_templates_links_nothing_with_the_hub_off(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_templates_with_hub_skill(mocker, hub_on=False)
+
+    response = client.get("/experts/templates")
+
+    assert response.status_code == 200
+    assert response.json()[0]["bundled_skills"] == []
+
+
+def _mock_templates_with_hub_skill(
+    mocker: pytest_mock.MockerFixture, *, hub_on: bool
+) -> AsyncMock:
+    template = _make_expert(
+        id="template-1",
+        is_template=True,
+        source_template_id=None,
+        skills=["Content strategy", "Brand-Voice-Guide"],
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_templates",
+        new_callable=AsyncMock,
+        return_value=[template],
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.skill_db.get_live_skills",
+        new_callable=AsyncMock,
+        return_value={
+            "brand-voice-guide": MarketplaceSkill(
+                slug="brand-voice-guide",
+                name="Brand voice guide",
+                description="Keeps every draft on-brand.",
+                categories=[],
+                required_providers=[],
+                install_count=0,
+            )
+        },
+    )
+    return mocker.patch(
+        "backend.api.features.experts.experts_db.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=hub_on,
     )
 
 

@@ -146,6 +146,43 @@ describe("Marketplace expert page", () => {
     );
   });
 
+  test("links the skills a hire comes with and leaves the rest as text", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          skills: ["Content strategy", "brand-voice-guide", "Positioning"],
+          bundled_skills: [
+            {
+              name: "brand-voice-guide",
+              slug: "brand-voice-guide",
+              title: "Brand voice guide",
+              description: "Keeps every draft on-brand.",
+            },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: "Brand voice guide" });
+    expect(link.getAttribute("href")).toBe(
+      "/marketplace/skills/brand-voice-guide",
+    );
+    const before = screen.getByText("Content strategy");
+    const after = screen.getByText("Positioning");
+    expect(screen.queryByRole("link", { name: "Content strategy" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Positioning" })).toBeNull();
+    expect(
+      before.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      link.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test("shows the on-your-team state with a way into the chat", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),

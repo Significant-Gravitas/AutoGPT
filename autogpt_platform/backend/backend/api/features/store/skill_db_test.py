@@ -151,6 +151,37 @@ async def test_detail_of_an_off_shelf_listing_is_not_found(has_approved_version:
         await skill_db.get_marketplace_skill("off-shelf-one")
 
 
+async def test_live_skills_holds_only_listings_on_the_shelf():
+    await _make_listing("live-one")
+    await _make_listing("draft-one", approved=False, has_approved_version=True)
+    await _make_listing("never-approved", approved=False)
+    await _make_listing("unavailable-one", available=False)
+    deleted = await _make_listing("deleted-one")
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": deleted.id}, data={"isDeleted": True}
+    )
+    withdrawn = await _make_listing("withdrawn-one")
+    assert withdrawn.activeVersionId is not None
+    await prisma.models.SkillListingVersion.prisma().update(
+        where={"id": withdrawn.activeVersionId}, data={"isDeleted": True}
+    )
+
+    live = await skill_db.get_live_skills(
+        [
+            "live-one",
+            "draft-one",
+            "never-approved",
+            "unavailable-one",
+            "deleted-one",
+            "withdrawn-one",
+            "missing-one",
+        ]
+    )
+
+    assert list(live) == ["live-one"]
+    assert live["live-one"].name == "Live One"
+
+
 async def test_install_stores_under_the_listing_slug_and_counts(mocker):
     listing = await _make_listing("install-one", body="# do this\n")
     stored = mocker.patch.object(skill_db, "store_user_skill")

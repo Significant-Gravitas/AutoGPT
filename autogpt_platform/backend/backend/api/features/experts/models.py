@@ -197,6 +197,22 @@ class Expert(BaseModel):
     pod_id: str | None = None
 
 
+class ExpertBundledSkill(BaseModel):
+    """A template ``skills`` name that resolves to a live Skills Hub listing."""
+
+    name: str
+    slug: str
+    title: str
+    description: str
+
+
+class ExpertTemplate(Expert):
+    """A roster template as the marketplace shows it."""
+
+    # The skills a hire gets installed; unmatched names stay plain text.
+    bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
+
+
 # Membership is deliberately not embedded: clients already hold the expert
 # list and each Expert carries `pod_id`, so the roster groups client-side.
 class ExpertPod(BaseModel):

@@ -3,6 +3,7 @@ import {
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 
@@ -21,7 +22,7 @@ export function useExpertPage({ expertId }: Args) {
   const canHire = isLoggedIn && isHiringOpen;
 
   const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[] },
+    query: { select: (x) => x.data as ExpertTemplate[] },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: canHire },
