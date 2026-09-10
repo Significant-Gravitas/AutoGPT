@@ -34,6 +34,10 @@ const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
     art: "/experts/covers/maria-1.jpg",
     color: "orange-300",
   },
+  "/experts/frankie.svg": {
+    art: "/experts/covers/frankie-1.jpg",
+    color: "yellow-300",
+  },
 };
 
 export function getExpertCover(expert: Pick<Expert, "avatar_url" | "color">) {
