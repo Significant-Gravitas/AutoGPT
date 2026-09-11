@@ -35,7 +35,9 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 import CredentialsProvider, {
   CredentialsActionsContext,
   CredentialsProvidersContext,
+  mergePendingCredentials,
 } from "../credentials-provider";
+import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
 
 const queryClient = new QueryClient();
 
@@ -310,5 +312,55 @@ describe("CredentialsProvider device-auth upserts", () => {
     await reloadAndSettle();
 
     expect(savedIds()).not.toContain("cred-device");
+  });
+
+  it("ignores a list response a newer request has superseded", async () => {
+    await mountProbe();
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+
+    const stale = deferred<never[]>();
+    const fresh = deferred<never[]>();
+    apiMock.listCredentials
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+
+    await act(async () => {
+      screen.getByTestId("do-reload").click();
+      screen.getByTestId("do-reload").click();
+    });
+
+    // The newer request lands first and retires the pending entry. The older
+    // one predates the credential, so without the generation guard it
+    // republishes a list without it and the connection reads as removed again.
+    await act(async () => {
+      fresh.resolve([deviceCred] as never);
+      await fresh.promise;
+    });
+    await act(async () => {
+      stale.resolve([] as never);
+      await stale.promise;
+    });
+
+    expect(savedIds()).toContain("cred-device");
+  });
+
+  it("keeps the server's copy of a credential it has caught up on", () => {
+    // The pending copy is a snapshot from the moment of the upsert; once the
+    // server returns the id, its copy carries any change made since.
+    const pendingCopy: CredentialsMetaResponse = {
+      id: "cred-device",
+      provider: "stripe_link",
+      type: "oauth2",
+      title: "Device Auth Credential",
+    };
+    const merged = mergePendingCredentials(
+      [{ ...pendingCopy, title: "Renamed elsewhere" }],
+      [pendingCopy],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe("Renamed elsewhere");
   });
 });
