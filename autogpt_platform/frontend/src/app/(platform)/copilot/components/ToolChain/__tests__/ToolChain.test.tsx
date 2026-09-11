@@ -1,7 +1,6 @@
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  act,
   cleanup,
   render as baseRender,
   screen,
@@ -85,10 +84,11 @@ function getRowToggle(name: RegExp): HTMLElement {
 }
 
 describe("ToolChain", () => {
-  afterEach(() => {
-    cleanup();
-    useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
+  beforeEach(() => {
+    onSend.mockClear();
   });
+
+  afterEach(cleanup);
 
   it("renders nothing when no parts map to chain rows", () => {
     const { container } = render(<ToolChain parts={[]} isStreaming={false} />);
@@ -344,7 +344,7 @@ describe("ToolChain", () => {
     ).toBe("true");
   });
 
-  it("drafts answered questions into the chat input and dismisses on send", async () => {
+  it("sends answered questions and dismisses the card", async () => {
     const user = userEvent.setup();
     const pending: PendingQuestions = {
       dockId: "m1:call-ask_question",
@@ -355,7 +355,7 @@ describe("ToolChain", () => {
     };
 
     render(
-      <CopilotChatActionsProvider onSend={vi.fn()}>
+      <CopilotChatActionsProvider onSend={onSend}>
         <PendingQuestionsContext.Provider value={pending}>
           <ToolChain
             parts={[
@@ -375,9 +375,7 @@ describe("ToolChain", () => {
     expect(screen.getByText("Answer a few questions")).toBeDefined();
     expect(screen.getByText("Which region?")).toBeDefined();
 
-    const submit = screen.getByRole("button", {
-      name: "Add answers to message",
-    });
+    const submit = screen.getByRole("button", { name: "Send answers" });
     expect(submit.hasAttribute("disabled")).toBe(true);
 
     await user.type(
@@ -388,12 +386,10 @@ describe("ToolChain", () => {
 
     await user.click(submit);
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBe(
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
     );
-
-    act(() => useCopilotUIStore.getState().notifyMessageSent());
-
     expect(screen.queryByText("Answer a few questions")).toBeNull();
   });
 
@@ -414,18 +410,14 @@ describe("ToolChain", () => {
     );
 
     expect(screen.getByText("setup-card-GitHub")).toBeDefined();
-    expect(
-      screen.getByText("Everything's filled in — send it to continue"),
-    ).toBeDefined();
+    expect(screen.getByText("Everything's filled in")).toBeDefined();
 
     const proceed = screen.getByRole("button", { name: "Proceed" });
     expect(proceed.hasAttribute("disabled")).toBe(false);
 
     await user.click(proceed);
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBe(
-      "Connected GitHub. Please continue.",
-    );
+    expect(onSend).toHaveBeenCalledWith("Connected GitHub. Please continue.");
   });
 
   it("disables Proceed until every registered card is ready", () => {
@@ -444,15 +436,15 @@ describe("ToolChain", () => {
     );
 
     expect(
-      screen.getByText("Complete the steps above, then send to continue"),
+      screen.getByText("Complete the steps above to continue"),
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Proceed" }).hasAttribute("disabled"),
     ).toBe(true);
-    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("does not draft anything when ready cards produce no message", async () => {
+  it("sends nothing when ready cards produce no message", async () => {
     const user = userEvent.setup();
     render(
       <ToolChain
@@ -470,15 +462,17 @@ describe("ToolChain", () => {
 
     await user.click(screen.getByRole("button", { name: "Proceed" }));
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
   });
 });
 
 // ToolChain sends the chain's follow-up turn itself, so it needs the actions
 // provider its production parents always supply.
+const onSend = vi.fn();
+
 function render(ui: React.ReactElement) {
   const { rerender, ...rest } = baseRender(
-    <CopilotChatActionsProvider onSend={vi.fn()}>
+    <CopilotChatActionsProvider onSend={onSend}>
       {ui}
     </CopilotChatActionsProvider>,
   );
@@ -486,7 +480,7 @@ function render(ui: React.ReactElement) {
     ...rest,
     rerender: (next: React.ReactElement) =>
       rerender(
-        <CopilotChatActionsProvider onSend={vi.fn()}>
+        <CopilotChatActionsProvider onSend={onSend}>
           {next}
         </CopilotChatActionsProvider>,
       ),

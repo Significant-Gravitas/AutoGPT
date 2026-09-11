@@ -635,7 +635,7 @@ describe("ChainActionCard", () => {
       renderCard({ questions: [questionRequest()] });
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(true);
     });
@@ -645,9 +645,7 @@ describe("ChainActionCard", () => {
         questions: [questionRequest({ answers: { region: "Europe" } })],
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
@@ -1110,7 +1108,7 @@ describe("ChainActionCard", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Add answers to message",
+            name: "Send answers",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -1131,7 +1129,7 @@ describe("ChainActionCard", () => {
       );
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(false);
       fireEvent.click(send);
@@ -1179,9 +1177,7 @@ describe("ChainActionCard", () => {
         isReady: false,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
   });

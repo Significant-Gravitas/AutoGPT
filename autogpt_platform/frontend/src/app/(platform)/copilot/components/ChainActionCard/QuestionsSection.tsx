@@ -20,7 +20,7 @@ interface Props {
 
 /** One question per step. The footer pager (chevrons + ring dots) moves
  *  between questions; the round action button advances and, on the last
- *  step, drafts every answer into the chat input. */
+ *  step, sends every answer as one message. */
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
   const sectionId = useId();
@@ -134,7 +134,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
 
         <button
           type="button"
-          aria-label={isLast ? "Add answers to message" : "Next question"}
+          aria-label={isLast ? "Send answers" : "Next question"}
           disabled={!actionEnabled}
           onClick={handleAction}
           className={
