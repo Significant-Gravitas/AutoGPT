@@ -16,7 +16,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-from . import check_action, note_taint_source
+from . import check_action
 from .review import session_exec_id
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ async def gate_non_registry_tool(
 ) -> dict[str, Any] | None:
     """An MCP error payload to return instead of running, or None to proceed."""
     try:
-        await note_taint_source(session.session_id, tool_name)
         decision = await check_action(
             tool_name,
             args,

@@ -485,10 +485,9 @@ class BaseTool:
         A gate that crashes must not become a gate that passes, so an
         unexpected failure here refuses the call rather than falling through.
         """
-        from backend.copilot.gate import check_action, note_taint_source
+        from backend.copilot.gate import check_action
 
         try:
-            await note_taint_source(session.session_id, self.name)
             decision = await check_action(
                 self.name,
                 kwargs,

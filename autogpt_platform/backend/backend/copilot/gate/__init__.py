@@ -37,6 +37,10 @@ _ALREADY_WAITING = (
     "Another action in this chat is already waiting for the user's approval. "
     "Stop and let them answer that one first; do not retry or try another way."
 )
+_CONSUMED = (
+    "This approval was already used by an identical call that ran. "
+    "Do not retry; tell the user what ran."
+)
 _REJECTED = (
     "The user declined this action. Do not retry it, do not adjust the "
     "arguments and try again, and do not use a different tool to achieve the "
@@ -66,17 +70,12 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
     """Auto mode runs only where a human can actually answer.
 
     Automation sessions (the scheduler, ``AutoPilotBlock``, ``run_sub_session``)
-    and legacy rows with no origin keep today's ungated behaviour. Parking a
-    question in a run nobody is watching is a stall, not a safeguard — and
-    refusing there instead would silently kill shipped behaviour like the
-    weekly "post an update in #standup" follow-up. Unattended work is
-    authorized by the interactive act that created it, which is why the
-    delegation tools are ALWAYS_ASK and ``schedule_followup`` escalates under
-    taint.
+    and legacy rows with no origin keep today's ungated behaviour: parking a
+    question in a run nobody is watching is a stall, not a safeguard.
+    Unattended work is authorized by the interactive act that created it,
+    which is why delegation is ALWAYS_ASK and ``schedule_followup`` escalates.
     """
     if not user_id or session.metadata.origin != "interactive":
-        return False
-    if session.metadata.auto_mode is False:
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
 
@@ -92,6 +91,9 @@ async def check_action(
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
+    # Before any decision and before the source runs, so a parallel sibling
+    # reads it — and only under an active gate.
+    await taint.mark_tainted(session.session_id, tool_name)
 
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
@@ -100,7 +102,7 @@ async def check_action(
     if status == ReviewStatus.APPROVED:
         if await review_store.consume(review_id, user_id):
             return ALLOW
-        return Decision(allowed=False, reason=_ALREADY_WAITING, already_waiting=True)
+        return Decision(allowed=False, reason=_CONSUMED)
     if status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
         await taint.escalate(session_id, tool_name)
@@ -169,13 +171,4 @@ def _last_user_message(session: ChatSession) -> str:
     return ""
 
 
-async def note_taint_source(session_id: str, tool_name: str) -> None:
-    """Mark the session before a taint source runs, not after it succeeds.
-
-    Parallel dispatch is deliberate here, so a ``bash_exec`` issued alongside a
-    ``web_fetch`` would otherwise read the flag before the fetch wrote it.
-    """
-    await taint.mark_tainted(session_id, tool_name)
-
-
-__all__ = ["Decision", "check_action", "gate_active", "note_taint_source"]
+__all__ = ["Decision", "check_action", "gate_active"]

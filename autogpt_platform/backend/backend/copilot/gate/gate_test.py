@@ -5,6 +5,7 @@ the ordering in ``check_action`` is the design, so a refactor that reorders
 it should break these.
 """
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -18,6 +19,7 @@ from backend.copilot.model import (
     ChatSessionMetadata,
     ChatSessionOrigin,
 )
+from backend.copilot.tools import TOOL_REGISTRY
 
 _GATE = "backend.copilot.gate"
 
@@ -27,7 +29,6 @@ def _session(
     *,
     source_platform: str | None = None,
     messages: list[ChatMessage] | None = None,
-    auto_mode: bool | None = None,
 ) -> ChatSession:
     return ChatSession(
         session_id="session-1",
@@ -35,9 +36,7 @@ def _session(
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(
-            origin=origin, source_platform=source_platform, auto_mode=auto_mode
-        ),
+        metadata=ChatSessionMetadata(origin=origin, source_platform=source_platform),
         messages=messages or [ChatMessage(role="user", content="do the thing")],
     )
 
@@ -58,17 +57,48 @@ def clean_session_state():
         patch(f"{_GATE}.taint.is_escalated", AsyncMock(return_value=False)),
         patch(f"{_GATE}.taint.is_tainted", AsyncMock(return_value=False)),
         patch(f"{_GATE}.taint.escalate", AsyncMock()),
+        patch(f"{_GATE}.taint.mark_tainted", AsyncMock()),
     ):
         yield
 
 
+@pytest.mark.parametrize(
+    "tool_name, args",
+    [
+        ("run_agent", {"library_agent_id": "meeting-prep", "inputs": {"to": "a@b.c"}}),
+        ("run_block", {"block_id": "gmail-send", "input_data": {"to": ["a@b.c"]}}),
+    ],
+)
+async def test_a_workflow_run_parks_an_approval_and_runs_nothing(
+    gate_on, clean_session_state, tool_name, args
+):
+    """SECRT-2622: a hired expert's kickoff turn — an ordinary interactive
+    session — called ``run_agent`` on a Gmail-sending workflow, and it ran."""
+    tool = TOOL_REGISTRY[tool_name]
+    open_review = AsyncMock(return_value=True)
+    with (
+        patch(f"{_GATE}.review_store.open_review", open_review),
+        patch.object(type(tool), "_execute", AsyncMock()) as execute,
+    ):
+        result = await tool.execute("user-1", _session(), "call-1", **args)
+
+    execute.assert_not_awaited()
+    assert open_review.await_args.args[3] == tool_name
+    output = json.loads(result.output)
+    assert output["type"] == "approval_required"
+    assert output["graph_exec_id"] == "copilot-session-session-1"
+
+
 async def test_gate_is_inert_when_the_flag_is_off():
-    """Flag-off must be today's behaviour byte-for-byte."""
-    with patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=False)):
-        decision = await check_action(
-            "bash_exec", {"command": "rm -rf /"}, "u", _session()
-        )
+    """Flag-off must be today's behaviour: allowed, and not even a taint write."""
+    redis = AsyncMock()
+    with (
+        patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=False)),
+        patch(f"{_GATE}.taint.get_redis_async", redis),
+    ):
+        decision = await check_action("web_search", {"query": "x"}, "u", _session())
     assert decision.allowed
+    redis.assert_not_awaited()
 
 
 @pytest.mark.parametrize("origin", ["automation", None])
@@ -80,10 +110,6 @@ async def test_gate_is_inactive_where_nobody_is_watching(gate_on, origin):
 
 async def test_gate_is_inactive_for_anonymous_turns(gate_on):
     assert not await gate_active(None, _session())
-
-
-async def test_session_can_opt_out(gate_on):
-    assert not await gate_active("u", _session(auto_mode=False))
 
 
 async def test_read_tools_never_reach_the_classifier(gate_on, clean_session_state):
@@ -107,7 +133,7 @@ async def test_always_ask_is_never_classified(gate_on, clean_session_state):
 async def test_defer_tools_pass_through_to_their_own_gate(gate_on, clean_session_state):
     with patch(f"{_GATE}.classify", AsyncMock()) as classifier:
         decision = await check_action(
-            "run_block", {"block_id": "uuid"}, "u", _session()
+            "continue_run_block", {"review_id": "r"}, "u", _session()
         )
     assert decision.allowed
     classifier.assert_not_awaited()
@@ -176,10 +202,6 @@ async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state
         patch(
             f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)
         ) as other,
-        patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=False)),
-        patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.taint.is_escalated", AsyncMock(return_value=False)),
-        patch(f"{_GATE}.taint.is_tainted", AsyncMock(return_value=False)),
         patch(f"{_GATE}.classify", AsyncMock(return_value=(False, "ask"))),
     ):
         await check_action("bash_exec", {"command": "rm -rf /"}, "u", _session())
@@ -197,6 +219,7 @@ async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert not decision.allowed
+    assert not decision.already_waiting
 
 
 async def test_rejection_escalates_the_whole_tool(gate_on, clean_session_state):

@@ -18129,10 +18129,6 @@
             ],
             "title": "Origin"
           },
-          "auto_mode": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Auto Mode"
-          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

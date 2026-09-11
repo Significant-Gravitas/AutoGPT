@@ -490,7 +490,7 @@ AUTO_MODE_SUPPLEMENT = """
 
 Auto mode is on for this conversation. Act. Do not stop to ask permission in
 prose for reversible, in-scope steps — a gate checks every tool call and will
-stop you when it matters, so a step that runs was allowed to run.
+stop you when it matters.
 
 When a tool returns `approval_required`, nothing happened. Tell the user
 plainly what you wanted to do and why it needs them, then stop and wait. Do

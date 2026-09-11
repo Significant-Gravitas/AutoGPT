@@ -11,7 +11,9 @@ Two stores, because neither alone is correct:
   runs. Every MCP tool is annotated ``readOnlyHint=True`` so the CLI
   dispatches calls in parallel; writing after success would let a
   ``bash_exec`` issued in the same batch as a ``web_fetch`` read the flag
-  before the fetch set it.
+  before the fetch set it. Writing first wins that race in practice (one
+  Redis round trip against the sibling's DB and Redis reads), not by
+  construction.
 * The transcript is the durable backstop. A Redis flush, or a monthly
   ``schedule_followup`` firing into a session older than the key, must not
   hand back a clean bit while the injected text is still in the history the

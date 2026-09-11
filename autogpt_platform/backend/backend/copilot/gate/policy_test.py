@@ -42,11 +42,13 @@ def test_delegation_is_always_ask():
         assert tier_for(tool) is Tier.ALWAYS_ASK
 
 
-def test_opaque_argument_tools_are_never_classified():
-    """Their args are bare identifiers; ``check_hitl_review`` gates them
-    against the resolved block instead."""
-    for tool in ("run_block", "run_agent", "continue_run_block"):
-        assert tier_for(tool) is Tier.DEFER
+def test_workflow_runs_ask_until_their_effect_is_visible():
+    """Their args are bare identifiers and no other gate sees a graph run:
+    ``check_hitl_review`` is reached from ``run_block`` alone and covers 17
+    of 573 blocks."""
+    for tool in ("run_block", "run_agent"):
+        assert tier_for(tool) is Tier.ALWAYS_ASK
+    assert tier_for("continue_run_block") is Tier.DEFER
 
 
 def test_remote_semantics_tool_is_always_ask():
@@ -94,9 +96,18 @@ def test_memory_laundering_loop_is_closed_on_both_sides():
     writes must escalate under taint AND the readers must be taint sources."""
     for writer in ("memory_store", "add_understanding", "store_skill"):
         assert escalates_under_taint(writer)
-    for reader in ("memory_search", "memory_forget_search", "read_skill"):
+    for reader in (
+        "memory_search",
+        "memory_forget_search",
+        "read_skill",
+        "read_expert_chat",
+    ):
         assert tier_for(reader) is Tier.READ
         assert reader in TAINT_SOURCES
+
+
+def test_listing_expert_chats_is_a_silent_read():
+    assert tier_for("list_expert_chats") is Tier.READ
 
 
 def test_scheduling_escalates_because_the_scheduled_run_is_ungated():
@@ -106,7 +117,7 @@ def test_scheduling_escalates_because_the_scheduled_run_is_ungated():
 def test_reading_stays_free_after_taint():
     """Escalating these would make every post-fetch research turn a prompt,
     which is the nagging the feature exists to remove. Exfiltration by GET is
-    a documented, accepted limit — see the plan, §5.3."""
+    a documented, accepted limit."""
     for tool in ("web_fetch", "web_search", "browser_navigate"):
         assert not escalates_under_taint(tool)
 
@@ -125,6 +136,7 @@ _EFFECTFUL = frozenset(
         "browser_act",
         "continue_run_block",
         "create_agent",
+        "create_feature_request",
         "customize_agent",
         "delete_workspace_file",
         "edit_agent",

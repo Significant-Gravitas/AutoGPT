@@ -1,4 +1,5 @@
 import type { ToolUIPart } from "ai";
+import { beautifyString } from "@/lib/utils";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import {
@@ -118,7 +119,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   if (data.type === "approval_required") {
     const name = data.tool_name;
     return typeof name === "string" && name.trim()
-      ? `Approve ${name.trim()}`
+      ? `Approve ${beautifyString(name.trim())}`
       : "Approve this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";

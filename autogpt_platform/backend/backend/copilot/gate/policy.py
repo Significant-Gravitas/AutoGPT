@@ -39,6 +39,7 @@ READ_TOOLS: frozenset[str] = frozenset(
         "get_sub_session_result",
         "list_agent_triggers",
         "list_chat_platform_channels",
+        "list_expert_chats",
         "list_folders",
         "list_presets",
         "list_schedules",
@@ -47,6 +48,7 @@ READ_TOOLS: frozenset[str] = frozenset(
         "list_workspace_files",
         "memory_forget_search",
         "memory_search",
+        "read_expert_chat",
         "read_skill",
         "read_workspace_file",
         "search_docs",
@@ -80,6 +82,10 @@ ALWAYS_ASK_TOOLS: frozenset[str] = frozenset(
         "handoff_to_expert",
         "memory_forget_confirm",
         "post_to_chat_platform",
+        # A workflow or block id says nothing about what it sends or buys, and
+        # no other gate sees a graph run (see DEFER_TOOLS).
+        "run_agent",
+        "run_block",
         # Semantics live on a remote server named by ``server_url``, and the
         # user's OAuth credential is attached to the call. Unjudgeable.
         "run_mcp_tool",
@@ -91,19 +97,10 @@ ALWAYS_ASK_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-# Their arguments are opaque identifiers — a preset UUID, a block UUID, a
-# review id — so classifying them would manufacture a verdict with no
-# information behind it, and the review card would show the human the same
-# UUID. ``check_hitl_review`` already gates these against the RESOLVED block,
-# its inputs and its credentials. Stand down rather than layer a blind
-# judgement on top of a sighted one.
-DEFER_TOOLS: frozenset[str] = frozenset(
-    {
-        "continue_run_block",
-        "run_agent",
-        "run_block",
-    }
-)
+# Only the completion of a review ``check_hitl_review`` already opened.
+# ``run_agent`` / ``run_block`` are ALWAYS_ASK: that gate is reached from
+# ``run_block`` alone and covers 17 of 573 blocks; nothing reviews a graph run.
+DEFER_TOOLS: frozenset[str] = frozenset({"continue_run_block"})
 
 # Flip to ASK once untrusted content is in the session. Deliberately NOT every
 # effectful tool: ``web_fetch`` / ``browser_navigate`` stay judged so research
@@ -120,6 +117,8 @@ TAINT_ESCALATES: frozenset[str] = frozenset(
         "bash_exec",
         "browser_act",
         "create_agent",
+        # Writes an issue, comment or upvote into Linear, in the user's words.
+        "create_feature_request",
         "customize_agent",
         "edit_agent",
         "memory_store",
@@ -134,7 +133,7 @@ TAINT_ESCALATES: frozenset[str] = frozenset(
 
 # Tools whose output can carry bytes we did not author. Includes the MCP file
 # readers, which are the primary read path in SDK mode and are not registry
-# tools, and the memory/skill readers, which replay content stored by an
+# tools, and the memory/skill/chat readers, which replay content stored by an
 # earlier — possibly injected — session.
 TAINT_SOURCES: frozenset[str] = frozenset(
     {
@@ -144,6 +143,7 @@ TAINT_SOURCES: frozenset[str] = frozenset(
         "get_sub_session_result",
         "memory_forget_search",
         "memory_search",
+        "read_expert_chat",
         "read_skill",
         "read_workspace_file",
         "run_agent",

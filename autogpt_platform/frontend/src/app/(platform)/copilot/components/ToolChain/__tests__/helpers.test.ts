@@ -275,7 +275,7 @@ describe("toChainRow", () => {
     );
 
     expect(row?.requiresAction).toBe(true);
-    expect(row?.text).toBe("Approve bash_exec");
+    expect(row?.text).toBe("Approve Bash Exec");
   });
 
   it.each([
@@ -286,7 +286,7 @@ describe("toChainRow", () => {
     [{ type: "review_required" }, "Review this action"],
     [
       { type: "approval_required", tool_name: "post_to_chat_platform" },
-      "Approve post_to_chat_platform",
+      "Approve Post To Chat Platform",
     ],
     [{ type: "approval_required" }, "Approve this action"],
     [{ type: "approval_required", tool_name: "   " }, "Approve this action"],
