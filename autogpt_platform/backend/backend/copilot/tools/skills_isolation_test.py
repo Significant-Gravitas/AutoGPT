@@ -243,6 +243,28 @@ async def test_a_row_conflict_reaches_the_expert_as_a_retryable_error(world, too
     logged.assert_not_called()
 
 
+async def test_the_heal_sees_a_display_name_as_owned_once_its_copy_exists(world):
+    """A row can carry a skill's display name ("Deep Research") while its copy
+    is stored as "deep-research"; after the first copy the heal must stop."""
+    fake, experts = world
+    fake.files["/skills/deep-research/SKILL.md"] = _skill("Deep Research")
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["Deep Research"]
+        )
+    )
+    scans, counted = _counting_slug_lookup()
+
+    with _cold_turns(_FakeRedis()), patch.object(
+        skills, "find_user_skill_slugs", counted
+    ):
+        await list_user_skills("user-1", "expert-a")
+        await list_user_skills("user-1", "expert-a")
+
+    assert "/experts/expert-a/skills/deep-research/SKILL.md" in fake.files
+    assert len(scans) == 1
+
+
 class _FakeRedis:
     """In-memory stand-in: the heal backoff is the one cache these tests have
     to observe, and the fixture's MagicMock swallows every write."""

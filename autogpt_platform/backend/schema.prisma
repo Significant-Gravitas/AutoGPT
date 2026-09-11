@@ -1054,6 +1054,9 @@ model Expert {
   identity         String
   bio              String?
   skills           String[] @default([])
+  // Free-text `role` cannot stand in: "Ops" folds onto no canonical
+  // category, and a raised expert's role is whatever its owner typed.
+  categories       String[] @default([])
   voicePreferences String   @default("")
   boundaries       String   @default("")
 

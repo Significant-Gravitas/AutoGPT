@@ -6,16 +6,45 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
+interface Args {
+  category?: string | null;
+  searchQuery?: string;
+  /** False keeps the roster unfetched where the surface is hidden. */
+  enabled?: boolean;
+}
+
 /** Templates are public, so the section can show them to anyone; only the
  *  hired roster (for the "Hired" state) needs a session. */
-export function useExpertsSection() {
+export function useExpertsSection({
+  category,
+  searchQuery,
+  enabled = true,
+}: Args = {}) {
   const { isLoggedIn } = useAuth();
 
-  const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as ExpertTemplate[] },
-  });
+  const templatesQuery = useListExpertTemplates(
+    {
+      ...(category ? { category } : {}),
+      ...(searchQuery ? { search_query: searchQuery } : {}),
+    },
+    {
+      query: {
+        enabled,
+        select: (x) => x.data as ExpertTemplate[],
+        // The shelf keeps its cards across a chip change; search must not show a
+        // previous term's cards, so it waits on the page's loading gate instead.
+        placeholderData:
+          searchQuery === undefined
+            ? (previousData) => previousData
+            : undefined,
+      },
+    },
+  );
   const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
+    query: {
+      select: (x) => x.data as Expert[],
+      enabled: enabled && isLoggedIn,
+    },
   });
 
   const hiredTemplateIds = new Set<string>();

@@ -61,6 +61,7 @@ from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store import skill_db
+from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -70,6 +71,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
+    skill_name_key,
 )
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
@@ -236,6 +238,7 @@ def _to_model(
         tagline=row.tagline,
         bio=row.bio,
         skills=row.skills or [],
+        categories=row.categories or [],
         identity=row.identity,
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
@@ -269,12 +272,33 @@ async def _latest_runs(
     return {row.expertId: row for row in rows if row.expertId is not None}
 
 
-async def list_templates() -> list[Expert]:
+async def list_templates(
+    search_query: str | None = None,
+    category: str | None = None,
+) -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
-        where={"isTemplate": True, "isArchived": False},
+        where=_template_where(search_query, category),
         include=_TEMPLATE_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+def _template_where(
+    search_query: str | None, category: str | None
+) -> prisma.types.ExpertWhereInput:
+    where: prisma.types.ExpertWhereInput = {"isTemplate": True, "isArchived": False}
+    if category:
+        # Not `category_filter_values`: with the canonical-category setting
+        # on, that one hides uncategorised experts from the unfiltered roster.
+        where["categories"] = {"has_some": category_match_values(category)}
+    if search_query and (needle := search_query.strip()):
+        where["OR"] = [
+            {"name": {"contains": needle, "mode": "insensitive"}},
+            {"role": {"contains": needle, "mode": "insensitive"}},
+            {"tagline": {"contains": needle, "mode": "insensitive"}},
+            {"bio": {"contains": needle, "mode": "insensitive"}},
+        ]
+    return where
 
 
 async def with_bundled_skills(
@@ -837,6 +861,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         # The bundled installs below record each name, so the row lists only
         # skills the hire actually owns.
         "skills": [],
+        "categories": template.categories or [],
         # No dayOne: it is the template's pre-hire promise, not the hire's.
         "identity": template.identity,
         "voicePreferences": template_voice,
@@ -1264,7 +1289,8 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 
 
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Record a skill the expert now owns; idempotent and case-insensitive."""
+    """Record a skill the expert now owns; idempotent, and a display name and
+    its slug count as one name."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1273,16 +1299,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isArchived": False,
         },
         lambda names: (
-            names if name.lower() in {n.lower() for n in names} else [*names, name]
+            names
+            if skill_name_key(name) in {skill_name_key(n) for n in names}
+            else [*names, name]
         ),
     )
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Forget a skill the expert no longer owns (case-insensitive)."""
+    """Forget a skill the expert no longer owns, in any spelling of its name."""
     await _rewrite_skill_names(
         {"id": expert_id, "ownerUserId": user_id},
-        lambda names: [n for n in names if n.lower() != name.lower()],
+        lambda names: [n for n in names if skill_name_key(n) != skill_name_key(name)],
     )
 
 
