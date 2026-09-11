@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -7,9 +7,15 @@ import pytest_asyncio
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, Organization, OrgCreditTransaction, User
 
+from backend.blocks.jina.search import SearchTheWebBlock
+from backend.data import credit_metadata
+from backend.data.credit import UsageTransactionMetadata
 from backend.data.credit_history import get_credit_history
 from backend.data.credit_history.queries import credit_history_query
 from backend.data.db import get_database_schema, prisma
+from backend.data.execution import ExecutionContext, NodeExecutionEntry
+from backend.data.model import NodeExecutionStats
+from backend.executor.billing import charge_reconciled_usage, charge_usage
 from backend.util.json import SafeJson
 
 
@@ -26,6 +32,25 @@ async def history_wallet(server, monkeypatch):
     yield user_id
     await CreditTransaction.prisma().delete_many(where={"userId": user_id})
     await User.prisma().delete(where={"id": user_id})
+
+
+async def add_raw_charge(
+    user_id: str,
+    key: str,
+    amount: int,
+    time: datetime,
+    metadata: dict,
+):
+    return await CreditTransaction.prisma().create(
+        data={
+            "userId": user_id,
+            "transactionKey": key,
+            "createdAt": time,
+            "amount": amount,
+            "type": CreditTransactionType.USAGE,
+            "metadata": SafeJson(metadata),
+        }
+    )
 
 
 async def add_charge(
@@ -48,16 +73,151 @@ async def add_charge(
         metadata["input"]["reconciled_delta"] = -amount
     if fee:
         metadata["input"]["charge"] = "Execution Cost"
-    return await CreditTransaction.prisma().create(
-        data={
-            "userId": user_id,
-            "transactionKey": key,
-            "createdAt": time,
-            "amount": amount,
-            "type": CreditTransactionType.USAGE,
-            "metadata": SafeJson(metadata),
-        }
+    return await add_raw_charge(user_id, key, amount, time, metadata)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_writer_metadata_round_trips_through_history_classifier(
+    history_wallet, monkeypatch
+):
+    execution_id = str(uuid4())
+    node_exec = NodeExecutionEntry(
+        user_id=history_wallet,
+        graph_exec_id=execution_id,
+        graph_id=str(uuid4()),
+        graph_version=1,
+        node_exec_id=str(uuid4()),
+        node_id=str(uuid4()),
+        block_id=SearchTheWebBlock().id,
+        inputs={},
+        execution_context=ExecutionContext(),
     )
+    writes: list[tuple[int, UsageTransactionMetadata]] = []
+    sync_db = MagicMock()
+    sync_db.spend_credits.side_effect = lambda *, cost, metadata, **_: writes.append(
+        (-cost, metadata)
+    )
+    async_db = MagicMock()
+    async_db.spend_credits = AsyncMock(
+        side_effect=lambda *, cost, metadata, **_: writes.append((-cost, metadata)) or 0
+    )
+    block = SearchTheWebBlock()
+    monkeypatch.setattr(
+        "backend.executor.billing.resolve_block_cost", lambda _: (block, 0, {})
+    )
+    monkeypatch.setattr(
+        "backend.executor.billing._block_has_paid_cost_entry", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "backend.executor.billing.execution_usage_cost", lambda _: (2, 10)
+    )
+    monkeypatch.setattr("backend.executor.billing.get_db_client", lambda: sync_db)
+
+    charge_usage(node_exec, execution_count=10)
+    with (
+        patch("backend.executor.billing.get_block", return_value=block),
+        patch(
+            "backend.executor.billing.block_usage_cost", side_effect=[(0, {}), (5, {})]
+        ),
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=async_db,
+        ),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        assert await charge_reconciled_usage(node_exec, NodeExecutionStats()) == (5, 0)
+
+    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    for index, (amount, metadata) in enumerate(writes):
+        await add_raw_charge(
+            history_wallet,
+            f"writer-{index}",
+            amount,
+            time + timedelta(seconds=index),
+            metadata.model_dump(exclude_none=True),
+        )
+
+    row = next(
+        item
+        for item in (await get_credit_history(history_wallet)).transactions
+        if item.usage_execution_id == execution_id
+    )
+    assert row.amount == -7
+    assert row.usage_fee_amount == -2
+    assert row.usage_adjustment_amount == -5
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_literal_v1_historical_markers_remain_recognized(
+    history_wallet, monkeypatch
+):
+    monkeypatch.setattr(
+        credit_metadata,
+        "CURRENT_CREDIT_MARKERS",
+        credit_metadata.CreditMetadataMarkers(
+            reconciliation_delta_input_key="reconciled_delta_v2",
+            execution_fee_input_key="charge_v2",
+            execution_fee_input_value="Execution Cost v2",
+            daily_reset_reason="CoPilot daily rate limit reset v2",
+            copilot_session_prefix="copilot-session-v2-",
+        ),
+    )
+    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    base = {"graph_exec_id": "run-v1", "graph_id": "graph-v1"}
+    await add_raw_charge(
+        history_wallet,
+        "v1-usage",
+        -100,
+        time,
+        {**base, "node_exec_id": "node-v1", "input": {}},
+    )
+    await add_raw_charge(
+        history_wallet,
+        "v1-adjustment",
+        25,
+        time + timedelta(seconds=1),
+        {**base, "input": {"reconciled_delta": -25}},
+    )
+    await add_raw_charge(
+        history_wallet,
+        "v1-fee",
+        -2,
+        time + timedelta(seconds=2),
+        {**base, "input": {"charge": "Execution Cost"}},
+    )
+    await add_raw_charge(
+        history_wallet,
+        "v1-reset",
+        -10,
+        time + timedelta(seconds=3),
+        {"reason": "CoPilot daily rate limit reset", "input": {}},
+    )
+    await add_raw_charge(
+        history_wallet,
+        "v1-copilot",
+        -5,
+        time + timedelta(seconds=4),
+        {"graph_exec_id": "copilot-session-v1", "input": {}},
+    )
+
+    rows = (await get_credit_history(history_wallet)).transactions
+    run = next(row for row in rows if row.usage_execution_id == "run-v1")
+    reset = next(row for row in rows if row.transaction_key == "v1-reset")
+    copilot = next(
+        row for row in rows if row.usage_execution_id == "copilot-session-v1"
+    )
+
+    query = credit_history_query(organization=False)
+    assert "reconciled_delta_v2" in query
+    assert "Execution Cost v2" in query
+    assert "CoPilot daily rate limit reset v2" in query
+
+    assert run.amount == -77
+    assert run.usage_charge_amount == -100
+    assert run.usage_adjustment_amount == 25
+    assert run.usage_fee_amount == -2
+    assert reset.description == "Daily limit reset"
+    assert copilot.activity_type == "copilot_tools"
 
 
 @pytest.mark.asyncio(loop_scope="session")
