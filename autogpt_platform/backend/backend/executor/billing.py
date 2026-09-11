@@ -7,6 +7,7 @@ from prisma.enums import AlertCause
 
 from backend.blocks import get_block
 from backend.blocks._base import Block
+from backend.data import credit_metadata
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import NodeExecutionEntry
@@ -194,7 +195,7 @@ def charge_usage(
             graph_id=node_exec.graph_id,
             input={
                 "execution_count": usage_count,
-                "charge": "Execution Cost",
+                credit_metadata.CURRENT_CREDIT_MARKERS.execution_fee_input_key: credit_metadata.CURRENT_CREDIT_MARKERS.execution_fee_input_value,
             },
             reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
         )
@@ -286,7 +287,10 @@ async def charge_reconciled_usage(
             node_id=node_exec.node_id,
             block_id=node_exec.block_id,
             block=block.name,
-            input={**matching_filter, "reconciled_delta": delta},
+            input={
+                **matching_filter,
+                credit_metadata.CURRENT_CREDIT_MARKERS.reconciliation_delta_input_key: delta,
+            },
             reason=(
                 f"Post-flight reconciliation for {block.name}: "
                 f"actual={post_flight} credits, pre-flight={pre_flight}"
