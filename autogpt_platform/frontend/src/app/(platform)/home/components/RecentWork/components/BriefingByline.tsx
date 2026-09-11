@@ -6,7 +6,7 @@ interface Props {
   briefing: HomeBriefing;
 }
 
-/** The brief and its byline. AutoPilot writes it whatever the team did, so
+/** The brief and its byline. Otto writes it whatever the team did, so
  *  the author is never one of the experts the paragraph reports on. */
 export function BriefingByline({ briefing }: Props) {
   const { author, narrative } = briefing;

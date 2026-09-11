@@ -8,7 +8,7 @@ import {
 import { environment } from "@/services/environment";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
+import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
   PLAN_KEYS,
@@ -41,6 +41,8 @@ export function useSubscriptionStep() {
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
+  const steps = useOnboardingWizardStore((s) => s.steps);
+  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
@@ -95,16 +97,17 @@ export function useSubscriptionStep() {
 
     try {
       // The paywall is the first step, so there's no profile to submit yet —
-      // name / role / pain points are collected after payment. On a successful
-      // checkout Stripe returns the user to Welcome to begin onboarding; on
-      // cancel, back to this paywall. Stripe fills {CHECKOUT_SESSION_ID}; plan
-      // and cycle let the return page report the subscription to Google Ads.
+      // role and pain points are collected after payment. On a successful
+      // checkout Stripe returns the user to the step after the paywall to
+      // begin onboarding; on cancel, back to this paywall. Stripe fills
+      // {CHECKOUT_SESSION_ID}; plan and cycle let the return page report the
+      // subscription to Google Ads.
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
-          cancel_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.subscription}&subscription=cancelled`,
+          success_url: `${baseUrl}?step=${(steps.subscription ?? currentStep) + 1}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
+          cancel_url: `${baseUrl}?step=${steps.subscription ?? currentStep}&subscription=cancelled`,
           billing_cycle: cycle,
         },
       });

@@ -48,7 +48,7 @@ export function useExpertChatDrawer({
 
   const { mutateAsync: createSession } = usePostV2CreateSession();
 
-  // Autopilot threads carry no expert id to look up by, so they always
+  // Otto threads carry no expert id to look up by, so they always
   // start fresh; expert threads resume the latest one.
   const wantsLatest =
     isOpen && resumeLatest && !!expertId && !sessionId && !skipLatest;

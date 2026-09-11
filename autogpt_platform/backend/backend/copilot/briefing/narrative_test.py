@@ -156,7 +156,7 @@ async def test_agent_supplied_text_is_escaped_and_fenced():
 @pytest.mark.asyncio
 async def test_autopilot_authors_the_briefing_whatever_the_team_did():
     """The lede used to be written in the voice of whichever expert did most
-    of the reported work. AutoPilot writes it now, and no hired expert can be
+    of the reported work. Otto writes it now, and no hired expert can be
     made its author."""
     content = make_content(
         run_items=[
@@ -169,7 +169,7 @@ async def test_autopilot_authors_the_briefing_whatever_the_team_did():
         await compose_narrative(USER, content)
 
     system = mock.await_args.kwargs["messages"][0]["content"]
-    assert "You are AutoPilot, the user's Head of AI" in system
+    assert "You are Otto, the user's Head of AI" in system
     assert "You are Bo" not in system
     assert "hired expert" not in system
 
@@ -186,7 +186,7 @@ async def test_the_lede_reports_the_team_rather_than_claiming_its_work():
 
 @pytest.mark.asyncio
 async def test_facts_name_the_expert_behind_each_run():
-    """AutoPilot can only credit an expert it was told about."""
+    """Otto can only credit an expert it was told about."""
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, make_content())
 

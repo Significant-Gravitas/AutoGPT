@@ -39,6 +39,8 @@ const reducedVariants = {
 interface Props {
   open: boolean;
   expertName: string;
+  /** Open straight on this provider's connect step instead of the picker. */
+  initialProviderId?: string | null;
   onClose: () => void;
   onConnected: (credential: CredentialsMetaResponse) => void;
 }
@@ -49,6 +51,7 @@ interface Props {
 export function ExpertConnectServiceDialog({
   open,
   expertName,
+  initialProviderId,
   onClose,
   onConnected,
 }: Props) {
@@ -75,7 +78,7 @@ export function ExpertConnectServiceDialog({
     handleBackToList,
     handleContinue,
     handleSuccess,
-  } = useExpertConnectServiceDialog({ open, onConnected });
+  } = useExpertConnectServiceDialog({ open, initialProviderId, onConnected });
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
@@ -175,7 +178,7 @@ export function ExpertConnectServiceDialog({
                               key={option.value}
                               type="button"
                               variant="toggle"
-                              size="xs"
+                              size="small"
                               aria-pressed={filter === option.value}
                               onClick={() => setFilter(option.value)}
                             >
@@ -242,7 +245,7 @@ export function ExpertConnectServiceDialog({
               <>
                 <Button
                   variant="secondary"
-                  size="xs"
+                  size="small"
                   onClick={handleBackToList}
                 >
                   Back
@@ -250,7 +253,7 @@ export function ExpertConnectServiceDialog({
                 {showContinue ? (
                   <Button
                     variant="primary"
-                    size="xs"
+                    size="small"
                     disabled={isContinueDisabled}
                     loading={isConnecting}
                     onClick={handleContinue}
@@ -260,7 +263,7 @@ export function ExpertConnectServiceDialog({
                 ) : null}
               </>
             ) : (
-              <Button variant="secondary" size="xs" onClick={onClose}>
+              <Button variant="secondary" size="small" onClick={onClose}>
                 Cancel
               </Button>
             )}

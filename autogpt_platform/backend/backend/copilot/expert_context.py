@@ -3,7 +3,7 @@
 Two layers with different prompt weights:
 
 - ``build_expert_identity_suffix()`` → ``<expert_identity>`` (the latest Soul,
-  with precedence over the AutoPilot base identity). Appended to the SYSTEM
+  with precedence over the Otto base identity). Appended to the SYSTEM
   prompt on every turn by both engines, so edits affect existing sessions
   while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
@@ -14,7 +14,7 @@ Two layers with different prompt weights:
 
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
-``ExpertSessionUnavailableError`` instead of silently running as AutoPilot.
+``ExpertSessionUnavailableError`` instead of silently running as Otto.
 Plain-session team context and expert workflow context still degrade to ``""``.
 
 Returned strings carry their own separators so callers can concatenate
@@ -93,6 +93,12 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "This private expert session must be reopened in its personal workspace."
         )
+    return render_expert_identity_suffix(expert)
+
+
+def render_expert_identity_suffix(expert: Expert) -> str:
+    """Render ``<expert_identity>`` for an already-loaded, already-validated
+    expert. Pure, so the style eval can prompt with production rendering."""
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
@@ -106,10 +112,17 @@ async def build_expert_identity_suffix(
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
-        f"The base instructions above describe AutoPilot, the platform "
+        f"<first_turn>\n"
+        f"Your first turn after being hired arrives as a hidden instruction "
+        f"that names `expert_onboarding`. On that turn call "
+        f"`expert_onboarding` exactly once and nothing else. Do not use "
+        f"`ask_question` for it; that tool is for later turns. Once the "
+        f"card's answers come back, continue as normal.\n"
+        f"</first_turn>\n"
+        f"The base instructions above describe Otto, the platform "
         f"engine you run on. All platform capabilities and tools remain "
         f"available to you, but you always speak and act as {name}: "
-        f"never present yourself as AutoPilot, and if asked who you are, "
+        f"never present yourself as Otto, and if asked who you are, "
         f"you are {name}.\n"
         f"</expert_identity>"
     )
@@ -210,7 +223,10 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
+    return render_expert_workflows_block(expert) + teammates
 
+
+def render_expert_workflows_block(expert: Expert) -> str:
     if expert.workflows:
         workflow_lines = "\n".join(
             f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} "
@@ -221,7 +237,7 @@ async def _expert_session_context(
     else:
         workflow_lines = "- No workflows installed yet."
 
-    workflows_block = (
+    return (
         f"<expert_workflows>\n"
         f"Workflows installed on this expert. For requests that match a "
         f"workflow's purpose, prefer running it with `run_agent` using the "
@@ -237,7 +253,6 @@ async def _expert_session_context(
         f"completed, when it was blocked or failed.\n"
         f"</expert_workflows>\n\n"
     )
-    return workflows_block + teammates
 
 
 async def _team_context(
@@ -249,7 +264,7 @@ async def _team_context(
     """Roster block for the first user message.
 
     Plain sessions may delegate to a listed expert or suggest opening their
-    thread, but must disclose it — AutoPilot speaks for the platform, so
+    thread, but must disclose it — Otto speaks for the platform, so
     silently answering as (or handing work to) an expert would misattribute
     the work. Expert sessions get the teammate list minus themselves plus the
     ``delegate_to_expert`` rule: a colleague passing work to a colleague is
@@ -259,11 +274,47 @@ async def _team_context(
     With the hire-experts flag off the roster still helps the model route a
     request, but the rule falls back to pointing at the expert's thread —
     naming a tool the turn cannot execute is worse than saying nothing.
+
+    An empty roster on a plain session is the Head-of-AI moment: instead of
+    saying nothing, hand the model the hiring roster so it can propose a
+    first teammate. The flag and the template read are paid only there — an
+    expert session's empty teammate list is just a solo roster, not a user
+    without a team.
     """
     experts = await experts_db().list_experts(user_id, with_metrics=False)
+    hiring_roster: list[Expert] | None = None
+    if (
+        not any(e.id != exclude_expert_id for e in experts)
+        and exclude_expert_id is None
+        and delegation_enabled
+        and await is_feature_enabled(
+            Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
+        )
+    ):
+        hiring_roster = await experts_db().list_templates()
+    return render_team_context(
+        experts,
+        delegation_enabled=delegation_enabled,
+        exclude_expert_id=exclude_expert_id,
+        hiring_roster=hiring_roster,
+    )
+
+
+def render_team_context(
+    experts: list[Expert],
+    *,
+    delegation_enabled: bool,
+    exclude_expert_id: str | None = None,
+    hiring_roster: list[Expert] | None = None,
+) -> str:
+    """Pure renderer; ``hiring_roster`` is the template list for the
+    Head-of-AI block and is only passed when the caller already checked the
+    flag and found nobody hired. ``None`` keeps the empty roster silent."""
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
-        return ""
+        if hiring_roster is None:
+            return ""
+        return _empty_team_context(hiring_roster)
 
     lines = "\n".join(_team_line(e) for e in teammates)
     rule = _team_rule(
@@ -321,4 +372,46 @@ def _team_line(expert: Expert) -> str:
         f"- {escape_prompt_xml_tags(expert.name)} — "
         f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
+    )
+
+
+def _empty_team_context(templates: list[Expert]) -> str:
+    """Head-of-AI block for a user who has hired nobody yet.
+
+    The roster is inlined rather than exposed as a tool: the tool schema has
+    a character budget, and this block is only ever built once per session.
+    """
+    roster = (
+        "Roster:\n" + "\n".join(_template_line(t) for t in templates)
+        if templates
+        else "Roster: none available yet — offer to raise a custom expert."
+    )
+    return (
+        "<team_context>\n"
+        "The user has not hired any experts yet. You are their Head of AI: "
+        "when recurring work shows up, propose hiring one expert from the "
+        "roster below with `hire_expert(template_id=...)`, or raising a "
+        "custom one with `raise_expert(...)`, and say why. Always offer both "
+        "paths (hire from the roster, or raise your own). Propose one hire "
+        "at a time. Never hire silently — both tools return an approval card "
+        "the user must confirm; do not describe the card's contents, the "
+        "user sees it.\n"
+        f"{roster}\n"
+        "</team_context>\n\n"
+    )
+
+
+def _template_line(template: Expert) -> str:
+    workflow_names = (
+        ", ".join(
+            escape_prompt_xml_tags(w.name or "Unnamed workflow")
+            for w in template.workflows
+        )
+        or "none installed"
+    )
+    return (
+        f"- {escape_prompt_xml_tags(template.name)} — "
+        f"{escape_prompt_xml_tags(template.role)} (template_id: {template.id}); "
+        f"{escape_prompt_xml_tags(template.tagline or 'No tagline')}; "
+        f"workflows: {workflow_names}"
     )

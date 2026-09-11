@@ -2,10 +2,13 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
-import Link from "next/link";
+import { Button } from "@/components/atoms/Button/Button";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { useExpertsSection } from "./useExpertsSection";
+
+const RAISE_LABEL = "Raise your own";
+const RAISE_HREF = "/raise";
 
 export function ExpertsSection() {
   const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
@@ -18,7 +21,14 @@ export function ExpertsSection() {
     if (!isLoggedIn) return null;
     return (
       <section id="experts" className="mb-20 scroll-mt-24">
-        <RaiseLink standalone />
+        <Button
+          as="NextLink"
+          href={RAISE_HREF}
+          variant="secondary"
+          size="small"
+        >
+          {RAISE_LABEL}
+        </Button>
       </section>
     );
   }
@@ -32,12 +42,10 @@ export function ExpertsSection() {
         action={
           isLoggedIn ? { label: "View your team", href: "/team" } : undefined
         }
+        secondaryAction={
+          isLoggedIn ? { label: RAISE_LABEL, href: RAISE_HREF } : undefined
+        }
       />
-      {isLoggedIn ? (
-        <div className="-mt-3 mb-6">
-          <RaiseLink />
-        </div>
-      ) : null}
       {isLoading ? (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -56,22 +64,5 @@ export function ExpertsSection() {
         </div>
       )}
     </section>
-  );
-}
-
-type RaiseLinkProps = {
-  standalone?: boolean;
-};
-
-function RaiseLink({ standalone = false }: RaiseLinkProps) {
-  return (
-    <Link
-      href="/raise"
-      className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
-    >
-      {standalone
-        ? "Raise your own expert from scratch"
-        : "…or raise your own expert from scratch"}
-    </Link>
   );
 }

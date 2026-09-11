@@ -66,7 +66,7 @@ class Flag(str, Enum):
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     GRAPHITI_MEMORY = "graphiti-memory"
 
-    # Gates AutoPilot voice mode end-to-end. The speech endpoint 404s when
+    # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
@@ -109,6 +109,13 @@ class Flag(str, Enum):
     # independent briefing kill switch — briefings ship to exactly the
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
+
+    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
+    # dump also produces expert recommendations, the copilot greeting
+    # grows a team section, and Otto's empty-roster context tells
+    # it that it is the Head of AI. Effective only when both are on;
+    # fail-closed (default False).
+    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
     # browse and install end-to-end: the routes 404 when off, so the dark
@@ -190,7 +197,7 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
-    # Shrinks what AutoPilot reads: strips builder-UI annotations from the
+    # Shrinks what Otto reads: strips builder-UI annotations from the
     # block schemas, and digests oversized tool results to the workspace.
     AUTOPILOT_CONTEXT_TRIMMING = "autopilot-context-trimming"
 
