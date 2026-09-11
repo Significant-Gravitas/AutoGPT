@@ -391,11 +391,14 @@ def test_all_tool_names_cover_the_denied_set() -> None:
 # ── ceiling formula (finding 3) ────────────────────────────────────────
 
 
-def _ceiling(daily: int, remaining_usd: float, monkeypatch) -> int:
+def _ceiling(
+    daily: int, remaining_usd: float, monkeypatch, *, weekly: int | None = None
+) -> int:
     """Drive resolve_root_ceiling_microdollars with a fixed tier + balance."""
+    weekly_limit = daily * 5 if weekly is None else weekly
 
     async def _limits(_uid, _d, _w):
-        return daily, daily * 5, "TIER"
+        return daily, weekly_limit, "TIER"
 
     async def _remaining(**_kw):
         return remaining_usd
@@ -460,7 +463,7 @@ def test_uncapped_daily_limit_still_respects_remaining_weekly_budget(
     monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
     monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
     monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
-    assert _ceiling(-1, 0.75, monkeypatch) == 750_000
+    assert _ceiling(-1, 0.75, monkeypatch, weekly=50_000_000) == 750_000
 
 
 def test_isolate_denied_names_are_real_tools() -> None:
