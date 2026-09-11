@@ -25,6 +25,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertDayOneItem,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -122,6 +123,13 @@ def test_list_expert_templates(
         id="template-1",
         is_template=True,
         source_template_id=None,
+        day_one=[
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            )
+        ],
         workflows=[
             _make_workflow_ref(library_agent_id=None, graph_id=None),
         ],
@@ -689,7 +697,9 @@ def test_get_expert_of_other_user_returns_404(
     response = client.get("/experts/expert-1")
 
     assert response.status_code == 404
-    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
+    mock_get.assert_awaited_once_with(
+        test_user_id, "expert-1", include_credentials=True
+    )
 
 
 def test_get_expert_returns_expert(
@@ -706,7 +716,9 @@ def test_get_expert_returns_expert(
 
     assert response.status_code == 200
     assert response.json()["id"] == "expert-1"
-    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
+    mock_get.assert_awaited_once_with(
+        test_user_id, "expert-1", include_credentials=True
+    )
 
 
 def test_list_expert_identities_returns_lifetime_roster_projection(

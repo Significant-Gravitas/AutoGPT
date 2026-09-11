@@ -21,8 +21,8 @@ export interface StepLayout {
 
 // Builds the layout for a deployment: the paywall comes FIRST on cloud so
 // nobody without a plan gets into the wizard, the two intro steps (team, meet
-// AutoPilot) follow when the expert team is on, then the profile steps, then
-// AutoPilot's hire recommendations right after the brain dump they are read
+// Otto) follow when the expert team is on, then the profile steps, then
+// Otto's hire recommendations right after the brain dump they are read
 // from. Self-host has no paywall and instead closes with the "connect a plan
 // you already pay for" step, right before Preparing. Numbering is derived, so
 // nothing can drift.

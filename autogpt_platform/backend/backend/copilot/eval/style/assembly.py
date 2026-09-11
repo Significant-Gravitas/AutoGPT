@@ -32,6 +32,7 @@ from backend.copilot.prompting import (
     get_expert_oversight_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
@@ -114,7 +115,7 @@ def attach_workflows(expert: Expert, fixture: ExpertFixture) -> Expert:
 def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
     """The first-turn context production prepends to the user's message
     (``build_expert_context``): the expert's installed workflows and the rest
-    of the roster as teammates; plain AutoPilot gets the whole roster."""
+    of the roster as teammates; plain Otto gets the whole roster."""
     if expert is None:
         return render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
     return render_expert_workflows_block(expert) + render_team_context(
@@ -127,13 +128,17 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
 def chat_system_prompt(expert: Expert | None) -> str:
     """The SDK engine's system prompt for an expert session (the assembly in
     ``sdk/service.py``) with the flags such a session has on in production:
-    cloud sandbox, hire-experts, memory. ``None`` is plain AutoPilot."""
+    cloud sandbox, hire-experts, memory. ``None`` is plain Otto."""
     suffix = render_expert_identity_suffix(expert) if expert else ""
     return (
         CACHEABLE_SYSTEM_PROMPT
         + get_sdk_supplement(use_e2b=True)
         + (get_delegation_supplement() if DELEGATION_ENABLED else "")
         + get_expert_oversight_supplement(
+            experts_enabled=DELEGATION_ENABLED,
+            expert_id=expert.id if expert else None,
+        )
+        + get_team_building_supplement(
             experts_enabled=DELEGATION_ENABLED,
             expert_id=expert.id if expert else None,
         )

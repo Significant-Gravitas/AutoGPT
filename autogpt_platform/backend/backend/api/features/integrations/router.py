@@ -1451,9 +1451,9 @@ async def _merge_or_create_credential(
     advertises.  Without that guard a narrowed re-auth would overwrite the
     stored ``access_token`` with a token whose grant is smaller than the
     ``scopes`` list — the record would claim authorizations the token does
-    not grant, the credential matcher would happily route AutoPilot tools
+    not grant, the credential matcher would happily route Otto tools
     to that "more capable" credential, and the tool would fail with opaque
-    401/403s on the missing scopes ("AutoPilot keeps picking the old
+    401/403s on the missing scopes ("Otto keeps picking the old
     creds" symptom).  On a narrowing re-auth we keep the existing
     credential intact and persist the new one alongside it instead.
     """

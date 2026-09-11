@@ -45,7 +45,7 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
       "border-yellow-200 bg-yellow-50 text-yellow-700 shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
   },
   autopilot: {
-    label: "AutoPilot",
+    label: "Otto",
     className: "border-zinc-200 bg-white text-zinc-500",
   },
 };

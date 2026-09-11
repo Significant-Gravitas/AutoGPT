@@ -30,9 +30,9 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
     <section className="space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
-          {withHeading && <Text variant="h2">AutoPilot skills</Text>}
+          {withHeading && <Text variant="h2">Otto skills</Text>}
           <Text variant="body" className="!text-zinc-500">
-            Reusable procedures your AutoPilot has distilled from past sessions.
+            Reusable procedures your Otto has distilled from past sessions.
             Review what it remembers, import a new skill, or delete one you no
             longer want it to reach for.
           </Text>
@@ -52,7 +52,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Teach AutoPilot a new skill in chat
+              Teach Otto a new skill in chat
             </TooltipContent>
           </Tooltip>
         </div>
@@ -64,7 +64,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
             message:
               error instanceof Error ? error.message : "Failed to load skills",
           }}
-          context="AutoPilot skills"
+          context="Otto skills"
         />
       ) : isLoading ? (
         <div
@@ -79,7 +79,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
         <ul
           className="flex flex-col gap-3"
           data-testid="skills-list"
-          aria-label="AutoPilot skills"
+          aria-label="Otto skills"
         >
           {skills.map((skill) => (
             <li key={skill.name}>

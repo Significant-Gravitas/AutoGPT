@@ -52,7 +52,7 @@ class HomeBriefingOutcome(BaseModel):
 
 
 class HomeBriefingAuthor(BaseModel):
-    """Who wrote the brief. Always AutoPilot, the account's built-in helper:
+    """Who wrote the brief. Always Otto, the account's built-in helper:
     the brief reports the team's work, so no member of the team authors it.
     `kind` is the seam a future personal-assistant author would widen."""
 
