@@ -841,12 +841,12 @@ async def _copy_assigned_skills_not_yet_owned(
     expert = await experts_db().get_expert(user_id, expert_id, include_workflows=False)
     if expert is None:
         return False
-    have = {s.name.strip().lower() for s in owned}
+    have = {skill_name_key(s.name) for s in owned}
     missing = [
         name
         for name in expert.skills or []
         if name.strip()
-        and name.strip().lower() not in have
+        and skill_name_key(name) not in have
         and name.strip().lower() not in _DEFAULT_SKILLS_BY_NAME
     ]
     if not missing or await _heal_backoff_covers(user_id, expert_id, missing):
@@ -871,6 +871,12 @@ async def _copy_assigned_skills_not_yet_owned(
     # After the copies, so a copy's own cache invalidation cannot drop it.
     await _set_heal_backoff(user_id, expert_id, unresolved)
     return copied
+
+
+def skill_name_key(name: str) -> str:
+    """Compare key for skill names: the row may carry a display name ("Deep
+    Research") for the skill whose folder is ``deep-research``."""
+    return re.sub(r"[\s_-]+", "-", name.strip().lower())
 
 
 def _heal_backoff_key(user_id: str, expert_id: str) -> str:

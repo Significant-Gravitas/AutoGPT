@@ -67,6 +67,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
+    skill_name_key,
 )
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
@@ -1217,7 +1218,8 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 
 
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Record a skill the expert now owns; idempotent and case-insensitive."""
+    """Record a skill the expert now owns; idempotent, and a display name and
+    its slug count as one name."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1226,16 +1228,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isArchived": False,
         },
         lambda names: (
-            names if name.lower() in {n.lower() for n in names} else [*names, name]
+            names
+            if skill_name_key(name) in {skill_name_key(n) for n in names}
+            else [*names, name]
         ),
     )
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Forget a skill the expert no longer owns (case-insensitive)."""
+    """Forget a skill the expert no longer owns, in any spelling of its name."""
     await _rewrite_skill_names(
         {"id": expert_id, "ownerUserId": user_id},
-        lambda names: [n for n in names if n.lower() != name.lower()],
+        lambda names: [n for n in names if skill_name_key(n) != skill_name_key(name)],
     )
 
 

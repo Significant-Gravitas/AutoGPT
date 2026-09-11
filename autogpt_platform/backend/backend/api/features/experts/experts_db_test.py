@@ -4424,6 +4424,31 @@ async def test_update_skills_dropping_a_skill_removes_the_copy_and_the_row_name(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_expert_skill_names_treat_a_display_name_and_its_slug_as_one(
+    server: SpinTestServer, test_user
+):
+    """The row can hold a display name ("My Skill") for the skill stored as
+    "my-skill": recording the slug adds no second entry, and forgetting either
+    spelling removes the one entry."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "My Skill")
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "my-skill")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert [s for s in row.skills if s.lower() in ("my skill", "my-skill")] == [
+        "My Skill"
+    ]
+
+    await experts_db.remove_expert_skill_name(test_user.id, expert_id, "my-skill")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert not [s for s in row.skills if s.lower() in ("my skill", "my-skill")]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("operation", ["add", "remove"])
 async def test_expert_skill_name_write_gives_up_as_a_conflict_after_losing_every_race(
     server: SpinTestServer, test_user, operation
