@@ -104,38 +104,41 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
   }
 
   return (
-    <LazyMotion features={domAnimation} strict>
-      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
-        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
-          <span className="flex min-w-0 items-center gap-3">
-            <ExpertAvatar name={name} avatarUrl={expert?.avatarUrl ?? null} />
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium text-zinc-900">
-                {name}
-              </span>
-              {expert?.role && (
-                <span className="truncate text-xs text-zinc-500">
-                  {expert.role}
-                </span>
-              )}
+    <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
+      <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+        <span className="flex min-w-0 items-center gap-3">
+          <ExpertAvatar name={name} avatarUrl={expert?.avatarUrl ?? null} />
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-medium text-zinc-900">
+              {name}
             </span>
+            {expert?.role && (
+              <span className="truncate text-xs text-zinc-500">
+                {expert.role}
+              </span>
+            )}
           </span>
-          <button
-            type="button"
-            onClick={skip}
-            disabled={isSending}
-            className="shrink-0 rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-50"
-          >
-            Skip
-          </button>
-        </div>
+        </span>
+        <button
+          type="button"
+          onClick={skip}
+          disabled={isSending}
+          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-50"
+        >
+          Skip
+        </button>
+      </div>
 
-        {onboarding.greeting && (
-          <p className="border-b border-zinc-100 px-5 py-4 text-base leading-relaxed text-zinc-700">
-            {onboarding.greeting}
-          </p>
-        )}
+      {onboarding.greeting && (
+        <p className="border-b border-zinc-100 px-5 py-4 text-base leading-relaxed text-zinc-700">
+          {onboarding.greeting}
+        </p>
+      )}
 
+      {/* Wraps only the pager, not the whole card: ``strict`` rejects any
+            ``motion`` component below it, and the header's ExpertAvatar
+            animates its face with the full ``motion`` build. */}
+      <LazyMotion features={domAnimation} strict>
         <m.div
           key={currentStep.keyword}
           initial={{ opacity: 0, y: 8 }}
@@ -162,58 +165,58 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
             onSubmit={advance}
           />
         </m.div>
+      </LazyMotion>
 
-        <div className="flex items-center justify-between px-5 pb-4 pt-1">
-          <span className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Previous question"
-              disabled={current === 0}
-              onClick={goBack}
-              className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
-            >
-              <Icon icon={ArrowLeft01Icon} size={14} />
-            </button>
-            <span
-              aria-hidden="true"
-              className="flex items-center gap-1.5"
-              data-testid="expert-onboarding-progress"
-            >
-              {onboarding.steps.map((step, index) => (
-                <span
-                  key={step.keyword}
-                  className={
-                    "rounded-full transition-all duration-300 " +
-                    (index === current
-                      ? "size-2.5 border-2 border-zinc-800"
-                      : index < current
-                        ? "size-2 bg-zinc-400"
-                        : "size-2 border border-zinc-300")
-                  }
-                />
-              ))}
-            </span>
-            <span className="text-xs text-zinc-400">
-              {current + 1} of {onboarding.steps.length}
-            </span>
-          </span>
-
+      <div className="flex items-center justify-between px-5 pb-4 pt-1">
+        <span className="flex items-center gap-2">
           <button
             type="button"
-            aria-label={isLast ? "Send answers" : "Next question"}
-            disabled={!isAnswered || isSending}
-            onClick={advance}
-            className={
-              "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
-              (isAnswered && !isSending
-                ? "bg-zinc-800 text-white hover:bg-zinc-900"
-                : "bg-zinc-100 text-zinc-400")
-            }
+            aria-label="Previous question"
+            disabled={current === 0}
+            onClick={goBack}
+            className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
           >
-            <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={15} />
+            <Icon icon={ArrowLeft01Icon} size={14} />
           </button>
-        </div>
+          <span
+            aria-hidden="true"
+            className="flex items-center gap-1.5"
+            data-testid="expert-onboarding-progress"
+          >
+            {onboarding.steps.map((step, index) => (
+              <span
+                key={step.keyword}
+                className={
+                  "rounded-full transition-all duration-300 " +
+                  (index === current
+                    ? "size-2.5 border-2 border-zinc-800"
+                    : index < current
+                      ? "size-2 bg-zinc-400"
+                      : "size-2 border border-zinc-300")
+                }
+              />
+            ))}
+          </span>
+          <span className="text-xs text-zinc-400">
+            {current + 1} of {onboarding.steps.length}
+          </span>
+        </span>
+
+        <button
+          type="button"
+          aria-label={isLast ? "Send answers" : "Next question"}
+          disabled={!isAnswered || isSending}
+          onClick={advance}
+          className={
+            "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
+            (isAnswered && !isSending
+              ? "bg-zinc-800 text-white hover:bg-zinc-900"
+              : "bg-zinc-100 text-zinc-400")
+          }
+        >
+          <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={15} />
+        </button>
       </div>
-    </LazyMotion>
+    </div>
   );
 }

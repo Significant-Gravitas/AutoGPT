@@ -110,21 +110,52 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.getByText("1 of 2")).toBeDefined();
   });
 
-  it("will not advance until the step is answered", () => {
+  it("moves on by itself when an option is tapped", () => {
     renderCard(onboardingPart());
 
     expect(actionButton("Next question").disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
 
-    expect(actionButton("Next question").disabled).toBe(false);
+    // A tap is the whole answer, so the tap is also the page turn.
+    expect(screen.getByText("2 of 2")).toBeDefined();
+    expect(
+      screen.getByText("Which service should I be connected to?"),
+    ).toBeDefined();
+  });
+
+  it("will not send until the last step is answered", () => {
+    renderCard(onboardingPart());
+
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
+
+    expect(actionButton("Send answers").disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+
+    expect(actionButton("Send answers").disabled).toBe(false);
+  });
+
+  it("keeps the Next button for a typed answer, which cannot auto-advance", () => {
+    renderCard(onboardingPart());
+
+    fireEvent.click(screen.getByRole("button", { name: /Type something/ }));
+    const textarea = screen.getByRole("textbox");
+
+    expect(actionButton("Next question").disabled).toBe(true);
+
+    fireEvent.change(textarea, { target: { value: "Competitor tracking" } });
+
+    // Still on step one — there is no single moment a typed answer is done.
+    expect(screen.getByText("1 of 2")).toBeDefined();
+    fireEvent.click(actionButton("Next question"));
+    expect(screen.getByText("2 of 2")).toBeDefined();
   });
 
   it("sends every answer as one message on the last step", () => {
     const { onSend } = renderCard(onboardingPart());
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
-    fireEvent.click(actionButton("Next question"));
 
     expect(screen.getByText("2 of 2")).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
@@ -142,7 +173,6 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart());
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
-    fireEvent.click(actionButton("Next question"));
     fireEvent.click(actionButton("Previous question"));
 
     expect(screen.getByText("1 of 2")).toBeDefined();
@@ -199,7 +229,6 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart(), CALL_ID, onSend);
 
     fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
-    fireEvent.click(actionButton("Next question"));
     fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
     fireEvent.click(actionButton("Send answers"));
 
