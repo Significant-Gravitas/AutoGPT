@@ -192,13 +192,18 @@ describe("Experts in marketplace search", () => {
     // — it retries until the roster lands and the flash is gone — so sample
     // every tick until Maria appears and assert it was never painted.
     let sawEmptyState = false;
+    let sawSkeleton = false;
     for (let i = 0; i < 80; i++) {
       if (screen.queryByText("No results found")) sawEmptyState = true;
+      if (screen.queryByRole("status", { name: "Loading search results" }))
+        sawSkeleton = true;
       if (screen.queryByRole("heading", { name: "Experts" })) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
     expect(sawEmptyState).toBe(false);
+    // A blank page would pass the line above; the wait has to be visible.
+    expect(sawSkeleton).toBe(true);
     expect(screen.getByRole("heading", { name: "Experts" })).toBeDefined();
   });
 
@@ -236,6 +241,9 @@ describe("Experts in marketplace search", () => {
 
     for (let i = 0; i < 20; i++) {
       expect(screen.queryByText("No results found")).toBeNull();
+      expect(
+        screen.getByRole("status", { name: "Loading search results" }),
+      ).toBeDefined();
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   });
