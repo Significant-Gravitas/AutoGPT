@@ -3277,6 +3277,10 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert hired.expert.avatar_url is None
     assert hired.expert.bio is None
     assert hired.expert.skills == []
+    # The owner's own skill edit after hire, which no re-seed may touch.
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"skills": ["Customer interviews"]}
+    )
 
     entry: seed.RosterEntry = {
         "name": template.name,
@@ -3298,8 +3302,9 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.avatar_url == "/experts/maria.svg"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
-    assert refreshed.skills == ["Content strategy", "SEO writing"]
-    # A user's rename of their own hire survives the refresh.
+    # A user's rename and skill list survive the refresh: the template's
+    # skills neither replace the owner's nor get merged back into them.
+    assert refreshed.skills == ["Customer interviews"]
     assert refreshed.name == "My Maria"
 
 
