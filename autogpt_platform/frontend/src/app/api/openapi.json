@@ -21044,12 +21044,17 @@
           },
           "resolution": {
             "type": "string",
-            "enum": ["connect", "allow", "workflow"],
+            "enum": ["connect", "allow", "inputs", "workflow"],
             "title": "Resolution"
           },
           "credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Credential Id"
+          },
+          "missing_inputs": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Missing Inputs"
           }
         },
         "type": "object",
@@ -21064,7 +21069,7 @@
           "resolution"
         ],
         "title": "ExpertSetupItem",
-        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``inputs``: the\nworkflow needs the values in ``missing_inputs`` before it can run\nunattended. ``workflow``: nothing is missing, so the schedule needs\ncreating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {
