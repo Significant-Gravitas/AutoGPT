@@ -88,6 +88,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
+    ExpertSkillsConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
@@ -364,6 +365,7 @@ async def validation_error_handler(
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(ExpertSkillsConflictError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))

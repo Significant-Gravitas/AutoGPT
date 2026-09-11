@@ -351,3 +351,7 @@ class ExpertRunPausedError(ValueError):
 
     def __str__(self):
         return self.message
+
+
+class ExpertSkillsConflictError(Exception):
+    """An expert's skill list kept changing under a write; retrying resolves it."""

@@ -38,7 +38,11 @@ from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
 from backend.data.user import get_or_create_user
-from backend.util.exceptions import ExpertRunPausedError, NotFoundError
+from backend.util.exceptions import (
+    ExpertRunPausedError,
+    ExpertSkillsConflictError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -4365,3 +4369,40 @@ async def test_expert_skill_name_write_keeps_an_append_that_lands_mid_write(
         assert "from-the-ui" in names
     else:
         assert "stale" not in names
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("operation", ["add", "remove"])
+async def test_expert_skill_name_write_gives_up_as_a_conflict_after_losing_every_race(
+    server: SpinTestServer, test_user, operation
+):
+    """A row that keeps changing under the write ends in the typed conflict the
+    API maps to 409, after a bounded number of attempts and with nothing written."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "stale")
+    before = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert before is not None
+    real = prisma.models.Expert.prisma()
+    attempts: list[int] = []
+
+    async def always_loses(**kwargs):
+        attempts.append(1)
+        return 0
+
+    manager = SimpleNamespace(find_first=real.find_first, update_many=always_loses)
+    with patch.object(prisma.models.Expert, "prisma", return_value=manager):
+        with pytest.raises(ExpertSkillsConflictError):
+            if operation == "add":
+                await experts_db.add_expert_skill_name(
+                    test_user.id, expert_id, "new-name"
+                )
+            else:
+                await experts_db.remove_expert_skill_name(
+                    test_user.id, expert_id, "stale"
+                )
+
+    assert len(attempts) == experts_db._SKILL_NAME_WRITE_ATTEMPTS
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None and row.skills == before.skills

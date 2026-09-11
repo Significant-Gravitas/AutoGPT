@@ -88,6 +88,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    ExpertSkillsConflictError,
     ExpertWriteNotReadableError,
     NotFoundError,
 )
@@ -1303,8 +1304,9 @@ async def _rewrite_skill_names(
             data={"skills": {"set": names}},
         ):
             return
-    raise RuntimeError(
-        f"Expert #{where.get('id')}'s skill list kept changing under the write"
+    raise ExpertSkillsConflictError(
+        "This expert's skills were changed by another update at the same time. "
+        "Try again."
     )
 
 

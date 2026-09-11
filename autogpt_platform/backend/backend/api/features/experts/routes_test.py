@@ -38,12 +38,17 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
-from backend.util.exceptions import NotFoundError
+from backend.api.rest_api import app as rest_app
+from backend.util.exceptions import ExpertSkillsConflictError, NotFoundError
 from backend.util.feature_flag import Flag
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
 app.include_router(router)
+# The real app's mapping, so dropping it from rest_api.py fails here too.
+app.add_exception_handler(
+    ExpertSkillsConflictError, rest_app.exception_handlers[ExpertSkillsConflictError]
+)
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1005,6 +1010,24 @@ def test_update_expert_skills_unknown_skill_returns_404(
     response = client.put("/experts/expert-1/skills", json={"skills": ["Nope"]})
 
     assert response.status_code == 404
+
+
+def test_update_expert_skills_conflict_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=ExpertSkillsConflictError(
+            "This expert's skills were changed by another update at the same time. "
+            "Try again."
+        ),
+    )
+
+    response = client.put("/experts/expert-1/skills", json={"skills": ["SEO"]})
+
+    assert response.status_code == 409
+    assert "Try again" in response.text
 
 
 def test_update_expert_soul_not_found_returns_404(
