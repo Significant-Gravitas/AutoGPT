@@ -54,39 +54,4 @@ export const tagTransformer = (inputSchema) => {
   };
 };
 
-/**
- * fastapi>=0.141 renders multipart file fields as
- * `{ type: "string", contentMediaType: "application/octet-stream" }` instead of
- * `{ type: "string", format: "binary" }`. orval maps only `format: "binary"`
- * to `Blob`; the new shape generates `string`, which breaks every upload call
- * site that passes a `File`/`Blob`. Restore `format: "binary"` for orval's
- * view of the spec (the committed openapi.json keeps the backend's output
- * verbatim; this only affects client generation).
- *
- * @param {OpenAPIObject} inputSchema
- * @return {OpenAPIObject}
- */
-const binaryUploadTransformer = (inputSchema) => {
-  const schemas = inputSchema.components?.schemas;
-  if (!schemas) {
-    return inputSchema;
-  }
-  for (const schema of Object.values(schemas)) {
-    const props = schema?.properties;
-    if (!props) continue;
-    for (const prop of Object.values(props)) {
-      if (
-        prop?.type === "string" &&
-        prop?.contentMediaType === "application/octet-stream"
-      ) {
-        prop.format = "binary";
-      }
-    }
-  }
-  return inputSchema;
-};
-
-const combinedTransformer = (inputSchema) =>
-  binaryUploadTransformer(tagTransformer(inputSchema));
-
-export default combinedTransformer;
+export default tagTransformer;
