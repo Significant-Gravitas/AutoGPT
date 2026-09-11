@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import setup as expert_setup
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -12,11 +14,16 @@ from backend.api.features.experts.models import (
     MAX_RAISE_ATTACHMENTS,
     WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
+    ExpertActivity,
+    ExpertAvatarUpdate,
+    ExpertBudgetUpdate,
     ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertSetupItem,
+    ExpertSkillsUpdate,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -272,6 +279,14 @@ async def list_expert_identities(
     return await experts_db.list_expert_identities(user_id)
 
 
+@router.get("/setup", operation_id="list_expert_setup_items")
+async def list_expert_setup_items(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertSetupItem]:
+    """What still stands between each expert's scheduled workflows and a schedule."""
+    return await expert_setup.list_setup_items(user_id)
+
+
 @router.get(
     "/{expert_id}",
     operation_id="get_expert",
@@ -281,7 +296,7 @@ async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
-    expert = await experts_db.get_expert(user_id, expert_id)
+    expert = await experts_db.get_expert(user_id, expert_id, include_credentials=True)
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert
@@ -300,6 +315,22 @@ async def list_expert_runs(
     type for the Work surface's typed viewer."""
     try:
         return await experts_db.list_expert_runs(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.get(
+    "/{expert_id}/activity",
+    operation_id="get_expert_activity",
+    responses={404: {"description": "Expert not found"}},
+)
+async def get_expert_activity(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertActivity:
+    """Daily chat-session and run counts for the expert's activity graph."""
+    try:
+        return await experts_db.get_expert_activity(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
@@ -381,6 +412,59 @@ async def update_expert_soul(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
+@router.put(
+    "/{expert_id}/skills",
+    operation_id="update_expert_skills",
+    responses={404: {"description": "Expert or skill not found"}},
+)
+async def update_expert_skills(
+    expert_id: str,
+    request: ExpertSkillsUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_skills(
+            user_id,
+            expert_id,
+            request.skills,
+            marketplace_listing_ids=request.marketplace_listing_ids,
+        )
+    except NotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/avatar",
+    operation_id="update_expert_avatar",
+    responses={404: {"description": "Expert not found"}},
+)
+async def update_expert_avatar(
+    expert_id: str,
+    request: ExpertAvatarUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/budget",
+    operation_id="update_expert_budget",
+    responses={404: {"description": "Expert not found"}},
+)
+async def update_expert_budget(
+    expert_id: str,
+    request: ExpertBudgetUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_budget(user_id, expert_id, request.weekly_budget)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
 @router.post(
     "/{expert_id}/workflows",
     operation_id="install_expert_workflow",
@@ -400,6 +484,31 @@ async def install_expert_workflow(
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete(
+    "/{expert_id}/workflows/{workflow_id}",
+    operation_id="remove_expert_workflow",
+    status_code=204,
+    responses={
+        404: {"description": "Expert or workflow not found"},
+        503: {"description": "Workflow schedule cleanup temporarily unavailable"},
+    },
+)
+async def remove_expert_workflow(
+    expert_id: str,
+    workflow_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    try:
+        await experts_db.remove_workflow(user_id, expert_id, workflow_id)
+    except NotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ExpertScheduleCleanupError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Could not remove the workflow schedule. Please try again.",
+        ) from e
 
 
 @router.get(

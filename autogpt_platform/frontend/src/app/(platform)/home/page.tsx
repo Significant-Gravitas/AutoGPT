@@ -7,7 +7,6 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
-import { HomeBackdrop } from "./components/HomeBackdrop/HomeBackdrop";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
 import { NeedsYou } from "./components/NeedsYou/NeedsYou";
 import { NowNext } from "./components/NowNext/NowNext";
@@ -36,7 +35,6 @@ export default function HomePage() {
   if (isError || !dashboard) {
     return (
       <main className={SHELL_CLASS}>
-        <HomeBackdrop />
         <div className={CONTENT_CLASS}>
           <ErrorCard
             context="home"
@@ -50,7 +48,6 @@ export default function HomePage() {
 
   return (
     <main className={SHELL_CLASS}>
-      <HomeBackdrop />
       <div className={CONTENT_CLASS}>
         <HomeHeader
           greeting={getTimeOfDayGreeting()}
@@ -80,7 +77,6 @@ export default function HomePage() {
 function HomeSkeleton() {
   return (
     <main className={SHELL_CLASS} aria-label="Loading Home…">
-      <HomeBackdrop />
       <div className={CONTENT_CLASS}>
         <div className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
           <div className="space-y-2">
@@ -113,7 +109,7 @@ interface Props {
 
 function HomeTileSkeleton({ cardClassName }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+    <div className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
       <div className="flex h-10 items-center border-b border-zinc-100 px-4">
         <Skeleton className="h-3.5 w-28" />
       </div>
