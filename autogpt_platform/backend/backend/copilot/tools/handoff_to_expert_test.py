@@ -721,6 +721,7 @@ class TestExecuteToolEnforcesDisabledGroups:
                 session=session,
                 tool_call_id="call-1",
                 disabled_groups=["expert_admin"],
+                disabled_tools=(),
             )
 
         execute_mock.assert_not_awaited()
@@ -744,6 +745,7 @@ class TestExecuteToolEnforcesDisabledGroups:
                 session=session,
                 tool_call_id="call-1",
                 disabled_groups=(),
+                disabled_tools=(),
             )
 
         execute_mock.assert_awaited_once()
