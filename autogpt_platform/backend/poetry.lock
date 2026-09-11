@@ -460,7 +460,7 @@ develop = true
 colorama = "^0.4.6"
 cryptography = "^46.0"
 expiringdict = "^1.2.2"
-fastapi = ">=0.130,<1.0"
+fastapi = "^0.141.1"
 google-cloud-logging = "^3.13.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
@@ -8710,4 +8710,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "ffbce2d5bd0842fe56d29df9200124ec15274fa76ce8cf59bdee736f8eecadee"
+content-hash = "96a64c90a0376b2ba49c1b7cb859f293c69ba25175bdebecff8805b3c960ac49"
