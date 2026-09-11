@@ -29,6 +29,7 @@ from backend.copilot.tools.skills import (
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.workspace_scope import WorkspaceScope
+from backend.util.exceptions import ExpertSkillsConflictError
 
 AUTOPILOT = "/skills/mine/SKILL.md"
 EXPERT_A = "/experts/expert-a/skills/own/SKILL.md"
@@ -216,6 +217,30 @@ async def test_a_folder_change_lets_the_heal_retry_a_remembered_name(world):
 
     assert len(scans) == 2
     assert "/experts/expert-a/skills/late-arrival/SKILL.md" in fake.files
+
+
+@pytest.mark.parametrize("tool", ["store", "delete"])
+async def test_a_row_conflict_reaches_the_expert_as_a_retryable_error(world, tool):
+    """A lost compare-and-swap is a retryable conflict, not a failure: the tool
+    passes its message through and must not log it as an exception."""
+    _, experts = world
+    conflict = ExpertSkillsConflictError("Changed at the same time. Try again.")
+    experts.add_expert_skill_name = AsyncMock(side_effect=conflict)
+    experts.remove_expert_skill_name = AsyncMock(side_effect=conflict)
+
+    with patch.object(skills.logger, "exception") as logged:
+        if tool == "store":
+            result = await StoreSkillTool()._execute(
+                "user-1", _expert_session(), name="fresh", description="d", body="b"
+            )
+        else:
+            result = await DeleteSkillTool()._execute(
+                "user-1", _expert_session(), name="own"
+            )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.message == str(conflict)
+    logged.assert_not_called()
 
 
 class _FakeRedis:
