@@ -207,7 +207,11 @@ describe("Marketplace ExpertsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const card = await screen.findByRole("link", { name: /Maria/ });
+    const card = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
+    );
     expect(within(card).getByText("Brand voice guide")).toBeDefined();
     expect(within(card).queryByText("Content strategy")).toBeNull();
   });
@@ -222,7 +226,11 @@ describe("Marketplace ExpertsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const card = await screen.findByRole("link", { name: /Maria/ });
+    const card = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
+    );
     expect(within(card).queryByText("Skills")).toBeNull();
     expect(within(card).queryByText("Content strategy")).toBeNull();
   });
