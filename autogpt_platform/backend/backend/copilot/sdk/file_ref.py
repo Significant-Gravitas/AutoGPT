@@ -186,7 +186,8 @@ async def read_file_bytes(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
             ) from exc
         try:
-            data = bytes(await sandbox.files.read(remote, format="bytes"))
+            raw_data = await sandbox.files.read(remote, format="bytes")
+            data = raw_data.encode() if isinstance(raw_data, str) else bytes(raw_data)
         except (FileNotFoundError, OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
         except Exception as exc:

@@ -13,6 +13,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.context import (
+    resolve_sandbox_path as canonical_resolve_sandbox_path,
+)
 from backend.copilot.sdk.tool_adapter import SDK_DISALLOWED_TOOLS
 
 from .e2b_file_tools import (
@@ -61,6 +64,9 @@ def _expected_bridge_path(file_path: str, prefix: str = "/tmp") -> str:
 
 
 class TestResolveSandboxPath:
+    def test_legacy_export_uses_canonical_resolver(self):
+        assert resolve_sandbox_path is canonical_resolve_sandbox_path
+
     def test_relative_path_resolved(self):
         assert resolve_sandbox_path("src/main.py") == f"{E2B_WORKDIR}/src/main.py"
 

@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
@@ -21,6 +21,8 @@ import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWe
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
+import { useCopilotUIStore } from "../../store";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
@@ -63,6 +65,13 @@ export function EmptySession({
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const resetNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.resetNewChatExecutionTarget,
+  );
+  const newChatExecutionTarget = useCopilotUIStore(
+    (state) => state.newChatExecutionTarget,
+  );
   const intro = useOnboardingIntroCard();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
@@ -89,6 +98,10 @@ export function EmptySession({
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),
   );
+
+  useEffect(() => {
+    resetNewChatExecutionTarget();
+  }, [resetNewChatExecutionTarget]);
 
   // Layout effect (not a regular effect) so the width-dependent placeholder
   // is swapped in before the browser paints — otherwise the shorter default
@@ -174,6 +187,9 @@ export function EmptySession({
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+              {isLocalPCEnabled || newChatExecutionTarget.kind === "local" ? (
+                <ExecutionTargetPicker />
+              ) : null}
               <div
                 className={cn(
                   isBrainDumpEnabled

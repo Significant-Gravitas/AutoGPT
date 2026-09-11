@@ -47,6 +47,8 @@ def build_sdk_env(
     model: str | None = None,
     codex_gateway_url: str | None = None,
     codex_gateway_token: str | None = None,
+    *,
+    enable_computer_use_beta: bool = False,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -66,6 +68,16 @@ def build_sdk_env(
     or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
     vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
     Moonshot since the cache-cost rationale doesn't apply there).
+
+    *enable_computer_use_beta* opts the CLI into the Anthropic
+    ``computer-use-2025-11-24`` beta header via the ``ANTHROPIC_BETAS``
+    env var (which works across subscription, direct, and API-key auth).
+    This is gated by the caller on (a) ``use_local_pc_executor``,
+    (b) the per-user LaunchDarkly flag, and (c) the connected shim
+    advertising the ``computer_use`` capability.  This function adds the
+    final guard: **OpenRouter transport always rejects Anthropic beta
+    headers**, so even if the caller asks for it, OpenRouter mode keeps
+    the strip flag and skips the beta opt-in.
     """
     if (codex_gateway_url is None) != (codex_gateway_token is None):
         raise ValueError(
@@ -166,12 +178,31 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
-    # NOTE: this disables ALL experimental betas including
-    # context-management-2025-06-27.  This is intentional: OpenRouter
-    # compatibility takes priority, and Anthropic direct mode ignores this
-    # flag harmlessly (those betas are not enabled there either by default).
-    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+    # NOTE: this disables ALL experimental betas including context-1m-2025-08-07
+    # (1M context window) and context-management-2025-06-27.  This is intentional:
+    # OpenRouter compatibility takes priority, and Anthropic direct mode ignores
+    # this flag harmlessly (those betas are not enabled there either by default).
+    #
+    # Exception: when LocalPC computer-use is enabled AND the active transport
+    # isn't OpenRouter (which would 4xx the header), drop the strip flag and
+    # opt the CLI into the ``computer-use-2025-11-24`` beta via
+    # ANTHROPIC_BETAS — which works for subscription, direct API key, and the
+    # ``claude login`` OAuth flow. The OpenRouter path keeps the strip
+    # unconditionally because OpenRouter cannot proxy computer-use anyway
+    # (the upstream provider has to be Anthropic for the beta tool family).
+    computer_use_via_cli = enable_computer_use_beta and not config.openrouter_active
+    if computer_use_via_cli:
+        existing_betas = (env.get("ANTHROPIC_BETAS") or "").strip()
+        if "computer-use-2025-11-24" not in existing_betas:
+            env["ANTHROPIC_BETAS"] = (
+                f"{existing_betas},computer-use-2025-11-24".lstrip(",")
+                if existing_betas
+                else "computer-use-2025-11-24"
+            )
+    else:
+        env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
     # Pin the CLI's perceived context window explicitly.  This env var is the
     # highest-precedence input to the CLI's window resolution, so it preempts

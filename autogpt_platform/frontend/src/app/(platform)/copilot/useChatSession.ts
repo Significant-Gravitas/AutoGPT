@@ -6,9 +6,11 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
+import type { CreateSessionRequestExecutionTarget } from "@/app/api/__generated__/models/createSessionRequestExecutionTarget";
+import type { PublicChatSessionMetadata } from "@/app/api/__generated__/models/publicChatSessionMetadata";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
-import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -18,6 +20,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { useCopilotUIStore, type NewChatExecutionTarget } from "./store";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
@@ -27,19 +30,32 @@ import { latestExpertSessionParams } from "./expertSessionQuery";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
+  executionTarget?: NewChatExecutionTarget;
   expertId?: string | null;
   /** Off = keep the fresh new-task state addressed to the expert instead of
    *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
   adoptLatestExpertThread?: boolean;
 }
 
+class ExecutionTargetSelectionError extends Error {}
+
 export function useChatSession({
   dryRun = false,
+  executionTarget,
   expertId = null,
   adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
+  const setExecutionTargetPickerOpen = useCopilotUIStore(
+    (state) => state.setExecutionTargetPickerOpen,
+  );
+  const setExecutionTargetError = useCopilotUIStore(
+    (state) => state.setExecutionTargetError,
+  );
+  const setNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.setNewChatExecutionTarget,
+  );
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
 
   const transportQuery = useGetV2ListChatTransports({
@@ -277,6 +293,20 @@ export function useChatSession({
     }
 
     try {
+      const target = sessionExecutionTargetRequest(executionTarget);
+      if (executionTarget?.kind === "local" && !target) {
+        const message =
+          "Choose a connected computer and folder before starting a Local PC chat.";
+        setExecutionTargetError(message);
+        setExecutionTargetPickerOpen(true);
+        toast({
+          variant: "destructive",
+          title: "Choose a Local PC folder",
+          description: message,
+        });
+        throw new ExecutionTargetSelectionError(message);
+      }
+
       const sessionData: CreateSessionRequest = {};
       // Only an explicit choice travels. Naming the route unconditionally
       // makes every new chat an override, which is how a connection picked
@@ -290,6 +320,7 @@ export function useChatSession({
           sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
         }
       }
+      if (target) sessionData.execution_target = target;
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
@@ -319,6 +350,30 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      if (error instanceof ExecutionTargetSelectionError) throw error;
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        executionTarget?.kind === "local"
+      ) {
+        const message =
+          "The selected computer or folder changed. Reconnect it and choose the folder again.";
+        setNewChatExecutionTarget({
+          ...executionTarget,
+          connectionID: null,
+          browseID: null,
+          directoryRef: null,
+          displayPath: null,
+        });
+        setExecutionTargetError(message);
+        setExecutionTargetPickerOpen(true);
+        toast({
+          variant: "destructive",
+          title: "Local PC connection changed",
+          description: message,
+        });
+        throw error;
+      }
       if (
         error instanceof Error &&
         error.message === "Failed to create session"
@@ -353,6 +408,11 @@ export function useChatSession({
     () => (freshSessionData ? resolveSessionDryRun(sessionQuery.data) : false),
     [sessionQuery.data, freshSessionData],
   );
+
+  const sessionExecutionTarget =
+    sessionId && sessionQuery.data?.status === 200
+      ? readSessionExecutionTarget(sessionQuery.data.data.metadata)
+      : null;
 
   const sessionChatStatus = (
     freshSessionData as { chat_status?: string } | undefined
@@ -404,6 +464,40 @@ export function useChatSession({
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
+  };
+}
+
+function sessionExecutionTargetRequest(
+  target: NewChatExecutionTarget | undefined,
+): CreateSessionRequestExecutionTarget | null {
+  if (!target) return null;
+  if (target.kind === "cloud") return { kind: "cloud" };
+  if (
+    !target.machineID ||
+    !target.connectionID ||
+    !target.browseID ||
+    !target.directoryRef
+  ) {
+    return null;
+  }
+  return {
+    kind: "local",
+    machine_id: target.machineID,
+    expected_connection_id: target.connectionID,
+    browse_id: target.browseID,
+    directory_ref: target.directoryRef,
+  };
+}
+
+function readSessionExecutionTarget(metadata?: PublicChatSessionMetadata) {
+  const target = metadata?.execution_target;
+  if (!target || target.kind === "cloud") return { kind: "cloud" as const };
+  if (!("machine_id" in target)) return null;
+  return {
+    kind: "local" as const,
+    machine_id: target.machine_id,
+    allowed_root: target.allowed_root,
   };
 }

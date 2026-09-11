@@ -87,6 +87,18 @@ export type CopilotLlmAuthSelection =
  *  the docked artifacts library. */
 export type ContextPanelTab = "files" | "artifacts";
 
+export type NewChatExecutionTarget =
+  | { kind: "cloud" }
+  | {
+      kind: "local";
+      machineID: string | null;
+      machineLabel: string | null;
+      connectionID: string | null;
+      browseID: string | null;
+      directoryRef: string | null;
+      displayPath: string | null;
+    };
+
 const isClient = typeof window !== "undefined";
 
 function getPersistedOpen(): boolean {
@@ -238,6 +250,14 @@ interface CopilotUIState {
   /** Developer dry-run mode: sessions created with dry_run=true. */
   isDryRun: boolean;
   setIsDryRun: (enabled: boolean) => void;
+
+  newChatExecutionTarget: NewChatExecutionTarget;
+  setNewChatExecutionTarget: (target: NewChatExecutionTarget) => void;
+  resetNewChatExecutionTarget: () => void;
+  isExecutionTargetPickerOpen: boolean;
+  setExecutionTargetPickerOpen: (open: boolean) => void;
+  executionTargetError: string | null;
+  setExecutionTargetError: (error: string | null) => void;
 
   clearCopilotLocalData: () => void;
 }
@@ -554,6 +574,21 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ isDryRun: enabled });
   },
 
+  newChatExecutionTarget: { kind: "cloud" },
+  setNewChatExecutionTarget: (target) =>
+    set({ newChatExecutionTarget: target }),
+  resetNewChatExecutionTarget: () =>
+    set({
+      newChatExecutionTarget: { kind: "cloud" },
+      isExecutionTargetPickerOpen: false,
+      executionTargetError: null,
+    }),
+  isExecutionTargetPickerOpen: false,
+  setExecutionTargetPickerOpen: (open) =>
+    set({ isExecutionTargetPickerOpen: open }),
+  executionTargetError: null,
+  setExecutionTargetError: (error) => set({ executionTargetError: error }),
+
   clearCopilotLocalData: () => {
     clearContentCache();
     _autoOpenKnownIds.clear();
@@ -573,6 +608,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     // was removed does not keep a dead entry forever.
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
+    storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
     set({
       completedSessionIDs: new Set<string>(),
       contextPanelWidth: DEFAULT_PANEL_WIDTH,
@@ -590,6 +626,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmModel: "standard",
       copilotLlmAuth: null,
       isDryRun: false,
+      newChatExecutionTarget: { kind: "cloud" },
+      isExecutionTargetPickerOpen: false,
+      executionTargetError: null,
     });
     if (isClient) {
       document.title = ORIGINAL_TITLE;
