@@ -272,7 +272,7 @@ def _expert_computer_block() -> str:
     return (
         "<expert_computer>\n"
         "You have your own persistent cloud computer. It is suspended, not "
-        "destroyed, when idle, so what you install and sign into stays.\n"
+        "destroyed, when idle, so what you install stays.\n"
         f"- {WORKSPACE_PATH}: your durable home. Keep your notes, configs, "
         "scripts and tools here and customise it freely.\n"
         f"- {SHARED_PATH}: the user's shared workspace, when mounted. Put "
@@ -280,8 +280,11 @@ def _expert_computer_block() -> str:
         "their other sessions. Trust the tool output on whether it is "
         "mounted: without the mount, say where the file really is instead "
         "of calling it shared.\n"
-        "- Use start_desktop when a task needs a browser or GUI app; your "
-        "browser profile and logins persist between sessions.\n"
+        "- Use start_desktop when a task needs a browser or GUI app. The "
+        "desktop is shared with the user, not private from either of you: "
+        "you can see everything on it, and so can they.\n"
+        "- Never ask the user to sign into personal accounts on this "
+        "desktop; use their connected integrations instead.\n"
         "</expert_computer>\n\n"
     )
 

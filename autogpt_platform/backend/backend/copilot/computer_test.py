@@ -133,7 +133,23 @@ def _desktop(sandbox_id="sb-desk"):
     return d
 
 
+@pytest.fixture(autouse=True)
+def _owner_bound_links():
+    with patch(
+        f"{_C}.create_preview_link",
+        side_effect=lambda user_id, url: f"preview://{user_id}/{url}",
+    ):
+        yield
+
+
 class TestOpenDesktop:
+    @pytest.mark.asyncio
+    async def test_needs_a_user_to_issue_the_link_to(self):
+        with pytest.raises(ValueError, match="authenticated user"):
+            await open_desktop(
+                SandboxOwner(kind="expert", id=_EXPERT), {}, "k", user_id=None
+            )
+
     @pytest.mark.asyncio
     async def test_a_second_opener_waits_and_reattaches(self):
         """Start from the panel and start_desktop from the model can both miss
@@ -149,12 +165,14 @@ class TestOpenDesktop:
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.asyncio.sleep", AsyncMock()) as sleep,
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned") as connect_owned,
             patch(f"{_C}.chat_config") as cfg,
         ):
             cfg.e2b_desktop_timeout = 900
-            desktop_cls.connect = AsyncMock(return_value=desktop)
+            connect_owned.return_value = MagicMock()
+            desktop_cls.return_value = desktop
             desktop_cls.create = AsyncMock()
-            stream, created, _ = await open_desktop(owner, {}, "k")
+            stream, created, _ = await open_desktop(owner, {}, "k", user_id=_USER)
 
         assert not created and stream.sandbox_id == "sb-first"
         sleep.assert_awaited_once()
@@ -183,7 +201,7 @@ class TestOpenDesktop:
             cfg.e2b_desktop_template = "desktop"
             desktop_cls.create = AsyncMock(side_effect=never)
             with pytest.raises(asyncio.TimeoutError):
-                await open_desktop(owner, {}, "k")
+                await open_desktop(owner, {}, "k", user_id=_USER)
         from backend.copilot import computer
 
         assert (
@@ -201,15 +219,16 @@ class TestOpenDesktop:
         with (
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned") as connect_owned,
             patch(f"{_C}.chat_config") as cfg,
         ):
             cfg.e2b_desktop_timeout = 900
             cfg.e2b_desktop_template = "desktop"
-            desktop_cls.connect = AsyncMock(side_effect=NotFoundException("gone"))
+            connect_owned.side_effect = NotFoundException("gone")
             desktop_cls.create = AsyncMock(
                 return_value=(_desktop("sb-new"), PersistenceInfo())
             )
-            stream, created, _ = await open_desktop(owner, {}, "k")
+            stream, created, _ = await open_desktop(owner, {}, "k", user_id=_USER)
         assert created and stream.sandbox_id == "sb-new"
         redis.delete.assert_awaited_once()
 
@@ -224,18 +243,20 @@ class TestOpenDesktop:
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.asyncio.sleep", AsyncMock()),
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned") as connect_owned,
             patch(f"{_C}.chat_config") as cfg,
         ):
             cfg.e2b_desktop_timeout = 900
-            desktop_cls.connect = AsyncMock(side_effect=[RuntimeError("502"), desktop])
+            connect_owned.side_effect = [RuntimeError("502"), MagicMock()]
+            desktop_cls.return_value = desktop
             desktop_cls.create = AsyncMock()
-            stream, created, _ = await open_desktop(owner, {}, "k")
+            stream, created, _ = await open_desktop(owner, {}, "k", user_id=_USER)
             assert not created and stream.sandbox_id == "sb-live"
-            assert desktop_cls.connect.await_count == 2
+            assert connect_owned.await_count == 2
 
-            desktop_cls.connect = AsyncMock(side_effect=RuntimeError("502"))
+            connect_owned.side_effect = RuntimeError("502")
             with pytest.raises(RuntimeError, match="502"):
-                await open_desktop(owner, {}, "k")
+                await open_desktop(owner, {}, "k", user_id=_USER)
         desktop_cls.create.assert_not_awaited()
         redis.delete.assert_not_awaited()
 
@@ -251,13 +272,14 @@ class TestOpenDesktop:
         with (
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned", AsyncMock(return_value=MagicMock())),
             patch(f"{_C}.chat_config") as cfg,
         ):
             cfg.e2b_desktop_timeout = 900
-            desktop_cls.connect = AsyncMock(return_value=desktop)
+            desktop_cls.return_value = desktop
             desktop_cls.create = AsyncMock()
             with pytest.raises(RuntimeError, match="no display"):
-                await open_desktop(owner, {}, "k")
+                await open_desktop(owner, {}, "k", user_id=_USER)
         desktop_cls.create.assert_not_awaited()
         redis.delete.assert_not_awaited()
 
@@ -279,7 +301,7 @@ class TestOpenDesktop:
             cfg.e2b_desktop_template = "desktop"
             desktop_cls.create = AsyncMock(return_value=(desktop, PersistenceInfo()))
             with pytest.raises(ConnectionError):
-                await open_desktop(session_owner, {}, "k")
+                await open_desktop(session_owner, {}, "k", user_id=_USER)
         desktop.kill.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -293,7 +315,7 @@ class TestOpenDesktop:
         ):
             desktop_cls.create = AsyncMock()
             with pytest.raises(RuntimeError, match="still opening"):
-                await open_desktop(owner, {}, "k")
+                await open_desktop(owner, {}, "k", user_id=_USER)
         desktop_cls.create.assert_not_awaited()
         redis.eval.assert_not_awaited()
 
@@ -313,9 +335,14 @@ class TestOpenDesktop:
             desktop_cls.create = AsyncMock(
                 return_value=(_desktop(), PersistenceInfo(volume_mounted=True))
             )
-            stream, created, shared = await open_desktop(owner, mounts, "k")
+            stream, created, shared = await open_desktop(
+                owner, mounts, "k", user_id=_USER
+            )
 
         assert created and shared and stream.sandbox_id == "sb-desk"
+        # The password-bearing URL stays here; callers get an owner-bound link.
+        assert stream.url == f"preview://{_USER}/https://6080-x.e2b.app/vnc.html"
+        assert stream.requires_auth is True
         kwargs = desktop_cls.create.await_args.kwargs
         assert kwargs["volume_mounts"] == mounts
         assert kwargs["metadata"] == {
@@ -324,6 +351,7 @@ class TestOpenDesktop:
             "autogpt_kind": "desktop",
             "autogpt_source": "copilot",
             "autogpt_env": deployment_env(),
+            "autogpt_user": _USER,
             "autogpt_expert": _EXPERT,
             "autogpt_template": "desktop",
             "autogpt_mounts": "attached",
@@ -339,15 +367,46 @@ class TestOpenDesktop:
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.find_owned_sandbox_id", AsyncMock(return_value="sb-old")),
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned") as connect_owned,
             patch(f"{_C}.chat_config") as cfg,
         ):
             cfg.e2b_desktop_timeout = 900
-            desktop_cls.connect = AsyncMock(return_value=desktop)
+            connect_owned.return_value = box = MagicMock()
+            desktop_cls.return_value = desktop
             desktop_cls.create = AsyncMock()
-            stream, created, shared = await open_desktop(owner, {}, "k")
+            stream, created, shared = await open_desktop(owner, {}, "k", user_id=_USER)
 
         assert not created and shared and stream.sandbox_id == "sb-old"
-        # A resumed desktop gets the same running-time limit as a new one.
-        desktop_cls.connect.assert_awaited_once_with("sb-old", "k", timeout_seconds=900)
+        # Reattached only once E2B confirms the box is the owner's, and with
+        # the same running-time limit as a new one.
+        connect_owned.assert_awaited_once_with(
+            "sb-old", owner, "desktop", "k", timeout=900
+        )
+        desktop_cls.assert_called_once_with(box)
         desktop_cls.create.assert_not_awaited()
         desktop.start_stream.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_recovered_id_that_is_not_the_owners_box_is_replaced(self):
+        """The cached id said sb-old; E2B says sb-old is someone else's.  The
+        stale cache entry goes and the owner gets a box of their own."""
+        from backend.copilot.tools.e2b_sandbox import SandboxNotOwnedError
+
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis("sb-old")
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.find_owned_sandbox_id", AsyncMock(return_value=None)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.connect_owned", side_effect=SandboxNotOwnedError("nope")),
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            cfg.e2b_desktop_template = "desktop"
+            desktop_cls.create = AsyncMock(
+                return_value=(_desktop("sb-new"), PersistenceInfo())
+            )
+            stream, created, _ = await open_desktop(owner, {}, "k", user_id=_USER)
+
+        assert created and stream.sandbox_id == "sb-new"
+        redis.delete.assert_awaited_once()
