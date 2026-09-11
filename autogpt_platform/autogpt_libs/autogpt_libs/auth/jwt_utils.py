@@ -78,11 +78,10 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     """
     Parse and validate a JWT token.
 
-    Symmetric (HS*) tokens are verified with the shared secret
-    (`JWT_VERIFY_KEY`); asymmetric tokens are verified against the JWK set
-    published by the platform auth service (`JWT_JWKS_URL`). Both paths can be
-    active at once, which keeps sessions issued by a previous auth provider
-    valid during a migration window.
+    Tokens are verified against the JWK set published by the platform auth
+    service (`JWT_JWKS_URL`), which issues asymmetric (ES256) tokens.
+    Symmetrically signed (HS*) tokens are rejected outright: a shared secret,
+    if leaked, would let anyone forge valid tokens and impersonate users.
 
     :param token: The token to parse
     :param audience: The `aud` claim the token must carry. Defaults to the
@@ -97,40 +96,19 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
 
-    algorithm = header.get("alg", "")
-    if algorithm.startswith("HS"):
-        if not settings.JWT_VERIFY_KEY:
-            raise ValueError("Invalid token: symmetric tokens are not accepted")
-        key = settings.JWT_VERIFY_KEY
-        algorithms = [settings.JWT_ALGORITHM]
-    else:
-        if not settings.JWT_JWKS_URL:
-            raise ValueError("Invalid token: asymmetric tokens are not accepted")
-        try:
-            key = _get_jwks_client().get_signing_key_from_jwt(token).key
-            algorithms = settings.JWT_JWKS_ALGORITHMS
-        except jwt.PyJWKClientError as e:
-            # The legacy verifier supported — and its config text recommended —
-            # asymmetric algorithms, with the public key in JWT_VERIFY_KEY. A
-            # token whose kid isn't in the Better Auth JWK set can therefore
-            # still be a live legacy session from that configuration, so the
-            # migration-window grace extends here too: fall back to the shared
-            # legacy key when it's configured for a matching asymmetric alg.
-            if (
-                settings.JWT_VERIFY_KEY
-                and not settings.JWT_ALGORITHM.startswith("HS")
-                and algorithm == settings.JWT_ALGORITHM
-            ):
-                key = settings.JWT_VERIFY_KEY
-                algorithms = [settings.JWT_ALGORITHM]
-            else:
-                raise ValueError(f"Invalid token: {str(e)}") from e
+    if header.get("alg", "").startswith("HS"):
+        raise ValueError("Invalid token: symmetric tokens are not accepted")
+
+    try:
+        key = _get_jwks_client().get_signing_key_from_jwt(token).key
+    except jwt.PyJWKClientError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
 
     try:
         payload = jwt.decode(
             token,
             key,
-            algorithms=algorithms,
+            algorithms=settings.JWT_JWKS_ALGORITHMS,
             audience=audience,
         )
         return payload
