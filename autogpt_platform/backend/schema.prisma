@@ -1059,6 +1059,9 @@ model Expert {
 
   toolProfile Json?
 
+  // Template-only: up to three creator-written "sets up on day one" rows.
+  dayOne Json?
+
   isTemplate       Boolean  @default(false)
   sourceTemplateId String?
   SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
@@ -1134,7 +1137,7 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
-  @@index([expertId])
+  @@index([expertId, createdAt, id])
 }
 
 // Which of the owner's integration credentials an expert may use.

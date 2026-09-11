@@ -4,7 +4,7 @@ Resolved from persisted session attribution, never from tool arguments. An
 expert session may read and write under its own conversations, read under
 conversations it delegated, and read the account's skills registry. ``None``
 scope means unrestricted: the account owner acting through personal
-AutoPilot, REST endpoints, or system paths.
+Otto, REST endpoints, or system paths.
 """
 
 import posixpath
@@ -21,7 +21,7 @@ SKILLS_ROOT = "/skills/"
 
 EXPERT_FILE_ACCESS_DENIED = (
     "This file is outside this expert's scope. Experts can only access files "
-    "from their own conversations. Open personal AutoPilot to work with other "
+    "from their own conversations. Open personal Otto to work with other "
     "files."
 )
 
