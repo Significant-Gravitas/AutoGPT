@@ -1,9 +1,9 @@
 import json
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
 
@@ -164,6 +164,33 @@ class ExpertCredentialRef(BaseModel):
     type: str
 
 
+EXPERT_DAY_ONE_MAX_ITEMS = 3
+
+
+class ExpertDayOneItem(BaseModel):
+    """One row of a template profile's "What {name} sets up on day one",
+    written by the template's creator rather than derived from its workflows."""
+
+    title: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+    timing: str = Field(default="", max_length=40)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: object) -> object:
+        return _strip_required_soul_field(value)
+
+    @field_validator("description", "timing", mode="before")
+    @classmethod
+    def strip_optional_fields(cls, value: object) -> object:
+        return _strip_optional_soul_field(value)
+
+
+_DAY_ONE_ITEMS: TypeAdapter[list[ExpertDayOneItem]] = TypeAdapter(
+    Annotated[list[ExpertDayOneItem], Field(max_length=EXPERT_DAY_ONE_MAX_ITEMS)]
+)
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -180,6 +207,10 @@ class Expert(BaseModel):
     # pick; always empty on hired copies, which persist the user's plain-text
     # choice in voice_preferences instead.
     voice_samples: list[VoiceSample] = []
+    # Roster templates only; a hire does not copy it.
+    day_one: list[ExpertDayOneItem] = Field(
+        default=[], max_length=EXPERT_DAY_ONE_MAX_ITEMS
+    )
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool
@@ -462,3 +493,17 @@ def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
         except ValidationError:
             continue
     return description, samples
+
+
+def encode_day_one(items: list[ExpertDayOneItem]) -> list[dict[str, str]]:
+    """Validate a template's day-one rows, cap included, into ``dayOne`` JSON."""
+    return _DAY_ONE_ITEMS.dump_python(_DAY_ONE_ITEMS.validate_python(items))
+
+
+def decode_day_one(raw: object) -> list[ExpertDayOneItem]:
+    """Inverse of ``encode_day_one``. A malformed column hides the section
+    instead of failing every templates read."""
+    try:
+        return _DAY_ONE_ITEMS.validate_python(raw or [])
+    except ValidationError:
+        return []
