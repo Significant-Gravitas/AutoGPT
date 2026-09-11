@@ -1,28 +1,39 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   BubbleChatIcon,
+  Calendar03Icon,
+  FlashIcon,
   PencilEdit02Icon,
+  PlugSocketIcon,
   PlusSignIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
+
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
   getExpertRosterStatus,
-  getNeedsSetupCount,
   getWeeklySpend,
 } from "../../helpers";
 import { CardStat, CardStats } from "../CardStats";
@@ -46,8 +57,8 @@ export function ExpertTeamCard({
   onChat,
 }: Props) {
   const blurb = getExpertBlurb(expert);
-  const needsSetupCount = getNeedsSetupCount(expert, schedules);
-  const rosterStatus = getExpertRosterStatus(expert, needsSetupCount);
+  const accent = getRaisedExpertAccent(expert.role, expert.color);
+  const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
@@ -63,7 +74,7 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
+    <div className="relative flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         <Button
@@ -88,21 +99,35 @@ export function ExpertTeamCard({
         <ExpertCover color={expert.color} status={rosterStatus} />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="-mt-11 ml-1 block shrink-0">
-            <Avatar className="size-[5.25rem] rounded-full ring-4 ring-white">
-              {expert.avatar_url ? (
+          <span className="relative z-10 -mt-12 ml-1 block shrink-0">
+            {isUploadedAvatar(expert.avatar_url) ? (
+              <Avatar className="size-[5.5rem] rounded-full ring-4 ring-white">
                 <AvatarImage
-                  src={expert.avatar_url}
+                  src={expert.avatar_url ?? undefined}
                   alt={expert.name}
-                  width={84}
-                  height={84}
+                  width={88}
+                  height={88}
                   className="bg-white"
                 />
-              ) : null}
-              <AvatarFallback className="grain-overlay">
-                {expert.name}
-              </AvatarFallback>
-            </Avatar>
+                <AvatarFallback className="grain-overlay">
+                  {expert.name}
+                </AvatarFallback>
+              </Avatar>
+            ) : (
+              <span className="flex size-[5.5rem] items-center justify-center rounded-full bg-white ring-4 ring-white">
+                <BotAvatar
+                  config={expertAvatarConfig({
+                    name: expert.name,
+                    avatarUrl: expert.avatar_url,
+                    color: expert.color,
+                  })}
+                  status="idle"
+                  trackPointer
+                  size={80}
+                  title={expert.name}
+                />
+              </span>
+            )}
           </span>
 
           <div className="mt-2 flex min-w-0 flex-1 flex-col gap-1">
@@ -124,7 +149,6 @@ export function ExpertTeamCard({
             <SpendMeter
               spent={weeklySpend?.spent ?? 0}
               budget={weeklySpend?.budget ?? 1}
-              color={expert.color}
               muted={!weeklySpend}
             />
           </div>
@@ -140,27 +164,49 @@ export function ExpertTeamCard({
           >
             {expert.name}
           </Text>
-          <Text variant="body" tone="muted" className="line-clamp-2">
-            {expert.role}
+          {/* Same pill as the expert page header and the marketplace card. */}
+          <Text
+            variant="small-medium"
+            as="span"
+            className={cn(
+              "inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
+              accent.pill,
+            )}
+          >
+            <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
+            <span className="truncate">{expert.role}</span>
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
             {blurb}
           </Text>
-          {needsSetupCount > 0 ? (
-            <Badge variant="warning" size="small" className="mt-1">
-              {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
-            </Badge>
-          ) : null}
         </div>
 
-        <div className="w-full px-2">
+        <div className="w-full px-2 pl-5">
           <CardStats className="mt-3 w-full">
-            <CardStat label="Schedules">{schedules.length}</CardStat>
-            <CardStat label="Skills">{expert.skills.length}</CardStat>
-            <CardStat label="Workflows">{expert.workflows.length}</CardStat>
-            <CardStat label="Integrations">
-              {expert.credential_count ?? 0}
-            </CardStat>
+            <CardStat
+              icon={Calendar03Icon}
+              label="Schedules"
+              singular="schedule"
+              count={schedules.length}
+            />
+            <CardStat
+              icon={SparklesIcon}
+              label="Skills"
+              singular="skill"
+              count={expert.skills.length}
+            />
+            <CardStat
+              icon={FlashIcon}
+              label="Workflows"
+              singular="workflow"
+              count={expert.workflows.length}
+            />
+            <CardStat
+              icon={PlugSocketIcon}
+              label="Integrations"
+              singular="integration"
+              count={expert.credential_count ?? 0}
+            />
           </CardStats>
         </div>
       </Link>
@@ -172,7 +218,7 @@ export function ExpertTeamCard({
           </Text>
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             loading={isResuming}
             onClick={handleResume}
           >
@@ -184,7 +230,7 @@ export function ExpertTeamCard({
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           variant="secondary"
-          size="xs"
+          size="small"
           className="flex-1"
           leadingIcon={BubbleChatIcon}
           onClick={() => onChat(expert.id)}
@@ -192,8 +238,8 @@ export function ExpertTeamCard({
           Chat
         </Button>
         <Button
-          variant="outline"
-          size="xs"
+          variant="secondary"
+          size="small"
           className="flex-1"
           leadingIcon={PlusSignIcon}
           onClick={handleInstallClick}

@@ -116,7 +116,9 @@ export function RecentChats() {
                     group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
                   }
                   avatarUrl={expert?.avatarUrl ?? null}
+                  color={expert?.color ?? null}
                   newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
+                  isAutopilot={!group.expertId}
                   sessions={group.sessions}
                   renderItem={renderItem}
                 />

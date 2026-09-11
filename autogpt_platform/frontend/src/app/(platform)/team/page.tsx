@@ -13,15 +13,18 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { UserGroupIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { notFound } from "next/navigation";
+import { useState } from "react";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
+import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
+import { TeamRosterToolbar } from "./components/TeamRoster/TeamRosterToolbar";
+import { useTeamRosterView } from "./components/TeamRoster/useTeamRosterView";
 import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
@@ -29,8 +32,10 @@ const MAIN_CLASS =
   "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 px-4 pb-16 pt-6 duration-500 sm:px-8 md:px-12 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 const TABS = [
-  { value: "overview", label: "Team Overview", icon: UserGroupIcon },
+  { value: "overview", label: "Overview", icon: UserGroupIcon },
 ] as const;
+
+type TeamTab = (typeof TABS)[number]["value"];
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
@@ -52,6 +57,11 @@ export default function TeamPage() {
     openChat,
     closeChat,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
+  const [tab, setTab] = useState<TeamTab>("overview");
+  const roster = useTeamRosterView({
+    experts: hiredExperts,
+    schedulesForExpert,
+  });
 
   if (!ready) {
     return (
@@ -87,12 +97,9 @@ export default function TeamPage() {
       <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Icon icon={UserGroupIcon} size={18} className="text-zinc-950" />
-              <Text variant="large-medium" as="h5" tone="primary">
-                Team
-              </Text>
-            </div>
+            <Text variant="lead-medium" as="h1" tone="primary">
+              Team
+            </Text>
             <Text variant="body" tone="secondary" className="max-w-prose">
               Autopilot and your hired experts, ready to work.
             </Text>
@@ -108,23 +115,42 @@ export default function TeamPage() {
           />
         ) : null}
 
-        <TabsLine variant="compact" defaultValue="overview">
-          <TabsLineList className="overflow-x-auto border-b-transparent">
-            {TABS.map((tab) => (
-              <TabsLineTrigger
-                key={tab.value}
-                value={tab.value}
-                icon={tab.icon}
-              >
-                {tab.label}
-              </TabsLineTrigger>
-            ))}
-          </TabsLineList>
+        <TabsLine
+          variant="compact"
+          value={tab}
+          onValueChange={(next) => setTab(next as TeamTab)}
+        >
+          {/* The roster's search and filter share the tabs row, right-aligned,
+              and only while the roster is the tab being shown. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsLineList className="w-auto overflow-x-auto border-b-transparent">
+              {TABS.map((item) => (
+                <TabsLineTrigger
+                  key={item.value}
+                  value={item.value}
+                  icon={item.icon}
+                >
+                  {item.label}
+                </TabsLineTrigger>
+              ))}
+            </TabsLineList>
+            {tab === "overview" ? (
+              <TeamRosterToolbar
+                query={roster.query}
+                onQueryChange={roster.setQuery}
+                filter={roster.filter}
+                onFilterChange={roster.setFilter}
+              />
+            ) : null}
+          </div>
 
           <TabsLineContent value="overview" className="space-y-6">
+            <SetupNeeded enabled={Boolean(enabled) && ready} />
             <TeamRoster
               isLoading={isLoading}
               experts={hiredExperts}
+              visibleExperts={roster.visibleExperts}
+              isNarrowed={roster.isNarrowed}
               schedulesForExpert={schedulesForExpert}
               renderCard={renderCard}
               onAutopilotChat={() => openChat(null)}
