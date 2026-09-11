@@ -29,6 +29,8 @@ READ_TOOLS: frozenset[str] = frozenset(
     {
         "ask_question",
         "decompose_goal",
+        # A hire's first-turn intake card; nothing runs until the user answers.
+        "expert_onboarding",
         "find_agent",
         "find_block",
         "find_library_agent",

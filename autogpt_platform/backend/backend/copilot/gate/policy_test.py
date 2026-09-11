@@ -110,6 +110,12 @@ def test_listing_expert_chats_is_a_silent_read():
     assert tier_for("list_expert_chats") is Tier.READ
 
 
+def test_the_hire_intake_card_is_never_gated():
+    """The kickoff turn's first call; gating it would hold the card that
+    replaced the auto-run behind the approval it exists to avoid."""
+    assert tier_for("expert_onboarding") is Tier.READ
+
+
 def test_scheduling_escalates_because_the_scheduled_run_is_ungated():
     assert escalates_under_taint("schedule_followup")
 
