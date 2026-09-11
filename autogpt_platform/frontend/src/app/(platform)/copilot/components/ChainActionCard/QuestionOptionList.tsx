@@ -49,10 +49,17 @@ export function QuestionOptionList({
     // tabbing past the pager to reach send. Selecting first means tabbing in
     // and hitting Enter can't submit an option nobody chose — and arrowing or
     // clicking already selects, so those reach the pager on the first Enter.
+    // Space reaches the native button's click the same way, so it only selects,
+    // like the arrows do, leaving a pointer click the one thing that advances.
     if (isKey(event, "Enter")) {
       event.preventDefault();
       if (options[index] === value.trim()) onSubmit();
       else onChange(options[index]);
+      return;
+    }
+    if (isKey(event, " ")) {
+      event.preventDefault();
+      onChange(options[index]);
       return;
     }
     const step = isKey(event, "ArrowDown", "ArrowRight")

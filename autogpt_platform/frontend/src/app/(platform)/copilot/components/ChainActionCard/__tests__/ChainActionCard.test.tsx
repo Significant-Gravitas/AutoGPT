@@ -1213,6 +1213,27 @@ describe("ChainActionCard", () => {
       expect(screen.getByText("Which region?")).toBeDefined();
     });
 
+    it("selects without advancing when Space is pressed on an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: " " });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+    });
+
     it("keeps two same-keyword questions on their own cards", () => {
       // Keywords are unique only within a request, so the pager keys on
       // position — sharing an id would stop the field remounting, leaving the

@@ -1,10 +1,6 @@
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  render as baseRender,
-  screen,
-} from "@/tests/integrations/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render as baseRender, screen } from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
@@ -87,8 +83,6 @@ describe("ToolChain", () => {
   beforeEach(() => {
     onSend.mockClear();
   });
-
-  afterEach(cleanup);
 
   it("renders nothing when no parts map to chain rows", () => {
     const { container } = render(<ToolChain parts={[]} isStreaming={false} />);
