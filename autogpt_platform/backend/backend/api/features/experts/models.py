@@ -184,6 +184,9 @@ class Expert(BaseModel):
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
     credential_count: int = 0
+    # Distinct providers behind credential_count, first-seen order, for the
+    # /team card's logos.
+    credential_providers: list[str] = []
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None

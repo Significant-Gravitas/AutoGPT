@@ -111,7 +111,7 @@ beforeEach(() => {
 });
 
 describe("Settings memory page", () => {
-  it("renders recent memories for the AutoPilot scope", async () => {
+  it("renders recent memories for the Otto scope", async () => {
     mockHappyPath();
     render(<SettingsMemoryPage />);
 
@@ -185,7 +185,7 @@ describe("Settings memory page", () => {
     expect(confirm.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText(/214 memories/)).toBeDefined();
 
-    await user.type(screen.getByPlaceholderText("AutoPilot"), "AutoPilot");
+    await user.type(screen.getByPlaceholderText("Otto"), "Otto");
     await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
 
     await user.click(confirm);
@@ -287,7 +287,7 @@ describe("Settings memory page", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "View my summary" }));
 
-    expect(await screen.findByText("AutoPilot's memory")).toBeDefined();
+    expect(await screen.findByText("Otto's memory")).toBeDefined();
     await waitFor(() => expect(createBodies.length).toBe(1));
     await waitFor(() => expect(streamBodies.length).toBe(1));
     expect(streamBodies[0]).toContain(

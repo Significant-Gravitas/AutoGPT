@@ -23,7 +23,7 @@ export function getScopeName(
   scopeExpertID: string | null,
   experts: Expert[] | undefined,
 ) {
-  if (!scopeExpertID) return "AutoPilot";
+  if (!scopeExpertID) return "Otto";
   const expert = experts?.find((e) => e.id === scopeExpertID);
   return expert?.name ?? "this expert";
 }
