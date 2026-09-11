@@ -120,7 +120,7 @@ export const COLORS: ColorOption[] = [
   {
     id: "lavender",
     label: "Lavender",
-    role: "AutoPilot",
+    role: "Otto",
     light: "#c4b5fd",
     body: "#a78bfa",
     mid: "#8b5cf6",

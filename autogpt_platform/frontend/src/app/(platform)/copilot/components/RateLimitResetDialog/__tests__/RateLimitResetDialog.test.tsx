@@ -46,7 +46,7 @@ describe("RateLimitResetDialog", () => {
       <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
     );
 
-    expect(screen.getByText("Daily AutoPilot limit reached")).toBeDefined();
+    expect(screen.getByText("Daily Otto limit reached")).toBeDefined();
     expect(
       screen.getByText(/You've reached your daily usage limit/),
     ).toBeDefined();
@@ -159,6 +159,6 @@ describe("RateLimitResetDialog", () => {
       <RateLimitResetDialog isOpen={false} onClose={vi.fn()} resetsAt={null} />,
     );
 
-    expect(screen.queryByText("Daily AutoPilot limit reached")).toBeNull();
+    expect(screen.queryByText("Daily Otto limit reached")).toBeNull();
   });
 });

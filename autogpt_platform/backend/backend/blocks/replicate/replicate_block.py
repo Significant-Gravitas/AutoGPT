@@ -194,7 +194,7 @@ class ReplicateModelBlock(Block):
         """Merge uploaded ``files`` into ``model_inputs`` under ``file_input_field``.
 
         Files are converted to data URIs so Replicate can fetch them, letting
-        AutoPilot pass file references instead of inlining base64 by hand. A
+        Otto pass file references instead of inlining base64 by hand. A
         single file is bound as one value; multiple files as a list — matching
         how most Replicate model schemas type their file fields.
         """

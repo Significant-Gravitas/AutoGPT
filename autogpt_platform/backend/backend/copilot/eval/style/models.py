@@ -15,7 +15,7 @@ PROMPTS_PER_EXPERT = 27
 
 # Which arm produced a response: the expert's own suffix judged against its
 # own spec (the number the baseline stores), the same response judged against a
-# different expert's spec, or plain AutoPilot with no suffix at all. The two
+# different expert's spec, or plain Otto with no suffix at all. The two
 # controls exist to prove the judge separates before the score is trusted.
 Arm = Literal["expert", "wrong_spec", "no_suffix"]
 

@@ -1,32 +1,39 @@
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import {
+  AUTOPILOT_AVATAR_BG_CLASS,
+  AUTOPILOT_AVATAR_URL,
+  AUTOPILOT_NAME,
+} from "./helpers";
 
 interface Props {
   size?: number;
   className?: string;
 }
 
-/** AutoPilot's mark. The built-in helper has no avatar image of its own, so
- *  the embossed AutoGPT logo stands in for one wherever it is named. */
+/** Otto's face at any pixel size, on the cyan disc with the outline every
+ *  expert avatar wears. */
 export function AutopilotAvatar({ size = 24, className }: Props) {
-  // Sized inline rather than by Tailwind class: callers pass an arbitrary
-  // pixel size (18, 20, 24 and 36 are live) and the logo tracks it by ratio.
-  const logoSize = Math.round(size * 0.58);
-
   return (
-    <span
+    <Avatar
       style={{ width: size, height: size }}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-white to-zinc-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_-2px_4px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-inset ring-zinc-200/70",
+        "shrink-0 border border-stone-500",
+        AUTOPILOT_AVATAR_BG_CLASS,
         className,
       )}
     >
-      <AutoGPTLogo
-        hideText
-        viewBox="47 -1 42 42"
-        className="h-auto"
-        style={{ width: logoSize }}
+      <AvatarImage
+        src={AUTOPILOT_AVATAR_URL}
+        alt={AUTOPILOT_NAME}
+        width={size}
+        height={size}
       />
-    </span>
+      <AvatarFallback>{AUTOPILOT_NAME}</AvatarFallback>
+    </Avatar>
   );
 }
