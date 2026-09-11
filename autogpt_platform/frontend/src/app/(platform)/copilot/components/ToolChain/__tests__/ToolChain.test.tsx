@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render as baseRender, screen } from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -82,6 +82,12 @@ function getRowToggle(name: RegExp): HTMLElement {
 describe("ToolChain", () => {
   beforeEach(() => {
     onSend.mockClear();
+  });
+
+  afterEach(() => {
+    useCopilotUIStore.setState((state) => ({
+      artifactPanel: { ...state.artifactPanel, isOpen: false },
+    }));
   });
 
   it("renders nothing when no parts map to chain rows", () => {
@@ -237,10 +243,9 @@ describe("ToolChain", () => {
 
   it("auto-expands browser rows while the artifact panel is open", async () => {
     const user = userEvent.setup();
-    const { artifactPanel } = useCopilotUIStore.getState();
-    useCopilotUIStore.setState({
-      artifactPanel: { ...artifactPanel, isOpen: true },
-    });
+    useCopilotUIStore.setState((state) => ({
+      artifactPanel: { ...state.artifactPanel, isOpen: true },
+    }));
 
     render(
       <ToolChain
@@ -260,10 +265,6 @@ describe("ToolChain", () => {
       name: /opened "https:\/\/agpt.co"/i,
     });
     expect(row.getAttribute("aria-expanded")).toBe("true");
-
-    useCopilotUIStore.setState({
-      artifactPanel: { ...artifactPanel, isOpen: false },
-    });
   });
 
   it("surfaces the latest error in the heading and drops the Done step", async () => {
