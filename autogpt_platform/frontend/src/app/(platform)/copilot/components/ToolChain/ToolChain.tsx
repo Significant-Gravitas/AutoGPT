@@ -214,13 +214,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   // The cards are already gone by the time a send can fail — the user's
   // message is appended optimistically and the chat's error banner offers
-  // Retry — so the failure only needs to be said out loud, like the
-  // composer does.
+  // Retry — so the failure only needs to be said out loud, and the toast
+  // points at the thread rather than the composer.
   function sendReply(message: string) {
     void Promise.resolve(onSend(message)).catch((error: unknown) =>
       toast({
         title: "Couldn't send message",
-        description: describeSendFailure(error),
+        description: describeSendFailure(
+          error,
+          "it is still in the thread, use Retry to send it again",
+        ),
         variant: "destructive",
       }),
     );

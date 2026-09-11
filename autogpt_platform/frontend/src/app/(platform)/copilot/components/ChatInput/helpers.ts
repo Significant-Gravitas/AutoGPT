@@ -44,11 +44,12 @@ export const COMPACT_SEND_BUTTON_CLASS =
 export const CARD_SEND_BUTTON_CLASS =
   "size-9 rounded-full border-transparent bg-zinc-950 text-white transition-[background-color,transform] hover:border-transparent hover:bg-zinc-800 active:scale-[0.98] disabled:border-transparent disabled:bg-zinc-950/[0.06] disabled:text-zinc-400";
 
-/** Shared with the chain's cards: every path that sends a message reports a
- *  rejection the same way. */
-export function describeSendFailure(error: unknown) {
+/** Shared by every path that sends a message. `recovery` is the lowercase
+ *  clause telling the user where their text went, e.g. "your message is
+ *  back in the composer". */
+export function describeSendFailure(error: unknown, recovery: string) {
   const reason = error instanceof Error ? error.message.trim() : "";
   return reason
-    ? `${reason} — your message is back in the composer.`
-    : "Your message is back in the composer. Try again.";
+    ? `${reason} — ${recovery}.`
+    : `${recovery.charAt(0).toUpperCase()}${recovery.slice(1)}. Try again.`;
 }

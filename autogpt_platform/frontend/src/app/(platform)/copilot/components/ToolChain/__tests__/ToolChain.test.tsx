@@ -438,6 +438,8 @@ describe("ToolChain", () => {
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Couldn't send message",
+          description:
+            "boom — it is still in the thread, use Retry to send it again.",
           variant: "destructive",
         }),
       ),

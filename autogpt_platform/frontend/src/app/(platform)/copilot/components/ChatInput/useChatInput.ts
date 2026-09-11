@@ -78,7 +78,10 @@ export function useChatInput({
       setValue((current) => restoreFailedDraft(current, message));
       toast({
         title: "Couldn't send message",
-        description: describeSendFailure(error),
+        description: describeSendFailure(
+          error,
+          "your message is back in the composer",
+        ),
         variant: "destructive",
       });
     } finally {
