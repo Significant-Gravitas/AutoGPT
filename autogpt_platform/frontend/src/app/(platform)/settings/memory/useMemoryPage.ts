@@ -31,7 +31,7 @@ export function useMemoryPage() {
   );
 
   // A selected expert can disappear (fired in another tab, roster changed) —
-  // fall back to AutoPilot instead of driving queries with a dead scope id.
+  // fall back to Otto instead of driving queries with a dead scope id.
   useEffect(() => {
     if (!scopeExpertID || !expertsSettled) return;
     if (!experts.some((expert) => expert.id === scopeExpertID)) {

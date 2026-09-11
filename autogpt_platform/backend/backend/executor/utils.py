@@ -1394,7 +1394,7 @@ async def _add_graph_execution(
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
         # The persisted row is authoritative on resume. A caller cannot turn
-        # an AutoPilot run into an expert run or swap one expert for another.
+        # an Otto run into an expert run or swap one expert for another.
         if expert_id is not None and expert_id != graph_exec.expert_id:
             raise ValueError(
                 f"Expert scope does not match graph execution #{graph_exec.id}"

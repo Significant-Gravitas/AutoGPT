@@ -1,8 +1,8 @@
-"""Read the user's chats with their hired experts — AutoPilot only, never writes.
+"""Read the user's chats with their hired experts — Otto only, never writes.
 
-An expert's chat is the user's own data, but it lives outside the AutoPilot
+An expert's chat is the user's own data, but it lives outside the Otto
 thread and nothing in the session context carries it. These two tools give
-AutoPilot the read the user already has in the UI: the same paginated query,
+Otto the read the user already has in the UI: the same paginated query,
 so the same ownership check, and the same hidden-row and injected-context
 filtering the chat API applies before rendering.
 """

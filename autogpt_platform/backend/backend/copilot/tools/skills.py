@@ -78,7 +78,7 @@ SKILL_FOLDER = "/skills"
 
 
 def skill_folder(expert_id: str | None) -> str:
-    """Owner folder. Personal AutoPilot's skills live under ``/skills``; each
+    """Owner folder. Personal Otto's skills live under ``/skills``; each
     expert's own skills under ``/experts/<id>/skills``. Ownership is the
     folder — there is no separate assignment record."""
     return SKILL_FOLDER if expert_id is None else expert_skills_folder(expert_id)
@@ -90,7 +90,7 @@ def skill_folder(expert_id: str | None) -> str:
 SKILLS_INDEX_CACHE_TTL_S = 60
 SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:{user_id}"
 
-# A skill name on an expert's row that resolves to no folder in AutoPilot's
+# A skill name on an expert's row that resolves to no folder in Otto's
 # library — a marketplace attachment, or a skill deleted after assignment —
 # can never be copied, so the heal below remembers it and stops re-scanning.
 # The TTL bounds how long a name that becomes copyable waits for its backfill.
@@ -265,7 +265,7 @@ async def resolve_skill_scope(
 ) -> WorkspaceScope | None:
     """Workspace grants for an expert session's skill folder.
 
-    ``None`` means unrestricted — personal AutoPilot, REST callers, and
+    ``None`` means unrestricted — personal Otto, REST callers, and
     anonymous default-skill reads. The scope comes from the persisted expert
     attribution on the session, never from a tool argument.
     """
@@ -288,7 +288,7 @@ async def resolve_skill_owner(
     """Decide the skill owner for a tool call, or return a denial message.
 
     An expert session always operates on its own folder; naming any other
-    owner is refused. Personal AutoPilot operates on its own folder by
+    owner is refused. Personal Otto operates on its own folder by
     default and may name one of the owner's active experts to manage that
     expert's skills.
     """
@@ -372,7 +372,7 @@ async def delete_user_skill(
     scope: WorkspaceScope | None = None,
 ) -> str:
     """Delete a user-distilled skill folder by slug from *expert_id*'s folder
-    (personal AutoPilot's when ``None``).
+    (personal Otto's when ``None``).
 
     Returns the normalised slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
@@ -463,7 +463,7 @@ async def store_user_skill(
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
-    The skill lands in *expert_id*'s folder (personal AutoPilot's when
+    The skill lands in *expert_id*'s folder (personal Otto's when
     ``None``) and becomes that owner's skill. Shared by the ``store_skill``
     copilot tool and the REST ``POST /skills`` upload endpoint so both honour
     the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
@@ -800,7 +800,7 @@ async def list_user_skills(
     *,
     heal_missing: bool = True,
 ) -> list[ParsedSkill]:
-    """Return the skills owned by *expert_id* (personal AutoPilot when ``None``).
+    """Return the skills owned by *expert_id* (personal Otto when ``None``).
 
     Two-level fast path: a 60s Redis cache covers warm turns, the
     ``WorkspaceFile.metadata`` index covers cold turns without any storage
@@ -829,7 +829,7 @@ async def _copy_assigned_skills_not_yet_owned(
     """Give the expert a copy of every skill its row lists but its folder
     lacks, and report whether anything landed.
 
-    Assignments made before skills were owned per expert point at AutoPilot's
+    Assignments made before skills were owned per expert point at Otto's
     library and have no copy anywhere, so without this an existing expert
     silently drops to the built-in defaults. Runs only on a cache miss, and
     only while something is actually missing. A name that resolves to nothing
@@ -915,7 +915,7 @@ async def read_user_skill_with_body(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
 ) -> ParsedSkill | None:
-    """Return a single skill owned by *expert_id* (personal AutoPilot when
+    """Return a single skill owned by *expert_id* (personal Otto when
     ``None``) with its body populated.
 
     Used by the ``read_skill`` MCP tool and the REST GET ``/skills/{name}``
@@ -965,7 +965,7 @@ async def list_user_skill_sibling_paths(
 
 
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
-    """Folder slug of personal AutoPilot's skill called *name*."""
+    """Folder slug of personal Otto's skill called *name*."""
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
 
 
@@ -1012,9 +1012,9 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
 
 
 async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str | None:
-    """Give *expert_id* its own copy of one of personal AutoPilot's skills.
+    """Give *expert_id* its own copy of one of personal Otto's skills.
 
-    Returns the stored slug, or ``None`` when AutoPilot has no such skill.
+    Returns the stored slug, or ``None`` when Otto has no such skill.
     Idempotent: an expert that already owns the slug keeps its copy. The
     SKILL.md is re-validated through :func:`store_user_skill`; sibling files
     are copied best-effort afterwards.
@@ -1114,7 +1114,7 @@ async def list_all_skills(
     :func:`get_default_skills`.
 
     *expert_id* selects whose skills follow the defaults: an expert's own
-    folder, or personal AutoPilot's when ``None``. Neither ever sees the
+    folder, or personal Otto's when ``None``. Neither ever sees the
     other's skills.
     """
     skills = get_default_skills_for_index()
@@ -1193,7 +1193,7 @@ async def build_skills_context(
 
 _EXPERT_ID_PARAM = {
     "type": "string",
-    "description": "Manage this expert's skills (AutoPilot only).",
+    "description": "Manage this expert's skills (Otto only).",
 }
 
 
@@ -1357,7 +1357,7 @@ class StoreSkillTool(BaseTool):
 
 
 def _owner_label(expert_id: str | None) -> str:
-    return "personal AutoPilot" if expert_id is None else f"expert {expert_id}"
+    return "personal Otto" if expert_id is None else f"expert {expert_id}"
 
 
 class ReadSkillTool(BaseTool):

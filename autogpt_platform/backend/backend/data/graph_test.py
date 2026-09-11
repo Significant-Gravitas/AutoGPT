@@ -2923,7 +2923,7 @@ def test_codegen_with_codex_transport_yields_codex_slot():
 
 
 def test_autopilot_codex_credentials_slot_is_not_required():
-    """AutoPilot's codex_credentials declares default=None, so the graph must
+    """Otto's codex_credentials declares default=None, so the graph must
     not demand it — the block falls back to the platform transport."""
     graph = _graph_with([_node("n1", AUTOPILOT_BLOCK_ID, {"prompt": "hi"})])
 
@@ -2946,7 +2946,7 @@ def test_codex_transport_node_merges_with_autopilot_codex_slot():
 
     slots = _slots(graph)
     assert list(slots) == ["codex_oauth2_credentials"]
-    # Required because the CodeGen node requires it, even though AutoPilot's is optional.
+    # Required because the CodeGen node requires it, even though Otto's is optional.
     assert slots["codex_oauth2_credentials"] == ({"codex"}, {"oauth2"}, True)
 
 
@@ -3046,7 +3046,7 @@ def test_graph_credential_slots_agree_with_executor_defaults():
 
 
 def test_unmapped_discriminator_value_contributes_no_credential():
-    """AutoPilot's `platform` transport is deliberately absent from
+    """Otto's `platform` transport is deliberately absent from
     `discriminator_mapping` because it needs no credential. Discriminating on
     it raises ("is not supported. It may have been deprecated"), and this runs
     inside the `credentials_input_schema` computed_field — so an unguarded
@@ -3123,7 +3123,7 @@ _LEGACY_CODEX_META = {
 
 
 def _autopilot_graph(input_default: dict) -> Graph:
-    """Build a 1-node AutoPilot graph with whatever input shape the test pins."""
+    """Build a 1-node Otto graph with whatever input shape the test pins."""
     node = Node(
         id="00000000-0000-0000-0000-0000000000a1",
         block_id=AUTOPILOT_BLOCK_ID,
@@ -3140,7 +3140,7 @@ def _autopilot_graph(input_default: dict) -> Graph:
 
 @pytest.mark.parametrize("for_run", [False, True])
 def test_legacy_autopilot_node_without_transport_is_valid(for_run: bool):
-    """Every AutoPilot node saved before `transport` existed has a codex
+    """Every Otto node saved before `transport` existed has a codex
     connection and no transport. Making `codex_credentials` depend on
     `transport` turned that shape into "Requires transport to be set" — a 400
     on save *and* on execute, naming a field the user's exported JSON does not

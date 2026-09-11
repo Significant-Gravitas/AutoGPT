@@ -5,6 +5,7 @@
     "boundaries": "",
     "color": "",
     "credential_count": 0,
+    "credential_providers": [],
     "id": "raised-1",
     "identity": "I'm Otto, raised by you. I learn how you work and grow with you.",
     "is_archived": false,
