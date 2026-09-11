@@ -1,6 +1,8 @@
+import { ProfileEntry } from "../../[expertId]/components/ProfileEntry";
 import { AUTOPILOT_BLURB } from "../../helpers";
 
 const ENTRIES = [
+  { label: "Bio", value: AUTOPILOT_BLURB },
   {
     label: "Identity",
     value:
@@ -21,18 +23,13 @@ const ENTRIES = [
 export function AutopilotAboutSection() {
   return (
     <section className="space-y-5">
-      <p className="text-base leading-relaxed text-zinc-600">
-        {AUTOPILOT_BLURB}
-      </p>
-
-      <dl className="space-y-5">
+      <dl className="space-y-4">
         {ENTRIES.map((entry) => (
-          <div key={entry.label}>
-            <dt className="text-sm font-medium text-zinc-900">{entry.label}</dt>
-            <dd className="mt-1 text-base leading-relaxed text-zinc-600">
-              {entry.value}
-            </dd>
-          </div>
+          <ProfileEntry
+            key={entry.label}
+            label={entry.label}
+            value={entry.value}
+          />
         ))}
       </dl>
     </section>

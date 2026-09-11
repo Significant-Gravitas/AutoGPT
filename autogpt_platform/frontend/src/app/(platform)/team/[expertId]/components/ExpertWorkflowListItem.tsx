@@ -5,8 +5,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
-import { Activity01Icon } from "@hugeicons/core-free-icons";
+import {
+  Activity01Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
+import Image from "next/image";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
@@ -14,14 +20,16 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
-  expertId: string;
+  expertId?: string;
   accentClassName: string;
+  onAsk?: (prompt: string) => void;
 }
 
 export function ExpertWorkflowListItem({
   workflow,
   expertId,
   accentClassName,
+  onAsk,
 }: Props) {
   const {
     name,
@@ -33,9 +41,11 @@ export function ExpertWorkflowListItem({
     libraryHref,
     builderHref,
     chatHref,
+    chatPrompt,
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
+  const [hasImageError, setHasImageError] = useState(false);
   const meta = [
     workflow.schedule_cron
       ? safeHumanizeCronExpression(workflow.schedule_cron)
@@ -48,7 +58,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex items-center gap-4 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:bg-zinc-50"
+      className="group relative flex items-center gap-4 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink
@@ -58,39 +68,47 @@ export function ExpertWorkflowListItem({
         />
       ) : null}
 
-      <div
-        className={cn(
-          accentClassName,
-          "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
-        )}
-      >
-        <Icon
-          icon={status.icon}
-          size={18}
-          role="img"
-          aria-label={status.label}
-        />
-      </div>
+      {/* A square as tall as the text column, title through meta line. */}
+      {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
+        <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
+          <Image
+            src={libraryAgent.image_url}
+            alt=""
+            fill
+            sizes="96px"
+            onError={() => setHasImageError(true)}
+            className="object-cover"
+          />
+        </div>
+      ) : (
+        <div
+          className={cn(
+            accentClassName,
+            "pointer-events-none flex aspect-square shrink-0 items-center justify-center self-stretch rounded-lg border-0",
+          )}
+        >
+          <Icon icon={WorkflowSquare01Icon} size={20} aria-hidden="true" />
+        </div>
+      )}
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" className="truncate text-zinc-900">
+          <Text variant="body-medium" tone="primary" className="truncate">
             {name}
           </Text>
-          <span
+          <Text
+            variant="small-medium"
+            as="span"
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
+              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
               status.className,
             )}
           >
             {status.label}
-          </span>
+          </Text>
         </div>
         {workflow.description ? (
-          <Text
-            variant="small"
-            className="mt-0.5 truncate text-sm text-zinc-500"
-          >
+          <Text variant="body" tone="muted" className="mt-0.5 truncate">
             {workflow.description}
           </Text>
         ) : null}
@@ -98,8 +116,9 @@ export function ExpertWorkflowListItem({
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-zinc-600">
             {meta.length > 0 ? (
               <Text
-                variant="small"
-                className="flex items-center gap-1.5 text-sm leading-5 text-zinc-600"
+                variant="body"
+                tone="secondary"
+                className="flex items-center gap-1.5 leading-5"
               >
                 <Icon icon={Activity01Icon} size={14} className="shrink-0" />
                 {meta.join(" · ")}
@@ -120,7 +139,10 @@ export function ExpertWorkflowListItem({
           name={name}
           builderHref={builderHref}
           chatHref={chatHref}
-          buttonClassName="h-8 w-8 rounded-md border-transparent p-0 text-zinc-700 hover:border-transparent hover:bg-zinc-50"
+          chatPrompt={chatPrompt}
+          onAsk={onAsk}
+          variant="ghost"
+          size="icon-sm"
         />
         {libraryAgent ? (
           <span className="ml-1">

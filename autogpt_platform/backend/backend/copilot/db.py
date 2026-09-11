@@ -69,6 +69,20 @@ MAX_LOADED_CHAT_MESSAGES = 1000
 # guarantee already apply, and the cap-hit signal lives in ``has_more``.
 
 
+async def get_chat_session_expert_ids(
+    user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    """Map each of *user_id*'s sessions in *session_ids* to the expert it is
+    scoped to (``None`` for a personal AutoPilot session). Sessions that do
+    not belong to the user are left out."""
+    if not session_ids:
+        return {}
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id}
+    )
+    return {row.id: row.expertId for row in rows}
+
+
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     """Get chat session metadata (without messages) for ownership validation."""
     session = await PrismaChatSession.prisma().find_unique(
@@ -781,6 +795,7 @@ async def get_user_chat_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
+    experts_only: bool = False,
     pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
@@ -796,17 +811,20 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
-    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL.
-    The explicit flag is necessary because ``expert_id=None`` retains the
-    existing meaning of "all expert scopes" for user-facing session lists.
+    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL,
+    ``experts_only`` to those whose ``expertId`` is set. The explicit flags
+    are necessary because ``expert_id=None`` retains the existing meaning of
+    "all expert scopes" for user-facing session lists.
 
     ``pinned_first=False`` provides strict recency ordering for internal
     adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
-    if expert_id is not None and autopilot_only:
-        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+    if sum((expert_id is not None, autopilot_only, experts_only)) > 1:
+        raise ValueError(
+            "expert_id, autopilot_only and experts_only are mutually exclusive"
+        )
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -826,9 +844,15 @@ async def get_user_chat_sessions(
         conditions.append(f'"expertId" = ${len(params)}')
     elif autopilot_only:
         conditions.append('"expertId" IS NULL')
+    elif experts_only:
+        conditions.append('"expertId" IS NOT NULL')
     params.extend((limit, offset))
+    # "id" breaks ties: without a total order, LIMIT/OFFSET paging can skip or
+    # repeat a row when two sessions share an updatedAt.
     ordering = (
-        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+        '"isPinned" DESC, "updatedAt" DESC, "id" DESC'
+        if pinned_first
+        else '"updatedAt" DESC, "id" DESC'
     )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '

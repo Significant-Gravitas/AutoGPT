@@ -47,14 +47,11 @@ from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
-    CreateAPIKeyRequest,
-    CreateAPIKeyResponse,
     CreateGraph,
     GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
-    UpdatePermissionsRequest,
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
@@ -74,7 +71,6 @@ from backend.copilot.tools.skills import (
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -129,6 +125,10 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial_billing import (
+    TRIAL_BILLING_EVENTS,
+    sync_trials_for_billing_event,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -158,6 +158,7 @@ from backend.monitoring.instrumentation import (
 )
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
+from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -166,7 +167,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
@@ -874,7 +875,7 @@ class SubscriptionTierRequest(BaseModel):
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["NO_TIER", "TRIAL", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> monthly amount in cents
     tier_costs_yearly: dict[str, int] = Field(
@@ -1174,6 +1175,11 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
+        raise HTTPException(
+            409,
+            "Your accepted plan starts after your trial. Manage the trial in billing.",
+        )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -1200,7 +1206,7 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled = await is_feature_enabled(
+    payment_enabled, payment_flag_authoritative = await evaluate_feature_flag(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
@@ -1233,6 +1239,20 @@ async def update_subscription_tier(
                 # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
+        if not payment_flag_authoritative:
+            # An unreadable flag reads False exactly like payment being off, and
+            # the DB flip below would strand a still-billing Stripe subscription.
+            logger.error(
+                f"Refusing to cancel subscription for user {user_id}: "
+                f"{Flag.ENABLE_PLATFORM_PAYMENT} could not be evaluated"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel your subscription right now. "
+                    "Please try again or contact support."
+                ),
+            )
         await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
@@ -1501,6 +1521,8 @@ async def _notify_checkout_completed(session: dict) -> None:
         ).model_dump_json(),
     )
     if not result.success:
+        if (session.get("metadata") or {}).get("trial_enrollment_id"):
+            raise RuntimeError("Could not queue the trial welcome notice")
         logger.warning(
             "stripe_webhook: could not queue the welcome email for session %s: %s",
             session_id,
@@ -1558,6 +1580,12 @@ async def stripe_webhook(request: Request):
     # Acknowledge with 200 and a warning so Stripe stops retrying.
     event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    if event_type in TRIAL_BILLING_EVENTS:
+        # This idempotent path only reconciles current Stripe state. Do not let
+        # a claim left by a crashed delivery suppress card removal/restoration.
+        await sync_trials_for_billing_event(event_type, event.get("data"))
+        return Response(status_code=200)
 
     # Event-level dedup: short-circuit identical re-deliveries before any
     # handler runs. Stripe retries the same event.id on non-2xx responses, and
@@ -1629,10 +1657,16 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_succeeded":
             await handle_subscription_payment_success(data_object)
+            await on_trial_invoice(data_object, paid=True)
+
+        if event_type == "customer.subscription.trial_will_end":
+            await sync_subscription_from_stripe(data_object)
+            await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
-            await lifecycle.on_payment_failed(data_object)
+            if not await on_trial_invoice(data_object, paid=False):
+                await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1648,9 +1682,11 @@ async def stripe_webhook(request: Request):
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
+                    await on_trial_invoice(invoice_payload, paid=True)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
-                    await lifecycle.on_payment_failed(invoice_payload)
+                    if not await on_trial_invoice(invoice_payload, paid=False):
+                        await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1698,6 +1734,7 @@ async def get_credit_history(
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
+    cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
@@ -1708,6 +1745,8 @@ async def get_credit_history(
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
     )
 
 
@@ -2507,7 +2546,7 @@ async def download_shared_file(
     if not file:
         raise HTTPException(status_code=404, detail="Not found")
 
-    return await create_file_download_response(file, inline=True)
+    return await create_file_download_response(file)
 
 
 ########################################################
@@ -2901,119 +2940,3 @@ async def delete_copilot_skill(
     except SkillNotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
     return {"name": slug}
-
-
-########################################################
-#####################  API KEY ##############################
-########################################################
-
-
-@v1_router.post(
-    "/api-keys",
-    summary="Create new API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def create_api_key(
-    request: CreateAPIKeyRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> CreateAPIKeyResponse:
-    """Create a new API key"""
-    api_key_info, plain_text_key = await api_key_db.create_api_key(
-        name=request.name,
-        user_id=user_id,
-        permissions=request.permissions,
-        description=request.description,
-        organization_id=ctx.org_id,
-    )
-    return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
-
-
-@v1_router.get(
-    "/api-keys",
-    summary="List user API keys",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_keys(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> list[api_key_db.APIKeyInfo]:
-    """List all API keys for the user"""
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
-    )
-
-
-@v1_router.get(
-    "/api-keys/{key_id}",
-    summary="Get specific API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-    if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
-    return api_key
-
-
-@v1_router.delete(
-    "/api-keys/{key_id}",
-    summary="Revoke API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Revoke an API key"""
-    return await api_key_db.revoke_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.post(
-    "/api-keys/{key_id}/suspend",
-    summary="Suspend API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def suspend_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Suspend an API key"""
-    return await api_key_db.suspend_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.put(
-    "/api-keys/{key_id}/permissions",
-    summary="Update key permissions",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def update_permissions(
-    key_id: str,
-    request: UpdatePermissionsRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Update API key permissions"""
-    return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
-    )

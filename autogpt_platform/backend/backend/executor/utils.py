@@ -7,6 +7,7 @@ from collections import defaultdict
 from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast
 
+from prisma.enums import ReviewStatus
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
@@ -27,6 +28,7 @@ from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
 from backend.data.db_accessors import experts_db as get_experts_db
+from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
@@ -1245,6 +1247,8 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
@@ -1269,6 +1273,8 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
             bypass_paywall=bypass_paywall,
         )
     except GraphValidationError:
@@ -1300,6 +1306,8 @@ async def _add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1346,6 +1354,12 @@ async def _add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
@@ -1409,6 +1423,26 @@ async def _add_graph_execution(
                 team_id = graph_exec.team_id
             if not bypass_paywall:
                 await _enforce_expert_run_budget(user_id, expert_id)
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                decision = await _parked_spend_decision(
+                    user_id, expert_id, graph_exec.id
+                )
+                if decision == ReviewStatus.WAITING:
+                    return graph_exec
+                if decision == ReviewStatus.REJECTED:
+                    await edb.update_node_execution_status_batch(
+                        [ne.node_exec_id for ne in graph_exec.node_executions],
+                        ExecutionStatus.TERMINATED,
+                    )
+                    await edb.update_graph_execution_stats(
+                        graph_exec_id=graph_exec.id,
+                        status=ExecutionStatus.TERMINATED,
+                        stats=GraphExecutionStats(
+                            error="Additional spending declined by the user"
+                        ),
+                    )
+                    graph_exec.status = ExecutionStatus.TERMINATED
+                    return graph_exec
 
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
@@ -1500,12 +1534,31 @@ async def _add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
+
+        # Spend approval (SECRT-2599): once the expert has reached her
+        # threshold the run is held, unpublished, until the user approves it.
+        # Nested runs were gated with their parent; admin requeues are exempt.
+        if expert_id and not dry_run and parent_exec_id is None and not bypass_paywall:
+            if needed := await _spend_approval_required(user_id, expert_id):
+                await _park_for_spend_approval(
+                    user_id=user_id,
+                    graph_exec_id=graph_exec.id,
+                    graph_id=graph_id,
+                    graph_version=graph_exec.graph_version,
+                    needed=needed,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+                graph_exec.status = ExecutionStatus.REVIEW
+                return graph_exec
 
     # Generate execution context if it's not provided
     if execution_context is None:
@@ -1654,6 +1707,22 @@ async def _add_graph_execution(
         logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
 
     return graph_exec
+
+
+async def _spend_approval_required(user_id: str, expert_id: str):
+    return await spend_approval_db().spend_approval_required(user_id, expert_id)
+
+
+async def _park_for_spend_approval(**kwargs) -> None:
+    await spend_approval_db().park_execution_for_spend_approval(**kwargs)
+
+
+async def _parked_spend_decision(
+    user_id: str, expert_id: str, graph_exec_id: str
+) -> ReviewStatus | None:
+    return await spend_approval_db().parked_spend_decision(
+        user_id, expert_id, graph_exec_id
+    )
 
 
 # ============ Execution Output Helpers ============ #

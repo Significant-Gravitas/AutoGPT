@@ -1,7 +1,7 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   TabsLine,
@@ -18,12 +18,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { notFound } from "next/navigation";
 import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedulesSection";
-import { TeamSkillsSection } from "./components/TeamSkillsSection";
+import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
+import { AUTOPILOT_PILL_CLASS } from "../helpers";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
-import { AutopilotSummaryCard } from "./components/AutopilotSummaryCard";
-import { AutopilotWorkflowsSection } from "./components/AutopilotWorkflowsSection";
+import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
 import { useAutopilotPage } from "./useAutopilotPage";
 
 const MAIN_CLASS =
@@ -38,7 +38,7 @@ const TABS = [
 
 export default function AutopilotPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const { experts, schedules, skills, isLoading, isError, refetch } =
+  const { schedules, workflows, skills, isLoading, isError, refetch } =
     useAutopilotPage({ enabled: Boolean(enabled) && ready });
 
   if (!ready || isLoading) {
@@ -68,44 +68,26 @@ export default function AutopilotPage() {
     );
   }
 
-  const workflowCount = experts.reduce(
-    (total, expert) => total + expert.workflows.length,
-    0,
-  );
-
   return (
     <main className={MAIN_CLASS}>
       <BackToTeamLink />
       <AutopilotHeader />
 
-      <TabsLine defaultValue="basics">
-        <TabsLineList
-          flush
-          className="overflow-x-auto"
-          indicatorClassName="bg-zinc-900"
-        >
+      <Text variant="body" tone="muted">
+        Built in, always on your team.
+      </Text>
+
+      <TabsLine variant="compact" defaultValue="basics">
+        <TabsLineList className="overflow-x-auto">
           {TABS.map((tab) => (
-            <TabsLineTrigger
-              key={tab.value}
-              value={tab.value}
-              className="gap-1.5 px-2.5 py-2 text-xs leading-5 data-[state=active]:text-zinc-900"
-            >
-              <Icon icon={tab.icon} size={14} />
+            <TabsLineTrigger key={tab.value} value={tab.value} icon={tab.icon}>
               {tab.label}
             </TabsLineTrigger>
           ))}
         </TabsLineList>
 
         <TabsLineContent value="basics">
-          <div className="grid gap-4 lg:grid-cols-[3fr_1fr]">
-            <AutopilotAboutSection />
-            <AutopilotSummaryCard
-              experts={experts}
-              scheduleCount={schedules.length}
-              skillCount={skills.length}
-              workflowCount={workflowCount}
-            />
-          </div>
+          <AutopilotAboutSection />
         </TabsLineContent>
 
         <TabsLineContent value="schedules">
@@ -118,11 +100,16 @@ export default function AutopilotPage() {
         </TabsLineContent>
 
         <TabsLineContent value="workflows">
-          <AutopilotWorkflowsSection experts={experts} />
+          <ExpertWorkflowsSection
+            expertName="Autopilot"
+            workflows={workflows}
+            accentClassName={AUTOPILOT_PILL_CLASS}
+            emptyMessage="No workflows yet. Workflows in your library that no expert owns show up here."
+          />
         </TabsLineContent>
 
         <TabsLineContent value="skills">
-          <TeamSkillsSection expertName="Autopilot" skills={skills} />
+          <AutopilotSkillsSection skills={skills} />
         </TabsLineContent>
       </TabsLine>
     </main>

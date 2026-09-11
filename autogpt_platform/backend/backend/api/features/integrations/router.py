@@ -3,7 +3,7 @@ import logging
 import secrets
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -93,6 +93,7 @@ from .codex import (
     revoke_codex_credentials,
 )
 from .codex import router as codex_router
+from .failure_events import CredentialFailure, report_credential_failure
 from .models import (
     ProviderConstants,
     ProviderMetadata,
@@ -223,6 +224,9 @@ async def _start_codex_login(
     )
 
 
+MCPAuthScheme = Literal["basic", "bearer"]
+
+
 class CredentialsMetaResponse(BaseModel):
     id: str
     provider: str
@@ -233,6 +237,10 @@ class CredentialsMetaResponse(BaseModel):
     host: str | None = Field(
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
+    )
+    mcp_auth_scheme: MCPAuthScheme | None = Field(
+        default=None,
+        description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
 
@@ -255,16 +263,27 @@ class CredentialsMetaResponse(BaseModel):
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider in (
-            ProviderName.MCP,
-            ProviderName.MCP.value,
-            "ProviderName.MCP",
-        ):
+        if _is_mcp_credential(cred):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
 
 
+def _is_mcp_credential(cred: Credentials) -> TypeGuard[OAuth2Credentials]:
+    """Whether this is an MCP credential, across the provider spellings in use."""
+    return isinstance(cred, OAuth2Credentials) and cred.provider in (
+        ProviderName.MCP,
+        ProviderName.MCP.value,
+        "ProviderName.MCP",
+    )
+
+
 def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    mcp_auth_scheme = None
+    if _is_mcp_credential(cred):
+        stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
+        if stored_scheme in get_args(MCPAuthScheme):
+            mcp_auth_scheme = stored_scheme
+
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -273,6 +292,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
     )
 
@@ -327,7 +347,14 @@ async def callback(
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {user_id}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.PROVIDER_REGISTRATION_WRONG,
+            "invalid_state_token",
+            "Invalid or expired state token",
+            provider=provider.value,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
@@ -356,10 +383,15 @@ async def callback(
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
-            # For now, we'll just log the warning and continue
-            logger.warning(
+            # Stored and accepted anyway; the frontend then refuses to select it,
+            # so this is the only record that the credential is short.
+            report_credential_failure(
+                logger,
+                CredentialFailure.SCOPES_TOO_NARROW,
+                "granted_scopes_narrower",
                 f"Granted scopes {credentials.scopes} for provider {provider.value} "
-                f"do not include all requested scopes {scopes}"
+                f"do not include all requested scopes {scopes}",
+                provider=provider.value,
             )
 
     except Exception as e:
@@ -477,7 +509,13 @@ async def _credential_for_grant(
     try:
         return await creds_manager.store.get_creds_by_id(user_id, credential_id)
     except Exception as e:
-        logger.warning(f"Could not read stored credential for {provider}: {e}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.DEVICE_CODE_RACE,
+            "credential_unreadable",
+            f"Could not read stored credential for {provider}: {e}",
+            provider=provider_key(provider),
+        )
         return None
 
 
@@ -730,11 +768,13 @@ async def _ensure_managed_credentials_bounded(user_id: str) -> None:
             timeout=_MANAGED_PROVISION_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
-        logger.warning(
-            "Managed credential sweep exceeded %.1fs for user=%s; "
+        report_credential_failure(
+            logger,
+            CredentialFailure.MANAGED_PROVISIONING_LATE,
+            "sweep_timeout",
+            f"Managed credential sweep exceeded {_MANAGED_PROVISION_TIMEOUT_S:.1f}s; "
             "continuing without it — provisioning will complete in background",
-            _MANAGED_PROVISION_TIMEOUT_S,
-            user_id,
+            user_id=user_id,
         )
         asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
 
@@ -1199,6 +1239,7 @@ async def _execute_webhook_node_trigger(
             nodes_input_masks={node.id: {"payload": payload}},
             organization_id=org_id,
             team_id=ws_id,
+            webhook_id=webhook_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1307,6 +1348,7 @@ async def _execute_webhook_preset_trigger(
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
+            webhook_id=webhook.id,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
@@ -1865,6 +1907,8 @@ async def list_providers(
 
         load_all_blocks()
     except Exception as e:
+        # The list still returns, one provider short — every card for a missing
+        # provider then renders as a permanent loading state, not an error.
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()

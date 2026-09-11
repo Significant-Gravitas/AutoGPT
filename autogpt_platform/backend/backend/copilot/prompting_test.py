@@ -52,6 +52,14 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_contains_rejection_rule(self):
+        """This section collects rules from several PRs at once, so a merge
+        that takes one side drops a rule silently."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "refused a credential the user already has" in result
+        assert "Connecting is not running" in result
+        assert "The card asks for credentials, not inputs" in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability
@@ -91,3 +99,71 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
+
+
+class TestTeamBuildingSupplement:
+    """``hire_expert`` / ``raise_expert`` are ``expert_admin`` tools, so only a
+    plain AutoPilot turn with the team flag on may be told to grow the roster.
+    An expert session sees both sides of a delegation but cannot hire."""
+
+    def test_an_autopilot_turn_with_the_flag_on_is_head_of_ai(self):
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "Building the team" in result
+        assert "hire_expert" in result
+        assert "raise_expert" in result
+        assert "One proposal at a time" in result
+        assert "Never hire silently" in result
+
+    def test_an_expert_session_is_not_told_to_hire(self):
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id="expert-a"
+        )
+
+        assert result == ""
+
+    def test_the_flag_off_tells_nobody(self):
+        assert (
+            prompting.get_team_building_supplement(
+                experts_enabled=False, expert_id=None
+            )
+            == ""
+        )
+
+    def test_delegation_supplement_no_longer_carries_hiring_rules(self):
+        result = prompting.get_delegation_supplement()
+
+        assert "Delegating to a teammate" in result
+        assert "Building the team" not in result
+        assert "hire_expert" not in result
+
+
+class TestExpertOversightSupplement:
+    """The chat-reading tools are in the ``expert_admin`` group, so only an
+    Autopilot session with the team flag on can call them — a turn that
+    cannot must not be told about them."""
+
+    def test_an_autopilot_turn_with_the_flag_on_names_both_tools(self):
+        result = prompting.get_expert_oversight_supplement(
+            experts_enabled=True, expert_id=None
+        )
+        assert "list_expert_chats" in result
+        assert "read_expert_chat" in result
+
+    def test_an_expert_session_is_told_nothing(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=True, expert_id="expert-a"
+            )
+            == ""
+        )
+
+    def test_the_flag_off_tells_nobody(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=False, expert_id=None
+            )
+            == ""
+        )

@@ -143,7 +143,7 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
             video_url=None,
             image_urls=[],
             description="Seed description",
-            categories=[],
+            categories=["operations"],
         ),
         owner.id,
     )
@@ -1094,6 +1094,7 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
     identity_ids = {item.id for item in identities}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
+    assert identity.color == hired.expert.color
     assert identity.is_archived is True
     active_identity = next(
         item for item in identities if item.id == active_hired.expert.id
@@ -1199,7 +1200,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
     model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
     assert model is not None, "Expert model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
-    assert {"id", "name", "avatarUrl", "role", "isArchived"} <= fields
+    assert {"id", "name", "avatarUrl", "color", "role", "isArchived"} <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
 
@@ -3478,6 +3479,47 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     assert run.link == (
         "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
     )
+
+
+def test_to_expert_run_reports_how_the_run_started():
+    manual = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", "result", needs_review=False
+    )
+    scheduled = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId=None)),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    triggered = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId="wh-1")),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert manual.source == "manual"
+    assert scheduled.source == "scheduled"
+    assert triggered.source == "trigger"
+
+
+@pytest.mark.parametrize(
+    "execution_status",
+    [
+        prisma.enums.AgentExecutionStatus.FAILED,
+        prisma.enums.AgentExecutionStatus.TERMINATED,
+    ],
+)
+def test_to_expert_run_never_reports_a_failed_run_as_completed(execution_status):
+    run = experts_db._to_expert_run(
+        _run_execution(executionStatus=execution_status),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+    )
+    assert run.status == execution_status.value.lower()
 
 
 def test_to_expert_run_names_a_library_only_workflow():
