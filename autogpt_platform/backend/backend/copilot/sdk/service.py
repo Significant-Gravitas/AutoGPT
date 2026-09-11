@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import contextlib
 import functools
 from copy import copy
 import json
@@ -11,6 +12,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -19,7 +21,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -40,15 +42,16 @@ from claude_agent_sdk.types import SystemPromptPreset
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 
+from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
     resolve_codex_model_route,
     resolve_model_route,
 )
-from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context import CONTEXT_TAG_NAME, fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -1078,6 +1081,246 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
     return b"".join(
         line for idx, (line, _entry) in enumerate(parsed) if idx not in drop
     )
+
+
+# Provenance nonce stamped onto the server-injected follow-up warm-context
+# block (see ``_append_follow_up_warm_context``). Only blocks carrying THIS
+# process's nonce are scrubbed from the persisted transcript. The nonce is
+# unguessable, so a user who types (or pastes) a ``<temporal_context
+# data-agpt-injected="1">`` tag cannot get their own text deleted on upload.
+#
+# Per-process scope is sufficient: a block is injected and scrubbed inside a
+# single ``stream_chat_completion_sdk`` call — the CLI session file is
+# downloaded, appended to, read back, scrubbed and re-uploaded within one turn
+# in one process — so no cross-process handoff carries a stamped block. If a
+# turn dies before upload, nothing is persisted at all. A restart therefore
+# only ever fails "safe" (a block survives), never by eating user text.
+#
+# Internal format: the model still reads a ``<temporal_context ...>`` tag; the
+# attribute is inert.
+_INJECTED_MEMORY_NONCE = secrets.token_hex(16)
+_INJECTED_MEMORY_MARKER = f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
+# Matches ONLY a nonce-stamped block, so user-authored tags are never hit.
+# The optional leading ``\n\n`` is the exact separator that
+# ``_append_follow_up_warm_context`` inserts before the block — removing it
+# together with the block leaves the user's own text (its leading/trailing
+# whitespace and any intentional blank-line runs) byte-for-byte intact.
+_INJECTED_MEMORY_BLOCK_RE = re.compile(
+    r"(?:\n\n)?<"
+    + CONTEXT_TAG_NAME
+    + r"\b[^>]*"
+    + re.escape(_INJECTED_MEMORY_MARKER)
+    + r"[^>]*>.*?</"
+    + CONTEXT_TAG_NAME
+    + r">",
+    re.DOTALL,
+)
+# Open tag matched by name, so the stamp survives attribute/spacing changes
+# in the producer. Same ``CONTEXT_TAG_NAME`` the builder emits, so a rename
+# there cannot leave this pattern silently matching nothing.
+_CONTEXT_OPEN_TAG_RE = re.compile(r"<" + CONTEXT_TAG_NAME + r"\b")
+
+
+def _mark_injected_memory_block(block: str) -> str:
+    """Stamp the provenance nonce onto a ``<temporal_context>`` block.
+
+    Matches the open tag by NAME rather than as an exact string: the block is
+    produced by ``graphiti.context._format_context`` in another module, and an
+    attribute or spacing change there must not silently un-stamp it — an
+    unstamped block is never scrubbed from the uploaded transcript, so it
+    replays as stale context on ``--resume``.
+
+    A block with no recognisable open tag is returned untouched (memory must
+    never break a turn) but logged, so the miss surfaces instead of quietly
+    growing every transcript.
+    """
+    marked, substitutions = _CONTEXT_OPEN_TAG_RE.subn(
+        f"<{CONTEXT_TAG_NAME} {_INJECTED_MEMORY_MARKER}", block, count=1
+    )
+    if not substitutions:
+        logger.warning(
+            "Warm-context block carries no <temporal_context> open tag; it "
+            "cannot be marked and will not be scrubbed from the transcript"
+        )
+    return marked
+
+
+def _strip_injected_memory_text(text: str) -> str:
+    """Remove nonce-marked ``<temporal_context>`` blocks (plus the injected
+    ``\\n\\n`` separator) from *text*, leaving all other content untouched.
+
+    Removes ONLY what the injector added — no global ``.strip()`` or blank-line
+    collapse — so a user's own leading/trailing whitespace and intentional blank
+    lines survive. Returns *text* verbatim when no marked block is present.
+    """
+    return _INJECTED_MEMORY_BLOCK_RE.sub("", text)
+
+
+def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
+    """Scrub the server-injected follow-up warm-context block from the JSONL.
+
+    The CLI persists every ``client.query(...)`` call — including the per-turn
+    ``<temporal_context>`` block appended for SECRT-2378 recall. Left in the
+    uploaded JSONL these accumulate across turns and replay stale facts on
+    ``--resume`` (a fact the user later retracted keeps re-appearing). The
+    block is keyed on a single turn's message, so strip it here; the next turn
+    re-injects a fresh one. Only blocks carrying this process's provenance
+    nonce are removed — a ``<temporal_context>`` tag the user typed (even one
+    carrying a forged marker attribute) is left intact.
+    """
+    if not content:
+        return content
+    # Only the marker-bearing line can need rewriting, and only the current
+    # turn's line carries it. Without this guard every user line of the whole
+    # transcript is json.loads()-ed and Pydantic-validated on every turn —
+    # O(transcript) per turn, i.e. quadratic over a long session.
+    #
+    # Probe on the bare NONCE, not the full marker: the marker embeds quotes
+    # (``data-agpt-injected="…"``) which JSON-encode to ``\"`` in the raw
+    # line, so a full-marker substring test never matches. The nonce is
+    # hex — unchanged by JSON escaping.
+    marker = _INJECTED_MEMORY_NONCE.encode()
+    # Whole-buffer probe first: a turn that injected nothing (trivial message,
+    # memory off, first turn) skips splitlines and the per-line loop entirely
+    # and returns the transcript untouched. When a block IS present the full
+    # pass is still needed — a retry can inject a second marked line.
+    if marker not in content:
+        return content
+    out: list[bytes] = []
+    survived = 0
+    for line in content.splitlines(keepends=True):
+        stripped = line.strip()
+        if not stripped or marker not in line:
+            out.append(line)
+            continue
+        # Past this point the line carries THIS process's nonce, so it is a
+        # block we injected and expected to remove. Both fall-throughs below
+        # keep it — safe (they never eat user text), but they reintroduce the
+        # accumulation this scrub exists to prevent, so the misses are counted
+        # and reported once below rather than passing silently.
+        try:
+            entry = json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            survived += 1
+            out.append(line)
+            continue
+        rewritten = _rewrite_user_entry_memory(entry)
+        if rewritten is None:
+            survived += 1
+            out.append(line)
+            continue
+        suffix = b"\n" if line.endswith(b"\n") else b""
+        out.append(json.dumps(rewritten, ensure_ascii=False).encode() + suffix)
+    if survived:
+        logger.warning(
+            "%d injected memory block(s) survived the transcript scrub — "
+            "nonce-carrying lines that did not parse as CLI user entries. "
+            "They will replay as stale context on --resume.",
+            survived,
+        )
+    return b"".join(out)
+
+
+def _rewrite_user_entry_memory(entry: object) -> dict[str, object] | None:
+    """Return *entry* with the injected memory block stripped, or None.
+
+    None means "no change" — the caller keeps the original line byte-for-byte,
+    so only user messages that actually carried a marked block are re-serialised
+    (untouched entries are never reformatted). Entries that aren't user messages
+    (or don't match the CLI's user-entry shape at all) fail validation and are
+    likewise left alone.
+    """
+    try:
+        parsed = _CLIUserEntry.model_validate(entry)
+    except ValidationError:
+        return None
+    rewritten = parsed.message.without_injected_memory()
+    if rewritten is None:
+        return None
+    return parsed.model_copy(update={"message": rewritten}).model_dump()
+
+
+class _CLITextBlock(BaseModel):
+    """A ``text`` content block of a CLI JSONL user message."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["text"]
+    text: str
+
+    def without_injected_memory(self) -> "_CLITextBlock | None":
+        """Return the cleaned block, or None when it must be dropped entirely.
+
+        A block that empties out is dropped rather than emitted empty, since
+        Anthropic rejects empty text blocks on ``--resume``.
+        """
+        cleaned = _strip_injected_memory_text(self.text)
+        if not cleaned:
+            return None
+        return self.model_copy(update={"text": cleaned})
+
+
+class _CLIOpaqueBlock(RootModel[object]):
+    """Any other content block (image, tool_result, …) — passed through as-is."""
+
+    def without_injected_memory(self) -> "_CLIOpaqueBlock | None":
+        return self
+
+
+# Left-to-right so a well-formed text block never falls through to the opaque
+# passthrough (which validates anything).
+_CLIContentBlock = Annotated[
+    _CLITextBlock | _CLIOpaqueBlock, Field(union_mode="left_to_right")
+]
+
+
+class _CLIUserTextMessage(BaseModel):
+    """User message whose content is a bare string."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: Literal["user"]
+    content: str
+
+    def without_injected_memory(self) -> "_CLIUserTextMessage | None":
+        """Return the rewritten message, or None to keep the original as-is."""
+        cleaned = _strip_injected_memory_text(self.content)
+        if cleaned == self.content or not cleaned:
+            # Unchanged, or the whole message was the injected block — keep the
+            # original rather than emit empty content that --resume rejects.
+            return None
+        return self.model_copy(update={"content": cleaned})
+
+
+class _CLIUserBlocksMessage(BaseModel):
+    """User message whose content is a list of content blocks."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: Literal["user"]
+    content: list[_CLIContentBlock]
+
+    def without_injected_memory(self) -> "_CLIUserBlocksMessage | None":
+        """Return the rewritten message, or None to keep the original as-is."""
+        kept = [
+            cleaned
+            for cleaned in (block.without_injected_memory() for block in self.content)
+            if cleaned is not None
+        ]
+        if not kept:
+            # Every block emptied out — keep the original intact.
+            return None
+        rewritten = self.model_copy(update={"content": kept})
+        return None if rewritten == self else rewritten
+
+
+class _CLIUserEntry(BaseModel):
+    """A ``{"type": "user", ...}`` line of the CLI's native session JSONL."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["user"]
+    message: _CLIUserTextMessage | _CLIUserBlocksMessage
 
 
 def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:
@@ -4454,6 +4697,120 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _discard_pending_refresh(task: "asyncio.Task[str | None] | None") -> None:
+    """Cancel an in-flight refresh whose result is no longer wanted."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+def _start_follow_up_warm_context(
+    *,
+    graphiti_enabled: bool,
+    has_history: bool,
+    is_user_message: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    current_message: str,
+) -> "asyncio.Task[str | None] | None":
+    """Kick the SECRT-2378 refresh off before the query is built.
+
+    The refresh only needs the current message, so starting it here lets the
+    graph round-trip overlap compaction, attachment prep and builder context
+    instead of serializing into time-to-first-token. The result is joined by
+    ``_append_follow_up_warm_context`` right before injection.
+
+    Returns ``None`` when the turn is not a candidate — the outer gate, or a
+    message the substance gate rejects. ``was_compacted`` (the only thing that
+    forces past the substance gate) is not known until the query is built, so
+    that one rare turn — a trivially short message right after a compaction —
+    still pays for a serial fetch in the joiner.
+    """
+    if not (graphiti_enabled and has_history and is_user_message and user_id):
+        return None
+    if not graphiti_context.should_refresh_warm_context(current_message):
+        return None
+    task = asyncio.create_task(
+        graphiti_context.refresh_warm_context(
+            user_id, current_message, expert_id=expert_id
+        ),
+        name=f"warm-ctx-refresh-{user_id[:12]}",
+    )
+    # The event loop holds only a weak reference. Between here and the join
+    # the turn suspends at several ``yield``s, and a consumer that closes the
+    # generator there would drop the last strong ref mid-flight — the task
+    # gets collected, and "Task was destroyed but it is pending!" is all
+    # anyone sees. Same registry the other spawns in this module use.
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def _append_follow_up_warm_context(
+    query_message: str,
+    *,
+    graphiti_enabled: bool,
+    has_history: bool,
+    is_user_message: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    current_message: str,
+    was_compacted: bool,
+    block_cache: dict[str, str] | None = None,
+    pending: "asyncio.Task[str | None] | None" = None,
+) -> str:
+    """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
+
+    The first turn pre-loads memory via ``inject_user_context(warm_ctx=...)``;
+    later turns (a new task mid-session, or the turn right after a compaction)
+    otherwise get no deterministic recall and depend on the model choosing to
+    call the memory tool, which it often skips. Keyed on the CURRENT user
+    message; forced after a compaction so a short "continue"-style turn still
+    re-injects memory. No-op on the first turn, non-user turns, and when
+    Graphiti is disabled. Called after every ``_build_query_message`` (initial
+    and retry) so the recovery path keeps recall too. ``expert_id`` scopes the
+    refresh to the same memory owner the first-turn fetch used, so an expert
+    chat never refreshes from the user's personal graph.
+
+    ``block_cache`` (a per-stream dict) reuses a block already fetched for the
+    same message on the retry path, so a recompaction retry doesn't pay a
+    second graph round-trip for an identical query. Only POPULATED results are
+    cached: a first call that the substance gate skipped stores nothing, so a
+    retry with ``was_compacted=True`` still performs its forced fetch.
+
+    ``pending`` is the task ``_start_follow_up_warm_context`` launched before
+    the query was built; joining it here keeps the graph round-trip off
+    time-to-first-token. Without one (the retry path, or a turn the starter
+    declined) the fetch runs inline as before.
+    """
+    if not (graphiti_enabled and has_history and is_user_message and user_id):
+        await _discard_pending_refresh(pending)
+        return query_message
+    cached = block_cache.get(current_message) if block_cache is not None else None
+    if cached:
+        await _discard_pending_refresh(pending)
+        return f"{query_message}\n\n{cached}"
+    if pending is not None:
+        refreshed = await pending
+    else:
+        refreshed = await graphiti_context.refresh_warm_context(
+            user_id, current_message, expert_id=expert_id, force=was_compacted
+        )
+    if refreshed:
+        # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
+        # can scrub THIS block from the persisted transcript without touching a
+        # ``<temporal_context>`` tag the user may have typed. Marked once and
+        # reused: the cached copy and the returned copy MUST be the same string,
+        # or a retry would serve a block the scrub can no longer match.
+        marked = _mark_injected_memory_block(refreshed)
+        if block_cache is not None:
+            block_cache[current_message] = marked
+        return f"{query_message}\n\n{marked}"
+    return query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -5264,6 +5621,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
+        # SECRT-2378: start the follow-up warm-context refresh HERE rather
+        # than at the injection point below — ``current_message`` is final
+        # after the pending fold, so the graph round-trip overlaps compaction,
+        # attachment prep and builder context instead of adding its latency to
+        # time-to-first-token.
+        pending_warm_ctx = _start_follow_up_warm_context(
+            graphiti_enabled=graphiti_enabled,
+            has_history=has_history,
+            is_user_message=is_user_message,
+            user_id=user_id,
+            expert_id=session.expert_id,
+            current_message=current_message,
+        )
+
         forecast = _expect_pre_query_compaction(
             session.messages,
             _compression_model(),
@@ -5292,6 +5663,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # read the compaction row as history and the current user message as
         # prior context, seeding a transcript that repeats the live turn.
         pre_compaction_msg_count = len(session.messages)
+        # SECRT-2378 forces a refresh right after a compaction, even on a
+        # message the substance gate would skip. `_build_query_message`
+        # reports that by returning stats, so the flag is derived rather
+        # than tracked separately and cannot drift from what actually ran.
+        was_compacted = compaction_stats is not None
         if compaction_stats is not None:
             for ev in compaction.emit_pre_query_end(session, compaction_stats):
                 yield ev
@@ -5319,6 +5695,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # transcript: the snapshot is stale-by-definition after the turn ends.
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
+        )
+
+        # SECRT-2378: refresh warm context on FOLLOW-UP user turns (see
+        # ``_append_follow_up_warm_context``). Runs after both the initial
+        # query build here and the retry-time rebuild below, so a follow-up
+        # turn that trips prompt-too-long and re-compacts still re-injects
+        # memory on its recovery attempt.
+        warm_ctx_block_cache: dict[str, str] = {}
+        query_message = await _append_follow_up_warm_context(
+            query_message,
+            graphiti_enabled=graphiti_enabled,
+            has_history=has_history,
+            is_user_message=is_user_message,
+            user_id=user_id,
+            expert_id=session.expert_id,
+            current_message=current_message,
+            was_compacted=was_compacted,
+            block_cache=warm_ctx_block_cache,
+            pending=pending_warm_ctx,
         )
 
         # When running without --resume and no prior transcript in storage,
@@ -5506,8 +5901,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         yield ev
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
-                # warm_ctx is already baked into current_message via
-                # inject_user_context — no separate injection needed.
+                # First-turn warm_ctx is baked into current_message via
+                # inject_user_context. Follow-up turns get NO warm context in
+                # current_message, so re-run the SECRT-2378 refresh here too —
+                # otherwise a follow-up turn that recovers via retry-time
+                # compaction would drop deterministic recall on exactly the
+                # path where it matters most. The force flag comes off this
+                # attempt's own ``state.compaction_stats``.
+                state.query_message = await _append_follow_up_warm_context(
+                    state.query_message,
+                    graphiti_enabled=graphiti_enabled,
+                    has_history=has_history,
+                    is_user_message=is_user_message,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                    current_message=current_message,
+                    was_compacted=state.compaction_stats is not None,
+                    block_cache=warm_ctx_block_cache,
+                )
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
@@ -6213,6 +6624,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
                         _cli_content
                     )
+                    # Scrub server-injected memory blocks so per-turn warm
+                    # context (SECRT-2378) doesn't accumulate + replay stale
+                    # facts across --resume turns.
+                    _cli_content = _strip_ephemeral_memory_from_cli_jsonl(_cli_content)
                     # Watermark = number of DB messages this transcript covers.
                     # len(session.messages) is accurate: the CLI session file
                     # was just written after the turn completed, so it covers
