@@ -792,7 +792,9 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "role": template.role,
         "tagline": template.tagline,
         "bio": template.bio,
-        "skills": template.skills or [],
+        # The bundled installs below record each name, so the row lists only
+        # skills the hire actually owns.
+        "skills": [],
         "identity": template.identity,
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,
@@ -1576,8 +1578,8 @@ async def _install_bundled_skills(
 ) -> None:
     """Install the Hub skills a template bundles into the new expert's folder.
 
-    A failed install is logged and leaves the name on the row, where the
-    skills heal and dialog already handle a name with no folder.
+    Each install records its name on the row; a failed one is logged and
+    leaves no name, so the hire never lists a skill it does not have.
     """
     for slug in await _live_bundled_skills(user_id, names):
         try:

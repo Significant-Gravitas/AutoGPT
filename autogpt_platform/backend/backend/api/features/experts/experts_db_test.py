@@ -354,7 +354,7 @@ async def test_hire_installs_the_hub_skills_the_template_bundles(
 
     assert installed is not None
     assert installed.description == f"{hub_listing} description"
-    assert hired.expert.skills == ["Content strategy", hub_listing]
+    assert hired.expert.skills == [hub_listing]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -370,7 +370,7 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     install.assert_awaited_once()
-    assert hired.expert.skills == [hub_listing]
+    assert hired.expert.skills == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
