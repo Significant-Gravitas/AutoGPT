@@ -57,6 +57,19 @@ describe("DesktopStreamRenderer", () => {
     expect(link.getAttribute("target")).toBe("_blank");
   });
 
+  it("tells the viewer the desktop is shared with the AI, and owner-only when auth is required", () => {
+    render(<>{desktopStreamRenderer.render(streamValue)}</>);
+    expect(screen.getByText(/visible to it/i)).toBeDefined();
+    expect(screen.queryByText(/only the owner/i)).toBeNull();
+    cleanup();
+    render(
+      <>
+        {desktopStreamRenderer.render({ ...streamValue, requires_auth: true })}
+      </>,
+    );
+    expect(screen.getByText(/only the owner/i)).toBeDefined();
+  });
+
   it("copies the stream URL", () => {
     const copy = desktopStreamRenderer.getCopyContent(streamValue);
     expect(copy?.data).toBe(streamValue.url);

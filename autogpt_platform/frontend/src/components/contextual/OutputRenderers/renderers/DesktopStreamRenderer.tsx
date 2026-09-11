@@ -88,6 +88,13 @@ function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
         className="aspect-video w-full bg-zinc-900"
         title={`Interactive desktop (${value.sandbox_id})`}
       />
+      <p className="border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+        {value.requires_auth
+          ? "Only the owner of this chat can view the live desktop. "
+          : ""}
+        The AI works on this desktop with full access, so anything signed in
+        here is visible to it. Do not sign into personal accounts.
+      </p>
     </div>
   );
 }

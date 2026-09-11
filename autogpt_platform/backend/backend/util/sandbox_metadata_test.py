@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from backend.data.execution import ExecutionContext
-from backend.util.sandbox_metadata import SandboxMetadata, deployment_env
+from backend.util.sandbox_metadata import SandboxMetadata, deployment_env, owned_by_user
 
 _USER = "user-1111"
 _SESSION = "sess-2222"
@@ -145,3 +145,27 @@ class TestForBlock:
             "autogpt_block": _BLOCK,
             "autogpt_template": "base",
         }
+
+
+class TestOwnedByUser:
+    """A caller-supplied sandbox id is only usable if the box was stamped
+    for that user; anything else, including an unstamped box, is refused."""
+
+    def test_the_stamped_user_owns_it(self):
+        stamped = SandboxMetadata.for_block(_context(), "code", _BLOCK).as_e2b()
+        assert owned_by_user(stamped, _USER)
+
+    def test_another_user_does_not(self):
+        stamped = SandboxMetadata.for_block(_context(), "code", _BLOCK).as_e2b()
+        assert not owned_by_user(stamped, "user-9999")
+
+    def test_a_box_stamped_without_a_user_belongs_to_nobody(self):
+        stamped = SandboxMetadata.for_block(None, "code", _BLOCK).as_e2b()
+        assert not owned_by_user(stamped, _USER)
+        assert not owned_by_user(stamped, None)
+
+    def test_an_unstamped_or_foreign_box_is_refused(self):
+        assert not owned_by_user({}, _USER)
+        assert not owned_by_user(
+            {"service": "pr-reviewer", "autogpt_user": _USER}, _USER
+        )

@@ -10,8 +10,10 @@ resumed in about a second on the next call.
 
 The owner is the session — or, in an expert session, the expert itself, so
 the desktop is the expert's own persistent computer: the same box (browser
-profile, logins, installed apps and all) comes back for every chat,
-delegation and scheduled run that happens as that expert.  The expert page's
+profile, installed apps and all) comes back for every chat, delegation and
+scheduled run that happens as that expert.  The model has a root shell in
+that same VM, so the desktop is shared with it, never private from it: any
+account a person signs into on it is readable by the model.  The expert page's
 Computer tab and the copilot side panel open the very same box through
 ``backend.copilot.computer``.
 
@@ -89,6 +91,13 @@ class StartDesktopTool(BaseTool):
                 session_id=session_id,
             )
 
+        if not user_id:
+            return ErrorResponse(
+                message="A desktop needs a signed-in user to hand its link to.",
+                error="user_required",
+                session_id=session_id,
+            )
+
         expert_id = session.expert_id if session else None
         # Imported here: ``computer`` imports the sandbox module, whose package
         # imports this tool, so a module-level import is a cycle.
@@ -124,9 +133,10 @@ def _build_message(created: bool, shared: bool, *, expert: bool = False) -> str:
     if shared and expert:
         files = (
             f"This is your own persistent computer. {WORKSPACE_PATH} is your "
-            "durable home — customise it freely; installed tools and browser "
-            f"logins survive between sessions — and {SHARED_PATH} is the user's "
-            "shared workspace, so put anything the user should see there."
+            "durable home — customise it freely; installed tools survive "
+            f"between sessions — and {SHARED_PATH} is the user's shared "
+            "workspace, so put anything the user should see there. The desktop "
+            "is shared with the user, not private from either of you."
         )
     elif shared:
         files = (
