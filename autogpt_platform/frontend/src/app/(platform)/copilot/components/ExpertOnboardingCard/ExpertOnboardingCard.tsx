@@ -103,7 +103,7 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
   }
 
   return (
-    <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
+    <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
       <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
         <span className="flex min-w-0 items-center gap-3">
           <ExpertAvatar name={name} avatarUrl={expert?.avatarUrl ?? null} />
@@ -129,7 +129,7 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
       </div>
 
       {onboarding.greeting && (
-        <p className="border-b border-zinc-100 px-4 py-3 text-sm leading-relaxed text-zinc-700">
+        <p className="border-b border-zinc-100 px-5 py-4 text-base leading-relaxed text-zinc-700">
           {onboarding.greeting}
         </p>
       )}
@@ -139,9 +139,12 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-        className="flex flex-col gap-1.5 px-4 py-3"
+        className="flex flex-col gap-4 px-5 pb-4 pt-5"
       >
-        <span id={labelId} className="text-sm text-zinc-700">
+        <span
+          id={labelId}
+          className="text-lg font-medium leading-snug text-zinc-900"
+        >
           {currentStep.question}
         </span>
         <QuestionAnswerField
@@ -157,7 +160,7 @@ function OnboardingForm({ onboarding, isLive }: FormProps) {
         />
       </m.div>
 
-      <div className="flex items-center justify-between px-4 pb-3 pt-1">
+      <div className="flex items-center justify-between px-5 pb-4 pt-1">
         <span className="flex items-center gap-2">
           <button
             type="button"
