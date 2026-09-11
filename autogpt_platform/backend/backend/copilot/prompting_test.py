@@ -178,15 +178,29 @@ class TestSchedulingGuidance:
     def test_supplement_names_schedule_followup_as_the_only_primitive(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "### Scheduling future work — use `schedule_followup`" in result
-        assert "ONLY way to make something happen after this turn" in result
+        assert "ONLY way to schedule a future copilot turn" in result
+
+    def test_supplement_keeps_agent_schedules_on_run_agent(self):
+        # "Run my report agent every morning" must stay a graph schedule, not
+        # become a recurring copilot turn that re-decides what to run.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "use `run_agent` with `schedule_name` +" in result
+        assert "use `setup_agent_webhook_trigger`" in result
 
     def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         # CronCreate reports success and claims it persisted to disk, so
         # "it said it worked" must not be treated as evidence it is scheduled.
         assert "even if it reports success and says it persisted to disk" in result
-        assert "unless a `schedule_followup` call" in result
-        assert "actually succeeded" in result
+        assert "unless a scheduling" in result
+        assert "call actually succeeded" in result
+
+    def test_supplement_describes_list_schedules_scope_honestly(self):
+        # list_schedules filters by expert_id, not session_id: it returns the
+        # expert's (or plain copilot's) schedules from every chat.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "across all chats, not only the ones created here" in result
+        assert "current chat's scope" not in result
 
     def test_baseline_mode_gets_the_same_rule(self):
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's

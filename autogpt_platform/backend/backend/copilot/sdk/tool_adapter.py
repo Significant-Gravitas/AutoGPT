@@ -1176,3 +1176,13 @@ def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
     if not use_e2b:
         return list(SDK_DISALLOWED_TOOLS)
     return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+
+
+def get_sdk_builtin_tools() -> list[str]:
+    """Every Claude Code built-in this module knows about, blocked or kept.
+
+    For callers that want *no* built-ins at all — the orchestrator block hands
+    its model graph MCP tools only — so a built-in that is new here (a CLI
+    scheduler, say) is blocked there without a second, hand-synced edit.
+    """
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS]))

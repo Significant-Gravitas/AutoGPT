@@ -768,6 +768,16 @@ class TestSDKDisallowedTools:
         a denylist — an unlisted tool falls through and executes."""
         assert tool in BLOCKED_TOOLS
 
+    def test_orchestrator_block_disallows_every_known_builtin(self):
+        # The orchestrator's model gets graph MCP tools only, so its blocklist
+        # must cover everything the copilot blocks *and* everything the
+        # copilot deliberately keeps (sub-agents, todo list, file search).
+        from backend.blocks.orchestrator import sdk_disallowed_tools
+
+        blocked = set(sdk_disallowed_tools())
+        assert set(get_sdk_disallowed_tools(use_e2b=True)) <= blocked
+        assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= blocked
+
 
 # ---------------------------------------------------------------------------
 # _read_file_handler — bridge_and_annotate integration
