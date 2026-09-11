@@ -20780,15 +20780,15 @@
       },
       "ExpertBundledSkill": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
+          "id": { "type": "string", "title": "Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "title": { "type": "string", "title": "Title" },
+          "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" }
         },
         "type": "object",
-        "required": ["name", "slug", "title", "description"],
+        "required": ["id", "slug", "name", "description"],
         "title": "ExpertBundledSkill",
-        "description": "A template ``skills`` name that resolves to a live Skills Hub listing."
+        "description": "A live Skills Hub listing a roster template comes with."
       },
       "ExpertCredentialRef": {
         "properties": {

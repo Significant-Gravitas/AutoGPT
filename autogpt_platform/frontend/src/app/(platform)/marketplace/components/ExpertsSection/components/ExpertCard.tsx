@@ -7,6 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
+import { formatSkillTitle } from "../../SkillsSection/helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -74,10 +75,10 @@ export function ExpertCard({ expert, isHired }: Props) {
             <div className="flex flex-wrap gap-1.5">
               {skills.slice(0, 3).map((skill) => (
                 <span
-                  key={skill.slug}
+                  key={skill.id}
                   className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
                 >
-                  {skill.title}
+                  {formatSkillTitle(skill.name)}
                 </span>
               ))}
               {skills.length > 3 ? (

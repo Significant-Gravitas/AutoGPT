@@ -185,9 +185,9 @@ describe("Marketplace expert page", () => {
           skills: ["Content strategy", "brand-voice-guide", "Positioning"],
           bundled_skills: [
             {
-              name: "brand-voice-guide",
+              id: "listing-1",
               slug: "brand-voice-guide",
-              title: "Brand voice guide",
+              name: "brand-voice-guide",
               description: "Keeps every draft on-brand.",
             },
           ],
@@ -202,6 +202,7 @@ describe("Marketplace expert page", () => {
     expect(link.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
     );
+    expect(screen.queryByText("brand-voice-guide")).toBeNull();
     expect(screen.queryByText("Content strategy")).toBeNull();
     expect(screen.queryByText("Positioning")).toBeNull();
   });

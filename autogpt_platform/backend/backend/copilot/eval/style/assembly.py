@@ -79,7 +79,7 @@ def roster_expert(entry: RosterEntry) -> Expert:
         role=entry["role"],
         tagline=entry["tagline"],
         bio=entry["bio"],
-        skills=list(entry["skills"]),
+        skills=list(entry["bundled_skills"]),
         identity=entry["identity"],
         voice_preferences=entry["voice_preferences"],
         voice_samples=list(entry["voice_samples"]),

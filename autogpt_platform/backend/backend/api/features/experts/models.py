@@ -204,18 +204,18 @@ class Expert(BaseModel):
 
 
 class ExpertBundledSkill(BaseModel):
-    """A template ``skills`` name that resolves to a live Skills Hub listing."""
+    """A live Skills Hub listing a roster template comes with."""
 
-    name: str
+    id: str
     slug: str
-    title: str
+    name: str
     description: str
 
 
 class ExpertTemplate(Expert):
     """A roster template as the marketplace shows it."""
 
-    # The skills a hire gets installed; unmatched names stay plain text.
+    # The Hub skills a hire gets installed, in the roster's order.
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 

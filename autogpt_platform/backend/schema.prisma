@@ -1086,6 +1086,7 @@ model Expert {
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
+  BundledSkills   ExpertSkillListing[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1135,6 +1136,24 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId, createdAt, id])
+}
+
+// A Skills Hub listing a roster template comes with; hiring installs its
+// active version into the new expert's own skills folder.
+model ExpertSkillListing {
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  skillListingId String
+  SkillListing   SkillListing @relation(fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  // Display order, as the roster declares it.
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@id([expertId, skillListingId])
+  @@index([skillListingId])
 }
 
 // Which of the owner's integration credentials an expert may use.
@@ -2052,7 +2071,8 @@ model SkillListing {
   OwningUser     User?    @relation(fields: [owningUserId], references: [id])
   CreatorProfile Profile? @relation(fields: [owningUserId], references: [userId], map: "SkillListing_owner_Profile_fkey", onDelete: Cascade)
 
-  Versions SkillListingVersion[] @relation("SkillListingVersions")
+  Versions  SkillListingVersion[] @relation("SkillListingVersions")
+  BundledBy ExpertSkillListing[]
 
   // Tenancy
   owningOrgId String?

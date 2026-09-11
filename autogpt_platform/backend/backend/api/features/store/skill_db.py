@@ -61,15 +61,18 @@ async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetail
     return skill_model.MarketplaceSkillDetails.from_db(listing)
 
 
-async def get_live_skills(slugs: list[str]) -> dict[str, skill_model.MarketplaceSkill]:
-    """The live listings among *slugs*, keyed by slug, in one query."""
-    if not slugs:
+async def get_live_skills(
+    listing_ids: list[str],
+) -> dict[str, skill_model.MarketplaceSkill]:
+    """The live listings among *listing_ids*, keyed by id, in one query."""
+    if not listing_ids:
         return {}
     listings = await prisma.models.SkillListing.prisma().find_many(
-        where=_live_listing_where({"in": slugs}), include=_LISTING_INCLUDE
+        where=_live_listing_where({"id": {"in": listing_ids}}),
+        include=_LISTING_INCLUDE,
     )
     return {
-        listing.slug: skill_model.MarketplaceSkill.from_db(listing)
+        listing.id: skill_model.MarketplaceSkill.from_db(listing)
         for listing in listings
     }
 
@@ -109,7 +112,7 @@ async def install_marketplace_skill(
 
 async def _find_live_listing(slug: str) -> prisma.models.SkillListing:
     listing = await prisma.models.SkillListing.prisma().find_first(
-        where=_live_listing_where(slug), include=_LISTING_INCLUDE
+        where=_live_listing_where({"slug": slug}), include=_LISTING_INCLUDE
     )
     if listing is None:
         raise NotFoundError(f"Skill '{slug}' not found")
@@ -117,10 +120,10 @@ async def _find_live_listing(slug: str) -> prisma.models.SkillListing:
 
 
 def _live_listing_where(
-    slug: str | prisma.types.StringFilter,
+    match: prisma.types.SkillListingWhereInput,
 ) -> prisma.types.SkillListingWhereInput:
     return {
-        "slug": slug,
+        **match,
         "isDeleted": False,
         "hasApprovedVersion": True,
         "ActiveVersion": {

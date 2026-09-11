@@ -271,9 +271,9 @@ async def _seed_template(
     name: str,
     preload_listings: list[str],
     preload_crons: dict[str, str] | None = None,
-    skills: list[str] | None = None,
+    bundled: list[str] | None = None,
 ) -> prisma.models.Expert:
-    """Create an Expert roster template plus ExpertWorkflow preload rows.
+    """Create an Expert roster template plus its preload and bundled-skill rows.
 
     The stored name gets a unique suffix so ad-hoc test templates never
     collide with seed.ROSTER's real roster names — seed._upsert_template
@@ -286,7 +286,6 @@ async def _seed_template(
             "role": f"{name}'s role",
             "identity": f"You are {name}, an expert.",
             "isTemplate": True,
-            "skills": skills or [],
         }
     )
     for slv_id in preload_listings:
@@ -295,6 +294,14 @@ async def _seed_template(
                 "expertId": template.id,
                 "storeListingVersionId": slv_id,
                 "scheduleCron": (preload_crons or {}).get(slv_id),
+            }
+        )
+    for position, listing_id in enumerate(bundled or []):
+        await prisma.models.ExpertSkillListing.prisma().create(
+            data={
+                "expertId": template.id,
+                "skillListingId": listing_id,
+                "position": position,
             }
         )
     return template
@@ -311,14 +318,24 @@ async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
 
 
 @pytest.fixture
-async def hub_listing(server: SpinTestServer):
-    slug = f"bundled-{uuid.uuid4().hex[:8]}"
-    listing = await _make_listing(slug)
-    yield slug
-    await prisma.models.SkillListingVersion.prisma().delete_many(
-        where={"skillListingId": listing.id}
-    )
-    await prisma.models.SkillListing.prisma().delete(where={"id": listing.id})
+async def make_hub_listing(server: SpinTestServer):
+    made: list[prisma.models.SkillListing] = []
+
+    async def make() -> prisma.models.SkillListing:
+        made.append(await _make_listing(f"bundled-{uuid.uuid4().hex[:8]}"))
+        return made[-1]
+
+    yield make
+    for listing in made:
+        await prisma.models.SkillListingVersion.prisma().delete_many(
+            where={"skillListingId": listing.id}
+        )
+        await prisma.models.SkillListing.prisma().delete(where={"id": listing.id})
+
+
+@pytest.fixture
+async def hub_listing(make_hub_listing):
+    return await make_hub_listing()
 
 
 @pytest.fixture
@@ -327,26 +344,31 @@ def skills_hub_on(monkeypatch):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_templates_link_names_that_normalise_to_a_live_hub_slug(
-    server: SpinTestServer, hub_listing, skills_hub_on
+async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
+    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
 ):
-    padded = f" {hub_listing.upper()} "
-    template = await _seed_template(
-        name="Maria", preload_listings=[], skills=["Content strategy", padded]
+    first = await make_hub_listing()
+    bundling = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[first.id, hub_listing.id]
+    )
+    # A slug on the row is not a relation: only a listing id links a skill.
+    naming = await _seed_template(name="Max", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": naming.id}, data={"skills": [hub_listing.slug]}
     )
 
-    [linked] = await experts_db.with_bundled_skills(
-        [experts_db._to_model(template)], None
+    linked, unlinked = await experts_db.with_bundled_skills(
+        [experts_db._to_model(bundling), experts_db._to_model(naming)], None
     )
 
-    assert linked.bundled_skills == [
-        ExpertBundledSkill(
-            name=padded,
-            slug=hub_listing,
-            title=hub_listing.replace("-", " ").title(),
-            description=f"{hub_listing} description",
-        )
-    ]
+    assert [skill.id for skill in linked.bundled_skills] == [first.id, hub_listing.id]
+    assert linked.bundled_skills[1] == ExpertBundledSkill(
+        id=hub_listing.id,
+        slug=hub_listing.slug,
+        name=hub_listing.slug.replace("-", " ").title(),
+        description=f"{hub_listing.slug} description",
+    )
+    assert unlinked.bundled_skills == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -354,18 +376,18 @@ async def test_hire_installs_the_hub_skills_the_template_bundles(
     server: SpinTestServer, test_user, hub_listing, skills_hub_on
 ):
     template = await _seed_template(
-        name="Maria", preload_listings=[], skills=["Content strategy", hub_listing]
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
 
     with _patch_skills_path(_FakeWorkspaceManager()):
         hired = await experts_db.hire_expert(test_user.id, template.id, None)
         installed = await read_user_skill_with_body(
-            test_user.id, hub_listing, expert_id=hired.expert.id
+            test_user.id, hub_listing.slug, expert_id=hired.expert.id
         )
 
     assert installed is not None
-    assert installed.description == f"{hub_listing} description"
-    assert hired.expert.skills == [hub_listing]
+    assert installed.description == f"{hub_listing.slug} description"
+    assert hired.expert.skills == [hub_listing.slug]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -375,7 +397,7 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     install = AsyncMock(side_effect=RuntimeError("storage down"))
     monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
     template = await _seed_template(
-        name="Maria", preload_listings=[], skills=[hub_listing]
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
 
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -392,7 +414,7 @@ async def test_hire_installs_nothing_while_the_hub_is_off(
     install = AsyncMock()
     monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
     template = await _seed_template(
-        name="Maria", preload_listings=[], skills=[hub_listing]
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
 
     await experts_db.hire_expert(test_user.id, template.id, None)
@@ -2881,10 +2903,50 @@ def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
     assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
 
 
-def test_roster_skills_are_skills_hub_slugs():
+def test_roster_bundled_skills_are_hub_slugs():
     for entry in seed.ROSTER:
-        for skill in entry["skills"]:
-            assert _NAME_RE.match(skill), (entry["name"], skill)
+        for slug in entry["bundled_skills"]:
+            assert _NAME_RE.match(slug), (entry["name"], slug)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    monkeypatch.setattr(
+        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": [hub_listing.slug]}]
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    resolved = await seed._resolve_roster_skills()
+    await seed._sync_bundled_skills(template.id, [resolved[hub_listing.slug]])
+    rows = await prisma.models.ExpertSkillListing.prisma().find_many(
+        where={"expertId": template.id}
+    )
+    assert [row.skillListingId for row in rows] == [hub_listing.id]
+
+    await seed._sync_bundled_skills(template.id, [])
+    remaining = await prisma.models.ExpertSkillListing.prisma().count(
+        where={"expertId": template.id}
+    )
+    assert remaining == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(seed, "_resolve_roster_preloads", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": ["no-such-hub-skill"]}]
+    )
+    upsert = AsyncMock()
+    monkeypatch.setattr(seed, "_upsert_template", upsert)
+
+    with pytest.raises(RuntimeError, match="no-such-hub-skill"):
+        await seed.seed_roster()
+
+    upsert.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3384,7 +3446,7 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
         "tagline": "",
         "avatar_url": None,
         "bio": "",
-        "skills": [],
+        "bundled_skills": [],
         "identity": template.identity,
         "preloads": [{"slug": listing.slug, "cron": "40 7 * * *"}],
     }
@@ -3426,7 +3488,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "tagline": "Refreshed tagline",
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a senior marketing strategist.",
-        "skills": ["Content strategy", "SEO writing"],
+        "bundled_skills": [],
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
@@ -3440,7 +3502,6 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.avatar_url == "/experts/maria.svg"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
-    assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
 

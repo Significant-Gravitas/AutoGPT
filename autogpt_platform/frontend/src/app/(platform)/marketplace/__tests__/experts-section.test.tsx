@@ -194,9 +194,9 @@ describe("Marketplace ExpertsSection", () => {
           skills: ["Content strategy", "brand-voice-guide"],
           bundled_skills: [
             {
-              name: "brand-voice-guide",
+              id: "listing-1",
               slug: "brand-voice-guide",
-              title: "Brand voice guide",
+              name: "brand-voice-guide",
               description: "Keeps every draft on-brand.",
             },
           ],
@@ -213,6 +213,7 @@ describe("Marketplace ExpertsSection", () => {
       { timeout: 5_000 },
     );
     expect(within(card).getByText("Brand voice guide")).toBeDefined();
+    expect(within(card).queryByText("brand-voice-guide")).toBeNull();
     expect(within(card).queryByText("Content strategy")).toBeNull();
   });
 

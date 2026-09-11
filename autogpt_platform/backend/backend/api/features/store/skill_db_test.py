@@ -152,10 +152,10 @@ async def test_detail_of_an_off_shelf_listing_is_not_found(has_approved_version:
 
 
 async def test_live_skills_holds_only_listings_on_the_shelf():
-    await _make_listing("live-one")
-    await _make_listing("draft-one", approved=False, has_approved_version=True)
-    await _make_listing("never-approved", approved=False)
-    await _make_listing("unavailable-one", available=False)
+    live_one = await _make_listing("live-one")
+    draft = await _make_listing("draft-one", approved=False, has_approved_version=True)
+    never = await _make_listing("never-approved", approved=False)
+    unavailable = await _make_listing("unavailable-one", available=False)
     deleted = await _make_listing("deleted-one")
     await prisma.models.SkillListing.prisma().update(
         where={"id": deleted.id}, data={"isDeleted": True}
@@ -168,18 +168,18 @@ async def test_live_skills_holds_only_listings_on_the_shelf():
 
     live = await skill_db.get_live_skills(
         [
-            "live-one",
-            "draft-one",
-            "never-approved",
-            "unavailable-one",
-            "deleted-one",
-            "withdrawn-one",
+            live_one.id,
+            draft.id,
+            never.id,
+            unavailable.id,
+            deleted.id,
+            withdrawn.id,
             "missing-one",
         ]
     )
 
-    assert list(live) == ["live-one"]
-    assert live["live-one"].name == "Live One"
+    assert list(live) == [live_one.id]
+    assert live[live_one.id].name == "Live One"
 
 
 async def test_install_stores_under_the_listing_slug_and_counts(mocker):

@@ -7,10 +7,12 @@ with AsyncMock at the route module's import site.
 
 import json
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
+import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
@@ -138,6 +140,11 @@ def test_list_expert_templates(
         new_callable=AsyncMock,
         return_value=[template],
     )
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=AsyncMock(return_value=[])),
+    )
 
     response = client.get("/experts/templates")
 
@@ -167,9 +174,9 @@ def test_list_expert_templates_links_live_hub_skills(
     assert response.status_code == 200
     assert response.json()[0]["bundled_skills"] == [
         {
-            "name": "Brand-Voice-Guide",
+            "id": "listing-1",
             "slug": "brand-voice-guide",
-            "title": "Brand voice guide",
+            "name": "brand-voice-guide",
             "description": "Keeps every draft on-brand.",
         }
     ]
@@ -194,20 +201,30 @@ def _mock_templates_with_hub_skill(
         id="template-1",
         is_template=True,
         source_template_id=None,
-        skills=["Content strategy", "Brand-Voice-Guide"],
     )
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.list_templates",
         new_callable=AsyncMock,
         return_value=[template],
     )
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(
+            find_many=AsyncMock(
+                return_value=[
+                    SimpleNamespace(expertId="template-1", skillListingId="listing-1")
+                ]
+            )
+        ),
+    )
     mocker.patch(
         "backend.api.features.experts.experts_db.skill_db.get_live_skills",
         new_callable=AsyncMock,
         return_value={
-            "brand-voice-guide": MarketplaceSkill(
+            "listing-1": MarketplaceSkill(
                 slug="brand-voice-guide",
-                name="Brand voice guide",
+                name="brand-voice-guide",
                 description="Keeps every draft on-brand.",
                 categories=[],
                 required_providers=[],
