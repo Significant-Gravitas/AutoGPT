@@ -4226,6 +4226,17 @@ async def test_list_templates_search_misses_return_nothing(server: SpinTestServe
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_treats_a_blank_search_as_no_filter(
+    server: SpinTestServer,
+):
+    template = await _template(f"Blank {uuid.uuid4().hex[:8]}")
+
+    listed = await experts_db.list_templates(search_query="   ")
+
+    assert template.id in {t.id for t in listed}
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_templates_combines_search_and_category(server: SpinTestServer):
     suffix = uuid.uuid4().hex[:8]
     matching = await _template(f"Both {suffix}", categories=["marketing"])
