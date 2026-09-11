@@ -50,7 +50,12 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
         ) : null}
         {workflow.schedule_cron ? (
           <p className="mt-2 flex items-center gap-1.5 text-[13px] leading-5 text-zinc-600">
-            <Icon icon={Calendar03Icon} size={14} className="shrink-0" />
+            <Icon
+              icon={Calendar03Icon}
+              size={14}
+              className="shrink-0"
+              aria-hidden="true"
+            />
             {getCadenceLabel(workflow.schedule_cron)}
           </p>
         ) : null}
