@@ -8,7 +8,7 @@ import fastapi.testclient
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.integrations.router import router
+from backend.api.features.integrations.router import _get_provider_oauth_handler, router
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
@@ -857,25 +857,20 @@ class TestWebhookPingOwnership:
 
 
 class TestOAuthHandlerResolutionForDeviceProviders:
-    """A device-code provider must not be reported as "does not support OAuth".
+    """A device-code provider has no OAuth handler, but it is not unknown.
 
-    It genuinely has no authorization-code flow — it is a public client with no
-    client secret — but the flat 404 sent people looking for a missing handler
-    registration instead of at the caller that offered an OAuth button for it.
+    `_get_provider_oauth_handler` must point the caller at the device-auth
+    endpoint (400) rather than reporting "does not support OAuth" (404).
     """
 
-    # Synthetic keys, so both patches are load-bearing. `HANDLERS_BY_NAME` is
-    # an `SDKAwareHandlersDict` whose `__contains__` reads the module-level
-    # `_handlers_dict` and the SDK registry rather than its own storage, so
-    # `patch.dict` on the facade is inert — patch the backing dict instead.
-    # With a real provider key these tests would pass against the live
-    # registries no matter what the patches said.
+    # Synthetic keys so both patches are load-bearing. `HANDLERS_BY_NAME` is an
+    # `SDKAwareHandlersDict` whose `__contains__` reads the module-level
+    # `_handlers_dict` and the SDK registry, never its own storage, so
+    # `patch.dict` on the facade is inert: patch the backing dict instead.
     DEVICE_ONLY_PROVIDER = "test_device_only_provider"
     UNREGISTERED_PROVIDER = "test_unregistered_provider"
 
     def test_a_device_code_provider_is_pointed_at_the_device_endpoint(self):
-        from backend.api.features.integrations.router import _get_provider_oauth_handler
-
         with (
             patch.dict(
                 "backend.integrations.oauth._handlers_dict",
@@ -893,17 +888,14 @@ class TestOAuthHandlerResolutionForDeviceProviders:
 
         assert exc.value.status_code == 400
         assert "device code" in exc.value.detail
-        # The detail reaches the user as "OAuth error: <detail>", so the path
-        # has to be the one they can actually call — the router is mounted
-        # under /api/integrations.
+        # The detail reaches the user verbatim, so the path must be the mounted
+        # one: the router lives under /api/integrations.
         assert (
             f"/api/integrations/{self.DEVICE_ONLY_PROVIDER}/device-auth/initiate"
             in exc.value.detail
         )
 
     def test_an_unknown_provider_still_reports_no_oauth_support(self):
-        from backend.api.features.integrations.router import _get_provider_oauth_handler
-
         with (
             patch.dict(
                 "backend.integrations.oauth._handlers_dict",
