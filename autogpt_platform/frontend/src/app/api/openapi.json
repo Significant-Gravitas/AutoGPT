@@ -8262,7 +8262,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nOfficial MCP catalog entries are appended as display metadata and use the\ngeneric MCP connection flow. They are not registered credential providers,\nso PROVIDER_NAMES continues to contain only credential-provider names.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
