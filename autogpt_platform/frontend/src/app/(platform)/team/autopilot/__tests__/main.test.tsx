@@ -128,7 +128,7 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-/** A schedule nobody on the team owns, which Autopilot must not claim. */
+/** A schedule nobody on the team owns, which Otto must not claim. */
 const straySchedule: GraphExecutionJobInfo = {
   ...mariaSchedule,
   id: "sched-stray",
@@ -153,7 +153,7 @@ function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
   } as unknown as LibraryAgent;
 }
 
-/** Maria owns this one, so it is hers and not Autopilot's. */
+/** Maria owns this one, so it is hers and not Otto's. */
 const mariasAgent = makeLibraryAgent({
   id: "lib-1",
   graph_id: "graph-1",
@@ -213,12 +213,10 @@ async function openTab(name: string) {
 }
 
 describe("AutopilotPage", () => {
-  test("renders the Autopilot profile with a chat link and a way back", async () => {
+  test("renders the Otto profile with a chat link and a way back", async () => {
     render(<AutopilotPage />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(screen.getByText("Head of AI")).toBeDefined();
     expect(screen.getByText("Built in")).toBeDefined();
     expect(screen.getByText("Identity")).toBeDefined();
@@ -234,7 +232,7 @@ describe("AutopilotPage", () => {
 
   test("lists the team's schedules", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Schedules");
 
@@ -244,20 +242,20 @@ describe("AutopilotPage", () => {
     expect(within(list).queryByText("Nobody's Job")).toBeNull();
   });
 
-  test("lists the library workflows no expert owns as Autopilot's", async () => {
+  test("lists the library workflows no expert owns as Otto's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
 
-    expect(screen.getByText("Autopilot's Workflows")).toBeDefined();
+    expect(screen.getByText("Otto's Workflows")).toBeDefined();
     const rows = await screen.findAllByTestId("expert-workflow-row");
     expect(
       rows.map((row) => within(row).getByText(/Job|Triage/).textContent),
     ).toEqual(["Inbox Triage", "Nobody's Job"]);
     // The stray schedule's graph gives its workflow a cadence.
     expect(within(rows[1]).getByText(/Every day at 07:40/)).toBeDefined();
-    // Maria's Content Calendar is hers, not Autopilot's.
+    // Maria's Content Calendar is hers, not Otto's.
     expect(screen.queryByText("Content Calendar")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Install workflow" }),
@@ -269,7 +267,7 @@ describe("AutopilotPage", () => {
     ).toContain("/copilot?autosubmit=true");
   });
 
-  test("keeps loading library pages so a second-page workflow still counts as Autopilot's", async () => {
+  test("keeps loading library pages so a second-page workflow still counts as Otto's", async () => {
     const pagesRequested: string[] = [];
     server.use(
       getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
@@ -289,21 +287,21 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
     await openTab("Workflows");
 
     expect(await screen.findByText("Nobody's Job")).toBeDefined();
     expect(pagesRequested).toEqual(["1", "2"]);
   });
 
-  test("lists the library skills no expert has claimed as Autopilot's", async () => {
+  test("lists the library skills no expert has claimed as Otto's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Skills");
 
-    expect(screen.getByText("Autopilot's Skills")).toBeDefined();
-    const list = screen.getByRole("list", { name: "Autopilot skills" });
+    expect(screen.getByText("Otto's Skills")).toBeDefined();
+    const list = screen.getByRole("list", { name: "Otto skills" });
     const rows = within(list).getAllByTestId("expert-skill-row");
     expect(
       rows.map(
@@ -323,7 +321,7 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
     expect(screen.getByText(/No workflows yet/)).toBeDefined();
@@ -354,9 +352,7 @@ describe("AutopilotPage", () => {
     ).toBeDefined();
     await user.click(screen.getByRole("button", { name: /try again/i }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(failures).toBe(2);
   });
 

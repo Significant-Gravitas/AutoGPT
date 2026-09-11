@@ -464,7 +464,7 @@ export function ChatSidebar() {
                           group.expertId
                             ? (expertsById.get(group.expertId)?.name ??
                               "Expert")
-                            : "AutoPilot"
+                            : "Otto"
                         }
                         sessions={group.sessions}
                         renderRow={renderSessionRow}

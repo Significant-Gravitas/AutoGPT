@@ -91,9 +91,7 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(
-      screen
-        .getByRole("link", { name: /raise your own expert from scratch/i })
-        .getAttribute("href"),
+      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
     ).toBe("/raise");
     // The card is the link: a shared URL lands on the same profile the
     // marketplace opens, with no dialog in between.
@@ -123,7 +121,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(card.getAttribute("href")).toBe(
       "/marketplace/experts/template-maria",
     );
-    expect(screen.queryByText(/raise your own expert/i)).toBeNull();
+    expect(screen.queryByText("Raise your own")).toBeNull();
     expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
     expect(rosterRequested).toBe(false);
   });
@@ -158,17 +156,16 @@ describe("Marketplace ExpertsSection", () => {
     await waitFor(
       () => {
         const raiseLink = screen.getByRole("link", {
-          name: "Raise your own expert from scratch",
+          name: "Raise your own",
         });
         expect(raiseLink.getAttribute("href")).toBe("/raise");
-        expect(raiseLink.textContent).not.toContain("…or");
         expect(screen.queryByText("Meet the AI Experts")).toBeNull();
       },
       { timeout: 5_000 },
     );
   });
 
-  test("uses standalone raise copy when templates fail to load", async () => {
+  test("keeps the raise button when templates fail to load", async () => {
     server.use(
       http.get("/api/proxy/api/experts/templates", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
@@ -179,10 +176,9 @@ describe("Marketplace ExpertsSection", () => {
     render(<MainMarkeplacePage />);
 
     const raiseLink = await screen.findByRole("link", {
-      name: "Raise your own expert from scratch",
+      name: "Raise your own",
     });
     expect(raiseLink.getAttribute("href")).toBe("/raise");
-    expect(raiseLink.textContent).not.toContain("…or");
   });
 
   test("hired template shows hired state", async () => {

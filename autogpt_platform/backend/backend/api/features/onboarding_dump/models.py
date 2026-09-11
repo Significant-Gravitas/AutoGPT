@@ -100,7 +100,7 @@ class SuggestedPrompt(BaseModel):
 
 
 class RecommendedExpert(BaseModel):
-    """One roster template AutoPilot suggests hiring first.
+    """One roster template Otto suggests hiring first.
 
     ``template_id`` is always a live template — the model only ever picks
     ids off the roster it was shown, and anything else is dropped before
@@ -129,7 +129,7 @@ class RaiseSuggestion(BaseModel):
 
 
 class ExpertRecommendations(BaseModel):
-    """The team AutoPilot proposes after the dump.
+    """The team Otto proposes after the dump.
 
     ``source`` says where it came from: "llm" for a real read of the
     transcript, "fallback" for the deterministic role/pain-point mapping,
