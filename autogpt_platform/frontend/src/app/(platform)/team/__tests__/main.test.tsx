@@ -443,6 +443,28 @@ describe("TeamPage", () => {
     expect(getStatValue(card, "Schedules")).toBe("1");
   });
 
+  test("keeps the roster when only the schedules query fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get(
+        "*/api/schedules",
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByRole("link", { name: "View Maria" }),
+    ).toBeDefined();
+    // The roster loaded, so the page must not claim it could not.
+    await waitFor(() =>
+      expect(
+        screen.queryByText("We could not load your hired experts."),
+      ).toBeNull(),
+    );
+  });
+
   test("does not badge a card for a workflow without a schedule", async () => {
     const needsSetupMaria: Expert = {
       ...hiredMaria,

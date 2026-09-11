@@ -21132,6 +21132,11 @@
             "items": { "$ref": "#/components/schemas/ExpertWorkflowChainItem" },
             "type": "array",
             "title": "Chain"
+          },
+          "integration_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Integration Providers"
           }
         },
         "type": "object",
