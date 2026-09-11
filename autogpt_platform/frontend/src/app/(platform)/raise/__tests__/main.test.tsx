@@ -329,7 +329,7 @@ test("picking a weekly budget advances to marketplace workflows", async () => {
   seedAtBudget();
   renderRaise();
   await userEvent.click(
-    await screen.findByRole("button", { name: /500 credits/ }),
+    await screen.findByRole("button", { name: "$5 / week" }),
   );
 
   expect(

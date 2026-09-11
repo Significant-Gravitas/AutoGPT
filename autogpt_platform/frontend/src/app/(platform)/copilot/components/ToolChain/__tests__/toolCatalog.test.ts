@@ -75,17 +75,12 @@ describe("getCatalogLabel", () => {
       "done",
       'Posted to "#general"',
     ],
-    [
-      "run_block",
-      { block_name: "Web Search" },
-      "done",
-      'Ran block "Web Search"',
-    ],
+    ["run_block", { block_name: "Web Search" }, "done", "Ran block"],
     [
       "run_block",
       { block_id: "abcdefabcdefabcdefabcdef" },
       "done",
-      'Ran block "abcdefabcdefabcdefab…"',
+      "Ran block",
     ],
     [
       "run_mcp_tool",
@@ -169,17 +164,12 @@ describe("getCatalogLabel", () => {
     ],
     ["create_folder", { name: "Reports" }, "done", 'Created folder "Reports"'],
     ["update_folder", { name: "Reports" }, "done", 'Updated folder "Reports"'],
-    [
-      "run_agent",
-      { username_agent_slug: "abhi/scraper" },
-      "done",
-      'Ran agent "abhi/scraper"',
-    ],
+    ["run_agent", { username_agent_slug: "abhi/scraper" }, "done", "Ran agent"],
     [
       "run_agent",
       { library_agent_id: "0123456789012345678901234" },
       "done",
-      'Ran agent "01234567890123456789…"',
+      "Ran agent",
     ],
     ["add_understanding", {}, "done", "Noted context"],
     ["enter_agent_building_mode", {}, "running", "Entering building mode…"],
@@ -194,9 +184,7 @@ describe("getCatalogLabel", () => {
     const text =
       getCatalogLabel("run_sub_session", { prompt }, "running")?.text ?? "";
 
-    expect(text.startsWith('Delegating to sub-AutoPilot: "Investigate')).toBe(
-      true,
-    );
+    expect(text.startsWith('Delegating to sub-Otto: "Investigate')).toBe(true);
     expect(text.endsWith('…"…')).toBe(true);
   });
 
@@ -230,5 +218,25 @@ describe("getCatalogLabel", () => {
     expect(getCatalogLabel("web_search", { query: 42 }, "done")?.text).toBe(
       "Searched the web for",
     );
+  });
+
+  it("labels the expert team tools", () => {
+    expect(
+      getCatalogLabel("hire_expert", { template_id: "tpl" }, "done"),
+    ).toEqual({ category: "team", text: "Ready to hire" });
+    expect(getCatalogLabel("raise_expert", { name: "Otto" }, "done")).toEqual({
+      category: "team",
+      text: 'Ready to raise "Otto"',
+    });
+    expect(
+      getCatalogLabel(
+        "confirm_expert_change",
+        { confirmation_id: "c" },
+        "done",
+      ),
+    ).toEqual({ category: "team", text: "Added to the team" });
+    expect(
+      getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
+    ).toBe('Handed over: "own it"');
   });
 });

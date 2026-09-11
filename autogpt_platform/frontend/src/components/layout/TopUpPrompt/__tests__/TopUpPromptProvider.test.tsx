@@ -15,10 +15,21 @@ import { Key } from "@/services/storage/local-storage";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
+import { useState } from "react";
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
 // `Flag` enum and let each test toggle whether the flag resolves true.
 let isBillingEnabled = true;
+let authenticatedUserId: string | null = "user-a";
+
+// Simulate an authenticated user so that fetchInitialCredits and
+// fetchInitialAutoTopUpConfig are enabled (they gate on isLoggedIn).
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: authenticatedUserId ? { id: authenticatedUserId } : null,
+    isLoggedIn: Boolean(authenticatedUserId),
+  }),
+}));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -58,22 +69,36 @@ function setupCredits(args: {
   };
 }
 
-function renderProvider() {
-  return render(
+function providerTree() {
+  return (
     <TopUpPromptProvider>
       <div>ready</div>
+      <StatefulChild />
       <LowCreditBanner />
-    </TopUpPromptProvider>,
+    </TopUpPromptProvider>
   );
+}
+
+function StatefulChild() {
+  const [value, setValue] = useState(0);
+  return (
+    <button onClick={() => setValue(value + 1)}>page state {value}</button>
+  );
+}
+
+function renderProvider() {
+  return render(providerTree());
 }
 
 beforeEach(() => {
   localStorage.clear();
+  authenticatedUserId = "user-a";
   isBillingEnabled = true;
 });
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("TopUpPromptProvider daily auto-opener", () => {
@@ -82,11 +107,9 @@ describe("TopUpPromptProvider daily auto-opener", () => {
 
     renderProvider();
 
-    // The dialog body copy mentions Autopilot, which the banner copy does not,
+    // The dialog body copy mentions Otto, which the banner copy does not,
     // so it unambiguously signals the dialog auto-opened.
-    expect(
-      await screen.findByText(/keep your agents and Autopilot/i),
-    ).toBeDefined();
+    expect(await screen.findByText(/keep your agents and Otto/i)).toBeDefined();
   });
 
   test("does not auto-open when the modal was already shown today", async () => {
@@ -102,7 +125,7 @@ describe("TopUpPromptProvider daily auto-opener", () => {
     // credit fetch resolved before we assert the dialog is absent.
     await screen.findByText(/out of automation credits/i);
 
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Otto/i)).toBeNull();
   });
 });
 
@@ -157,6 +180,57 @@ describe("useTopUpPrompt without a provider", () => {
 });
 
 describe("TopUpPromptProvider out-of-credits suppression", () => {
+  test("does not fetch billing data when logged out", async () => {
+    authenticatedUserId = null;
+    let creditsRequested = false;
+    let autoTopUpRequested = false;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        creditsRequested = true;
+        return { credits: 0 };
+      }),
+      getGetV1GetAutoTopUpMockHandler(() => {
+        autoTopUpRequested = true;
+        return { amount: 0, threshold: 0 };
+      }),
+    );
+
+    renderProvider();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(creditsRequested).toBe(false);
+    expect(autoTopUpRequested).toBe(false);
+  });
+
+  test("resets and refetches billing state when the authenticated user changes", async () => {
+    let credits = 0;
+    let creditRequests = 0;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        creditRequests += 1;
+        return { credits };
+      }),
+      getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
+    );
+
+    const view = renderProvider();
+
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toMatch(/out of automation credits/i);
+    expect(creditRequests).toBe(1);
+    fireEvent.click(screen.getByText("page state 0"));
+
+    credits = 500;
+    authenticatedUserId = "user-b";
+    view.rerender(providerTree());
+
+    await waitFor(() => expect(creditRequests).toBe(2));
+    expect(screen.getByText("page state 1")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText(/out of automation credits/i)).toBeNull(),
+    );
+  });
+
   test("suppresses dialog and banner when auto-refill is enabled", async () => {
     const { waitForCreditsFetch } = setupCredits({
       credits: 0,
@@ -176,7 +250,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Otto/i)).toBeNull();
   });
 
   test("renders nothing when the billing flag is off", async () => {
@@ -197,7 +271,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Otto/i)).toBeNull();
   });
 
   test("renders nothing when the user still has a positive balance", async () => {
@@ -213,7 +287,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Otto/i)).toBeNull();
   });
 
   test("suppresses the prompt when the credits fetch fails", async () => {
@@ -238,6 +312,6 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitFor(() => expect(autoTopUpRequested).toBe(true));
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Otto/i)).toBeNull();
   });
 });

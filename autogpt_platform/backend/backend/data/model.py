@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, SubscriptionTier
+from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -78,35 +78,34 @@ class User(BaseModel):
         default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
 
-    # Notification preferences
+    # Notification preferences: the volume knob, not a checkbox list.
     max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
-    notify_on_agent_run: bool = Field(default=True, description="Notify on agent run")
-    notify_on_zero_balance: bool = Field(
-        default=True, description="Notify on zero balance"
+    briefing_frequency: BriefingFrequency = Field(
+        default=BriefingFrequency.WEEKLY,
+        description="How often the Briefing digest is delivered (OFF = alerts only)",
     )
-    notify_on_low_balance: bool = Field(
-        default=True, description="Notify on low balance"
+    alerts_enabled: bool = Field(
+        default=True, description="Send Alerts when something is blocked on the user"
     )
-    notify_on_block_execution_failed: bool = Field(
-        default=True, description="Notify on block execution failure"
-    )
-    notify_on_continuous_agent_error: bool = Field(
-        default=True, description="Notify on continuous agent error"
-    )
-    notify_on_daily_summary: bool = Field(
-        default=True, description="Notify on daily summary"
-    )
-    notify_on_weekly_summary: bool = Field(
-        default=True, description="Notify on weekly summary"
-    )
-    notify_on_monthly_summary: bool = Field(
-        default=True, description="Notify on monthly summary"
+    notify_on_store_verdict: bool = Field(
+        default=True, description="Notify when a store submission is reviewed"
     )
 
     # User timezone for scheduling and time display
     timezone: str = Field(
         default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
+    )
+
+    # Default Otto connection for chats nobody routed explicitly. Kept as
+    # plain strings here: the data layer stores the choice, the copilot layer
+    # decides what a given value means (and treats one it doesn't recognise as
+    # "automatic", so a value written by a newer server can't break an older one).
+    default_chat_auth_provider: Optional[str] = Field(
+        None, description="Saved default chat transport, or None for automatic"
+    )
+    default_chat_credential_id: Optional[str] = Field(
+        None, description="Credential backing the saved default chat transport"
     )
 
     @classmethod
@@ -152,18 +151,13 @@ class User(BaseModel):
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
-            max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
-            notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
-            notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
-            notify_on_low_balance=prisma_user.notifyOnLowBalance or True,
-            notify_on_block_execution_failed=prisma_user.notifyOnBlockExecutionFailed
-            or True,
-            notify_on_continuous_agent_error=prisma_user.notifyOnContinuousAgentError
-            or True,
-            notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
-            notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
-            notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+            max_emails_per_day=prisma_user.maxEmailsPerDay,
+            briefing_frequency=BriefingFrequency(prisma_user.briefingFrequency),
+            alerts_enabled=prisma_user.alertsEnabled,
+            notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
+            default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )
 
 
@@ -741,7 +735,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         """Whether this selection needs a credential at all.
 
         A field may declare a discriminator value that maps to no provider,
-        meaning that choice is credential-free — AutoPilot's `platform`
+        meaning that choice is credential-free — Otto's `platform`
         transport runs on platform credits and needs nothing connected.
 
         Callers must consult this before resolving, discriminating, or
@@ -868,7 +862,25 @@ class UserTransaction(BaseModel):
     extra_data: str | None = None
 
 
+class CreditHistoryCharge(BaseModel):
+    id: str
+    posted_at: datetime
+    amount: int
+    charge_type: Literal["usage", "execution_fee", "adjustment", "transaction"]
+    block_name: str | None = None
+    node_execution_id: str | None = None
+
+
+class CreditHistoryRelatedExecution(BaseModel):
+    execution_id: str
+    agent_name: str | None = None
+    library_agent_id: str | None = None
+    execution_available: bool = False
+    amount: int | None = None
+
+
 class CreditTransactionItem(BaseModel):
+    id: str = ""
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
@@ -879,11 +891,37 @@ class CreditTransactionItem(BaseModel):
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+    activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
+        "other"
+    )
+    library_agent_id: str | None = None
+    agent_name: str | None = None
+    execution_started_at: datetime | None = None
+    execution_status: str | None = None
+    execution_graph_version: int | None = None
+    execution_available: bool = False
+    conversation_id: str | None = None
+    conversation_title: str | None = None
+    parent_execution_id: str | None = None
+    parent_agent_name: str | None = None
+    parent_library_agent_id: str | None = None
+    related_executions: list[CreditHistoryRelatedExecution] = Field(
+        default_factory=list
+    )
+    related_executions_has_more: bool = False
+    usage_charge_amount: int = 0
+    usage_fee_amount: int = 0
+    usage_adjustment_amount: int = 0
+    charges: list[CreditHistoryCharge] = Field(default_factory=list)
+    charges_total_count: int = 0
+    charges_truncated: bool = False
 
 
 class TransactionHistory(BaseModel):
     transactions: list[CreditTransactionItem]
     next_transaction_time: datetime | None
+    next_cursor: str | None = None
+    snapshot_at: datetime | None = None
 
 
 class RefundRequest(BaseModel):

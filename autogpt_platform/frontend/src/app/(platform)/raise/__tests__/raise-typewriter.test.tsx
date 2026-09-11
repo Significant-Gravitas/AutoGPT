@@ -90,9 +90,7 @@ test("renders restored conversation messages instantly after reload", async () =
   const visible = visibleBubbleText();
   expect(
     visible.some((text) =>
-      text.includes(
-        "Hello, I'm Autopilot. I'll help you raise your own expert.",
-      ),
+      text.includes("Hello, I'm Otto. I'll help you raise your own expert."),
     ),
   ).toBe(true);
   expect(
@@ -102,10 +100,10 @@ test("renders restored conversation messages instantly after reload", async () =
   ).toBe(true);
   expect(
     visible.some((text) =>
-      text.includes("Good pick. What do you want to call it?"),
+      text.includes("Good pick. What do you want to call them?"),
     ),
   ).toBe(true);
   expect(
-    visible.some((text) => text.includes("Nice. Now choose a color for it.")),
+    visible.some((text) => text.includes("Nice. Now choose a color for them.")),
   ).toBe(true);
 });

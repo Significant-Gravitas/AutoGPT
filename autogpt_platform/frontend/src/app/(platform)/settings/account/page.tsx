@@ -28,7 +28,9 @@ export default function SettingsPreferencesPage() {
     dirty,
     isSaving,
     setTimezone,
-    toggleNotification,
+    setBriefingFrequency,
+    setAlertsEnabled,
+    setStoreVerdictsEnabled,
     discardChanges,
     savePreferences,
   } = usePreferencesPage();
@@ -68,7 +70,9 @@ export default function SettingsPreferencesPage() {
       {showNotifications ? (
         <NotificationsCard
           values={formState.notifications}
-          onToggle={toggleNotification}
+          onBriefingFrequencyChange={setBriefingFrequency}
+          onAlertsChange={setAlertsEnabled}
+          onStoreVerdictsChange={setStoreVerdictsEnabled}
           index={2}
         />
       ) : null}

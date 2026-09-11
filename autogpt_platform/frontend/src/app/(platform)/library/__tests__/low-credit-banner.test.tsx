@@ -17,6 +17,10 @@ import { Key } from "@/services/storage/local-storage";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import LibraryPage from "../page";
 
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+}));
+
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
 // `Flag` enum so other flags the page reads (e.g. AGENT_BRIEFING) resolve.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -116,11 +120,9 @@ describe("Library low-credit banner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /top up/i }));
 
-    // The dialog body copy mentions Autopilot, which the banner copy does not —
+    // The dialog body copy mentions Otto, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
-    expect(
-      await screen.findByText(/keep your agents and Autopilot/i),
-    ).toBeDefined();
+    expect(await screen.findByText(/keep your agents and Otto/i)).toBeDefined();
   });
 
   test("hides the banner when the user still has credits", async () => {

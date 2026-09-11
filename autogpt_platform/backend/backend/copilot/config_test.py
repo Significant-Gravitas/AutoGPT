@@ -477,7 +477,7 @@ class TestTransportProfile:
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by
-        ``executor.processor.resolve_use_sdk_for_mode`` — must stay in
+        ``executor.processor.resolve_use_sdk`` — must stay in
         sync with ``transport.supports_sdk``."""
         for kwargs in (
             dict(use_local=True, api_key="ollama", base_url="http://h:11434/v1"),
@@ -502,7 +502,7 @@ class TestApiKeyFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """Critical safety check: a stray ``OPENAI_API_KEY`` (set by users
-        for graphiti / embedders) must not silently bind to AutoPilot's
+        for graphiti / embedders) must not silently bind to Otto's
         local Ollama endpoint as the bearer token. The fallback chain
         for local is empty by design — and the
         ``_validate_local_transport_requirements`` guard surfaces the
@@ -608,7 +608,7 @@ class TestLocalRequirementsValidator:
     misconfig where ``CHAT_USE_LOCAL=true`` was set but the operator
     forgot to provide either an endpoint or an api key. Without it the
     base_url field validator silently fills the OpenRouter default and
-    AutoPilot's first turn 401s — much worse UX than a startup error
+    Otto's first turn 401s — much worse UX than a startup error
     pointing at the missing env var."""
 
     def test_explicit_base_url_and_api_key_succeeds(self):
@@ -651,7 +651,7 @@ class TestLocalTransport:
     Claude Agent SDK CLI speaks Anthropic's wire protocol and Ollama
     doesn't implement it. ``thinking_available`` reports this so the
     request layer can downgrade gracefully (see
-    ``executor.processor.resolve_use_sdk_for_mode``)."""
+    ``executor.processor.resolve_use_sdk``)."""
 
     def test_local_transport_overrides_subscription(self):
         """An operator opting into local self-hosting must not have their

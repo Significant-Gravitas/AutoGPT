@@ -12,6 +12,7 @@ Covers:
 """
 
 import hashlib
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,13 +28,44 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
+from backend.util.feature_flag import Flag
 
 _EC = "backend.copilot.expert_context"
 
-# SHA-256 of _CACHEABLE_SYSTEM_PROMPT captured before the Task 6 change.
-# The prompt cache contract requires this constant to stay byte-identical.
+
+def _flag_mock(**overrides: bool) -> AsyncMock:
+    """``is_feature_enabled`` stub answering per flag.
+
+    Defaults mirror production for an existing user: hire-experts on, the
+    onboarding-team child flag off. Pass ``ONBOARDING_EXPERT_TEAM=True`` to
+    opt a test into the Head-of-AI cohort.
+    """
+    enabled = {Flag.HIRE_EXPERTS: True, Flag.ONBOARDING_EXPERT_TEAM: False}
+    enabled |= {Flag[name]: value for name, value in overrides.items()}
+
+    async def is_enabled(flag: Flag, _user_id: str, default: bool = False) -> bool:
+        return enabled.get(flag, default)
+
+    return AsyncMock(side_effect=is_enabled)
+
+
+@pytest.fixture(autouse=True)
+def hire_experts_flag_on():
+    """Pin the hire-experts flag on.
+
+    ``build_expert_context`` reads it to decide whether the roster block may
+    name ``delegate_to_expert``; without pinning it these tests would follow
+    whatever LaunchDarkly (or a local ``FORCE_FLAG_`` override) says.
+    """
+    with patch(f"{_EC}.is_feature_enabled", _flag_mock()):
+        yield
+
+
+# SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
+# constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
+# Last re-pinned when the assistant was renamed AutoPilot -> Otto.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "22d1897a44ec751b36e4938f087dc49ad9dcae6c452842ed057ba7ebe3de4545"
+    "572493d92b08c0b1f4abfcdd8339790c0f0d504401403ea57d5c1fe155217323"
 )
 
 
@@ -81,6 +113,18 @@ def _expert(
     )
 
 
+def _template(
+    template_id: str = "tpl-1",
+    name: str = "Maria",
+    role: str = "Marketing Lead",
+    tagline: str | None = "Runs your <campaigns>.",
+    workflows: list[ExpertWorkflowRef] | None = None,
+) -> Expert:
+    return _expert(
+        expert_id=template_id, name=name, role=role, workflows=workflows
+    ).model_copy(update={"is_template": True, "tagline": tagline})
+
+
 class TestBuildExpertIdentitySuffix:
     """Identity lives in the per-session system-prompt suffix (same
     mechanism as building mode) so it outranks the first-message context.
@@ -113,7 +157,7 @@ class TestBuildExpertIdentitySuffix:
         assert "Maria" in result
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
-        assert "never present yourself as AutoPilot" in result
+        assert "never present yourself as Otto" in result
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):
@@ -241,8 +285,8 @@ class TestBuildExpertIdentitySuffix:
         assert "Never invent customer evidence." in result
         assert "<what_ive_learned>" not in result
         assert "Nothing recorded yet." not in result
-        assert "discloses that it is AI" in result
-        assert "External actions require approval" in result
+        for rule in PROTECTED_SOUL_RULES:
+            assert rule and rule in result
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):
@@ -361,6 +405,7 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", "exp-1")
 
@@ -373,6 +418,88 @@ class TestBuildExpertContextExpertSession:
         assert "la-1" in result
         assert "graph-1" in result
         assert "run_agent" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("workflows", [[_workflow()], []])
+    async def test_workflows_block_covers_a_skipped_connection(self, workflows):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(workflows=workflows))
+        mock_db.list_experts = AsyncMock(return_value=[])
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        block = result.split("</expert_workflows>")[0]
+        assert "skips or declines a connection" in block
+        assert "public data allows (research, drafts)" in block
+        assert "workspace file with its sources" in block
+        assert "which one connection would unlock it" in block
+        assert "If public data does not support useful work, say so" in block
+        assert "Never report a workflow as run, or a step as completed" in block
+
+    @pytest.mark.asyncio
+    async def test_lists_teammates_excluding_self_with_delegation_rule(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Otto")]
+        )
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" in result
+        assert "Otto" in result
+        assert "Maria" not in result.split("<team_context>")[1]
+        assert "delegate_to_expert" in result
+
+    @pytest.mark.asyncio
+    async def test_solo_expert_gets_no_team_block(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" not in result
+
+    @pytest.mark.asyncio
+    async def test_solo_expert_in_onboarding_cohort_gets_no_hiring_roster(self):
+        """An expert session's empty teammate list is a solo roster, not a
+        user without a team: even with the onboarding-team flag on it must
+        not be handed the Head-of-AI block or pay for the template read."""
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        mock_db.list_templates = AsyncMock(return_value=[_template()])
+        with (
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(ONBOARDING_EXPERT_TEAM=True)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" not in result
+        assert "Head of AI" not in result
+        mock_db.list_templates.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_teammate_lookup_failure_keeps_workflows(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(side_effect=RuntimeError("db down"))
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<expert_workflows>" in result
+        assert "<team_context>" not in result
 
     @pytest.mark.asyncio
     async def test_archived_expert_returns_empty(self):
@@ -427,7 +554,7 @@ class TestBuildExpertContextPlainSession:
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
-        mock_db.list_experts.assert_awaited_once_with("user-1")
+        mock_db.list_experts.assert_awaited_once_with("user-1", with_metrics=False)
         mock_db.get_expert.assert_not_called()
         assert "<team_context>" in result
         assert "</team_context>" in result
@@ -439,7 +566,80 @@ class TestBuildExpertContextPlainSession:
         assert "Copywriter" in result
         assert "exp-2" in result
         assert "Blog Writer" in result
-        assert "never silently delegate" in result
+        # Plain sessions may delegate to a listed expert (not just suggest
+        # opening their thread) as long as the model discloses it.
+        assert "delegate_to_expert" in result
+        assert "Never delegate silently." in result
+
+    @pytest.mark.asyncio
+    async def test_flag_off_roster_never_names_the_delegation_tool(self):
+        """``delegate_to_expert`` is hidden from the schema and refused by
+        execute_tool when hire-experts is off, so a roster block that still
+        told the model to call it would prepend a broken instruction to every
+        first message of a user who had already hired experts."""
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        with (
+            patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=False)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<team_context>" in result
+        assert "Maria" in result
+        assert "delegate_to_expert" not in result
+        assert "opening that expert's thread" in result
+
+    @pytest.mark.asyncio
+    async def test_flag_off_teammate_block_never_names_the_delegation_tool(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Otto")]
+        )
+        with (
+            patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=False)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" in result
+        assert "Otto" in result
+        assert "delegate_to_expert" not in result
+
+    @pytest.mark.asyncio
+    async def test_team_context_is_byte_identical_regardless_of_metrics(self):
+        """The roster block renders only name/role/id/workflow names — the
+        ``list_experts(with_metrics=False)`` call site must not change a
+        single byte of <team_context> versus a roster carrying real
+        last_run/weekly_spend metrics."""
+        from backend.copilot.expert_context import build_expert_context
+
+        no_metrics = [_expert(), _expert(expert_id="exp-2", name="Otto")]
+        with_metrics = [
+            e.model_copy(
+                update={
+                    "last_run_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    "last_run_status": "COMPLETED",
+                    "weekly_budget": 500,
+                    "weekly_spend": 250,
+                }
+            )
+            for e in no_metrics
+        ]
+
+        results = []
+        for experts in (no_metrics, with_metrics):
+            mock_db = MagicMock()
+            mock_db.list_experts = AsyncMock(return_value=experts)
+            with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+                results.append(await build_expert_context("user-1", None))
+
+        assert results[0] == results[1]
 
     @pytest.mark.asyncio
     async def test_no_experts_returns_empty(self):
@@ -448,6 +648,101 @@ class TestBuildExpertContextPlainSession:
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", None)
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_no_experts_with_team_flag_renders_head_of_ai_block(self):
+        """Flag-on, nothing hired: Otto gets the roster and its
+        Head-of-AI brief instead of silence, so a recurring-work request can
+        turn into a hire proposal."""
+        from backend.copilot.expert_context import build_expert_context
+
+        templates = [
+            _template(),
+            _template(
+                template_id="tpl-2",
+                name="Max",
+                role="Sales Rep",
+                tagline="Finds your leads.",
+                workflows=[],
+            ),
+        ]
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_templates = AsyncMock(return_value=templates)
+        with (
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(ONBOARDING_EXPERT_TEAM=True)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<team_context>" in result
+        assert "</team_context>" in result
+        assert "Head of AI" in result
+        assert "hire_expert(template_id=...)" in result
+        assert "raise_expert(...)" in result
+        assert "Propose one hire at a time." in result
+        assert (
+            "- Maria — Marketing Lead (template_id: tpl-1); "
+            "Runs your &lt;campaigns&gt;.; workflows: SEO Audit"
+        ) in result
+        assert (
+            "- Max — Sales Rep (template_id: tpl-2); Finds your leads.; "
+            "workflows: none installed"
+        ) in result
+        assert "<campaigns>" not in result
+
+    @pytest.mark.asyncio
+    async def test_no_experts_with_team_flag_and_empty_roster_offers_raise(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_templates = AsyncMock(return_value=[])
+        with (
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(ONBOARDING_EXPERT_TEAM=True)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<team_context>" in result
+        assert "Roster: none available yet — offer to raise a custom expert." in result
+
+    @pytest.mark.asyncio
+    async def test_no_experts_flag_on_but_delegation_off_returns_empty(self):
+        """``hire_expert`` rides the same tool group as ``delegate_to_expert``
+        — with hire-experts off the block would name a tool the turn cannot
+        execute."""
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_templates = AsyncMock(return_value=[_template()])
+        with (
+            patch(
+                f"{_EC}.is_feature_enabled",
+                _flag_mock(HIRE_EXPERTS=False, ONBOARDING_EXPERT_TEAM=True),
+            ),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert result == ""
+        mock_db.list_templates.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_template_lookup_failure_returns_empty(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_templates = AsyncMock(side_effect=RuntimeError("db down"))
+        with (
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(ONBOARDING_EXPERT_TEAM=True)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
             result = await build_expert_context("user-1", None)
 
         assert result == ""

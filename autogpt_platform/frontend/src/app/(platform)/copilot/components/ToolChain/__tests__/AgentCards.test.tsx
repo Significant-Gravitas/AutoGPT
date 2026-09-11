@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen } from "@/tests/integrations/test-utils";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   AgentListCard,
@@ -154,13 +155,37 @@ describe("SubSessionCard", () => {
       />,
     );
 
-    expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
+    expect(screen.getByText("Sub-Otto")).toBeDefined();
     expect(screen.getByText("completed")).toBeDefined();
     expect(screen.getByText("All finished")).toBeDefined();
     expect(screen.getByText("2m 5s")).toBeDefined();
     expect(screen.getByLabelText("Open sub-session").getAttribute("href")).toBe(
       "/copilot?session=sub-1",
     );
+  });
+
+  it("renders the expert avatar url through the shared avatar", () => {
+    // Only asserts the card hands the backend url to ExpertAvatar unchanged.
+    // ExpertAvatar still renders via next/image, so the configured-hostname
+    // allow list is not covered here — setup-nextjs-mocks swaps in a plain img.
+    render(
+      <SubSessionCard
+        output={{
+          status: "running",
+          expert: {
+            id: "exp-1",
+            name: "Maria",
+            role: "Researcher",
+            avatar_url: "https://cdn.example.com/maria.png",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByAltText("Maria").getAttribute("src")).toBe(
+      "https://cdn.example.com/maria.png",
+    );
+    expect(screen.getByText("Researcher")).toBeDefined();
   });
 
   it("shows second-scale elapsed time without a link", () => {

@@ -24,16 +24,20 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { ChainRowView } from "./ChainRowView";
 import {
   type ChainRow,
   getChainHeading,
   isLiftedSetupRow,
+  isToolCallPending,
+  markSupersededSubSessionRows,
   toChainRow,
 } from "./helpers";
 import { SwapText } from "./SwapText";
@@ -44,19 +48,28 @@ const COLLAPSED_WINDOW = 2;
 interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
+  /** Public share viewer: the chain renders as the owner saw it, but setup
+   *  cards and the Proceed draft are the owner's work — a reader gets no
+   *  Connect prompt and no write into the composer store. */
+  readOnly?: boolean;
 }
 
-export function ToolChain({ parts, isStreaming }: Props) {
+export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const { setInitialPrompt, sentMessageCount } = useCopilotUIStore();
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const { onSend } = useCopilotChatActions();
+  const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
   // Ids drafted by the last Proceed, plus the send count at that moment.
   // Proceed only fills the composer, so the cards' onSent callbacks fire
   // when the user actually sends — not when the draft is written.
   const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
+  // The ref latches against a double effect run; the state re-renders Proceed.
+  const autoSentRef = useRef(false);
+  const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
@@ -94,20 +107,90 @@ export function ToolChain({ parts, isStreaming }: Props) {
     [sentMessageCount, actionEntries],
   );
 
+  const pendingActions = [...actionEntries.values()];
+  const connectorRequests = pendingActions
+    .map((entry) => entry.connectors)
+    .filter((request) => request !== undefined);
+  const mcpRequests = pendingActions
+    .map((entry) => entry.mcp)
+    .filter((request) => request !== undefined);
+  const inputRequests = pendingActions
+    .map((entry) => entry.inputs)
+    .filter((request) => request !== undefined);
+  const questionRequests = pendingActions
+    .map((entry) => entry.questions)
+    .filter((request) => request !== undefined);
+  const needsManualProceed = pendingActions.some(
+    (entry) => entry.manualProceed,
+  );
+  const hasCardWork =
+    connectorRequests.length > 0 ||
+    mcpRequests.length > 0 ||
+    inputRequests.length > 0 ||
+    questionRequests.length > 0;
+  const allActionsReady =
+    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
+  // One tool can need several accounts. The turn goes out once, when every
+  // card in the chain is satisfied — otherwise connecting the first provider
+  // sends while the rest of the rows are still visibly unconnected.
+  const justConnectedHere = pendingActions.some((entry) => entry.justConnected);
+  // A tool still awaiting its result may yet add a card to this chain, and the
+  // send is once-only — spending it now leaves that card unsendable. A stopped
+  // stream owes no more results, however its calls ended.
+  const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
+  const canAutoSend =
+    !readOnly &&
+    !awaitingToolResult &&
+    !autoSent &&
+    allActionsReady &&
+    !needsManualProceed &&
+    justConnectedHere;
+  // Nothing to sign in to and nothing to fill in: without a button this card
+  // has no way forward at all — a card that lands after the send is spent
+  // included. Only asks that build a message qualify — an MCP row builds none,
+  // so offering one there is a button that does nothing.
+  const offerProceed =
+    !readOnly &&
+    !awaitingToolResult &&
+    !canAutoSend &&
+    allActionsReady &&
+    (connectorRequests.length > 0 || inputRequests.length > 0);
+
+  useEffect(
+    function sendOnceEveryCardIsSatisfied() {
+      if (!canAutoSend || autoSentRef.current) return;
+      autoSentRef.current = true;
+      setAutoSent(true);
+      const message = pendingActions
+        .map((entry) => entry.buildMessage())
+        .filter(Boolean)
+        .join("\n\n");
+      if (!message) return;
+      pendingActions.forEach((entry) => entry.onSent?.());
+      void onSend(message);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
+    [canAutoSend],
+  );
+
+  useCredentialFailureCounters({ entries: actionEntries });
+
   const rows = useMemo(
     () =>
-      parts
-        .map((part, i) => toChainRow(part, i))
-        .filter((row): row is ChainRow => row !== null)
-        // Unanswered clarifying questions and setup cards render their work
-        // in the card below the chain — their rows are lifted out of view.
-        .map((row) =>
-          pendingQuestions?.callIds.includes(row.key)
-            ? { ...row, requiresAction: true, lifted: true }
-            : isLiftedSetupRow(row)
-              ? { ...row, lifted: true }
-              : row,
-        ),
+      markSupersededSubSessionRows(
+        parts
+          .map((part, i) => toChainRow(part, i))
+          .filter((row): row is ChainRow => row !== null)
+          // Unanswered clarifying questions and setup cards render their work
+          // in the card below the chain — their rows are lifted out of view.
+          .map((row) =>
+            pendingQuestions?.callIds.includes(row.key)
+              ? { ...row, requiresAction: true, lifted: true }
+              : isLiftedSetupRow(row)
+                ? { ...row, lifted: true }
+                : row,
+          ),
+      ),
     [parts, pendingQuestions],
   );
   if (rows.length === 0) return null;
@@ -124,43 +207,25 @@ export function ToolChain({ parts, isStreaming }: Props) {
   // screen. A manual toggle overrides either direction and sticks.
   const open = manualExpanded ?? isStreaming;
   const windowMode = isStreaming && !expanded && !hasRequiredAction;
-  // Action-required cards (credential setup etc.) can never leave the
-  // screen: collapsing the chain hides the other rows but keeps the
-  // action rows visible, and the streaming window is disabled for them.
-  const actionOnly = !open && hasRequiredAction;
+  // Action-required cards (credential setup etc.) stay on screen by default:
+  // a chain that has collapsed on its own still shows its action rows. An
+  // explicit collapse from the user closes them like any other row.
+  const actionOnly = !open && hasRequiredAction && manualExpanded !== false;
   const panelOpen = open || actionOnly;
-  // Rows stay mounted while closed so the 0fr collapse can animate.
+  // Rows stay mounted while closed so the 0fr collapse can animate — but
+  // only the streaming window's rows. Mounting the full list the moment the
+  // stream ends would flood the collapsing panel with entering rows; the
+  // rest mount when the user actually expands.
   const visible = actionOnly
     ? shownRows.filter((row) => row.requiresAction)
-    : windowMode
+    : windowMode || !panelOpen
       ? shownRows.slice(-COLLAPSED_WINDOW)
       : shownRows;
 
   // A finished chain closes with a "Done" step, so the rail always ends on
   // a resolved node instead of trailing off the last tool. An errored or
   // still-running chain has no such ending.
-  const showDone = !isStreaming && !hasError && !windowMode;
-
-  const pendingActions = [...actionEntries.values()];
-  const connectorRequests = pendingActions
-    .map((entry) => entry.connectors)
-    .filter((request) => request !== undefined);
-  const mcpRequests = pendingActions
-    .map((entry) => entry.mcp)
-    .filter((request) => request !== undefined);
-  const inputRequests = pendingActions
-    .map((entry) => entry.inputs)
-    .filter((request) => request !== undefined);
-  const questionRequests = pendingActions
-    .map((entry) => entry.questions)
-    .filter((request) => request !== undefined);
-  const hasCardWork =
-    connectorRequests.length > 0 ||
-    mcpRequests.length > 0 ||
-    inputRequests.length > 0 ||
-    questionRequests.length > 0;
-  const allActionsReady =
-    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
+  const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
   // Proceed never sends: it drafts the combined reply of every READY card
   // into the chat input so the user reviews/edits and presses send
@@ -214,7 +279,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={panelOpen ? undefined : ("" as unknown as boolean)}
+                inert={!panelOpen || undefined}
                 className="min-h-0 overflow-hidden"
               >
                 <div
@@ -224,51 +289,71 @@ export function ToolChain({ parts, isStreaming }: Props) {
                   }
                 >
                   <AnimatePresence mode="popLayout">
-                    {visible.map((row, i) => (
-                      <m.div
-                        key={row.key}
-                        layout={!reducedMotion}
-                        initial={
-                          reducedMotion
-                            ? false
-                            : { opacity: 0, y: 8, scale: 0.985 }
-                        }
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={
-                          reducedMotion
-                            ? undefined
-                            : { opacity: 0, y: -6, scale: 0.985 }
-                        }
-                        transition={{
-                          opacity: {
-                            duration: reducedMotion ? 0 : 0.18,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          y: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          scale: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          layout: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                        }}
-                      >
-                        <ChainActionsContext.Provider value={chainActions}>
-                          <ChainRowView
-                            row={row}
-                            isLast={i === visible.length - 1 && !showDone}
-                          />
-                        </ChainActionsContext.Provider>
-                      </m.div>
-                    ))}
+                    {visible.map((row, i) => {
+                      // While streaming the window slides on every tool, so
+                      // rows enter without stagger and leave quickly — the
+                      // stagger is for the settled list revealed on expand.
+                      // Post-stream mounts (manual expand) skip per-row
+                      // animation entirely; PANEL_REVEAL fades the panel.
+                      const stagger =
+                        reducedMotion || windowMode
+                          ? 0
+                          : Math.min(i, 6) * 0.035;
+                      const animateIn = !reducedMotion && isStreaming;
+                      return (
+                        <m.div
+                          key={row.key}
+                          layout={!reducedMotion}
+                          initial={
+                            animateIn
+                              ? { opacity: 0, y: 8, scale: 0.985 }
+                              : false
+                          }
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={
+                            reducedMotion
+                              ? undefined
+                              : {
+                                  opacity: 0,
+                                  y: -6,
+                                  scale: 0.985,
+                                  transition: {
+                                    duration: 0.12,
+                                    ease: [0.22, 1, 0.36, 1],
+                                  },
+                                }
+                          }
+                          transition={{
+                            opacity: {
+                              duration: reducedMotion ? 0 : 0.18,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            y: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            scale: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            layout: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                          }}
+                        >
+                          <ChainActionsContext.Provider value={chainActions}>
+                            <ChainRowView
+                              row={row}
+                              isLast={i === visible.length - 1 && !showDone}
+                            />
+                          </ChainActionsContext.Provider>
+                        </m.div>
+                      );
+                    })}
                   </AnimatePresence>
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
@@ -291,8 +376,9 @@ export function ToolChain({ parts, isStreaming }: Props) {
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
-            the ChainActionCard below keeps its registrations. */}
-        {liftedRows.length > 0 && (
+            the ChainActionCard below keeps its registrations. A read-only
+            transcript has no card to feed, so they stay unmounted. */}
+        {!readOnly && liftedRows.length > 0 && (
           <div className="hidden">
             <ChainActionsContext.Provider value={chainActions}>
               {liftedRows.map((row) => (
@@ -305,12 +391,13 @@ export function ToolChain({ parts, isStreaming }: Props) {
         {/* Lifted out of the rows: connecting, filling inputs and answering
             questions are the user's own work, so every card's asks merge into
             one card under the chain that stays put when it collapses. */}
-        {hasCardWork && (
+        {!readOnly && hasCardWork && (
           <ChainActionCard
             connectors={connectorRequests}
             mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
+            manualProceed={needsManualProceed || offerProceed}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />
@@ -318,7 +405,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
 
         {/* Cards with nothing to connect, fill in or answer (confirm-only)
             still need somewhere to send from. */}
-        {pendingActions.length > 0 && !hasCardWork && (
+        {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-sm text-zinc-600">
               <Icon icon={SentIcon} size={16} className="text-zinc-400" />

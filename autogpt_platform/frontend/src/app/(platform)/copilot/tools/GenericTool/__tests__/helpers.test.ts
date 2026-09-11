@@ -42,11 +42,27 @@ describe("formatToolName", () => {
     expect(formatToolName("WebSearch")).toBe("WebSearch");
   });
 
-  it("uses friendly display name for sub-AutoPilot tools", () => {
-    expect(formatToolName("run_sub_session")).toBe("Sub-AutoPilot");
-    expect(formatToolName("get_sub_session_result")).toBe(
-      "Sub-AutoPilot result",
-    );
+  it("uses friendly display name for sub-Otto tools", () => {
+    expect(formatToolName("run_sub_session")).toBe("Sub-Otto");
+    expect(formatToolName("get_sub_session_result")).toBe("Sub-Otto result");
+  });
+
+  it("keeps expert tool names as nouns so every wrapper reads right", () => {
+    // getAnimationText wraps these as "Running X…" / "X completed" /
+    // "X failed", so a past-tense label reads as "Running Asked a teammate…".
+    for (const tool of [
+      "delegate_to_expert",
+      "handoff_to_expert",
+      "hire_expert",
+      "raise_expert",
+      "update_expert",
+      "confirm_expert_change",
+    ]) {
+      expect(formatToolName(tool)).not.toMatch(/^(Asked|Handed|Updated)\b/);
+      expect(formatToolName(tool)).not.toMatch(/ed$/);
+    }
+    expect(formatToolName("delegate_to_expert")).toBe("Teammate delegation");
+    expect(formatToolName("update_expert")).toBe("Expert update");
   });
 
   it("uses the 'Action' label for run_block (frontend parlance)", () => {

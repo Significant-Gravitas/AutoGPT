@@ -87,11 +87,11 @@ class StripeLinkGetUserInfoBlock(Block):
     ) -> BlockOutput:
         try:
             info = await self._link_api_request(credentials, "GET", "/userinfo")
-            yield "name", info.get("name", "")
-            yield "first_name", info.get("first_name", "")
-            yield "last_name", info.get("last_name", "")
-            yield "email", info.get("email", "")
-            yield "phone", info.get("phone", "")
+            yield "name", info.get("name") or ""
+            yield "first_name", info.get("first_name") or ""
+            yield "last_name", info.get("last_name") or ""
+            yield "email", info.get("email") or ""
+            yield "phone", info.get("phone") or ""
         except Exception as e:
             yield "error", str(e)
 

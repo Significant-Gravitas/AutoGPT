@@ -11,7 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { CARD, HALF } from "./ResultCards";
+import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   formatBytes,
   formatWhen,
@@ -42,7 +42,7 @@ interface ResultsProps {
 
 export function FeatureRequestList({ results }: ResultsProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {results.map((request, i) => (
         <div
           key={resultItemKey(request, i)}
@@ -71,7 +71,7 @@ export function FeatureRequestList({ results }: ResultsProps) {
 
 export function ScheduleList({ schedules }: SchedulesProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {schedules.map((schedule, i) => {
         const next = str(schedule, "next_run_time");
         const recurring = !!str(schedule, "cron");
@@ -132,7 +132,7 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
 
 export function FolderList({ folders }: FoldersProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {folders.map((folder, i) => {
         const count =
           typeof folder.agent_count === "number" ? folder.agent_count : null;
@@ -194,7 +194,7 @@ export function FileList({ files }: FilesProps) {
 
 export function DocsList({ results }: ResultsProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {results.map((doc, i) => {
         const docUrl = str(doc, "doc_url");
         const section = str(doc, "section");

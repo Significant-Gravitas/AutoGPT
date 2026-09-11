@@ -67,16 +67,16 @@ describe("CopilotModals", () => {
 
   test("no modal renders by default", () => {
     render(<Harness />);
-    expect(screen.queryByText("AutoPilot skills")).toBeNull();
+    expect(screen.queryByText("Otto skills")).toBeNull();
     expect(screen.queryByText("Scheduled")).toBeNull();
-    expect(screen.queryByText("Third Party Integrations")).toBeNull();
+    expect(screen.queryByText("Integrations")).toBeNull();
   });
 
   test("opens the skills modal with header actions and empty state", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("open-skills"));
 
-    expect(await screen.findByText("AutoPilot skills")).toBeDefined();
+    expect(await screen.findByText("Otto skills")).toBeDefined();
     expect(await screen.findByTestId("skills-empty")).toBeDefined();
     expect(screen.getByTestId("skill-new-button")).toBeDefined();
     expect(screen.getByTestId("skill-upload-button")).toBeDefined();
@@ -94,7 +94,7 @@ describe("CopilotModals", () => {
       );
     });
     await vi.waitFor(() => {
-      expect(screen.queryByText("AutoPilot skills")).toBeNull();
+      expect(screen.queryByText("Otto skills")).toBeNull();
     });
   });
 
@@ -116,7 +116,7 @@ describe("CopilotModals", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("open-integrations"));
 
-    expect(await screen.findByText("Third Party Integrations")).toBeDefined();
+    expect(await screen.findByText("Integrations")).toBeDefined();
     expect(
       (await screen.findAllByText("Connect Service")).length,
     ).toBeGreaterThan(0);

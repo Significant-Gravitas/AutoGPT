@@ -67,3 +67,14 @@ export function groupSessionsByDate<T extends { updated_at: string }>(
     .sort((a, b) => b[0] - a[0])
     .map(([, group]) => group);
 }
+
+// Fired experts can't be addressed, so their group gets no new-chat entry:
+// the deep link would only fall back to Otto.
+export function getNewChatHref(
+  expertId: string | null,
+  activeExpertIds: ReadonlySet<string>,
+) {
+  if (!expertId) return "/copilot";
+  if (!activeExpertIds.has(expertId)) return null;
+  return `/copilot?expertId=${encodeURIComponent(expertId)}`;
+}

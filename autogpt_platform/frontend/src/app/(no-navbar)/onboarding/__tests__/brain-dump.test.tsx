@@ -85,13 +85,23 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
   },
 }));
 
+// These tests navigate by NO_PAYWALL_STEPS, which is the layout for a
+// deployment with neither a paywall nor a self-host connect step. isLocal()
+// is true for anything not explicitly CLOUD, including the test environment,
+// so it is pinned here rather than left to the default.
+vi.mock("@/services/environment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: { ...actual.environment, isLocal: () => false },
+  };
+});
+
 vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
 }));
 
-vi.mock("../steps/WelcomeStep", () => ({
-  WelcomeStep: () => <div data-testid="step-welcome" />,
-}));
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => <div data-testid="step-role" />,
 }));
@@ -154,6 +164,8 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
     ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
+    HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => mockFlags[flag] ?? false,
 }));
@@ -167,7 +179,8 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const PILLBOX_HEADING = "What's eating your time?";
-const DUMP_HEADLINE = "What keeps stealing your week?";
+const DUMP_HEADLINE = "Talk to me about your work";
+const TYPING_HEADLINE = "Write to me about your work";
 
 class FakeMediaRecorder {
   static isTypeSupported() {
@@ -282,6 +295,12 @@ function recordBrainDumpTraffic() {
         return HttpResponse.json({});
       },
     ),
+    // Answered by default so the preparing step's team gate never stalls a
+    // wizard test; the section itself is exercised on the greeting page.
+    http.get(
+      "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-experts",
+      () => HttpResponse.json({ ready: true, team: null }),
+    ),
   );
   return calls;
 }
@@ -301,11 +320,11 @@ function finalizeReturns(response: {
 }
 
 function stepDots(container: HTMLElement) {
-  return container.querySelectorAll("div.h-2.rounded-full").length;
+  return container.querySelectorAll("div.h-1\\.5.rounded-full").length;
 }
 
 function progressWidth(container: HTMLElement) {
-  const bar = container.querySelector<HTMLElement>("div.bg-purple-400");
+  const bar = container.querySelector<HTMLElement>("div.bg-zinc-900");
   return bar?.style.width ?? null;
 }
 
@@ -347,39 +366,19 @@ describe("onboarding brain dump — flag gating", () => {
     render(<OnboardingPage />);
 
     expect(await screen.findByText(DUMP_HEADLINE)).toBeDefined();
-    expect(screen.getByRole("button", { name: "Start talking" })).toBeDefined();
-    expect(screen.queryByTestId("orb-progress-ring")).toBeNull();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
     expect(screen.queryByText(PILLBOX_HEADING)).toBeNull();
   });
 
-  it("renders the original orb with reactive audio bars", async () => {
+  it("renders Otto as the visual, waiting at rest", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
 
-    expect(await screen.findByTestId("orb-current")).toBeDefined();
-    expect(screen.getByTestId("orb-frame").style.width).toBe("184px");
-    expect(screen.getByTestId("orb-decorative-ring")).toBeDefined();
-    expect(screen.getByTestId("orb-audio-bars")).toBeDefined();
-    const audioBars = screen.getAllByTestId("orb-audio-bar");
-    expect(audioBars).toHaveLength(5);
-    expect(audioBars.map((bar) => bar.style.height)).toEqual([
-      "22px",
-      "34px",
-      "46px",
-      "34px",
-      "22px",
-    ]);
-    expect(audioBars.map((bar) => bar.style.transform)).toEqual([
-      "scaleY(0.48)",
-      "scaleY(0.58)",
-      "scaleY(0.72)",
-      "scaleY(0.58)",
-      "scaleY(0.48)",
-    ]);
-    expect(screen.queryByRole("combobox", { name: "Orb style" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Start talking" })).toBeDefined();
+    const avatar = await screen.findByTestId("autopilot-avatar");
+    expect(avatar.dataset.screen).toBe("rest");
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
   });
 
   it("leaves the pillboxes untouched and makes no brain-dump request when the flag is off", async () => {
@@ -391,10 +390,10 @@ describe("onboarding brain dump — flag gating", () => {
 
     expect(await screen.findByText(PILLBOX_HEADING)).toBeDefined();
     expect(
-      screen.getByText("Pick the tasks you'd love to hand off to AutoPilot"),
+      screen.getByText("Pick the tasks you'd love to hand off to Otto"),
     ).toBeDefined();
     expect(screen.queryByText(DUMP_HEADLINE)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Start talking" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
     expect(screen.queryByText("Skip for now")).toBeNull();
 
     // Give any stray effect a chance to fire before declaring silence.
@@ -421,7 +420,7 @@ describe("onboarding brain dump — flag gating", () => {
 });
 
 describe("onboarding brain dump — typed fallback", () => {
-  it("opens the typed composer under the same headline when mic permission is denied", async () => {
+  it("opens the typed composer under a writing headline when mic permission is denied", async () => {
     getUserMedia.mockRejectedValue(
       new DOMException("denied", "NotAllowedError"),
     );
@@ -431,24 +430,22 @@ describe("onboarding brain dump — typed fallback", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
 
     expect(
       await screen.findByPlaceholderText(
         "What repeats every week? What would you hand off first?",
       ),
     ).toBeDefined();
-    // Same headline, not a dead end.
-    expect(screen.getByText(DUMP_HEADLINE)).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Start talking" })).toBeNull();
+    // The headline turns to writing; the step itself is not a dead end.
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
     // Offering a way back to the orb would be a dead end here: the browser
     // has already refused the microphone.
     expect(screen.queryByRole("button", { name: "record instead" })).toBeNull();
   });
 
-  it("opens the typed composer from the rest state via 'type instead'", async () => {
+  it("opens the typed composer from the rest state via Write", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
@@ -460,7 +457,7 @@ describe("onboarding brain dump — typed fallback", () => {
       ),
     ).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "type instead" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
 
     expect(
       await screen.findByPlaceholderText(
@@ -517,10 +514,12 @@ describe("onboarding brain dump — finishing a take", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("autopilot-avatar").dataset.screen).toBe(
+        "recording",
+      ),
     );
-    expect(await screen.findByTestId("orb-progress-ring")).toBeDefined();
     await waitFor(() => expect(partUploads).toHaveLength(1));
     await userEvent.click(
       await screen.findByRole("button", { name: "Send recording" }),
@@ -564,9 +563,7 @@ describe("onboarding brain dump — finishing a take", () => {
     await screen.findByText(DUMP_HEADLINE);
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
     await waitFor(() => expect(partUploads).toHaveLength(1));
     await userEvent.click(
       await screen.findByRole("button", { name: "Send recording" }),
@@ -592,9 +589,7 @@ describe("onboarding brain dump — finishing a take", () => {
 
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "Cancel recording" }),
     );
@@ -656,9 +651,7 @@ describe("onboarding brain dump — finishing a take", () => {
 
     await waitFor(() => expect(finishDiscard).toBeDefined());
     finishDiscard!();
-    expect(
-      await screen.findByRole("button", { name: "Start talking" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("button", { name: "Talk" })).toBeDefined();
   });
 });
 
@@ -724,7 +717,7 @@ describe("onboarding brain dump — recovery", () => {
     await waitFor(() =>
       expect(screen.queryByText("Pick up where you left off?")).toBeNull(),
     );
-    expect(screen.getByRole("button", { name: "Start talking" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
   });
 });
 
@@ -752,9 +745,7 @@ describe("onboarding brain dump — failure", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
     // Wait for the first chunk to reach the server so sending is not
     // racing the upload queue.
     await waitFor(() => expect(partUploads).toHaveLength(1));
@@ -806,9 +797,7 @@ describe("onboarding brain dump — insufficient content", () => {
 
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start talking" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
     await waitFor(() => expect(partUploads).toHaveLength(1));
     await userEvent.click(
       await screen.findByRole("button", { name: "Send recording" }),
@@ -857,16 +846,14 @@ describe("onboarding step map integrity", () => {
   it("keeps the step constants identical regardless of the brain-dump flag", () => {
     expect(PAYWALL_FIRST_STEPS).toEqual({
       subscription: 1,
-      welcome: 2,
-      role: 3,
-      painPoints: 4,
-      preparing: 5,
-    });
-    expect(NO_PAYWALL_STEPS).toEqual({
-      welcome: 1,
       role: 2,
       painPoints: 3,
       preparing: 4,
+    });
+    expect(NO_PAYWALL_STEPS).toEqual({
+      role: 1,
+      painPoints: 2,
+      preparing: 3,
     });
   });
 
@@ -891,8 +878,8 @@ describe("onboarding step map integrity", () => {
     const onWidth = progressWidth(on.container);
     const onUrl = routerReplace.mock.calls.map((c) => c[0]);
 
-    expect(offDots).toBe(3);
-    expect(offWidth).toBe("75%");
+    expect(offDots).toBe(2);
+    expect(offWidth).toBe(`${(2 / 3) * 100}%`);
     expect(onDots).toBe(offDots);
     expect(onWidth).toBe(offWidth);
     expect(onUrl).toEqual(offUrl);
