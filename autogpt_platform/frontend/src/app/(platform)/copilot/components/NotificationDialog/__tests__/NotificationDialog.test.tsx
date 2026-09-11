@@ -48,7 +48,7 @@ describe("NotificationDialog", () => {
 
     render(<NotificationDialog />);
 
-    expect(await screen.findByText(/AutoPilot can notify you/i)).toBeDefined();
+    expect(await screen.findByText(/Otto can notify you/i)).toBeDefined();
     expect(screen.getByText("Enable notifications")).toBeDefined();
     expect(screen.getByText("Not now")).toBeDefined();
   });
@@ -66,7 +66,7 @@ describe("NotificationDialog", () => {
 
     render(<NotificationDialog />);
 
-    expect(screen.queryByText(/AutoPilot can notify you/i)).toBeNull();
+    expect(screen.queryByText(/Otto can notify you/i)).toBeNull();
   });
 
   it("does not show when permission is already granted", () => {
@@ -78,7 +78,7 @@ describe("NotificationDialog", () => {
 
     render(<NotificationDialog />);
 
-    expect(screen.queryByText(/AutoPilot can notify you/i)).toBeNull();
+    expect(screen.queryByText(/Otto can notify you/i)).toBeNull();
   });
 
   it("requests permission on Enable click and enables notifications", async () => {
@@ -128,6 +128,6 @@ describe("NotificationDialog", () => {
 
     render(<NotificationDialog />);
 
-    expect(await screen.findByText(/AutoPilot can notify you/i)).toBeDefined();
+    expect(await screen.findByText(/Otto can notify you/i)).toBeDefined();
   });
 });

@@ -4,6 +4,7 @@
   "boundaries": "Ask before external actions.",
   "color": "",
   "credential_count": 0,
+  "credential_providers": [],
   "day_one": [],
   "id": "expert-1",
   "identity": "You are Maria, a pragmatic marketing specialist.",

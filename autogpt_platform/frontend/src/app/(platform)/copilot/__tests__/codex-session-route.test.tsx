@@ -213,7 +213,7 @@ describe("useChatSession transport route", () => {
       expect(testState.toast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: "destructive",
-          title: "AutoPilot needs an AI connection",
+          title: "Otto needs an AI connection",
         }),
       );
     });

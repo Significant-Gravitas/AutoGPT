@@ -1308,7 +1308,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Communities",
-        "description": "Communities in the user's account (AutoPilot) memory graph.",
+        "description": "Communities in the user's account (Otto) memory graph.",
         "operationId": "getV2ListCommunities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1573,7 +1573,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Entities",
-        "description": "Entities in the user's account (AutoPilot) memory graph.",
+        "description": "Entities in the user's account (Otto) memory graph.",
         "operationId": "getV2ListEntities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2010,7 +2010,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Facts",
-        "description": "Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph.",
+        "description": "Facts (RELATES_TO edges) in the user's account (Otto) memory graph.",
         "operationId": "getV2ListFacts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2269,7 +2269,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Memory Overview",
-        "description": "Count summary of the user's account (AutoPilot) memory graph.",
+        "description": "Count summary of the user's account (Otto) memory graph.",
         "operationId": "getV2GetMemoryOverview",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -10665,7 +10665,7 @@
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Get My Memory Overview",
-        "description": "Counts for the caller's account (AutoPilot) memory.",
+        "description": "Counts for the caller's account (Otto) memory.",
         "operationId": "get_my_memory_overview",
         "responses": {
           "200": {
@@ -11299,7 +11299,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Recommended Experts",
-        "description": "The team AutoPilot proposes: who to hire first, and the raise door.\n\nWritten by a background job beside the greeting one; a plain read\nhere, with the deterministic fallback filled in for takes the job\nnever ran on. ``ready=false`` means keep polling. ``team`` is null\nwhen the expert-team feature is off for this user.",
+        "description": "The team Otto proposes: who to hire first, and the raise door.\n\nWritten by a background job beside the greeting one; a plain read\nhere, with the deterministic fallback filled in for takes the job\nnever ran on. ``ready=false`` means keep polling. ``team`` is null\nwhen the expert-team feature is off for this user.",
         "operationId": "get_brain_dump_recommended_experts",
         "responses": {
           "200": {
@@ -14971,7 +14971,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
+        "description": "Copy the listing's skill into the caller's Otto skill library.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -20616,6 +20616,12 @@
             "title": "Credential Count",
             "default": 0
           },
+          "credential_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Credential Providers",
+            "default": []
+          },
           "last_run_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -20839,7 +20845,7 @@
         },
         "type": "object",
         "title": "ExpertRecommendations",
-        "description": "The team AutoPilot proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
+        "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
       "ExpertRun": {
         "properties": {
@@ -22563,7 +22569,7 @@
         "type": "object",
         "required": ["kind", "name", "role"],
         "title": "HomeBriefingAuthor",
-        "description": "Who wrote the brief. Always AutoPilot, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
+        "description": "Who wrote the brief. Always Otto, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
       },
       "HomeBriefingOutcome": {
         "properties": {
@@ -26576,7 +26582,7 @@
         "type": "object",
         "required": ["template_id", "name", "role"],
         "title": "RecommendedExpert",
-        "description": "One roster template AutoPilot suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
+        "description": "One roster template Otto suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
       },
       "RecommendedExpertsResponse": {
         "properties": {

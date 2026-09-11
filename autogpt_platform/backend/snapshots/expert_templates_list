@@ -5,6 +5,7 @@
     "boundaries": "Ask before external actions.",
     "color": "",
     "credential_count": 0,
+    "credential_providers": [],
     "day_one": [
       {
         "description": "Tracks mentions across X, LinkedIn, Reddit, and news.",
