@@ -32,7 +32,7 @@ from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
-from backend.copilot.tools.skills import read_user_skill_with_body
+from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
@@ -2868,6 +2868,12 @@ def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
         if preload["cron"] is not None
     ]
     assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
+
+
+def test_roster_skills_are_skills_hub_slugs():
+    for entry in seed.ROSTER:
+        for skill in entry["skills"]:
+            assert _NAME_RE.match(skill), (entry["name"], skill)
 
 
 @pytest.mark.asyncio(loop_scope="session")
