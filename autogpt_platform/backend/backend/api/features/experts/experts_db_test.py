@@ -30,6 +30,7 @@ from backend.api.features.library import model as library_model
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
@@ -4267,6 +4268,33 @@ async def test_expert_skill_name_write_keeps_an_append_that_lands_mid_write(
         assert "from-the-ui" in names
     else:
         assert "stale" not in names
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("name", ["old-skill", "agent_building_guide"])
+async def test_update_skills_dropping_a_skill_removes_the_copy_and_the_row_name(
+    server: SpinTestServer, test_user, name
+):
+    """A dropped skill loses its folder copy, or the listing, which reads the
+    folder, would keep offering it; a built-in has no copy, so only the row
+    write in update_skills removes its name."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    fake = _FakeWorkspaceManager()
+    copy = f"/experts/{expert_id}/skills/{name}/SKILL.md"
+    if name == "old-skill":
+        fake.files[copy] = b"---\nname: old-skill\ndescription: d\n---\nsteps\n"
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, name)
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        updated = await experts_db.update_skills(test_user.id, expert_id, [])
+
+    assert copy not in fake.files
+    assert name not in {s.lower() for s in updated.skills}
 
 
 @pytest.mark.asyncio(loop_scope="session")
