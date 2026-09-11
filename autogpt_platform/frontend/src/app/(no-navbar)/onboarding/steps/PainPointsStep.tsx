@@ -105,7 +105,7 @@ export function PainPointsStep() {
         <div className="flex max-w-lg flex-col items-center gap-2 px-4 text-center">
           <Text variant="h4">What&apos;s eating your time?</Text>
           <Text variant="body" tone="muted">
-            Pick the tasks you&apos;d love to hand off to AutoPilot
+            Pick the tasks you&apos;d love to hand off to Otto
           </Text>
         </div>
 
@@ -136,7 +136,7 @@ export function PainPointsStep() {
                 ? "3 selected — you're all set!"
                 : atLimit && hasSomethingElse
                   ? "Tell us what else takes up your time"
-                  : "Pick up to 3 to start — AutoPilot can help with anything else later"}
+                  : "Pick up to 3 to start — Otto can help with anything else later"}
           </Text>
         </div>
 

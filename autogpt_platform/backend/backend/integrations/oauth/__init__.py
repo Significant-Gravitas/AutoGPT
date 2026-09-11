@@ -12,6 +12,7 @@ from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
+from .rmfg import RMFGDeviceAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
 from .twitter import TwitterOAuthHandler
 
@@ -234,6 +235,7 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 # ------------------------------------------------------------------ #
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
     CodexDeviceAuthHandler,
+    RMFGDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]
 

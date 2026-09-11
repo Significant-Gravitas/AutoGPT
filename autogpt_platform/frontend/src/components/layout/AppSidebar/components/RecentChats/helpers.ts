@@ -69,7 +69,7 @@ export function groupSessionsByDate<T extends { updated_at: string }>(
 }
 
 // Fired experts can't be addressed, so their group gets no new-chat entry:
-// the deep link would only fall back to Autopilot.
+// the deep link would only fall back to Otto.
 export function getNewChatHref(
   expertId: string | null,
   activeExpertIds: ReadonlySet<string>,

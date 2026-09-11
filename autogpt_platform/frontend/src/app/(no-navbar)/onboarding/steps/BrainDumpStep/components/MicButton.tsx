@@ -69,7 +69,7 @@ interface Props {
   simulateVoice?: boolean;
 }
 
-// AutoPilot is the whole visual. Opening the mic folds the body into a
+// Otto is the whole visual. Opening the mic folds the body into a
 // single dot at its centre, with the comet wave orbiting only while it
 // folds; the dot then splits into a row of four that move with the voice.
 // Closing the mic runs it backwards: the dots merge, then the body grows
