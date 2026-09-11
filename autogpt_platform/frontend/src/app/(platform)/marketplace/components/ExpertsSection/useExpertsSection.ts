@@ -3,6 +3,7 @@ import {
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 /** Templates are public, so the section can show them to anyone; only the
@@ -11,7 +12,7 @@ export function useExpertsSection() {
   const { isLoggedIn } = useAuth();
 
   const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[] },
+    query: { select: (x) => x.data as ExpertTemplate[] },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },

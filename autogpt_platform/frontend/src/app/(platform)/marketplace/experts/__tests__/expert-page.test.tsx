@@ -130,7 +130,6 @@ describe("Marketplace expert page", () => {
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
-    expect(screen.getByText("Content strategy")).toBeDefined();
     expect(screen.getByText("LinkedIn Post Generator")).toBeDefined();
     expect(
       screen
@@ -146,7 +145,7 @@ describe("Marketplace expert page", () => {
     );
   });
 
-  test("links the skills a hire comes with and leaves the rest as text", async () => {
+  test("shows only the Hub skills a hire comes with, as links", async () => {
     server.use(
       getListExpertTemplatesMockHandler([
         {
@@ -171,16 +170,23 @@ describe("Marketplace expert page", () => {
     expect(link.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
     );
-    const before = screen.getByText("Content strategy");
-    const after = screen.getByText("Positioning");
-    expect(screen.queryByRole("link", { name: "Content strategy" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Positioning" })).toBeNull();
-    expect(
-      before.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      link.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByText("Content strategy")).toBeNull();
+    expect(screen.queryByText("Positioning")).toBeNull();
+  });
+
+  test("shows no Skills section when a hire comes with no Hub skills", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, bundled_skills: [] },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    await screen.findByRole("heading", { level: 1, name: "Maria" });
+    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
+    expect(screen.queryByText("Content strategy")).toBeNull();
   });
 
   test("shows the on-your-team state with a way into the chat", async () => {

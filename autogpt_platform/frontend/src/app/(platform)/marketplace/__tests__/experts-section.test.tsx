@@ -4,7 +4,12 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
@@ -179,6 +184,47 @@ describe("Marketplace ExpertsSection", () => {
       name: "Raise your own",
     });
     expect(raiseLink.getAttribute("href")).toBe("/raise");
+  });
+
+  test("lists the Hub skills a hire comes with on the card, and nothing else", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          skills: ["Content strategy", "brand-voice-guide"],
+          bundled_skills: [
+            {
+              name: "brand-voice-guide",
+              slug: "brand-voice-guide",
+              title: "Brand voice guide",
+              description: "Keeps every draft on-brand.",
+            },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(within(card).getByText("Brand voice guide")).toBeDefined();
+    expect(within(card).queryByText("Content strategy")).toBeNull();
+  });
+
+  test("shows no skills row on a card without Hub skills", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, skills: ["Content strategy"], bundled_skills: [] },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(within(card).queryByText("Skills")).toBeNull();
+    expect(within(card).queryByText("Content strategy")).toBeNull();
   });
 
   test("hired template shows hired state", async () => {
