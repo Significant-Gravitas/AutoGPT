@@ -90,7 +90,7 @@ class TestResolveLlmApiKey:
     def test_cloud_key_still_wins_over_local_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``CHAT_API_KEY`` (the AutoPilot-dedicated cloud key)
+        """``CHAT_API_KEY`` (the Otto-dedicated cloud key)
         beats the local fallback — covers the mixed-mode case where
         an operator switched the chat layer to local but left a
         cloud key around."""

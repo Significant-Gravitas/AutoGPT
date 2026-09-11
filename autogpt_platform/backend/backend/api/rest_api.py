@@ -185,7 +185,7 @@ async def lifespan_context(app: fastapi.FastAPI):
         logger.error("Triggered-preset input backfill failed", exc_info=True)
 
     # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for AutoPilot nodes saved before `transport`
+    # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
     # changes nothing about which account pays — and refusing to boot the
     # platform over a cosmetic migration would be the worse outcome.
@@ -195,7 +195,7 @@ async def lifespan_context(app: fastapi.FastAPI):
             timeout=30,
         )
     except Exception:
-        logger.error("AutoPilot transport backfill failed", exc_info=True)
+        logger.error("Otto transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()

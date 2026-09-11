@@ -16,7 +16,7 @@ from backend.api.features.experts import raise_attachments, scheduling
 
 # Re-exported so `db_accessors.experts_db()` resolves the same attribute name
 # on both branches: the module here, and the RPC client stub in db_manager.
-from backend.api.features.experts.credential_counts import count_expert_credentials
+from backend.api.features.experts.credential_counts import expert_credential_providers
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
@@ -51,6 +51,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
+from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
@@ -278,17 +279,37 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
         return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
-    try:
-        credential_counts = await count_expert_credentials(user_id, rows)
-    except Exception:
-        logger.exception("Failed to read credential counts for expert roster")
-        credential_counts = {}
+    credential_providers = await _credential_providers(user_id, rows)
     return [
         _to_model(
             row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
-        ).model_copy(update={"credential_count": credential_counts.get(row.id, 0)})
+        ).model_copy(update=_credential_fields(credential_providers.get(row.id, [])))
         for row in rows
     ]
+
+
+async def _credential_providers(
+    user_id: str, rows: list[prisma.models.Expert]
+) -> dict[str, list[str]]:
+    """Each expert's live grants, or nothing when the read fails.
+
+    The logos are decoration on the roster and the expert page; a credential
+    outage must not take the whole expert with it.
+    """
+    try:
+        return await expert_credential_providers(user_id, rows)
+    except Exception:
+        logger.exception("Failed to read credential providers for experts")
+        return {}
+
+
+def _credential_fields(providers: list[str]) -> dict[str, object]:
+    """The count is every grant; the logos show each provider once, in the
+    order it was first granted."""
+    return {
+        "credential_count": len(providers),
+        "credential_providers": list(dict.fromkeys(providers)),
+    }
 
 
 async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
@@ -304,7 +325,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     """
     return await query_raw_with_schema(
         """
-        SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",
+        SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
                "isArchived" AS "is_archived"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
@@ -340,6 +361,7 @@ async def get_expert(
     *,
     include_workflows: bool = True,
     include_archived: bool = False,
+    include_credentials: bool = False,
 ) -> Expert | None:
     """Fetch a hired expert owned by *user_id*.
 
@@ -347,6 +369,11 @@ async def get_expert(
     + StoreListingVersion joins when the caller only needs the expert's own
     columns. The returned model then always carries an empty ``workflows``
     list — never use that flag to decide whether workflows are installed.
+
+    Set ``include_credentials=True`` to fill ``credential_count`` and
+    ``credential_providers`` the way the roster does. Off by default because
+    the read seeds the expert's allow-list on first touch, and most callers
+    (hire, raise, the scheduler's scope gate) only need the expert's columns.
 
     Archived experts are hidden by default so product surfaces treat them as
     gone. Set ``include_archived=True`` when the caller must distinguish
@@ -369,7 +396,13 @@ async def get_expert(
     if row is None:
         return None
     latest_runs = await _latest_runs([row.id])
-    return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+    expert = _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+    if not include_credentials:
+        return expert
+    credential_providers = await _credential_providers(user_id, [row])
+    return expert.model_copy(
+        update=_credential_fields(credential_providers.get(row.id, []))
+    )
 
 
 async def list_expert_runs(
@@ -1274,6 +1307,16 @@ async def _install_preloads(
     if any(p.scheduleCron for p in preloads):
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+    # Rows first, schedules second: creating a schedule resolves credentials
+    # scoped to the expert, which seeds its allow-list from the workflows
+    # installed so far. Interleaving would freeze that list after the first one.
+    installed: list[
+        tuple[
+            prisma.models.ExpertWorkflow,
+            prisma.models.ExpertWorkflow,
+            library_model.LibraryAgent,
+        ]
+    ] = []
     for preload in preloads:
         if preload.storeListingVersionId is None:
             continue
@@ -1300,18 +1343,21 @@ async def _install_preloads(
                 else preload.storeListingVersionId
             )
             continue
-        if preload.scheduleCron:
-            listing = preload.StoreListingVersion
-            await scheduling.create_workflow_schedule(
-                workflow_row_id=row.id,
-                expert_id=expert_id,
-                user_id=user_id,
-                cron=preload.scheduleCron,
-                graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
-                name=listing.name if listing else "Expert workflow",
-                user_timezone=user_timezone or "UTC",
-            )
+        installed.append((row, preload, library_agent))
+    for row, preload, library_agent in installed:
+        if not preload.scheduleCron:
+            continue
+        listing = preload.StoreListingVersion
+        await scheduling.create_workflow_schedule(
+            workflow_row_id=row.id,
+            expert_id=expert_id,
+            user_id=user_id,
+            cron=preload.scheduleCron,
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=listing.name if listing else "Expert workflow",
+            user_timezone=user_timezone or "UTC",
+        )
     return failed
 
 

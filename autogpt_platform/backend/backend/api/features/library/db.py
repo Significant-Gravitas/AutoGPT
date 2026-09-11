@@ -855,7 +855,7 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
-        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # This path is only reached from the CoPilot/Otto agent-update
         # flow, which has no user-facing channel for skipped-preset warnings,
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
@@ -1953,7 +1953,7 @@ async def list_presets(
         graph_id: Agent Graph ID to filter by.
         expert_id: Expert ID to match when expert filtering is enabled.
         filter_by_expert: Whether to filter by the exact expert scope. This allows
-            ``None`` to select AutoPilot presets instead of disabling the filter.
+            ``None`` to select Otto presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.

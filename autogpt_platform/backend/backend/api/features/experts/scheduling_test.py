@@ -133,3 +133,113 @@ async def test_budget_gate_fails_closed_for_non_private_expert(mocker) -> None:
     assert where["ownerUserId"] == "owner"
     assert where["visibility"] == ResourceVisibility.PRIVATE
     spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_schedule_fills_credentials_from_the_allow_list(
+    mocker,
+) -> None:
+    """The scheduler validates credential inputs, so an empty map fails every
+    graph that needs one; the expert's reachable credentials must be passed."""
+    from types import SimpleNamespace
+
+    from backend.data.model import CredentialsMetaInput
+
+    meta = CredentialsMetaInput(
+        id="cred-notion", provider="notion", type="api_key", title="Notion"
+    )
+    mocker.patch.object(
+        scheduling,
+        "_resolve_workflow_credentials",
+        new=AsyncMock(return_value={"notion_credentials": meta}),
+    )
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
+    workflow_client = mocker.MagicMock()
+    workflow_client.update_many = AsyncMock(return_value=1)
+    mocker.patch.object(
+        scheduling.prisma.models.ExpertWorkflow,
+        "prisma",
+        return_value=workflow_client,
+    )
+
+    created = await scheduling.create_workflow_schedule(
+        workflow_row_id="wf-1",
+        expert_id="expert-1",
+        user_id="owner",
+        cron="0 9 * * 1",
+        graph_id="g1",
+        graph_version=1,
+        name="SEO Audit",
+        user_timezone="UTC",
+    )
+
+    assert created is True
+    assert scheduler_client.add_execution_schedule.await_args.kwargs[
+        "input_credentials"
+    ] == {"notion_credentials": meta}
+
+
+@pytest.mark.asyncio
+async def test_pending_schedules_are_retried_per_workflow(mocker) -> None:
+    from types import SimpleNamespace
+
+    workflow_client = mocker.MagicMock()
+    workflow_client.find_many = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id="wf-1",
+                scheduleCron="0 9 * * 1",
+                scheduleId=None,
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=2),
+                StoreListingVersion=SimpleNamespace(name="SEO Audit"),
+            ),
+            # No cadence: nothing to create.
+            SimpleNamespace(
+                id="wf-2",
+                scheduleCron=None,
+                scheduleId=None,
+                LibraryAgent=SimpleNamespace(agentGraphId="g2", agentGraphVersion=1),
+                StoreListingVersion=None,
+            ),
+        ]
+    )
+    mocker.patch.object(
+        scheduling.prisma.models.ExpertWorkflow,
+        "prisma",
+        return_value=workflow_client,
+    )
+    mocker.patch.object(
+        scheduling,
+        "get_user_by_id",
+        new=AsyncMock(return_value=SimpleNamespace(timezone="Europe/Madrid")),
+    )
+    create = mocker.patch.object(
+        scheduling, "create_workflow_schedule", new=AsyncMock(return_value=True)
+    )
+
+    created = await scheduling.create_pending_workflow_schedules("owner", "expert-1")
+
+    assert created == 1
+    # Scoped to the owner, so a caller that skips its own ownership check
+    # reaches nothing rather than another user's expert.
+    assert workflow_client.find_many.await_args.kwargs["where"] == {
+        "expertId": "expert-1",
+        "scheduleId": None,
+        "Expert": {"is": {"ownerUserId": "owner"}},
+    }
+    create.assert_awaited_once_with(
+        workflow_row_id="wf-1",
+        expert_id="expert-1",
+        user_id="owner",
+        cron="0 9 * * 1",
+        graph_id="g1",
+        graph_version=2,
+        name="SEO Audit",
+        user_timezone="Europe/Madrid",
+    )

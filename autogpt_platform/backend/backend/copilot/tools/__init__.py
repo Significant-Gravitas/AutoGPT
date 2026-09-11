@@ -168,14 +168,14 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
-    # Team changes from chat (Autopilot sessions only): preview + one
+    # Team changes from chat (Otto sessions only): preview + one
     # shared confirm.  Handoff is the expert-session counterpart.
     "hire_expert": HireExpertTool(),
     "raise_expert": RaiseExpertTool(),
     "update_expert": UpdateExpertTool(),
     "confirm_expert_change": ConfirmExpertChangeTool(),
     "handoff_to_expert": HandoffToExpertTool(),
-    # Reading a teammate's chats (Autopilot sessions only): the user's
+    # Reading a teammate's chats (Otto sessions only): the user's
     # own data, read with the query the chat API uses.
     "list_expert_chats": ListExpertChatsTool(),
     "read_expert_chat": ReadExpertChatTool(),
@@ -206,7 +206,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # A handoff transfers a task between experts, so it needs a caller with
     # an expert identity to hand it off from.
     "handoff_to_expert": "experts",
-    # Oversight of the team is the user's, exercised in the Autopilot chat:
+    # Oversight of the team is the user's, exercised in the Otto chat:
     # an expert must not hire its own teammates, and must not read another
     # expert's chats.  The engines disable this group whenever the session
     # HAS an expert_id (the opposite gate to ``experts`` above).
@@ -216,7 +216,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "confirm_expert_change": "expert_admin",
     "list_expert_chats": "expert_admin",
     "read_expert_chat": "expert_admin",
-    # Delegation works from either side of ``session.expert_id`` (AutoPilot
+    # Delegation works from either side of ``session.expert_id`` (Otto
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
@@ -233,7 +233,7 @@ def expert_tool_disabled_groups(
 
     Without the hire-experts flag every team tool is hidden. With it, the
     split follows the session role: an expert session loses the staffing
-    tools (``expert_admin``), a plain Autopilot session loses the
+    tools (``expert_admin``), a plain Otto session loses the
     expert-session tools (``experts``).
     """
     if not experts_enabled:

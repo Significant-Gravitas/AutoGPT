@@ -1308,7 +1308,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Communities",
-        "description": "Communities in the user's account (AutoPilot) memory graph.",
+        "description": "Communities in the user's account (Otto) memory graph.",
         "operationId": "getV2ListCommunities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1573,7 +1573,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Entities",
-        "description": "Entities in the user's account (AutoPilot) memory graph.",
+        "description": "Entities in the user's account (Otto) memory graph.",
         "operationId": "getV2ListEntities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2010,7 +2010,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Facts",
-        "description": "Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph.",
+        "description": "Facts (RELATES_TO edges) in the user's account (Otto) memory graph.",
         "operationId": "getV2ListFacts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2269,7 +2269,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Memory Overview",
-        "description": "Count summary of the user's account (AutoPilot) memory graph.",
+        "description": "Count summary of the user's account (Otto) memory graph.",
         "operationId": "getV2GetMemoryOverview",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6504,6 +6504,32 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/setup": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Setup Items",
+        "description": "What still stands between each expert's scheduled workflows and a schedule.",
+        "operationId": "list_expert_setup_items",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertSetupItem" },
+                  "type": "array",
+                  "title": "Response List Expert Setup Items"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/templates": {
       "get": {
         "tags": ["v2", "experts", "experts"],
@@ -10639,7 +10665,7 @@
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Get My Memory Overview",
-        "description": "Counts for the caller's account (AutoPilot) memory.",
+        "description": "Counts for the caller's account (Otto) memory.",
         "operationId": "get_my_memory_overview",
         "responses": {
           "200": {
@@ -11264,6 +11290,30 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recommended-experts": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Experts",
+        "description": "The team Otto proposes: who to hire first, and the raise door.\n\nWritten by a background job beside the greeting one; a plain read\nhere, with the deterministic fallback filled in for takes the job\nnever ran on. ``ready=false`` means keep polling. ``team`` is null\nwhen the expert-team feature is off for this user.",
+        "operationId": "get_brain_dump_recommended_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedExpertsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -13766,6 +13816,79 @@
         }
       }
     },
+    "/api/store/admin/skills/submissions": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin List Pending Skill Submissions",
+        "description": "Skill submissions awaiting review, oldest first.",
+        "operationId": "getV2Admin list pending skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2Admin List Pending Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+      }
+    },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Review Skill Submission",
+        "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
+        "operationId": "postV2Review skill submission",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SkillReviewRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/download/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
@@ -14683,6 +14806,124 @@
         }
       }
     },
+    "/api/store/skills/submissions": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "List my skill submissions",
+        "description": "Every version the caller has submitted, newest first per listing.",
+        "operationId": "getV2List my skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2List My Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Publish skill to marketplace",
+        "description": "Submit one of the caller's own library skills for marketplace review.",
+        "operationId": "postV2Publish skill to marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not in the caller's library" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": {
+            "description": "Marketplace profile required, or slug taken"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/skills/submissions/{skill_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit skill submission",
+        "description": "Update a pending submission and re-snapshot the library skill.",
+        "operationId": "putV2Edit skill submission",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": { "description": "Only a pending submission can be edited" }
+        }
+      }
+    },
     "/api/store/skills/{slug}": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -14730,7 +14971,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
+        "description": "Copy the listing's skill into the caller's Otto skill library.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -20369,6 +20610,12 @@
             "title": "Credential Count",
             "default": 0
           },
+          "credential_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Credential Providers",
+            "default": []
+          },
           "last_run_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -20512,6 +20759,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
           "role": { "type": "string", "title": "Role" },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },
@@ -20533,6 +20784,36 @@
         "required": ["id", "name", "created_at"],
         "title": "ExpertPod",
         "description": "A named group of hired experts, scoped to the owner."
+      },
+      "ExpertRecommendations": {
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "title": "Diagnosis",
+            "default": ""
+          },
+          "experts": {
+            "items": { "$ref": "#/components/schemas/RecommendedExpert" },
+            "type": "array",
+            "title": "Experts",
+            "default": []
+          },
+          "raise_suggestion": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RaiseSuggestion" },
+              { "type": "null" }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["llm", "fallback", "disabled"],
+            "title": "Source",
+            "default": "fallback"
+          }
+        },
+        "type": "object",
+        "title": "ExpertRecommendations",
+        "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
       "ExpertRun": {
         "properties": {
@@ -20607,6 +20888,52 @@
         ],
         "title": "ExpertRun",
         "description": "One expert-attributed execution, for the /team Work surface."
+      },
+      "ExpertSetupItem": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "workflow_id": { "type": "string", "title": "Workflow Id" },
+          "workflow_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Workflow Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": ["connect", "allow", "workflow"],
+            "title": "Resolution"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "workflow_id",
+          "workflow_name",
+          "library_agent_id",
+          "providers",
+          "resolution"
+        ],
+        "title": "ExpertSetupItem",
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {
@@ -22205,7 +22532,7 @@
         "type": "object",
         "required": ["kind", "name", "role"],
         "title": "HomeBriefingAuthor",
-        "description": "Who wrote the brief. Always AutoPilot, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
+        "description": "Who wrote the brief. Always Otto, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
       },
       "HomeBriefingOutcome": {
         "properties": {
@@ -22721,6 +23048,17 @@
           "transcript": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript"
+          },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          },
+          "team_pending": {
+            "type": "boolean",
+            "title": "Team Pending",
+            "default": false
           }
         },
         "type": "object",
@@ -26035,6 +26373,16 @@
         "title": "RaiseResult",
         "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
       },
+      "RaiseSuggestion": {
+        "properties": {
+          "role": { "type": "string", "title": "Role" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["role"],
+        "title": "RaiseSuggestion",
+        "description": "The \"raise your own\" door, prefilled for a gap the roster can't fill.\n\n``role`` is one of the ``/raise`` wizard's role ids so the link can\nseed the draft; a suggestion naming anything else is dropped."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -26176,6 +26524,43 @@
         "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
+      "RecommendedExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "reason": { "type": "string", "title": "Reason", "default": "" },
+          "workflow_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Workflow Names",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "name", "role"],
+        "title": "RecommendedExpert",
+        "description": "One roster template Otto suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
+      },
+      "RecommendedExpertsResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedExpertsResponse",
+        "description": "The team section's content, polled by the onboarding loading screen.\n\n``ready`` is false only while the background job is still running.\n``team`` is null when the feature is off — a team with no experts is\na real answer, so the client cannot use emptiness to tell them apart."
       },
       "RecommendedProvider": {
         "properties": {
@@ -27268,6 +27653,93 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkillReviewRequest": {
+        "properties": {
+          "is_approved": { "type": "boolean", "title": "Is Approved" },
+          "comments": { "type": "string", "title": "Comments" },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": ["is_approved", "comments"],
+        "title": "SkillReviewRequest",
+        "description": "An admin's verdict on one submission; the version comes from the path."
+      },
+      "SkillSubmission": {
+        "properties": {
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "version": { "type": "integer", "title": "Version" },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "is_live": {
+            "type": "boolean",
+            "title": "Is Live",
+            "description": "Whether this version is the one the marketplace serves."
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_listing_version_id",
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "version",
+          "status",
+          "is_live"
+        ],
+        "title": "SkillSubmission"
+      },
+      "SkillSubmissionRequest": {
+        "properties": {
+          "skill_name": {
+            "type": "string",
+            "title": "Skill Name",
+            "description": "Slug of the caller's library skill to publish."
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume are connected."
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["skill_name", "categories"],
+        "title": "SkillSubmissionRequest",
+        "description": "Publish one of the caller's own library skills as a marketplace listing."
       },
       "SkippedWebhookPreset": {
         "properties": {

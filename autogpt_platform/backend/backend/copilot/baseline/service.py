@@ -81,6 +81,7 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
@@ -844,7 +845,7 @@ async def _baseline_llm_caller(
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
             # Local backends govern their own context window at launch (e.g.
-            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
             # compaction (see local_context_probe). Send no extra_body — skip
             # the OpenRouter ``usage.include`` extension and reasoning params,
             # which stricter local backends reject outright.
@@ -1882,6 +1883,9 @@ async def stream_chat_completion_baseline(
     oversight_supplement = get_expert_oversight_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
     )
+    team_building_supplement = get_team_building_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1893,6 +1897,7 @@ async def stream_chat_completion_baseline(
         + SHARED_TOOL_NOTES
         + delegation_supplement
         + oversight_supplement
+        + team_building_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix

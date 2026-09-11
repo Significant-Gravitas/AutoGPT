@@ -7,13 +7,15 @@ const LEGACY_MARKER_PATTERN =
   /^\[\[EXPERT_KICKOFF:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\](?:\n\n)?/i;
 const PENDING_TTL_MS = 2 * 60 * 1000;
 
+// Never instruct the expert to start a workflow here: one click on Hire ran a
+// Gmail send (SECRT-2622). Any redesign of this message stays ask-first.
 const KICKOFF_PROMPT =
   "You were just hired. Introduce yourself in 2-3 sentences in your voice. " +
   "If you have installed workflows, state the day-one job they support and " +
-  "start the first bundled workflow with run_agent. If no workflow is " +
-  "installed, explain the outcomes you can help with and ask which one to " +
-  "start. If required access or credentials are missing, ask for exactly the " +
-  "one connection the next job needs and why. Never pretend a run succeeded.";
+  "ask which one to start. If no workflow is installed, explain the outcomes " +
+  "you can help with and ask which one to start. If required access or " +
+  "credentials are missing, ask for exactly the one connection the next job " +
+  "needs and why. Never pretend a run succeeded.";
 
 export interface ExpertKickoffMetadata {
   kind: typeof EXPERT_KICKOFF_KIND;

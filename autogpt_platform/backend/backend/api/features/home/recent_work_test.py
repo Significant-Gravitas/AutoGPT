@@ -206,7 +206,7 @@ def test_thread_work_without_an_expert_is_autopilots() -> None:
 
     group = work.groups[0]
     assert group.actor.kind == "autopilot"
-    assert group.actor.name == "AutoPilot"
+    assert group.actor.name == "Otto"
     assert group.actor.link == "/copilot"
     assert group.items[0].link == "/copilot?sessionId=s2"
 

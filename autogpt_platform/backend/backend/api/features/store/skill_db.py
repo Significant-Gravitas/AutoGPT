@@ -73,8 +73,8 @@ async def install_marketplace_skill(
     # A re-install overwrites the user's existing copy, so counting it again
     # would report installs rather than installers.
     is_new = all(s.name != listing.slug for s in await list_user_skills(user_id))
-    # The one call site the expert-owned install passes `expert_id` through
-    # once #14414 lands; `store_user_skill` already takes it as a keyword.
+    # #14414 makes this the expert-owned install's call site, adding both the
+    # `expert_id` argument here and the keyword on `store_user_skill`.
     await store_user_skill(
         user_id,
         name=listing.slug,

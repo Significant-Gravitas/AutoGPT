@@ -22,7 +22,13 @@ export function SoulDrawer({ expert, onClose }: Props) {
   return (
     <ExpertSidePanel
       identity={
-        expert ? { name: expert.name, avatarUrl: expert.avatar_url } : null
+        expert
+          ? {
+              name: expert.name,
+              avatarUrl: expert.avatar_url,
+              color: expert.color,
+            }
+          : null
       }
       title={expert ? `${expert.name}'s Soul` : ""}
       panelId="soul"
@@ -72,13 +78,13 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
         />
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
-        <Button type="button" variant="ghost" size="xs" onClick={onClose}>
+        <Button type="button" variant="ghost" size="small" onClick={onClose}>
           Cancel
         </Button>
         <Button
           type="submit"
           variant="primary"
-          size="xs"
+          size="small"
           loading={isPending}
           disabled={!canSave}
         >

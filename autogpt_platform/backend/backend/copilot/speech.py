@@ -1,4 +1,4 @@
-"""Text-to-speech for AutoPilot voice mode, metered like a chat turn.
+"""Text-to-speech for Otto voice mode, metered like a chat turn.
 
 A spoken reply debits the same per-user microdollar counter and writes the
 same ``PlatformCostLog`` row as the LLM turn that produced it, so voice is
