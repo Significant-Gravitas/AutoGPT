@@ -133,3 +133,25 @@ test("action-gate approvals offer no auto-approve toggle", () => {
     screen.getAllByText("Auto-approve future executions of this node"),
   ).toHaveLength(1);
 });
+
+test("auto-approve on an ordinary node is sent with the approval", async () => {
+  const captured = captureReviewAction();
+
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ node_exec_id: "ne-1", node_id: "n-1" })]}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("switch"));
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews).toEqual([
+    expect.objectContaining({
+      node_exec_id: "ne-1",
+      approved: true,
+      auto_approve_future: true,
+    }),
+  ]);
+});
