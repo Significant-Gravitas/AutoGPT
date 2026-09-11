@@ -390,6 +390,10 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     may not spawn either. The floor keeps a modest daily limit from
     producing a tree too small to fund one real turn; the cap keeps a
     generous one from handing a single tree the whole day.
+
+    A negative daily limit is the self-hosted "no cap" sentinel (see
+    ChatConfig). There is no tier daily to scale from, so the absolute cap
+    alone bounds one tree — it must not collapse to 0 and refuse spawns.
     """
     cap = config.tree_ceiling_microdollars
     if not user_id:
@@ -403,11 +407,7 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         config.weekly_cost_limit_microdollars,
     )
     # ``daily`` is already tier-scaled by get_global_rate_limits.
-    scaled = int(config.tree_ceiling_fraction_of_daily * daily)
-    # A zero tier allowance means no spend at all; the floor must not
-    # resurrect it, so it only applies to a tier that may spend.
-    allowance = max(scaled, config.tree_ceiling_floor_microdollars) if daily > 0 else 0
-    ceiling = min(allowance, cap)
+    ceiling = min(_tree_allowance_microdollars(daily, cap), cap)
 
     remaining_usd = await get_remaining_usd_budget(
         user_id=user_id, daily_cost_limit=daily, weekly_cost_limit=weekly, floor_usd=0.0
@@ -416,6 +416,25 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         return max(0, ceiling)
     remaining = int(round(remaining_usd * 1_000_000))
     return max(0, min(remaining, ceiling))
+
+
+def _tree_allowance_microdollars(daily: int, cap: int) -> int:
+    """Tier-scaled share of the daily limit one tree may spend, before the
+    remaining-budget clamp.
+
+    * negative ``daily`` — uncapped (self-hosted): the absolute cap is the
+      only bound, so hand it out rather than scaling a sentinel to nothing.
+    * ``daily == 0`` — a tier that may not spend at all; the floor must not
+      resurrect it.
+    * ``daily > 0`` — fraction of the daily limit, floored so a small tier
+      still affords one real turn.
+    """
+    if daily < 0:
+        return cap
+    if daily == 0:
+        return 0
+    scaled = int(config.tree_ceiling_fraction_of_daily * daily)
+    return max(scaled, config.tree_ceiling_floor_microdollars)
 
 
 async def admit_turn(

@@ -443,6 +443,26 @@ def test_remaining_budget_clamps_the_ceiling(monkeypatch) -> None:
     assert _ceiling(8_000_000, 0.75, monkeypatch) == 750_000
 
 
+def test_uncapped_daily_limit_yields_the_absolute_cap(monkeypatch) -> None:
+    """A negative daily limit is the self-hosted "no cap" sentinel. There is
+    no tier daily to scale from, so the absolute cap alone bounds a tree —
+    scaling the sentinel would collapse it to 0 and refuse every spawn."""
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    assert _ceiling(-1, float("inf"), monkeypatch) == 10_000_000
+
+
+def test_uncapped_daily_limit_still_respects_remaining_weekly_budget(
+    monkeypatch,
+) -> None:
+    # Daily off, weekly on with $0.75 left: the weekly remainder still clamps.
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    assert _ceiling(-1, 0.75, monkeypatch) == 750_000
+
+
 def test_isolate_denied_names_are_real_tools() -> None:
     # DESCENT and SPAWN are asserted above; ISOLATE was the gap.
     assert ISOLATE_DENIED_TOOLS <= ALL_TOOL_NAMES
