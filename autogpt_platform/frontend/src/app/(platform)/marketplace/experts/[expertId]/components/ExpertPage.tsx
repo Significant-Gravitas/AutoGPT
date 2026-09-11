@@ -1,6 +1,10 @@
 "use client";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import {
+  getExpertAccent,
+  getExpertAccessProviders,
+  getExpertFirstName,
+} from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -11,9 +15,12 @@ import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ReactNode } from "react";
 import { ExpertAbout } from "./ExpertAbout";
+import { ExpertAccess } from "./ExpertAccess";
 import { ExpertComingSoonLabel } from "./ExpertComingSoonLabel";
 import { ExpertHireActions } from "./ExpertHireActions";
 import { ExpertPageHeader } from "./ExpertPageHeader";
+import { ExpertPlanNote } from "./ExpertPlanNote";
+import { ExpertProtectedRules } from "./ExpertProtectedRules";
 import { ExpertSkills } from "./ExpertSkills";
 import { ExpertWorkflowList } from "./ExpertWorkflowList";
 import { useExpertPage } from "../useExpertPage";
@@ -42,6 +49,7 @@ export function ExpertPage() {
     isLoggedIn,
     isHiringOpen,
     isActionReady,
+    systemProviders,
     isLoading,
     isError,
     refetch,
@@ -97,6 +105,7 @@ export function ExpertPage() {
   }
 
   const accent = getExpertAccent(expert.role);
+  const firstName = getExpertFirstName(expert.name);
 
   let actions: ReactNode = <Skeleton className="h-9 w-28 rounded-full" />;
   if (isActionReady) {
@@ -125,6 +134,18 @@ export function ExpertPage() {
           workflows={expert.workflows}
           accent={accent}
         />
+        <ExpertAccess
+          name={firstName}
+          providers={getExpertAccessProviders(
+            expert.workflows,
+            systemProviders,
+          )}
+        />
+        <ExpertPlanNote
+          name={firstName}
+          weeklyBudget={expert.weekly_budget ?? null}
+        />
+        <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
       </div>
 
       {/* The voice pick follows a successful hire when the persona ships

@@ -2,6 +2,8 @@ import {
   useListExperts,
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
+import { useGetV1ListSystemProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { okData } from "@/app/api/helpers";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -27,6 +29,12 @@ export function useExpertPage({ expertId }: Args) {
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: canHire },
   });
+  // Which providers the platform already pays for. Public, so a signed-out
+  // visitor gets it too — without it the access list cannot tell an
+  // integration the viewer must connect from one they never will.
+  const systemProvidersQuery = useGetV1ListSystemProviders({
+    query: { select: (res) => okData(res) ?? [] },
+  });
 
   const expert =
     (templatesQuery.data ?? []).find((template) => template.id === expertId) ??
@@ -39,12 +47,17 @@ export function useExpertPage({ expertId }: Args) {
   return {
     expert,
     hiredExpert,
+    // Undefined until the list is in: the access section renders nothing
+    // rather than risk naming a provider the platform supplies.
+    systemProviders: systemProvidersQuery.data,
     isLoggedIn,
     isHiringOpen,
     // Which header action to show is only decided once LaunchDarkly has
-    // answered: rendering "Coming soon" first would flash the wrong state at
-    // the users who do have hiring.
-    isActionReady: !isUserLoading && ready,
+    // answered and the roster is in: rendering "Coming soon" or a "Hire"
+    // button first would flash the wrong state at users who have hiring, or
+    // have already hired this expert. A disabled roster query never blocks —
+    // isLoading is false unless it is actually fetching.
+    isActionReady: !isUserLoading && ready && !expertsQuery.isLoading,
     isLoading: templatesQuery.isLoading,
     isError: templatesQuery.isError,
     refetch: templatesQuery.refetch,

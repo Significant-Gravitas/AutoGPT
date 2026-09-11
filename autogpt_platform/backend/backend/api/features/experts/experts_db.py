@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
@@ -52,7 +52,10 @@ from backend.api.features.experts.models import (
     RaiseResult,
     decode_voice_preferences,
 )
-from backend.api.features.experts.workflow_chain import build_workflow_chain
+from backend.api.features.experts.workflow_chain import (
+    build_workflow_chain,
+    integration_providers,
+)
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
@@ -100,19 +103,40 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
+# Postgres promises no row order without this, so the profile's workflow grid
+# could reshuffle between loads; createdAt keeps the roster's authored order.
+_WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
+
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     # AgentGraph carries the name/description of a user-created library agent;
     # LibraryAgent.name is only populated from a marketplace snapshot.
     "LibraryAgent": {"include": {"AgentGraph": {"include": {"Nodes": True}}}},
     "StoreListingVersion": True,
 }
-_WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_WORKFLOW_INCLUDE = {
+    "Workflows": {"include": _WORKFLOW_ROW_INCLUDE, "order_by": _WORKFLOW_ORDER}
+}
 _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
         "include": {
             "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": True,
-        }
+        },
+        "order_by": _WORKFLOW_ORDER,
+    }
+}
+# A template workflow has no LibraryAgent — that row is created at hire time —
+# so its chain has to come from the listing's own graph. Without it the
+# marketplace profile cannot say what a workflow connects to.
+_TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
+    "Workflows": {
+        "include": {
+            "LibraryAgent": {"include": {"AgentGraph": True}},
+            "StoreListingVersion": {
+                "include": {"AgentGraph": {"include": {"Nodes": True}}}
+            },
+        },
+        "order_by": _WORKFLOW_ORDER,
     }
 }
 _MAX_EXPERT_RUNS = 20
@@ -134,6 +158,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         name, description = _library_agent_labels(library_agent)
     else:
         name, description = None, None
+    nodes = _chain_nodes(row)
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
@@ -143,12 +168,25 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
-        chain=build_workflow_chain(
-            library_agent.AgentGraph.Nodes or []
-            if library_agent and library_agent.AgentGraph
-            else []
-        ),
+        chain=build_workflow_chain(nodes),
+        integration_providers=integration_providers(nodes),
     )
+
+
+def _chain_nodes(
+    row: prisma.models.ExpertWorkflow,
+) -> Sequence[prisma.models.AgentNode]:
+    """The graph whose blocks the chain summarises: the hire's own library
+    agent, or the marketplace listing behind a template that has none yet."""
+    library_graph = row.LibraryAgent.AgentGraph if row.LibraryAgent else None
+    if library_graph and library_graph.Nodes:
+        return library_graph.Nodes
+    listing_graph = (
+        row.StoreListingVersion.AgentGraph if row.StoreListingVersion else None
+    )
+    if listing_graph and listing_graph.Nodes:
+        return listing_graph.Nodes
+    return []
 
 
 def _library_agent_labels(
@@ -232,7 +270,7 @@ async def _latest_runs(
 async def list_templates() -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
         where={"isTemplate": True, "isArchived": False},
-        include=_WORKFLOW_INCLUDE,
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
 
