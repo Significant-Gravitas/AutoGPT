@@ -33,6 +33,7 @@
         "description": "Writes SEO-optimized blog posts",
         "graph_id": null,
         "id": "workflow-ref-1",
+        "integration_providers": [],
         "library_agent_id": null,
         "name": "SEO Blog Writer",
         "schedule_cron": null,
