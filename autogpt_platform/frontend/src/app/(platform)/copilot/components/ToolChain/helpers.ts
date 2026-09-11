@@ -2,6 +2,7 @@ import type { ToolUIPart } from "ai";
 import { beautifyString } from "@/lib/utils";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import {
   extractToolName,
   getAnimationText,
@@ -173,7 +174,11 @@ export function isExpertChangePart(part: MessagePart): boolean {
 }
 
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");

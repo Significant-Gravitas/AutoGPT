@@ -77,7 +77,7 @@ export function QuestionOptionList({
       role="radiogroup"
       aria-labelledby={labelId}
       aria-required="true"
-      className="flex flex-col gap-1.5"
+      className="flex flex-col gap-2"
     >
       {options.map((option, index) => {
         const isSelected = option === value.trim();
@@ -94,7 +94,7 @@ export function QuestionOptionList({
             onClick={() => onPick(option)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={
-              "flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-left text-sm leading-relaxed transition-all " +
+              "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-base leading-snug transition-all " +
               (isSelected
                 ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
                 : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100")
@@ -102,7 +102,7 @@ export function QuestionOptionList({
           >
             <span>{option}</span>
             {isSelected && (
-              <Icon icon={Tick02Icon} size={14} className="shrink-0" />
+              <Icon icon={Tick02Icon} size={16} className="shrink-0" />
             )}
           </button>
         );
