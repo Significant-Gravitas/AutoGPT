@@ -117,14 +117,38 @@ class ExpertWorkflowRef(BaseModel):
     schedule_id: str | None = None
     # Up to three of the graph's most-used blocks, integrations first.
     chain: list[ExpertWorkflowChainItem] = Field(default_factory=list)
+    # Every integration the graph needs credentials for — NOT the chain's
+    # providers, which the three-item display cut can drop one of.
+    integration_providers: list[str] = Field(default_factory=list)
 
 
 class ExpertIdentity(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    color: str | None = None
     role: str
     is_archived: bool
+
+
+class ExpertSetupItem(BaseModel):
+    """One thing standing between a scheduled workflow and its schedule.
+
+    Rendered on the Team page as a row with a single fix. ``connect``: the
+    user has no credential for any of ``providers``. ``allow``: they have one
+    (``credential_id``) that this expert may not use yet. ``workflow``: no
+    credential is missing, so the schedule needs creating from the workflow.
+    """
+
+    expert_id: str
+    expert_name: str
+    expert_avatar_url: str | None
+    workflow_id: str
+    workflow_name: str | None
+    library_agent_id: str | None
+    providers: list[str]
+    resolution: Literal["connect", "allow", "workflow"]
+    credential_id: str | None = None
 
 
 class ExpertCredentialRef(BaseModel):
@@ -163,6 +187,9 @@ class Expert(BaseModel):
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
     credential_count: int = 0
+    # Distinct providers behind credential_count, first-seen order, for the
+    # /team card's logos.
+    credential_providers: list[str] = []
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None

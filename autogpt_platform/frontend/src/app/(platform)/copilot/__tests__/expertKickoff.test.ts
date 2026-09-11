@@ -67,7 +67,7 @@ describe("buildKickoffMessage", () => {
     );
     expect(message.text).toContain("You were just hired.");
     expect(message.text).toContain("Introduce yourself in 2-3 sentences");
-    expect(message.text).toContain("run_agent");
+    expect(message.text).toContain("ask which one to start");
     expect(message.text).toContain("If no workflow is installed");
     expect(message.text).toContain("Never pretend a run succeeded.");
     expect(message.text).not.toContain("EXPERT_KICKOFF");

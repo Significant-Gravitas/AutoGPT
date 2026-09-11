@@ -104,7 +104,13 @@ def is_superseded_cancellation(
             continue
         if candidate.get("event") != source_run.get("event"):
             continue
-        if action_run_order(candidate) <= action_run_order(source_run):
+        concurrent_run = bool(source_run.get("created_at")) and (
+            candidate.get("created_at") == source_run["created_at"]
+        )
+        if (
+            action_run_order(candidate) <= action_run_order(source_run)
+            and not concurrent_run
+        ):
             continue
         if (
             candidate.get("status") == "completed"
@@ -135,7 +141,7 @@ def process_check_runs(
                     ):
                         print(
                             f"Ignoring canceled check run {run['name']} "
-                            f"(ID: {run['id']}) because a newer run of the "
+                            f"(ID: {run['id']}) because an equivalent run of the "
                             "same workflow passed."
                         )
                         continue

@@ -293,18 +293,18 @@ function attentionItem(
 ): HomeAttentionItem {
   return {
     id,
-    kind: "setup",
-    priority: "normal",
+    kind: "paused",
+    priority: "high",
     title,
-    description: "Waiting on a connection.",
-    why_it_matters: "Runs are blocked until this is done.",
+    description: "Scheduled work is paused.",
+    why_it_matters: "Upcoming tasks will not run while this agent is paused.",
     expert: {
       id: expertId,
       name: expertId === "expert-maria" ? "Maria" : "Other",
       role: "Marketing Strategist",
       avatar_url: null,
     },
-    primary_action: { label: "Finish setup", href: `/team/${expertId}` },
+    primary_action: { label: "Review budget", href: `/team/${expertId}` },
   };
 }
 
@@ -342,6 +342,33 @@ describe("ExpertDetailPage", () => {
     ).toBeDefined();
     expect(within(workflowRows[1]).getByText("SEO Audit")).toBeDefined();
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
+  });
+
+  test("shows the expert's integrations as logos after the role pill", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        credential_providers: ["github", "openai"],
+      })),
+    );
+
+    render(<ExpertDetailPage />);
+
+    const header = (await screen.findByRole("heading", { name: "Maria" }))
+      .parentElement as HTMLElement;
+    const integrations = within(header).getByRole("list", {
+      name: "Integrations",
+    });
+    expect(
+      within(integrations)
+        .getAllByRole("img")
+        .map((logo) => logo.getAttribute("alt")),
+    ).toEqual(["GitHub", "OpenAI"]);
+    const pill = within(header).getByText("Marketing Strategist");
+    expect(
+      pill.compareDocumentPosition(integrations) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   test("keeps the budget above the tabs and the summary in Basics", async () => {
@@ -391,6 +418,13 @@ describe("ExpertDetailPage", () => {
 
   test("shows the workflow's block chain with provider logos and icons", async () => {
     const user = userEvent.setup();
+    // The chain stands in for a workflow with no image of its own.
+    server.use(
+      getGetV2GetLibraryAgentMockHandler200({
+        ...ownLibraryAgent,
+        id: "lib-1",
+      } as LibraryAgent),
+    );
     render(<ExpertDetailPage />);
 
     await openTab("Workflows");
@@ -1372,16 +1406,42 @@ describe("ExpertDetailPage", () => {
     const section = await screen.findByRole("region", { name: "Needs you" });
     expect(within(section).getByText("Connect your calendar")).toBeDefined();
     expect(within(section).queryByText("Approve the budget")).toBeNull();
+    // The count is announced but has no visible heading to name it.
     expect(
-      within(section).getByRole("status", {
-        name: "1 item needs your attention",
-      }),
+      within(section).getByText("1 item needs your attention"),
     ).toBeDefined();
+
     expect(
       within(section)
-        .getByRole("link", { name: "Finish setup" })
+        .getByRole("link", { name: "Review budget" })
         .getAttribute("href"),
     ).toBe("/team/expert-maria");
+  });
+
+  test("leaves setup items to the Team page's Setup needed card", async () => {
+    server.use(
+      getGetHomeDashboardMockHandler(
+        getGetHomeDashboardResponseMock200({
+          attention: [
+            {
+              ...attentionItem(
+                "att-1",
+                "expert-maria",
+                "Finish setting up Maria",
+              ),
+              kind: "setup",
+              priority: "normal",
+              primary_action: { label: "Finish setup", href: "/team" },
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 
   test("hides the Needs you block when nothing is waiting on the user", async () => {

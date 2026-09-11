@@ -28,6 +28,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
@@ -55,6 +56,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
@@ -172,7 +174,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.org_migration.run_migration()
 
     # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for AutoPilot nodes saved before `transport`
+    # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
     # changes nothing about which account pays — and refusing to boot the
     # platform over a cosmetic migration would be the worse outcome.
@@ -182,7 +184,7 @@ async def lifespan_context(app: fastapi.FastAPI):
             timeout=30,
         )
     except Exception:
-        logger.error("AutoPilot transport backfill failed", exc_info=True)
+        logger.error("Otto transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
@@ -382,6 +384,11 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
+    api_keys_routes.router,
+    tags=["v1", "api-keys"],
+    prefix="/api/api-keys",
+)
+app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
@@ -398,6 +405,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.api.features.store.skill_routes.router,
+    tags=["v2"],
+    prefix="/api/store/skills",
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"

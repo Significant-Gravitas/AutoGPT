@@ -8,22 +8,22 @@ export const TIERS: TierInfo[] = [
   {
     key: "BASIC",
     label: "Basic",
-    description: "Base AutoPilot capacity with standard rate limits",
+    description: "Base Otto capacity with standard rate limits",
   },
   {
     key: "PRO",
     label: "Pro",
-    description: "AutoPilot capacity for running more tasks per day/week",
+    description: "Otto capacity for running more tasks per day/week",
   },
   {
     key: "MAX",
     label: "Max",
-    description: "Expanded AutoPilot capacity — ideal for power users",
+    description: "Expanded Otto capacity — ideal for power users",
   },
   {
     key: "BUSINESS",
     label: "Business",
-    description: "AutoPilot capacity for teams and heavy workloads",
+    description: "Otto capacity for teams and heavy workloads",
   },
 ];
 

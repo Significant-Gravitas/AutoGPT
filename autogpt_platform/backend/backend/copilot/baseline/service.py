@@ -79,7 +79,9 @@ from backend.copilot.pending_messages import (
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     get_delegation_supplement,
+    get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
@@ -159,6 +161,7 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +845,7 @@ async def _baseline_llm_caller(
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
             # Local backends govern their own context window at launch (e.g.
-            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
             # compaction (see local_context_probe). Send no extra_body — skip
             # the OpenRouter ``usage.include`` extension and reasoning params,
             # which stricter local backends reject outright.
@@ -1647,6 +1650,7 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
@@ -1876,6 +1880,12 @@ async def stream_chat_completion_baseline(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    oversight_supplement = get_expert_oversight_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    team_building_supplement = get_team_building_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1886,6 +1896,8 @@ async def stream_chat_completion_baseline(
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -2092,6 +2104,7 @@ async def stream_chat_completion_baseline(
         sandbox=e2b_sandbox,
         sdk_cwd=working_dir,
         permissions=permissions,
+        envelope=envelope,
     )
 
     # --- File attachments (feature parity with SDK path) ---

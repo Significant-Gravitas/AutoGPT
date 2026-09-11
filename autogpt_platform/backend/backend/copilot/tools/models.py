@@ -128,6 +128,8 @@ class ResponseType(str, Enum):
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
     TEAM_ROSTER = "team_roster"
+    EXPERT_CHAT_LIST = "expert_chat_list"
+    EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
 
 
 # Base response model
@@ -290,6 +292,16 @@ class SetupInfo(BaseModel):
     user_readiness: UserReadiness = Field(default_factory=UserReadiness)
 
 
+class CredentialRejection(BaseModel):
+    """A stored credential that the provider refused at use time."""
+
+    provider: str
+    detail: str = Field(description="Sanitised reason; never carries a secret.")
+    status_code: int | None = None
+    credential_id: str | None = None
+    credential_title: str | None = None
+
+
 class SetupRequirementsResponse(ToolResponseBase):
     """Response for validate action."""
 
@@ -297,6 +309,9 @@ class SetupRequirementsResponse(ToolResponseBase):
     setup_info: SetupInfo
     graph_id: str | None = None
     graph_version: int | None = None
+    # Set only when a credential we had was rejected; its absence is what
+    # "never connected" looks like, so the two cases stay distinguishable.
+    rejection: CredentialRejection | None = None
 
 
 # Execution models
@@ -332,7 +347,7 @@ class ErrorResponse(ToolResponseBase):
 
 
 class SubSessionProgressSnapshot(BaseModel):
-    """Mid-flight snapshot of a running sub-AutoPilot.
+    """Mid-flight snapshot of a running sub-Otto.
 
     Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
     caller passes ``include_progress=true`` while the sub is still running.
@@ -355,7 +370,7 @@ class WorkspaceFileInfoData(BaseModel):
 
     Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
     on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
-    sub-AutoPilot wrote, ``path`` is already session-qualified
+    sub-Otto wrote, ``path`` is already session-qualified
     (``/sessions/<sub_id>/...``) and can be passed straight to
     ``read_workspace_file(path=...)`` for cross-session retrieval.
     """
@@ -372,7 +387,7 @@ class DelegatedExpertInfo(BaseModel):
 
     Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
     both the model and the ToolChain card can name who is doing the work
-    instead of rendering a generic "Sub-AutoPilot".
+    instead of rendering a generic "Sub-Otto".
     """
 
     id: str
@@ -383,7 +398,7 @@ class DelegatedExpertInfo(BaseModel):
 
 
 class SubSessionStatusResponse(ToolResponseBase):
-    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+    """Status / result of a sub-Otto run started by ``run_sub_session``.
 
     Returned by both ``run_sub_session`` (synchronously when the sub finishes
     within ``wait_for_result``, else with ``status='running'``) and
@@ -395,7 +410,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         "running", "completed", "cancelled", "error", "queued", "transferred"
     ] = Field(
         description=(
-            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "Current state of the sub-Otto run.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
             "existing turn on its next drain.  ``transferred`` is terminal "
@@ -417,7 +432,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-AutoPilot conversation. Use with "
+            "The session_id of the sub-Otto conversation. Use with "
             "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
             "to continue it."
         ),
@@ -425,7 +440,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_link: str | None = Field(
         default=None,
         description=(
-            "Relative URL the user can click to open the sub-AutoPilot "
+            "Relative URL the user can click to open the sub-Otto "
             "conversation in the CoPilot UI. Always set when "
             "``sub_autopilot_session_id`` is set."
         ),
@@ -461,7 +476,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     )
     elapsed_seconds: float | None = Field(
         default=None,
-        description="How long the sub-AutoPilot has been running (or took).",
+        description="How long the sub-Otto has been running (or took).",
     )
     progress: SubSessionProgressSnapshot | None = Field(
         default=None,
@@ -604,6 +619,56 @@ class TeamRosterResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TEAM_ROSTER
     experts: list[TeamExpertInfo] = Field(default_factory=list)
+
+
+class ExpertChatSummary(BaseModel):
+    """One chat row returned by ``list_expert_chats``."""
+
+    session_id: str
+    expert_id: str
+    expert_name: str | None = None
+    title: str | None = None
+    updated_at: datetime
+
+
+class ExpertChatListResponse(ToolResponseBase):
+    """The user's chats with their hired experts, most recent first.
+
+    ``next_offset`` is the cursor for the next page, set only when one
+    exists: a full page is otherwise indistinguishable from the last one.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHAT_LIST
+    chats: list[ExpertChatSummary] = Field(default_factory=list)
+    has_more: bool = False
+    next_offset: int | None = None
+
+
+class ExpertChatMessage(BaseModel):
+    """One transcript row returned by ``read_expert_chat``."""
+
+    sequence: int
+    role: str
+    content: str
+    created_at: datetime | None = None
+
+
+class ExpertChatTranscriptResponse(ToolResponseBase):
+    """A window of one expert chat, newest page first.
+
+    ``next_before_sequence`` is the cursor for the next (older) page; it is
+    the oldest row actually returned, which is not the oldest row fetched
+    whenever the character cap dropped rows from the old end.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHAT_TRANSCRIPT
+    chat_session_id: str
+    expert_id: str
+    expert_name: str | None = None
+    title: str | None = None
+    messages: list[ExpertChatMessage] = Field(default_factory=list)
+    has_more: bool = False
+    next_before_sequence: int | None = None
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):

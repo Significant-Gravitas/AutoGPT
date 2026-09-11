@@ -1152,7 +1152,7 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
-        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Apply node input overrides (credential masks from Library/Otto).
         # Mirrors the normal queue-based path in _on_graph_execution, which
         # merges nodes_input_masks[node_id] into queued_node_exec.inputs
         # before execution so credential fields are present for the block run.
