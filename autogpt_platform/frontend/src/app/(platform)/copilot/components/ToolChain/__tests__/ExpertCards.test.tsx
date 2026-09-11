@@ -1,7 +1,13 @@
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import type { ToolUIPart } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../../store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import {
@@ -11,6 +17,11 @@ import {
 } from "../ExpertCards";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
 
 vi.mock("../../../tools/GenericTool/GenericTool", () => ({
   GenericTool: () => <div data-testid="generic-tool" />,
@@ -395,6 +406,7 @@ describe("ExpertChangeGroup", () => {
 describe("expert approval", () => {
   beforeEach(() => {
     onSend.mockClear();
+    vi.mocked(toast).mockClear();
   });
 
   function renderGroup(
@@ -498,6 +510,27 @@ describe("expert approval", () => {
     expect(onSend).toHaveBeenCalledWith(
       "Approved: create Otto (confirmation_id: c-a).",
     );
+  });
+
+  it("reports a rejected send and keeps the card marked sent", async () => {
+    const user = userEvent.setup();
+    onSend.mockRejectedValueOnce(new Error("boom"));
+    renderGroup([proposal("Otto", "a")]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't send message",
+          description:
+            "boom — it is still in the thread, use Retry to send it again.",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect(screen.getByText("Sent")).toBeDefined();
   });
 
   it("sends the verb the proposal actually asks for", async () => {

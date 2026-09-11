@@ -17,10 +17,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
+import { describeSendFailure } from "../ChatInput/helpers";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { asObject, str } from "./resultHelpers";
 
@@ -456,7 +458,18 @@ export function ExpertChangeGroup({
     const message = proposals
       .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
       .join("\n");
-    void actions.onSend(message);
+    // The card stays marked sent because the message is already in the
+    // thread for Retry — the failure only needs saying.
+    void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(
+          error,
+          "it is still in the thread, use Retry to send it again",
+        ),
+        variant: "destructive",
+      }),
+    );
     setSent(true);
   }
 
