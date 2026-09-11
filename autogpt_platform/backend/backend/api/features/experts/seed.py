@@ -6,7 +6,7 @@ Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
 from official store listing slugs; all listings are validated before any
 template is mutated. Each upsert also refreshes the presentation fields
-(avatar, tagline, bio, skills, categories) on experts already hired from that
+(avatar, tagline, bio, categories) on experts already hired from that
 template, so roster changes reach existing users and not just new hires.
 """
 
@@ -323,9 +323,10 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/tagline/bio/skills/categories forever. ``name`` is deliberately excluded —
+    avatar/tagline/bio/categories forever. ``name`` is deliberately excluded —
     users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour.
+    drive live persona behaviour, and ``skills``, which the owner edits after
+    hire.
     """
     return await prisma.models.Expert.prisma().update_many(
         where={"sourceTemplateId": template.id, "isTemplate": False},
@@ -333,7 +334,6 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
             "avatarUrl": template.avatarUrl,
             "tagline": template.tagline,
             "bio": template.bio,
-            "skills": template.skills,
             "categories": template.categories,
         },
     )
