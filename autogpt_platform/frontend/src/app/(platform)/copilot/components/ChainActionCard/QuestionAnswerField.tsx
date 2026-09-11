@@ -13,6 +13,9 @@ interface Props {
   labelId: string;
   autoFocus: boolean;
   onChange: (value: string) => void;
+  /** Only the option list can fire this — free text has no single moment
+   *  where the answer is done. */
+  onPick: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -27,6 +30,7 @@ export function QuestionAnswerField({
   labelId,
   autoFocus,
   onChange,
+  onPick,
   onSubmit,
 }: Props) {
   const options = question.options ?? [];
@@ -89,6 +93,7 @@ export function QuestionAnswerField({
         labelId={labelId}
         focusActiveOption={autoFocus || toggled}
         onChange={onChange}
+        onPick={onPick}
         onSubmit={onSubmit}
       />
       <button

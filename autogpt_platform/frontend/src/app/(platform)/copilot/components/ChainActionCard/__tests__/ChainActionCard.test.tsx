@@ -1136,6 +1136,83 @@ describe("ChainActionCard", () => {
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
+    it("advances to the next question when an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which format?")).toBeDefined();
+    });
+
+    it("stays on the last question after an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(onProceed).not.toHaveBeenCalled();
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Send answers",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    it("does not advance when the arrow keys select an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: "ArrowDown" });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.getByText("Which region?")).toBeDefined();
+    });
+
     it("keeps two same-keyword questions on their own cards", () => {
       // Keywords are unique only within a request, so the pager keys on
       // position — sharing an id would stop the field remounting, leaving the

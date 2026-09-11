@@ -13,6 +13,9 @@ interface Props {
   labelId: string;
   focusActiveOption: boolean;
   onChange: (value: string) => void;
+  /** A pointer or tap choice, as opposed to `onChange`, which the arrow keys
+   *  fire too while the user is only browsing the group. */
+  onPick: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -25,6 +28,7 @@ export function QuestionOptionList({
   labelId,
   focusActiveOption,
   onChange,
+  onPick,
   onSubmit,
 }: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -80,7 +84,7 @@ export function QuestionOptionList({
             role="radio"
             aria-checked={isSelected}
             tabIndex={index === active ? 0 : -1}
-            onClick={() => onChange(option)}
+            onClick={() => onPick(option)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={
               "flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-left text-sm leading-relaxed transition-all " +
