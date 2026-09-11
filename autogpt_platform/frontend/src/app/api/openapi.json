@@ -6537,17 +6537,46 @@
       "get": {
         "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
+        "description": "Roster templates, narrowed by a search term and/or a marketplace category.\n\nUnpaginated: the roster is small, and every caller reads the whole list.",
         "operationId": "list_expert_templates",
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/Expert" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/Expert" },
                   "title": "Response List Expert Templates"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -20635,6 +20664,12 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Skills"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
           },
           "identity": { "type": "string", "title": "Identity" },
           "voice_preferences": {

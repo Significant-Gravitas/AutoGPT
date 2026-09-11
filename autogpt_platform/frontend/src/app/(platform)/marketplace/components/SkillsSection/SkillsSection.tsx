@@ -12,7 +12,11 @@ import { useSkillsSection } from "./useSkillsSection";
 
 const HEADING_ID = "skills-heading";
 
-export function SkillsSection() {
+interface Props {
+  category?: string | null;
+}
+
+export function SkillsSection({ category }: Props) {
   const {
     isLoggedIn,
     skills,
@@ -21,8 +25,11 @@ export function SkillsSection() {
     isLoading,
     isError,
     refetch,
-  } = useSkillsSection();
+  } = useSkillsSection({ category });
 
+  // Under a category filter an empty shelf means "no skills in this
+  // category", so the whole section goes rather than offering an empty state.
+  if (!isLoading && !isError && skills.length === 0 && category) return null;
   // Visitors get nothing when there is nothing to show, as Experts does.
   if (!isLoading && !isError && skills.length === 0 && !isLoggedIn) return null;
 

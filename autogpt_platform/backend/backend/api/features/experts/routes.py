@@ -128,8 +128,15 @@ class CreateRaisedExpertRequest(BaseModel):
 
 
 @public_router.get("/templates", operation_id="list_expert_templates")
-async def list_expert_templates() -> list[Expert]:
-    return await experts_db.list_templates()
+async def list_expert_templates(
+    search_query: str | None = fastapi.Query(default=None),
+    category: str | None = fastapi.Query(default=None),
+) -> list[Expert]:
+    """Roster templates, narrowed by a search term and/or a marketplace category.
+
+    Unpaginated: the roster is small, and every caller reads the whole list.
+    """
+    return await experts_db.list_templates(search_query=search_query, category=category)
 
 
 @router.post(
