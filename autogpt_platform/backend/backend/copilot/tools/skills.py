@@ -45,7 +45,7 @@ from backend.data.workspace_scope import (
     expert_skills_folder,
 )
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.util.exceptions import ExpertSkillsConflictError
+from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
 
@@ -1333,7 +1333,7 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
-        except (ValueError, SkillLimitError, ExpertSkillsConflictError) as exc:
+        except (ValueError, SkillLimitError, ConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] failed to store skill %s", name)
@@ -1585,7 +1585,7 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(message=str(exc), session_id=session_id)
         except SkillNotFoundError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
-        except ExpertSkillsConflictError as exc:
+        except ConflictError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] delete failed for %s", name)

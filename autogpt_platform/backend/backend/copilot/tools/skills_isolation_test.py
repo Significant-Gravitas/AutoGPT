@@ -29,7 +29,7 @@ from backend.copilot.tools.skills import (
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.workspace_scope import WorkspaceScope
-from backend.util.exceptions import ExpertSkillsConflictError
+from backend.util.exceptions import ConflictError
 
 AUTOPILOT = "/skills/mine/SKILL.md"
 EXPERT_A = "/experts/expert-a/skills/own/SKILL.md"
@@ -224,7 +224,7 @@ async def test_a_row_conflict_reaches_the_expert_as_a_retryable_error(world, too
     """A lost compare-and-swap is a retryable conflict, not a failure: the tool
     passes its message through and must not log it as an exception."""
     _, experts = world
-    conflict = ExpertSkillsConflictError("Changed at the same time. Try again.")
+    conflict = ConflictError("Changed at the same time. Try again.")
     experts.add_expert_skill_name = AsyncMock(side_effect=conflict)
     experts.remove_expert_skill_name = AsyncMock(side_effect=conflict)
 

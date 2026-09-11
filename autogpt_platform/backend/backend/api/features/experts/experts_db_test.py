@@ -38,11 +38,7 @@ from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
 from backend.data.user import get_or_create_user
-from backend.util.exceptions import (
-    ExpertRunPausedError,
-    ExpertSkillsConflictError,
-    NotFoundError,
-)
+from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -4481,7 +4477,7 @@ async def test_expert_skill_name_write_gives_up_as_a_conflict_after_losing_every
 
     manager = SimpleNamespace(find_first=real.find_first, update_many=always_loses)
     with patch.object(prisma.models.Expert, "prisma", return_value=manager):
-        with pytest.raises(ExpertSkillsConflictError):
+        with pytest.raises(ConflictError):
             if operation == "add":
                 await experts_db.add_expert_skill_name(
                     test_user.id, expert_id, "new-name"

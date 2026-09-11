@@ -41,16 +41,14 @@ from backend.api.features.experts.models import (
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
-from backend.util.exceptions import ExpertSkillsConflictError, NotFoundError
+from backend.util.exceptions import ConflictError, NotFoundError
 from backend.util.feature_flag import Flag
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
 app.include_router(router)
 # The real app's mapping, so dropping it from rest_api.py fails here too.
-app.add_exception_handler(
-    ExpertSkillsConflictError, rest_app.exception_handlers[ExpertSkillsConflictError]
-)
+app.add_exception_handler(ConflictError, rest_app.exception_handlers[ConflictError])
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1035,7 +1033,7 @@ def test_update_expert_skills_conflict_returns_409(
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_skills",
         new_callable=AsyncMock,
-        side_effect=ExpertSkillsConflictError(
+        side_effect=ConflictError(
             "This expert's skills were changed by another update at the same time. "
             "Try again."
         ),
