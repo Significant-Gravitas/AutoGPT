@@ -5,13 +5,14 @@ import {
   ArrowRight01Icon,
   InformationCircleIcon,
   PencilEdit02Icon,
+  SentIcon,
   UndoIcon,
   Tick02Icon,
   UserAdd01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { ToolUIPart } from "ai";
-import { type ReactNode, useContext, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -20,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
-import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -37,7 +37,7 @@ interface Props {
   onDecide?: (decision: Decision) => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
-  /** Footer note the group adds once the decisions have been sent. */
+  /** Footer control the group adds once every proposal is decided. */
   action?: ReactNode;
   /** Which way the pager just moved — the identity block slides in from
    *  that side while the shell (Details, pager, decision) stays put. */
@@ -402,9 +402,9 @@ interface GroupProps {
 
 /** One hire/raise per call, so a new team lands as several cards in a
  *  row. They page like the clarifying questions do, one expert at a time:
- *  each Approve/Decline moves to the next, and the last decision sends
- *  every decision line as one message. A decision can be taken back only
- *  up to that point. */
+ *  each Approve/Decline moves to the next, and once every proposal has an
+ *  answer a single send drafts all of them into the composer — the user
+ *  still reads and sends the message themselves. */
 export function ExpertChangeGroup({
   parts,
   isCurrentlyStreaming = false,
@@ -413,8 +413,8 @@ export function ExpertChangeGroup({
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
-  const [sent, setSent] = useState(false);
-  const actions = useContext(CopilotChatActionsContext);
+  const [drafted, setDrafted] = useState(false);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
@@ -426,6 +426,9 @@ export function ExpertChangeGroup({
   const proposals = visible
     .map(proposalOf)
     .filter((proposal): proposal is Proposal => proposal !== null);
+  const allDecided =
+    proposals.length > 0 &&
+    proposals.every((proposal) => decisions[proposal.toolCallId]);
   const currentProposal = readOnly ? null : proposalOf(part);
 
   function goTo(next: number) {
@@ -434,13 +437,8 @@ export function ExpertChangeGroup({
   }
 
   function decide(decision: Decision) {
-    if (!currentProposal || sent) return;
-    const next = { ...decisions, [currentProposal.toolCallId]: decision };
-    setDecisions(next);
-    if (proposals.every((proposal) => next[proposal.toolCallId])) {
-      send(next);
-      return;
-    }
+    if (!currentProposal) return;
+    setDecisions({ ...decisions, [currentProposal.toolCallId]: decision });
     if (!isLast) goTo(current + 1);
   }
 
@@ -448,18 +446,20 @@ export function ExpertChangeGroup({
     if (!currentProposal) return;
     const { [currentProposal.toolCallId]: _, ...rest } = decisions;
     setDecisions(rest);
+    // The draft in the composer no longer matches — offer the send again
+    // once every proposal has an answer.
+    setDrafted(false);
   }
 
-  function send(taken: Record<string, Decision>) {
-    // Outside a chat surface (a preview, say) there is nowhere to send:
-    // the decisions stay recorded and the card never claims it sent them.
-    if (!actions) return;
-    void actions.onSend(
+  function draft() {
+    setInitialPrompt(
       proposals
-        .map((proposal) => decisionLine(proposal, taken[proposal.toolCallId]))
+        .map((proposal) =>
+          decisionLine(proposal, decisions[proposal.toolCallId]),
+        )
         .join("\n"),
     );
-    setSent(true);
+    setDrafted(true);
   }
 
   const pager = visible.length > 1 && (
@@ -511,12 +511,25 @@ export function ExpertChangeGroup({
     </div>
   );
 
-  const action = !readOnly && sent && (
-    <span className="flex items-center gap-1 text-xs text-zinc-400">
-      <Icon icon={Tick02Icon} size={14} />
-      Sent
-    </span>
-  );
+  const action =
+    !readOnly &&
+    allDecided &&
+    (drafted ? (
+      <span className="flex items-center gap-1 text-xs text-zinc-400">
+        <Icon icon={Tick02Icon} size={14} />
+        Added to message
+      </span>
+    ) : (
+      <Button
+        variant="primary"
+        size="icon"
+        aria-label="Add decisions to message"
+        onClick={draft}
+        className="size-8 p-0"
+      >
+        <Icon icon={SentIcon} size={15} />
+      </Button>
+    ));
 
   // The shell (Details, pager, decision buttons) is the same from one
   // expert to the next, so it stays mounted; only the identity block
@@ -528,8 +541,8 @@ export function ExpertChangeGroup({
         isCurrentlyStreaming={isCurrentlyStreaming}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
-        onDecide={currentProposal && !sent ? decide : undefined}
-        onUndo={currentProposal && !sent ? undo : undefined}
+        onDecide={currentProposal ? decide : undefined}
+        onUndo={currentProposal ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
       />
