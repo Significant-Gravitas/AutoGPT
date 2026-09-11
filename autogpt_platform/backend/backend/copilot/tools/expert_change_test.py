@@ -48,9 +48,14 @@ _CHARTER = {
     "role": "Inbox triage",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
+    "avatar_shape": "round",
+    "avatar_accessory": "glasses",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
 }
+
+
+AVATAR_KEYS = {"avatar_shape", "avatar_accessory"}
 
 
 class _FakeRedis:
@@ -228,7 +233,39 @@ class TestPreviewNeverWrites:
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
+        assert resp.preview.avatar_url == "/avatars/round.lavender.glasses.svg"
         db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_seeds_an_avatar_from_the_name_when_none_is_picked(self):
+        with _env():
+            charter = {k: v for k, v in _CHARTER.items() if k not in AVATAR_KEYS}
+            resp = await _raise(make_session(_USER), **charter)
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        # Golden vector cross-checked against the frontend's configForName:
+        # "otto" seeds wide/butter/crown and the violet token maps to lavender.
+        # A literal, not build_avatar_url(), so a drift in the FNV/LCG
+        # constants or pick order fails here instead of comparing the
+        # implementation to itself.
+        assert resp.preview.avatar_url == "/avatars/wide.lavender.crown.svg"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_rejects_an_unknown_avatar_shape(self):
+        with _env():
+            resp = await _raise(
+                make_session(_USER), **{**_CHARTER, "avatar_shape": "cube"}
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "avatar_shape" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_rejects_an_unknown_avatar_accessory(self):
+        with _env():
+            resp = await _raise(
+                make_session(_USER), **{**_CHARTER, "avatar_accessory": "monocle"}
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "avatar_accessory" in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):
@@ -541,6 +578,7 @@ class TestConfirm:
             _CHARTER["name"],
             _CHARTER["role"],
             None,
+            avatar_url=preview.preview.avatar_url,
             color=_CHARTER["color"],
             tagline=_CHARTER["tagline"],
             about=_CHARTER["about"],
