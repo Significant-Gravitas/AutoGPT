@@ -43,6 +43,10 @@ class PreloadSeed(TypedDict):
     # means the workflow installs without a schedule. Applied to template
     # rows on every seed run, but only copied to hires made afterwards —
     # existing hires keep the schedule they were created with.
+    #
+    # A cadence fires unattended from the day of hire, so it may only go on a
+    # workflow that acts on nothing outside the platform — typically research.
+    # The marketplace reviewer is that gate; nothing here enforces it.
     cron: str | None
 
 

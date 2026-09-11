@@ -200,6 +200,36 @@ describe("Marketplace expert page", () => {
     );
   });
 
+  test("says when a bundled workflow runs on a schedule, before hiring", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          workflows: [
+            { ...mariaTemplate.workflows[0], schedule_cron: "40 7 * * *" },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Runs every day at 07:40")).toBeDefined();
+  });
+
+  test("says nothing about a cadence for a workflow that has none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    await screen.findByText("LinkedIn Post Generator");
+    expect(screen.queryByText(/^Runs /)).toBeNull();
+  });
+
   test("renders the services, plan and disclosure sections", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
