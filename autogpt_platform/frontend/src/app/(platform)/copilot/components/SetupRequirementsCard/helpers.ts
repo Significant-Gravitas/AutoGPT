@@ -1,6 +1,6 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
-import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 
 // Used as a filter below, so it has to be total: a type missing here is
 // silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
