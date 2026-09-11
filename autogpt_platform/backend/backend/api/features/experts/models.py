@@ -117,6 +117,9 @@ class ExpertWorkflowRef(BaseModel):
     schedule_id: str | None = None
     # Up to three of the graph's most-used blocks, integrations first.
     chain: list[ExpertWorkflowChainItem] = Field(default_factory=list)
+    # Every integration the graph needs credentials for — NOT the chain's
+    # providers, which the three-item display cut can drop one of.
+    integration_providers: list[str] = Field(default_factory=list)
 
 
 class ExpertIdentity(BaseModel):
@@ -189,6 +192,9 @@ class Expert(BaseModel):
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
     credential_count: int = 0
+    # Distinct providers behind credential_count, first-seen order, for the
+    # /team card's logos.
+    credential_providers: list[str] = []
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None

@@ -1,7 +1,7 @@
-"""Speech endpoint for AutoPilot voice mode.
+"""Speech endpoint for Otto voice mode.
 
 Proxies OpenAI text-to-speech so the platform key never reaches the browser
-and every spoken chunk is metered against the caller's AutoPilot plan.
+and every spoken chunk is metered against the caller's Otto plan.
 """
 
 import logging

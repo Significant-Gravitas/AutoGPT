@@ -362,7 +362,7 @@ class RunAgentTool(BaseTool):
             # Webhook-trigger agents can't be run or scheduled directly — they
             # fire on incoming HTTP events. Hand off to the trigger-setup tool,
             # surfacing the same AgentDetails (with trigger_info) that run_agent
-            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            # uses elsewhere so Otto has the provider + config schema ready.
             if graph.has_external_trigger:
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema

@@ -173,9 +173,17 @@ async def create_pending_workflow_schedules(user_id: str, expert_id: str) -> int
 
     Called after a credential grant, the usual thing that unblocks them.
     Returns how many schedules were created.
+
+    The expert is matched on its owner as well as its id, so a caller that
+    forgets to check ownership first gets nothing rather than someone else's
+    schedules.
     """
     rows = await prisma.models.ExpertWorkflow.prisma().find_many(
-        where={"expertId": expert_id, "scheduleId": None},
+        where={
+            "expertId": expert_id,
+            "scheduleId": None,
+            "Expert": {"is": {"ownerUserId": user_id}},
+        },
         include={"LibraryAgent": True, "StoreListingVersion": True},
     )
     pending = [row for row in rows if row.scheduleCron and row.LibraryAgent]

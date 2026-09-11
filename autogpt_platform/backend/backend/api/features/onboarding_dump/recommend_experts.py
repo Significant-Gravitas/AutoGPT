@@ -1,4 +1,4 @@
-"""The team AutoPilot proposes off the back of the brain dump.
+"""The team Otto proposes off the back of the brain dump.
 
 Runs as its own background job beside the greeting and the provider
 recommendations — same contract as ``recommend.py``: never raises, never
@@ -58,7 +58,7 @@ RAISE_ROLES = frozenset(
 # transcript, or when the model that would have read it failed.
 FALLBACK_DIAGNOSIS = "Here's a first team based on your role and what slows you down."
 
-_PROMPT = """You are AutoPilot, this user's built-in Head of AI. They \
+_PROMPT = """You are Otto, this user's built-in Head of AI. They \
 just recorded a brain dump about their work, and your job is to come back \
 like a consultant would: name the problems you heard, then propose the \
 first hires that take those problems off their plate.

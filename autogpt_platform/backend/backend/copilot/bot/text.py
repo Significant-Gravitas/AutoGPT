@@ -12,7 +12,7 @@ _CODE_FENCE = re.compile(r"```(\w*)")
 
 
 def format_batch(batch: list[tuple[str, str, str]], platform: str) -> str:
-    """Format one or more pending messages into a single prompt for AutoPilot.
+    """Format one or more pending messages into a single prompt for Otto.
 
     Each batch entry is (username, user_id, text). When multiple messages are
     batched together (because they arrived while the bot was streaming a prior

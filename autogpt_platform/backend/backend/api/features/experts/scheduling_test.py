@@ -226,6 +226,13 @@ async def test_pending_schedules_are_retried_per_workflow(mocker) -> None:
     created = await scheduling.create_pending_workflow_schedules("owner", "expert-1")
 
     assert created == 1
+    # Scoped to the owner, so a caller that skips its own ownership check
+    # reaches nothing rather than another user's expert.
+    assert workflow_client.find_many.await_args.kwargs["where"] == {
+        "expertId": "expert-1",
+        "scheduleId": None,
+        "Expert": {"is": {"ownerUserId": "owner"}},
+    }
     create.assert_awaited_once_with(
         workflow_row_id="wf-1",
         expert_id="expert-1",
