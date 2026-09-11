@@ -293,14 +293,12 @@ async def _live_bundled_skills(
     user_id: str | None, template_ids: list[str]
 ) -> dict[str, list[ExpertBundledSkill]]:
     """Per template id, the live Hub listings it bundles, in roster order."""
+    # The Hub routes' key, so nothing is linked or installed that would 404.
+    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
+        return {}
     rows = await prisma.models.ExpertSkillListing.prisma().find_many(
         where={"expertId": {"in": template_ids}}, order={"position": "asc"}
     )
-    # The Hub routes' key, so nothing is linked or installed that would 404.
-    if not rows or not await is_feature_enabled(
-        Flag.SKILLS_HUB, user_id or "anonymous"
-    ):
-        return {}
     live = await skill_db.get_live_skills(sorted({r.skillListingId for r in rows}))
     return {
         template_id: [

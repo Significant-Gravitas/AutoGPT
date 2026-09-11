@@ -182,17 +182,25 @@ async def test_live_skills_holds_only_listings_on_the_shelf():
     assert live[live_one.id].name == "Live One"
 
 
-async def test_install_stores_under_the_listing_slug_and_counts(mocker):
-    listing = await _make_listing("install-one", body="# do this\n")
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_id):
+    listing = await _make_listing(
+        f"install-one-{expert_id or 'library'}", body="# do this\n"
+    )
     stored = mocker.patch.object(skill_db, "store_user_skill")
-    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+    listed = mocker.patch.object(skill_db, "list_user_skills", return_value=[])
 
-    result = await skill_db.install_marketplace_skill("user-1", "install-one")
+    result = await skill_db.install_marketplace_skill(
+        "user-1", listing.slug, expert_id=expert_id
+    )
 
+    # The count checks the folder being written: the expert's or the library.
+    listed.assert_awaited_once_with("user-1", expert_id, heal_missing=False)
     stored.assert_awaited_once()
-    assert stored.await_args.kwargs["name"] == "install-one"
+    assert stored.await_args.kwargs["name"] == listing.slug
+    assert stored.await_args.kwargs["expert_id"] == expert_id
     assert stored.await_args.kwargs["body"] == "# do this\n"
-    assert result.name == "install-one"
+    assert result.name == listing.slug
     assert result.required_providers == ["google"]
 
     refreshed = await prisma.models.SkillListing.prisma().find_unique(

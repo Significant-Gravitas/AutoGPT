@@ -215,7 +215,7 @@ class ExpertBundledSkill(BaseModel):
 class ExpertTemplate(Expert):
     """A roster template as the marketplace shows it."""
 
-    # The Hub skills a hire gets installed, in the roster's order.
+    # What a hire gets installed, in roster order; a template's `skills` is unused.
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 

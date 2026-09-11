@@ -165,7 +165,7 @@ def test_list_expert_templates_links_live_hub_skills(
     mocker: pytest_mock.MockerFixture, user_id: str | None, flag_key: str
 ) -> None:
     app.dependency_overrides[get_optional_user_id] = lambda: user_id
-    flag = _mock_templates_with_hub_skill(mocker, hub_on=True)
+    flag, _ = _mock_templates_with_hub_skill(mocker, hub_on=True)
 
     response = client.get("/experts/templates")
 
@@ -184,17 +184,18 @@ def test_list_expert_templates_links_live_hub_skills(
 def test_list_expert_templates_links_nothing_with_the_hub_off(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    _mock_templates_with_hub_skill(mocker, hub_on=False)
+    _, rows_query = _mock_templates_with_hub_skill(mocker, hub_on=False)
 
     response = client.get("/experts/templates")
 
     assert response.status_code == 200
     assert response.json()[0]["bundled_skills"] == []
+    rows_query.assert_not_awaited()
 
 
 def _mock_templates_with_hub_skill(
     mocker: pytest_mock.MockerFixture, *, hub_on: bool
-) -> AsyncMock:
+) -> tuple[AsyncMock, AsyncMock]:
     template = _make_expert(
         id="template-1",
         is_template=True,
@@ -205,16 +206,15 @@ def _mock_templates_with_hub_skill(
         new_callable=AsyncMock,
         return_value=[template],
     )
+    rows_query = AsyncMock(
+        return_value=[
+            SimpleNamespace(expertId="template-1", skillListingId="listing-1")
+        ]
+    )
     mocker.patch.object(
         prisma.models.ExpertSkillListing,
         "prisma",
-        return_value=SimpleNamespace(
-            find_many=AsyncMock(
-                return_value=[
-                    SimpleNamespace(expertId="template-1", skillListingId="listing-1")
-                ]
-            )
-        ),
+        return_value=SimpleNamespace(find_many=rows_query),
     )
     mocker.patch(
         "backend.api.features.experts.experts_db.skill_db.get_live_skills",
@@ -230,11 +230,12 @@ def _mock_templates_with_hub_skill(
             )
         },
     )
-    return mocker.patch(
+    flag = mocker.patch(
         "backend.api.features.experts.experts_db.is_feature_enabled",
         new_callable=AsyncMock,
         return_value=hub_on,
     )
+    return flag, rows_query
 
 
 # ─── Hire ──────────────────────────────────────────────────────────────
