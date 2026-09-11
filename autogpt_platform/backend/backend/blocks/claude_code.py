@@ -25,6 +25,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -335,6 +336,9 @@ class ClaudeCodeBlock(Block):
                     api_key=e2b_api_key,
                     timeout=timeout,
                     envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    metadata=SandboxMetadata.for_block(
+                        execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
+                    ).as_e2b(),
                 )
 
                 # Install Claude Code from npm (ensures we get the latest version)
