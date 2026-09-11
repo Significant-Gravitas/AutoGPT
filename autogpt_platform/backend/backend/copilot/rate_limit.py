@@ -110,7 +110,7 @@ class SubscriptionTier(str, Enum):
 _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
     # NO_TIER is the explicit "no active Stripe subscription" state —
     # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
-    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # all rate-limited routes (CoPilot chat, Otto) refuse with 429
     # before any business logic runs. This is the backend half of the
     # paywall (the frontend modal nudges UI users; this gate enforces
     # server-side regardless of client). BASIC is not sold today and stays on

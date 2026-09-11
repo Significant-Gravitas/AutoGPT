@@ -116,7 +116,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("AutoPilot Skills", undefined, {
+      await screen.findByText("Otto Skills", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
@@ -132,7 +132,7 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const skills = await screen.findByText("AutoPilot Skills", undefined, {
+    const skills = await screen.findByText("Otto Skills", undefined, {
       timeout: 10000,
     });
     const workflows = await screen.findByText("All AI Workflows");
@@ -210,7 +210,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("AutoPilot Skills", undefined, {
+      await screen.findByText("Otto Skills", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
@@ -236,9 +236,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("AutoPilot Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 
   test("stays hidden and fetches nothing outside the beta", async () => {
@@ -262,7 +260,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("AutoPilot Skills")).toBeNull();
+    expect(screen.queryByText("Otto Skills")).toBeNull();
     await waitFor(() => expect(requested).toBe(false));
   });
 
@@ -273,8 +271,6 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("AutoPilot Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 });

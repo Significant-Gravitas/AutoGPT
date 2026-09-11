@@ -319,7 +319,7 @@ def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
 
     assert [item.kind for item in items] == ["question"]
     assert items[0].id == "question-sess-1"
-    assert items[0].title == "AutoPilot has a question"
+    assert items[0].title == "Otto has a question"
     assert items[0].description == "Monday or Friday?"
     assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
 

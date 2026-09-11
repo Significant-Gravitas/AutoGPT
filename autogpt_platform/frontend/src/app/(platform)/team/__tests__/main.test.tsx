@@ -211,12 +211,12 @@ const scheduledMaria: Expert = {
 };
 
 describe("TeamPage", () => {
-  test("renders the Autopilot card first", async () => {
+  test("renders the Otto card first", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
-    const autopilot = await screen.findByText("Autopilot");
+    const autopilot = await screen.findByText("Otto");
     expect(screen.getByText("Head of AI")).toBeDefined();
 
     const maria = await screen.findByText("Maria");
@@ -248,7 +248,7 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Marketing Strategist")).toBeDefined();
     const card = screen.getByRole("link", { name: "View Maria" });
-    expect(within(card).getByText("Idle")).toBeDefined();
+    expect(within(card).queryByText("Idle")).toBeNull();
     expect(getStatValue(card, "Workflows")).toBe("2");
     // Empty totals are left off the meta line.
     expect(within(card).queryByText("Skills")).toBeNull();
@@ -266,7 +266,7 @@ describe("TeamPage", () => {
     expect(link.getAttribute("href")).toBe("/team/expert-maria");
   });
 
-  test("opens an inline chat from the expert and Autopilot cards", async () => {
+  test("opens an inline chat from the expert and Otto cards", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
@@ -293,10 +293,10 @@ describe("TeamPage", () => {
 
     await user.click(autopilotChat);
     const autopilotPanel = await screen.findByRole("complementary", {
-      name: "Chat with Autopilot",
+      name: "Chat with Otto",
     });
     expect(
-      within(autopilotPanel).getByPlaceholderText("Message Autopilot…"),
+      within(autopilotPanel).getByPlaceholderText("Message Otto…"),
     ).toBeDefined();
     await waitFor(() => {
       expect(
@@ -309,10 +309,23 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("counts the integrations an expert has been granted", async () => {
+  test("shows an expert's integrations as logos, the rest behind +N more", async () => {
+    const user = userEvent.setup();
     const credentialRequests = vi.fn();
     server.use(
-      getListExpertsMockHandler([{ ...hiredMaria, credential_count: 2 }]),
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 5,
+          credential_providers: [
+            "github",
+            "linear",
+            "figma",
+            "notion",
+            "slack",
+          ],
+        },
+      ]),
       http.get("*/api/experts/:expertId/credentials", () => {
         credentialRequests();
         return HttpResponse.json([]);
@@ -322,8 +335,94 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const card = await screen.findByRole("link", { name: "View Maria" });
-    await waitFor(() => expect(getStatValue(card, "Integrations")).toBe("2"));
+    const integrations = within(card).getByRole("list", {
+      name: "Integrations",
+    });
+    const logos = within(integrations).getAllByRole("img");
+    expect(logos.map((logo) => logo.getAttribute("alt"))).toEqual([
+      "GitHub",
+      "Linear",
+      "Figma",
+    ]);
+    expect(logos.map((logo) => logo.getAttribute("src"))).toEqual([
+      "/integrations/github.png",
+      "/integrations/linear.png",
+      "/integrations/figma.png",
+    ]);
+    // The roster response already carries the providers; no per-card fetch.
     expect(credentialRequests).not.toHaveBeenCalled();
+
+    // Inside the card link nothing may take focus, so the names ride along
+    // as screen-reader text and the tooltip is the pointer affordance.
+    const more = within(integrations).getByText("+2 more");
+    expect(more.getAttribute("tabindex")).toBeNull();
+    expect(more.textContent).toContain("Notion, Slack");
+    await user.hover(more);
+    await screen.findByRole("tooltip", { name: "Notion, Slack" });
+  });
+
+  test("a logo says on hover whose account it is", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 1,
+          credential_providers: ["github"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    await user.hover(within(card).getByRole("img", { name: "GitHub" }));
+    await screen.findByRole("tooltip", {
+      name: "Maria has access to your GitHub account",
+    });
+  });
+
+  test("shows the seeded cover art for Max and none for the rest", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        hiredMaria,
+        {
+          ...hiredMaria,
+          id: "expert-max",
+          name: "Max",
+          avatar_url: "/experts/max.svg",
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const max = await screen.findByRole("link", { name: "View Max" });
+    expect(
+      max.querySelector('img[src="/experts/covers/max-1.jpg"]'),
+    ).not.toBeNull();
+    const maria = screen.getByRole("link", { name: "View Maria" });
+    expect(maria.querySelector('img[src^="/experts/covers/"]')).toBeNull();
+    // No colour of her own and no seeded art, so the palette fills in.
+    expect(maria.querySelector('[class*="-200"]')?.className).toMatch(
+      /bg-[a-z]+-200/,
+    );
+  });
+
+  test("shows no integrations item on a card with none granted", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, credential_count: 0, credential_providers: [] },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(getStatValue(card, "Workflows")).toBe("2");
+    expect(
+      within(card).queryByRole("list", { name: "Integrations" }),
+    ).toBeNull();
   });
 
   test("counts an expert's schedules on their card", async () => {
@@ -884,7 +983,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    expect(await screen.findByText("Autopilot")).toBeDefined();
+    expect(await screen.findByText("Otto")).toBeDefined();
     const link = await screen.findByRole("link", {
       name: "Browse the marketplace",
     });
@@ -916,7 +1015,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await screen.findByText("Autopilot");
+    await screen.findByText("Otto");
     expect(await screen.findByText("Maria")).toBeDefined();
   });
 

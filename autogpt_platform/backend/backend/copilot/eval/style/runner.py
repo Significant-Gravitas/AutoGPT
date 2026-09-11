@@ -86,7 +86,7 @@ class RunOptions(BaseModel):
     write_baseline: bool = False
     dry_run: bool = False
     cross_spec: bool = False
-    # Prompts per expert to also run as plain AutoPilot, no suffix.
+    # Prompts per expert to also run as plain Otto, no suffix.
     control: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")

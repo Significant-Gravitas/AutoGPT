@@ -192,7 +192,7 @@ class TestStreamChat:
 
     @pytest.mark.asyncio
     async def test_inserts_paragraph_break_between_text_blocks(self, api: BotBackend):
-        # AutoPilot emits text in separate blocks around tool calls / reasoning,
+        # Otto emits text in separate blocks around tool calls / reasoning,
         # each with its own id. Concatenating them without a separator runs the
         # blocks together ("first thought.second thought"); a paragraph break
         # keeps them readable, matching the frontend's distinct-part rendering.

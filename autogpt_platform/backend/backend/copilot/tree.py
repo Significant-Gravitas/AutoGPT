@@ -68,7 +68,7 @@ SPAWN_TOOLS: frozenset[str] = frozenset(
 # withholding them does not break a working delegation — it removes reach a
 # spawned turn should never have silently. The staffing tools are already
 # denied to expert sessions by their tool group; listing them keeps the
-# guarantee even for a plain-AutoPilot child.
+# guarantee even for a plain-Otto child.
 DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
     {
         "connect_integration",
