@@ -31,8 +31,8 @@ interface Props {
 
 /** Everything the chain still needs from the user, stacked below it as one
  *  card per kind of ask — connectors, run inputs, questions. The questions
- *  card carries its own Skip/Add footer (Add drafts the combined reply into
- *  the chat input); an inputs-only stack falls back to a lone Proceed, and
+ *  card carries its own Skip/Send footer (Send posts the combined reply as
+ *  one message); an inputs-only stack falls back to a lone Proceed, and
  *  a connectors-only card has no button: connecting is the whole ask. */
 export function ChainActionCard({
   connectors,

@@ -48,6 +48,7 @@ from backend.api.features.experts.models import (
     HireResult,
     RaiseAttachment,
     RaiseResult,
+    decode_day_one,
     decode_voice_preferences,
 )
 from backend.api.features.experts.workflow_chain import (
@@ -234,6 +235,7 @@ def _to_model(
         identity=row.identity,
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
+        day_one=decode_day_one(row.dayOne),
         boundaries=row.boundaries,
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=row.isTemplate,
@@ -789,6 +791,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "tagline": template.tagline,
         "bio": template.bio,
         "skills": template.skills or [],
+        # No dayOne: it is the template's pre-hire promise, not the hire's.
         "identity": template.identity,
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,

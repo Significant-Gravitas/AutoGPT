@@ -46,6 +46,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
+from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -125,6 +126,7 @@ from backend.copilot.tools import (
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
@@ -1059,14 +1061,15 @@ async def _baseline_tool_executor(
     user_id: str | None,
     session: ChatSession,
     disabled_groups: Sequence[ToolGroup],
+    disabled_tools: frozenset[str],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
 
-    ``disabled_groups`` is the same list used to build the turn's schema
-    list; passing it here makes the capability gate an enforcement boundary
-    rather than a presentation filter.
+    ``disabled_groups`` and ``disabled_tools`` are the same values used to
+    build the turn's schema list; passing them here makes the capability and
+    kickoff gates an enforcement boundary rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1140,6 +1143,7 @@ async def _baseline_tool_executor(
                 session=session,
                 tool_call_id=tool_call_id,
                 disabled_groups=disabled_groups,
+                disabled_tools=disabled_tools,
             )
         _emit(state, result)
         tool_output = (
@@ -2167,7 +2171,16 @@ async def stream_chat_completion_baseline(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
     )
-    tools = get_available_tools(disabled_groups=disabled_tool_groups)
+    # A hire's kickoff turn is a server-sent control message, so nothing on
+    # it was asked for: narrow it to the onboarding card and nothing else.
+    disabled_tools = (
+        kickoff_turn_disabled_tools()
+        if is_expert_kickoff_turn(session)
+        else frozenset()
+    )
+    tools = get_available_tools(
+        disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
+    )
 
     # --- Permission filtering ---
     if permissions is not None:
@@ -2237,6 +2250,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session=_session_holder[0],
             disabled_groups=disabled_tool_groups,
+            disabled_tools=disabled_tools,
         )
 
     _bound_conversation_updater = partial(
