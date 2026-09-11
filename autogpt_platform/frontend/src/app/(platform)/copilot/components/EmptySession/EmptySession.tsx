@@ -7,10 +7,12 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import {
+  getExpertInputPlaceholder,
   getGreetingName,
   getInputPlaceholder,
+  getIntroLine,
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
@@ -41,6 +43,10 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  /** Expert the new conversation will address; scopes workspace-file pickers. */
+  expertId?: string | null;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
 }
 
 export function EmptySession({
@@ -52,15 +58,23 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  expertId = null,
+  voiceToggle,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { options, recipient, isLoadingRecipient, selectRecipient } =
-    useRecipientPicker();
+  const {
+    options,
+    recipient,
+    selectedExpert,
+    isLoadingRecipient,
+    selectRecipient,
+  } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -153,7 +167,7 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <EmptyHero name={greetingName} />
+            <EmptyHero name={greetingName} intro={introLine} />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
@@ -167,30 +181,27 @@ export function EmptySession({
                     : "w-full px-2",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
-                  // borders line up. The regular hero keeps it centered, and
-                  // drops the card chrome so the composer pill is the only
-                  // outline on screen.
+                  // edges line up. No chrome of its own: the composer card is
+                  // the only outline on screen. The regular hero keeps it
+                  // centered.
                   isBrainDumpEnabled &&
                     (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem] overflow-hidden rounded-xlarge border"
+                      ? "-mx-5 max-w-[50.5rem]"
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
-                style={
-                  isBrainDumpEnabled && intro.isVisible
-                    ? {
-                        borderColor: "#e4e4e7",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      }
-                    : undefined
-                }
               >
                 <ChatInput
                   inputId="chat-input-empty"
                   stacked
+                  voiceToggle={voiceToggle}
                   onSend={onSend}
                   disabled={isComposerDisabled}
                   isUploadingFiles={isUploadingFiles}
-                  placeholder={inputPlaceholder}
+                  placeholder={
+                    selectedExpert
+                      ? getExpertInputPlaceholder(selectedExpert.name)
+                      : inputPlaceholder
+                  }
                   className={
                     isBrainDumpEnabled
                       ? "w-full [&_textarea]:min-h-[4.5rem]"
@@ -198,6 +209,7 @@ export function EmptySession({
                   }
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  expertId={expertId}
                   recipientPicker={
                     isExpertsEnabled ? (
                       <RecipientChip

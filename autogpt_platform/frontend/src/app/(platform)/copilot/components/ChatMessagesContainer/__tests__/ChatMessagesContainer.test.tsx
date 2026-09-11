@@ -67,7 +67,9 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: () => <div data-testid="chain-message-parts" />,
+  ChainMessageParts: ({ parts }: { parts: unknown[] }) => (
+    <div data-testid="chain-message-parts" data-parts={JSON.stringify(parts)} />
+  ),
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -694,6 +696,52 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([false, true])(
+    "applies streamed tool names before stripping bookkeeping parts (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "assistant-display",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-run_agent",
+                  toolCallId: "call-one",
+                  state: "input-available",
+                  input: { library_agent_id: "library-id" },
+                },
+                {
+                  type: "data-tool-display",
+                  id: "call-one",
+                  data: {
+                    toolCallId: "call-one",
+                    displayName: "Daily briefing",
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+      const renderedParts = JSON.parse(
+        screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+      );
+      expect(renderedParts).toEqual([
+        {
+          type: "tool-run_agent",
+          toolCallId: "call-one",
+          state: "input-available",
+          input: { library_agent_id: "library-id" },
+          title: "Daily briefing",
+        },
+      ]);
+    },
+  );
+
   it("hides the load-older-messages sentinel even when more history exists", () => {
     render(
       <ChatMessagesContainer
@@ -770,7 +818,7 @@ describe("ChatMessagesContainer — readOnly mode", () => {
 // ── expert kickoff ────────────────────────────────────────────────────────
 
 describe("ChatMessagesContainer — expert kickoff", () => {
-  it("shows the kickoff prompt as a user message above the reply", () => {
+  it("hides the kickoff prompt and shows only the reply", () => {
     const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
     render(
       <ChatMessagesContainer
@@ -792,7 +840,8 @@ describe("ChatMessagesContainer — expert kickoff", () => {
       />,
     );
 
-    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
+    expect(screen.queryByTestId("message-user")).toBeNull();
+    expect(screen.queryByText(kickoff.text)).toBeNull();
     expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
       0,
     );
@@ -810,7 +859,7 @@ describe("ChatMessagesContainer — expert kickoff", () => {
             parts: [
               {
                 type: "text",
-                text: "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+                text: "You were just hired. Call expert_onboarding once, and nothing else",
               },
             ],
           },

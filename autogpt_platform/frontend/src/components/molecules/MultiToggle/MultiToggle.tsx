@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import React, { useId } from "react";
+import { isKey } from "@/lib/keyboard";
 
 type MultiToggleItem = {
   value: string;
@@ -37,7 +38,7 @@ export function MultiToggle({
   }
 
   function handleKeyDown(event: React.KeyboardEvent, value: string) {
-    if (event.key === " " || event.key === "Enter") {
+    if (isKey(event, " ", "Enter")) {
       event.preventDefault();
       handleToggle(value);
     }

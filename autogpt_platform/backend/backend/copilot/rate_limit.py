@@ -62,6 +62,7 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.trial_cost_context import record_attributed_trial_cost
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
@@ -91,6 +92,7 @@ class SubscriptionTier(str, Enum):
     """
 
     NO_TIER = "NO_TIER"
+    TRIAL = "TRIAL"
     BASIC = "BASIC"
     PRO = "PRO"
     MAX = "MAX"
@@ -100,23 +102,24 @@ class SubscriptionTier(str, Enum):
 
 # Default multiplier applied to the base cost limits (from LD / config) for each
 # tier. Used as the fallback when the LD flag ``copilot-tier-multipliers`` is
-# unset or unparseable — see ``get_tier_multipliers``.  BUSINESS matches
-# ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier. Float-typed
+# unset or unparseable — see ``get_tier_multipliers``.  PRO and MAX are the two
+# self-serve plans; their multipliers set what those plans allow. Float-typed
 # so LD-provided fractional multipliers (e.g. 8.5×) compose naturally; the
 # eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
 # downstream microdollar math integer.
 _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
     # NO_TIER is the explicit "no active Stripe subscription" state —
     # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
-    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # all rate-limited routes (CoPilot chat, Otto) refuse with 429
     # before any business logic runs. This is the backend half of the
     # paywall (the frontend modal nudges UI users; this gate enforces
-    # server-side regardless of client). BASIC stays as a future paid-tier
-    # option; for now it falls back to the same baseline as paid tiers.
+    # server-side regardless of client). BASIC is not sold today and stays on
+    # the base limits.
     SubscriptionTier.NO_TIER: 0.0,
+    SubscriptionTier.TRIAL: 0.0,
     SubscriptionTier.BASIC: 1.0,
-    SubscriptionTier.PRO: 5.0,
-    SubscriptionTier.MAX: 20.0,
+    SubscriptionTier.PRO: 1.25,
+    SubscriptionTier.MAX: 10.6667,
     SubscriptionTier.BUSINESS: 60.0,
     SubscriptionTier.ENTERPRISE: 60.0,
 }
@@ -134,6 +137,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 # while LaunchDarkly can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
+    SubscriptionTier.TRIAL: 250,
     SubscriptionTier.BASIC: 250,  # 250 MB
     SubscriptionTier.PRO: 1024,  # 1 GB
     SubscriptionTier.MAX: 5 * 1024,  # 5 GB
@@ -517,7 +521,7 @@ async def get_usage_status(
             resets_at=_weekly_reset_time(now=now),
         ),
         tier=tier,
-        reset_cost=rate_limit_reset_cost,
+        reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
     )
 
 
@@ -556,6 +560,11 @@ async def get_remaining_usd_budget(
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
     """
+    trial = None
+    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return 0.0
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -567,7 +576,7 @@ async def get_remaining_usd_budget(
         weekly_used = int(weekly_raw or 0)
     except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
         logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
-        return floor_usd
+        return 0.0 if trial else floor_usd
 
     # ``>= 0`` (not ``> 0``): a limit of 0 is "no spend allowed", so the
     # remaining is 0 on that window. Mirrors check_rate_limit's semantics
@@ -586,6 +595,11 @@ async def get_remaining_usd_budget(
         if remaining_microdollars != float("inf")
         else float("inf")
     )
+    if trial:
+        return min(
+            remaining_usd,
+            max(0, trial.offer.total_cost_limit - trial.cost_microdollars) / 1_000_000,
+        )
     return max(floor_usd, remaining_usd)
 
 
@@ -668,6 +682,12 @@ async def check_rate_limit(
     (the exact cost is unknown until after generation).
     """
     now = datetime.now(UTC)
+    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            raise RateLimitExceeded("trial", now)
+        if trial.cost_microdollars >= trial.offer.total_cost_limit:
+            raise RateLimitExceeded("trial", trial.ends_at or now)
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
@@ -830,6 +850,11 @@ async def record_cost_usage(
     cost_microdollars = max(0, cost_microdollars)
     if cost_microdollars <= 0:
         return
+    if (
+        not await record_attributed_trial_cost(user_id, cost_microdollars)
+        and await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL
+    ):
+        await credit_db().record_subscription_trial_cost(user_id, cost_microdollars)
 
     logger.info(
         "Recording copilot spend: %d microdollars (skip_daily=%s)",
@@ -995,6 +1020,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         tier = DEFAULT_TIER
         tier_from_db = False
 
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        return tier if trial and trial.active else SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return tier
 
@@ -1173,6 +1201,11 @@ async def get_global_rate_limits(
     # only NO_TIER path that gets here is the beta cohort (flag off), which
     # falls back to BASIC limits so testers retain access.
     tier = await get_user_tier(user_id)
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return 0, 0, SubscriptionTier.NO_TIER
+        return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
     if tier == SubscriptionTier.NO_TIER and not await is_feature_enabled(
@@ -1297,6 +1330,9 @@ async def is_user_paywalled(user_id: str) -> bool:
             user_id[:8],
         )
         tier = SubscriptionTier.NO_TIER
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        return trial is None or not trial.active
     if tier != SubscriptionTier.NO_TIER:
         return False
     return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)

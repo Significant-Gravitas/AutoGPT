@@ -1,9 +1,9 @@
 import json
-from datetime import datetime
-from typing import Literal
+from datetime import date, datetime
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
 
@@ -18,7 +18,12 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
+# Only some outward calls are actually gated for approval — is_sensitive_action
+# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
+# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
+# Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
+# instruction text. Reword for one audience without silently breaking the other.
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 EXPERT_NAME_MAX_LENGTH = 100
@@ -85,6 +90,19 @@ class VoiceSample(BaseModel):
     text: str
 
 
+ExpertWorkflowChainKind = Literal[
+    "integration", "input", "output", "trigger", "agent", "ai", "mcp", "human"
+]
+
+
+class ExpertWorkflowChainItem(BaseModel):
+    """One step in the workflow card's summary chain: a provider logo for
+    integration blocks, or a kind the frontend maps to an icon."""
+
+    kind: ExpertWorkflowChainKind
+    provider: str | None = None
+
+
 class ExpertWorkflowRef(BaseModel):
     id: str
     store_listing_version_id: str | None
@@ -97,14 +115,45 @@ class ExpertWorkflowRef(BaseModel):
     # created yet (e.g. missing credentials) — the workflow needs setup.
     schedule_cron: str | None = None
     schedule_id: str | None = None
+    # Up to three of the graph's most-used blocks, integrations first.
+    chain: list[ExpertWorkflowChainItem] = Field(default_factory=list)
+    # Every integration the graph needs credentials for — NOT the chain's
+    # providers, which the three-item display cut can drop one of.
+    integration_providers: list[str] = Field(default_factory=list)
 
 
 class ExpertIdentity(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    color: str | None = None
     role: str
     is_archived: bool
+
+
+class ExpertSetupItem(BaseModel):
+    """One thing standing between a scheduled workflow and its schedule.
+
+    Rendered on the Team page as a row with a single fix. ``connect``: the
+    user has no credential for any of ``providers``. ``allow``: they have one
+    (``credential_id``) that this expert may not use yet. ``inputs``: the
+    workflow needs the values in ``missing_inputs`` before it can run
+    unattended. ``workflow``: nothing is missing, so the schedule needs
+    creating from the workflow.
+    """
+
+    expert_id: str
+    expert_name: str
+    expert_avatar_url: str | None
+    workflow_id: str
+    workflow_name: str | None
+    library_agent_id: str | None
+    providers: list[str]
+    resolution: Literal["connect", "allow", "inputs", "workflow"]
+    credential_id: str | None = None
+    # Titles of the graph inputs a scheduled run cannot supply; only set on
+    # an ``inputs`` item.
+    missing_inputs: list[str] = Field(default_factory=list)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -118,6 +167,33 @@ class ExpertCredentialRef(BaseModel):
     provider: str
     title: str
     type: str
+
+
+EXPERT_DAY_ONE_MAX_ITEMS = 3
+
+
+class ExpertDayOneItem(BaseModel):
+    """One row of a template profile's "What {name} sets up on day one",
+    written by the template's creator rather than derived from its workflows."""
+
+    title: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+    timing: str = Field(default="", max_length=40)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: object) -> object:
+        return _strip_required_soul_field(value)
+
+    @field_validator("description", "timing", mode="before")
+    @classmethod
+    def strip_optional_fields(cls, value: object) -> object:
+        return _strip_optional_soul_field(value)
+
+
+_DAY_ONE_ITEMS: TypeAdapter[list[ExpertDayOneItem]] = TypeAdapter(
+    Annotated[list[ExpertDayOneItem], Field(max_length=EXPERT_DAY_ONE_MAX_ITEMS)]
+)
 
 
 class Expert(BaseModel):
@@ -136,12 +212,20 @@ class Expert(BaseModel):
     # pick; always empty on hired copies, which persist the user's plain-text
     # choice in voice_preferences instead.
     voice_samples: list[VoiceSample] = []
+    # Roster templates only; a hire does not copy it.
+    day_one: list[ExpertDayOneItem] = Field(
+        default=[], max_length=EXPERT_DAY_ONE_MAX_ITEMS
+    )
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool
     source_template_id: str | None
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
+    credential_count: int = 0
+    # Distinct providers behind credential_count, first-seen order, for the
+    # /team card's logos.
+    credential_providers: list[str] = []
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None
@@ -165,6 +249,11 @@ class ExpertPod(BaseModel):
     created_at: datetime
 
 
+# How an expert run was started: from a cron preset, a webhook preset, or
+# by hand (including from chat).
+ExpertRunSource = Literal["scheduled", "trigger", "manual"]
+
+
 class ExpertRun(BaseModel):
     """One expert-attributed execution, for the /team Work surface."""
 
@@ -177,9 +266,28 @@ class ExpertRun(BaseModel):
     # Which output pin was classified, so the viewer opens exactly that value.
     output_key: str | None
     needs_review: bool
+    source: ExpertRunSource = "manual"
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
+
+
+class ExpertActivityDay(BaseModel):
+    """One calendar day, in the owner's timezone, of expert activity."""
+
+    day: date
+    sessions: int
+    runs: int
+
+
+class ExpertActivity(BaseModel):
+    """Daily chat-session and run counts behind the at-a-glance activity graph.
+
+    ``days`` is zero-filled, oldest first, and ends on the owner's today.
+    """
+
+    timezone: str
+    days: list[ExpertActivityDay]
 
 
 class ExpertDetachPreview(BaseModel):
@@ -247,6 +355,36 @@ class RaiseResult(BaseModel):
     failed_attachments: list[RaiseAttachmentFailure] = []
 
 
+class ExpertSkillsUpdate(BaseModel):
+    """The full list of skill names an expert should carry. Names new to the
+    expert must be library skills (default or uploaded); names already on
+    the expert are kept as-is so marketplace skills survive a round-trip."""
+
+    skills: list[str] = Field(max_length=50)
+    # Store listing versions to attach as marketplace skills; each resolves
+    # to the listing's public name, the same way the raise flow records them.
+    marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("skills", mode="before")
+    @classmethod
+    def strip_and_dedupe(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                return value
+            name = item.strip()
+            if not name or len(name) > 100:
+                raise ValueError("Skill names must be 1-100 characters")
+            if name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            cleaned.append(name)
+        return cleaned
+
+
 class ExpertSoulUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     identity: str = Field(min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH)
@@ -262,6 +400,28 @@ class ExpertSoulUpdate(BaseModel):
     @classmethod
     def strip_optional_fields(cls, value: object) -> object:
         return _strip_optional_soul_field(value)
+
+
+class ExpertBudgetUpdate(BaseModel):
+    """Set an expert's weekly spend cap in credits (100 = $1).
+
+    ``None`` falls back to the platform default; ``0`` disables the cap.
+    """
+
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+
+
+class ExpertAvatarUpdate(BaseModel):
+    """Swap an expert's picture. ``None`` clears it back to the generated marble."""
+
+    avatar_url: str | None = Field(
+        default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
+    )
+
+    @field_validator("avatar_url")
+    @classmethod
+    def check_avatar_url(cls, value: str | None) -> str | None:
+        return validate_avatar_url(value)
 
 
 class ExpertSoulFieldsPatch(BaseModel):
@@ -338,3 +498,17 @@ def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
         except ValidationError:
             continue
     return description, samples
+
+
+def encode_day_one(items: list[ExpertDayOneItem]) -> list[dict[str, str]]:
+    """Validate a template's day-one rows, cap included, into ``dayOne`` JSON."""
+    return _DAY_ONE_ITEMS.dump_python(_DAY_ONE_ITEMS.validate_python(items))
+
+
+def decode_day_one(raw: object) -> list[ExpertDayOneItem]:
+    """Inverse of ``encode_day_one``. A malformed column hides the section
+    instead of failing every templates read."""
+    try:
+        return _DAY_ONE_ITEMS.validate_python(raw or [])
+    except ValidationError:
+        return []

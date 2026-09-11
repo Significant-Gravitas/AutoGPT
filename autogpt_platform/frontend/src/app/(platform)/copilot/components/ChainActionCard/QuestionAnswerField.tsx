@@ -5,6 +5,7 @@ import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   question: ClarifyingQuestion;
@@ -12,6 +13,9 @@ interface Props {
   labelId: string;
   autoFocus: boolean;
   onChange: (value: string) => void;
+  /** Only the option list can fire this — free text has no single moment
+   *  where the answer is done. */
+  onPick: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -26,6 +30,7 @@ export function QuestionAnswerField({
   labelId,
   autoFocus,
   onChange,
+  onPick,
   onSubmit,
 }: Props) {
   const options = question.options ?? [];
@@ -38,7 +43,7 @@ export function QuestionAnswerField({
 
   if (options.length === 0 || typing) {
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <textarea
           required
           rows={3}
@@ -48,7 +53,7 @@ export function QuestionAnswerField({
           onChange={(e) => onChange(e.target.value)}
           // Enter advances the pager; Shift+Enter is the newline.
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.shiftKey) return;
+            if (!isKey(e, "Enter") || e.shiftKey) return;
             e.preventDefault();
             onSubmit();
           }}
@@ -59,7 +64,7 @@ export function QuestionAnswerField({
               ? `e.g. ${question.example}`
               : "Type your answer"
           }
-          className="resize-none rounded-2xl bg-zinc-50 px-3 py-2 text-sm leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+          className="resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
         />
         {options.length > 0 && (
           <button
@@ -71,7 +76,7 @@ export function QuestionAnswerField({
               setToggled(true);
               setTyping(false);
             }}
-            className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+            className="self-start rounded-full px-2.5 py-1 text-sm text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
           >
             Choose from options instead
           </button>
@@ -81,13 +86,14 @@ export function QuestionAnswerField({
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <QuestionOptionList
         options={options}
         value={value}
         labelId={labelId}
         focusActiveOption={autoFocus || toggled}
         onChange={onChange}
+        onPick={onPick}
         onSubmit={onSubmit}
       />
       <button
@@ -97,9 +103,9 @@ export function QuestionAnswerField({
           setToggled(true);
           setTyping(true);
         }}
-        className="flex items-center gap-2 rounded-2xl border border-dashed border-zinc-200 px-3 py-2 text-left text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+        className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
       >
-        <Icon icon={PencilEdit02Icon} size={14} className="shrink-0" />
+        <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
         Type something…
       </button>
     </div>
