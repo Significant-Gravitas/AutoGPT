@@ -20,16 +20,17 @@ interface Props {
 }
 
 function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
-  const userFacing = generated.filter(
-    (file) => !isInternalToolOutput(file.item),
-  );
-  if (userFacing.length === 0) return null;
-  return userFacing.reduce((latest, file) =>
-    new Date(file.item.created_at).getTime() >
-    new Date(latest.item.created_at).getTime()
-      ? file
-      : latest,
-  );
+  let latest: SessionFile | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  for (const file of generated) {
+    if (isInternalToolOutput(file.item)) continue;
+    const time = new Date(file.item.created_at).getTime();
+    if (latest === null || time > latestTime) {
+      latest = file;
+      latestTime = time;
+    }
+  }
+  return latest;
 }
 
 /** The chat's one top-right control: the artifacts toggle. It wears the name

@@ -196,6 +196,7 @@ describe("ContextPanelToggle internal tool output", () => {
     const button = await screen.findByLabelText("Open result.csv");
     fireEvent.click(button);
 
+    expect(panelState().isOpen).toBe(true);
     expect(panelState().activeArtifact?.id).toBe(
       "aaaaaaaa-0000-0000-0000-000000000001",
     );
