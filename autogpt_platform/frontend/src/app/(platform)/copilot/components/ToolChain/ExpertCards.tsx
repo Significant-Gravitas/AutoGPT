@@ -222,6 +222,7 @@ export function ExpertChangeCard({
           <ExpertAvatar
             name={name}
             avatarUrl={str(expert, "avatar_url")}
+            color={str(expert, "color")}
             size={32}
           />
           <div className="min-w-0 flex-1">

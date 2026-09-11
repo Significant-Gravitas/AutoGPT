@@ -43,7 +43,20 @@ type BrainDumpEvent =
   // prompts rendered beneath it are personalised from the same dump, so
   // this covers both a suggestion click and a typed reply.
   | "intro_followup_sent"
-  | "later_dump_completed";
+  | "later_dump_completed"
+  // The team AutoPilot proposed on the greeting page: one event per card
+  // shown, then the doors out of it — hire, raise your own, talk it
+  // through, or skip straight to the builder.
+  | "expert_recommended"
+  | "expert_recommendation_clicked"
+  | "hire_started"
+  | "raise_door_clicked"
+  | "intro_start_with_autopilot"
+  // The wizard's hire step: a hire that landed from a card, and the step
+  // being left — with how many of the proposed experts were hired, so the
+  // funnel can tell "hired a team" from "skipped past it".
+  | "onboarding_expert_hired"
+  | "hire_step_continued";
 
 export function trackBrainDump(
   event: BrainDumpEvent,

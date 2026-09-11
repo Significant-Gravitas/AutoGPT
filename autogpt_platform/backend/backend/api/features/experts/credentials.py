@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 import prisma.models
 
+from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
@@ -217,6 +218,9 @@ async def grant_expert_credentials(
             ],
             skip_duplicates=True,
         )
+        # A missing grant is what usually kept a scheduled workflow from
+        # getting its schedule at install time; now is the moment to retry.
+        await scheduling.create_pending_workflow_schedules(user_id, expert_id)
     return _to_refs(await _grants(expert_id), credentials)
 
 

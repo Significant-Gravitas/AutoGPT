@@ -9,6 +9,20 @@ vi.mock("posthog-js", () => ({
   default: { capture: (...a: unknown[]) => capture(...a) },
 }));
 
+// All off by default, so every existing assertion keeps describing the
+// flag-off deck; the team tests below turn both flags on.
+const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
+vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) => flags.current[flag] ?? false,
+  };
+});
+
 const toastSpy = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => toastSpy(...args),
@@ -67,10 +81,11 @@ async function advanceToCard(index: number) {
 beforeEach(() => {
   capture.mockClear();
   toastSpy.mockClear();
+  flags.current = {};
 });
 
 describe("OnboardingWelcomeDialog — deck", () => {
-  it("renders the first card with its position in the deck and no way back", async () => {
+  it("renders the first card with no way back", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
 
     expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
@@ -79,7 +94,6 @@ describe("OnboardingWelcomeDialog — deck", () => {
         "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
       ),
     ).toBeDefined();
-    expect(screen.getByText("1 of 4")).toBeDefined();
     expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Skip" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Previous card" })).toBeNull();
@@ -92,15 +106,14 @@ describe("OnboardingWelcomeDialog — deck", () => {
     expect(
       await screen.findByText("It works inside your tools."),
     ).toBeDefined();
-    expect(screen.getByText("2 of 4")).toBeDefined();
     expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
       card_index: 1,
+      deck: "autopilot",
     });
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
 
     expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
-    expect(screen.getByText("1 of 4")).toBeDefined();
   });
 
   it("renders nothing and completes no step while closed", async () => {
@@ -129,6 +142,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_completed", {
       card_index: 3,
+      deck: "autopilot",
     });
   });
 
@@ -146,6 +160,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
       card_index: 1,
+      deck: "autopilot",
     });
   });
 
@@ -162,6 +177,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
       card_index: 0,
+      deck: "autopilot",
     });
   });
 
@@ -210,7 +226,6 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     expect(
       await screen.findByText("It works inside your tools."),
     ).toBeDefined();
-    expect(screen.getByText("2 of 4")).toBeDefined();
   });
 
   it("steps back out of the picker on Escape instead of ending onboarding", async () => {
@@ -258,6 +273,93 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     expect(await screen.findByText("It learns how you operate.")).toBeDefined();
-    expect(screen.getByText("3 of 4")).toBeDefined();
   });
 });
+
+describe("OnboardingWelcomeDialog — the team deck", () => {
+  beforeEach(() => {
+    flags.current = {
+      "onboarding-expert-team": true,
+      "hire-experts": true,
+    };
+  });
+
+  it("frames AutoPilot as the Head of AI that builds a team", async () => {
+    render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Meet your Head of AI.")).toBeDefined();
+    expect(
+      screen.getByText(
+        "AutoPilot is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Meet AutoPilot.")).toBeNull();
+
+    const user = await advanceToCard(1);
+    expect(
+      await screen.findByText("Hire an expert, or raise your own."),
+    ).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    // The connect card and its CTA survive the swap.
+    expect(
+      await screen.findByText("It works inside your tools."),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Connect your tools" }),
+    ).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByText("It remembers everything.")).toBeNull();
+  });
+
+  it("keeps the old deck when only the team flag is on", async () => {
+    flags.current = { "onboarding-expert-team": true };
+
+    render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+  });
+});
+
+it("keeps the last card valid when team flags change in either direction", async () => {
+  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+  const { rerender } = render(
+    <OnboardingWelcomeDialog isOpen onClose={vi.fn()} />,
+  );
+  await advanceToCard(3);
+  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+  flags.current = {};
+  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+  expect(await screen.findByText("It remembers everything.")).toBeDefined();
+  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+});
+
+it.each(["completed", "skipped"] as const)(
+  "identifies the team deck in view and %s events",
+  async (outcome) => {
+    flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+    recordCompletedSteps();
+    render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+    const user = await advanceToCard(3);
+    expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
+      card_index: 3,
+      deck: "team",
+    });
+    if (outcome === "completed") {
+      await user.click(screen.getByRole("button", { name: "Meet your team" }));
+    } else {
+      await user.keyboard("{Escape}");
+    }
+    expect(capture).toHaveBeenCalledWith(`capability_cards_${outcome}`, {
+      card_index: 3,
+      deck: "team",
+    });
+  },
+);

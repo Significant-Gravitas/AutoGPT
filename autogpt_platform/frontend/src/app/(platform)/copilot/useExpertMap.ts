@@ -13,6 +13,7 @@ export interface ExpertIdentity {
   id: string;
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
   role: string | null;
   isArchived: boolean;
   readOnlyReason: ExpertReadOnlyReason | null;
@@ -94,6 +95,7 @@ export function useExpertMap() {
       id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatar_url ?? null,
+      color: expert.color ?? null,
       role: expert.role,
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,

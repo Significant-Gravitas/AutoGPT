@@ -44,10 +44,14 @@ interface Props {
   className?: string;
   color: string | undefined;
   status?: CoverStatus;
+  /** Show Autopilot's cover art. Implied by the "built-in" status, so a
+   *  caller that wants the art without the badge sets this instead. */
+  builtIn?: boolean;
 }
 
-export function ExpertCover({ className, color, status }: Props) {
+export function ExpertCover({ className, color, status, builtIn }: Props) {
   const statusStyle = status ? STATUS_STYLES[status] : null;
+  const showArt = builtIn || status === "built-in";
 
   return (
     <div
@@ -57,7 +61,7 @@ export function ExpertCover({ className, color, status }: Props) {
         className,
       )}
     >
-      {status === "built-in" ? (
+      {showArt ? (
         <Image
           src="/experts/covers/autopilot.jpg"
           alt=""
