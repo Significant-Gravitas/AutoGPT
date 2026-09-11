@@ -2776,7 +2776,7 @@ class UploadCopilotSkillRequest(BaseModel):
 
 async def _require_skill_owner(user_id: str, expert_id: str | None) -> None:
     """A skill owner named on a REST call must be one of the caller's active
-    experts; personal AutoPilot (``None``) needs no check."""
+    experts; personal Otto (``None``) needs no check."""
     if expert_id is None:
         return
     if not await experts_db.owns_private_active_expert(user_id, expert_id):
@@ -2796,10 +2796,10 @@ async def list_copilot_skills(
     user_id: Annotated[str, Security(get_user_id)],
     expert_id: str | None = Query(
         default=None,
-        description="List this expert's own skills instead of personal AutoPilot's.",
+        description="List this expert's own skills instead of personal Otto's.",
     ),
 ) -> list[CopilotSkillInfo]:
-    """Return the skills owned by personal AutoPilot, or by one expert.
+    """Return the skills owned by personal Otto, or by one expert.
 
     Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
     library UI sees the exact same set the copilot ``<available_skills>``

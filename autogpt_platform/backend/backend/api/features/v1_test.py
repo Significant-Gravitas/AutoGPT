@@ -1687,7 +1687,7 @@ def test_expert_skill_routes_forward_an_owned_expert(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """An owned PRIVATE expert passes the gate and its id reaches the skills
-    layer, so the call reads that expert's folder and not AutoPilot's."""
+    layer, so the call reads that expert's folder and not Otto's."""
     mocker.patch(
         "backend.api.features.v1.experts_db.owns_private_active_expert",
         AsyncMock(return_value=True),
@@ -1712,7 +1712,7 @@ def test_personal_autopilot_skill_routes_skip_the_expert_gate(
     route: str,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """No expert named means personal AutoPilot, which owns its own folder and
+    """No expert named means personal Otto, which owns its own folder and
     must never be refused by the expert gate."""
     owns = mocker.patch(
         "backend.api.features.v1.experts_db.owns_private_active_expert",
@@ -1733,7 +1733,7 @@ def test_personal_autopilot_skill_routes_skip_the_expert_gate(
 
 # ``expert_id`` omitted entirely, not sent empty: an empty query value is a
 # str, which would take the expert branch of the gate rather than the
-# personal-AutoPilot one.
+# personal-Otto one.
 def _owner(expert_id: str | None) -> dict[str, str]:
     return {} if expert_id is None else {"expert_id": expert_id}
 

@@ -13598,7 +13598,7 @@
       "get": {
         "tags": ["v1", "skills"],
         "summary": "List user-distilled copilot skills",
-        "description": "Return the skills owned by personal AutoPilot, or by one expert.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "description": "Return the skills owned by personal Otto, or by one expert.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
         "operationId": "listCopilotSkills",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -13608,10 +13608,10 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "description": "List this expert's own skills instead of personal AutoPilot's.",
+              "description": "List this expert's own skills instead of personal Otto's.",
               "title": "Expert Id"
             },
-            "description": "List this expert's own skills instead of personal AutoPilot's."
+            "description": "List this expert's own skills instead of personal Otto's."
           }
         ],
         "responses": {

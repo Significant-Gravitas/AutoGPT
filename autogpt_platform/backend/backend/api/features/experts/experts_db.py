@@ -978,7 +978,7 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the AutoPilot skills it
+    """Give a freshly raised expert its own copies of the Otto skills it
     was raised with. Defaults and marketplace names have nothing to copy.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
@@ -1067,7 +1067,7 @@ async def update_skills(
     """Replace an expert's skill list.
 
     Names the expert does not already carry must resolve to a library skill.
-    A personal-AutoPilot skill is copied into the expert's own folder so the
+    A personal-Otto skill is copied into the expert's own folder so the
     expert owns it from then on; names dropped from the list delete the
     expert's copy. The stored name is the skill's canonical one so display
     and lookup agree."""
@@ -1147,11 +1147,11 @@ async def _resolve_marketplace_skill_name(store_listing_version_id: str) -> str:
 def _plan_skill(
     kept_name: str | None, name: str, folders: dict[str, str]
 ) -> tuple[str, str | None]:
-    """Decide the stored name and which AutoPilot folder, if any, to copy.
+    """Decide the stored name and which Otto folder, if any, to copy.
 
     A name the expert already carries is kept as is; its folder is looked up
     so a legacy assignment without a copy gets one. A new name must be a
-    default skill or one of AutoPilot's skills, resolved to its folder (a
+    default skill or one of Otto's skills, resolved to its folder (a
     hand-written skill may be listed under a frontmatter name that differs
     from the folder). Raises ``NotFoundError`` before anything is written.
     """

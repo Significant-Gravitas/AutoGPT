@@ -1,5 +1,5 @@
 """Skill ownership: every skill belongs to one expert or to personal
-AutoPilot. Experts see and manage only their own; AutoPilot runs only its own
+Otto. Experts see and manage only their own; Otto runs only its own
 but may manage any expert's."""
 
 from contextlib import contextmanager
@@ -116,7 +116,7 @@ async def test_library_lookup_skips_the_read_for_a_folder_carrying_metadata(worl
 
 async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(world):
     """An expert hired before ownership existed lists names that live only in
-    AutoPilot's folder; without a copy it would drop to the defaults."""
+    Otto's folder; without a copy it would drop to the defaults."""
     fake, experts = world
     experts.get_expert = AsyncMock(
         side_effect=lambda user_id, expert_id, **_: MagicMock(
@@ -128,7 +128,7 @@ async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(worl
 
     assert "name: mine" in ctx
     assert "/experts/expert-a/skills/mine/SKILL.md" in fake.files
-    # AutoPilot keeps its own copy; ownership is a copy, never a move.
+    # Otto keeps its own copy; ownership is a copy, never a move.
     assert AUTOPILOT in fake.files
 
 
@@ -176,7 +176,7 @@ async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(worl
 
 async def test_a_name_that_can_never_resolve_is_scanned_for_once(world):
     """A marketplace attachment resolves to no folder on any turn, so without
-    a memo every cache-cold turn re-scans AutoPilot's whole library for it."""
+    a memo every cache-cold turn re-scans Otto's whole library for it."""
     _, experts = world
     experts.get_expert = AsyncMock(
         side_effect=lambda user_id, expert_id, **_: MagicMock(
