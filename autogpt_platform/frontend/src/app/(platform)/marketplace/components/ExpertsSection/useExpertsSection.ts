@@ -30,9 +30,12 @@ export function useExpertsSection({
       query: {
         enabled,
         select: (x) => x.data as Expert[],
-        // Keep the current cards on screen while a category change loads, so
-        // picking a chip doesn't collapse the shelf to skeletons.
-        placeholderData: (previousData) => previousData,
+        // The shelf keeps its cards across a chip change; search must not show a
+        // previous term's cards, so it waits on the page's loading gate instead.
+        placeholderData:
+          searchQuery === undefined
+            ? (previousData) => previousData
+            : undefined,
       },
     },
   );

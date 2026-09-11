@@ -240,6 +240,38 @@ describe("Experts in marketplace search", () => {
     }
   });
 
+  test("a new search term never shows the previous term's experts", async () => {
+    const max: Expert = { ...maria, id: "template-max", name: "Max" };
+    server.use(
+      http.get("/api/proxy/api/experts/templates", async ({ request }) => {
+        const term = new URL(request.url).searchParams.get("search_query");
+        if (term === "Max") {
+          await delay(1500);
+          return HttpResponse.json([max]);
+        }
+        return HttpResponse.json([maria]);
+      }),
+    );
+    const { rerender } = render(
+      <MainSearchResultPage searchTerm="Maria" sort="runs" />,
+    );
+    await waitFor(() => expect(isExpertCardShown("template-maria")).toBe(true));
+
+    rerender(<MainSearchResultPage searchTerm="Max" sort="runs" />);
+
+    // Agents and creators answer the new term first; Maria must not come back
+    // while Max's request is still in flight.
+    let sawStaleCard = false;
+    for (let i = 0; i < 80; i++) {
+      if (isExpertCardShown("template-maria")) sawStaleCard = true;
+      if (isExpertCardShown("template-max")) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    expect(sawStaleCard).toBe(false);
+    expect(isExpertCardShown("template-max")).toBe(true);
+  });
+
   test("asks for no experts and offers no chip outside the beta", async () => {
     hireExpertsFlag.enabled = false;
     server.use(rosterHandler([maria]));
@@ -252,3 +284,9 @@ describe("Experts in marketplace search", () => {
     expect(screen.queryByRole("button", { name: /Experts/ })).toBeNull();
   });
 });
+
+function isExpertCardShown(id: string) {
+  return screen
+    .queryAllByRole("link")
+    .some((link) => link.getAttribute("href") === `/marketplace/experts/${id}`);
+}
