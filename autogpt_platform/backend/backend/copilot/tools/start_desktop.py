@@ -28,7 +28,6 @@ import logging
 from typing import Any
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
-from backend.copilot.computer import computer_owner, mounts_for, open_desktop
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 
@@ -81,6 +80,10 @@ class StartDesktopTool(BaseTool):
             )
 
         expert_id = session.expert_id if session else None
+        # Imported here: ``computer`` imports the sandbox module, whose package
+        # imports this tool, so a module-level import is a cycle.
+        from backend.copilot.computer import computer_owner, mounts_for, open_desktop
+
         owner = computer_owner(session_id, expert_id)
         try:
             stream, created, shared = await open_desktop(

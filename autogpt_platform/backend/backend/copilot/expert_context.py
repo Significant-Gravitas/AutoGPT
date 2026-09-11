@@ -218,11 +218,7 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
-    return (
-        render_expert_workflows_block(expert)
-        + _expert_computer_block()
-        + teammates
-    )
+    return render_expert_workflows_block(expert) + _expert_computer_block() + teammates
 
 
 def render_expert_workflows_block(expert: Expert) -> str:
