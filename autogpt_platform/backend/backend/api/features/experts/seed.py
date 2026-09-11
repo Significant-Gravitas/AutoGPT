@@ -17,10 +17,16 @@ from typing import TypedDict
 
 import prisma.models
 
-from backend.api.features.experts.models import VoiceSample, encode_voice_preferences
+from backend.api.features.experts.models import (
+    ExpertDayOneItem,
+    VoiceSample,
+    encode_day_one,
+    encode_voice_preferences,
+)
 from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +64,8 @@ class RosterEntry(TypedDict):
     # the "how should {name} write?" pick right after hire.
     voice_samples: list[VoiceSample]
     boundaries: str
+    # Up to three rows for the profile's "sets up on day one"; empty hides it.
+    day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
 
 
@@ -93,6 +101,23 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
             ),
         ],
         "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
+        "day_one": [
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions of your brand, product, and founders across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            ),
+            ExpertDayOneItem(
+                title="Morning briefing, in your Slack",
+                description="“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
+                timing="tomorrow · 9 AM",
+            ),
+            ExpertDayOneItem(
+                title="Two-week content calendar",
+                description="A skeleton calendar built from your site, your niche, and what competitors are shipping. You approve before anything posts.",
+                timing="day 1",
+            ),
+        ],
         "preloads": [
             {"slug": "linkedin-post-generator", "cron": None},
             {"slug": "automated-blog-writer", "cron": None},
@@ -130,6 +155,7 @@ You are rigorous about data quality. You flag when contact information looks sta
             ),
         ],
         "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
+        "day_one": [],
         "preloads": [
             {"slug": "lead-finder-local-businesses", "cron": None},
             {"slug": "business-ownerceo-finder", "cron": None},
@@ -167,6 +193,7 @@ You are conservative about commitments. You never promise a delivery date, refun
             ),
         ],
         "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
+        "day_one": [],
         "preloads": [
             {"slug": "smart-meeting-brief", "cron": None},
             {"slug": "automated-support-ai", "cron": None},
@@ -300,6 +327,7 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "bio": entry["bio"],
         "skills": entry["skills"],
         "categories": validate_canonical_categories(entry["categories"]),
+        "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
     template = await prisma.models.Expert.prisma().find_first(

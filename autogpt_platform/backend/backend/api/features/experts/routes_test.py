@@ -25,6 +25,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertDayOneItem,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -122,6 +123,13 @@ def test_list_expert_templates(
         id="template-1",
         is_template=True,
         source_template_id=None,
+        day_one=[
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            )
+        ],
         workflows=[
             _make_workflow_ref(library_agent_id=None, graph_id=None),
         ],

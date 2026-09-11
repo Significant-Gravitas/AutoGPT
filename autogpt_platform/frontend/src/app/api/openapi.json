@@ -20623,6 +20623,13 @@
             "title": "Voice Samples",
             "default": []
           },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
+            "default": []
+          },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
             "items": { "type": "string" },
@@ -20767,6 +20774,32 @@
         "required": ["credential_id", "provider", "title", "type"],
         "title": "ExpertCredentialRef",
         "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
+      },
+      "ExpertDayOneItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 240,
+            "title": "Description",
+            "default": ""
+          },
+          "timing": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Timing",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "ExpertDayOneItem",
+        "description": "One row of a template profile's \"What {name} sets up on day one\",\nwritten by the template's creator rather than derived from its workflows."
       },
       "ExpertDetachPreview": {
         "properties": {

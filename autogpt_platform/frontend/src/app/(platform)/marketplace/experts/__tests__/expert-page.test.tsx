@@ -5,6 +5,7 @@ import {
   getUpdateExpertSoulMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertDayOneItem } from "@/app/api/__generated__/models/expertDayOneItem";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { getGetV1ListSystemProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { server } from "@/mocks/mock-server";
@@ -120,6 +121,27 @@ const mariaWithSamples: Expert = {
   ],
 };
 
+const mariaDayOne = [
+  {
+    title: "Social listening on your brand",
+    description:
+      "Tracks mentions of your brand, product, and founders across X, LinkedIn, Reddit, and news.",
+    timing: "first scan · 1 hr",
+  },
+  {
+    title: "Morning briefing, in your Slack",
+    description:
+      "“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
+    timing: "tomorrow · 9 AM",
+  },
+  {
+    title: "Two-week content calendar",
+    description:
+      "A skeleton calendar built from your site, your niche, and what competitors are shipping. You approve before anything posts.",
+    timing: "day 1",
+  },
+] satisfies ExpertDayOneItem[];
+
 function renderPage() {
   return render(
     <>
@@ -228,6 +250,52 @@ describe("Marketplace expert page", () => {
     expect(
       screen.getByRole("heading", { name: "Included with your plan" }),
     ).toBeDefined();
+  });
+
+  test("lists the creator's day-one rows above the skills", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, day_one: mariaDayOne },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    const dayOne = await screen.findByRole("region", {
+      name: "What Maria sets up on day one",
+    });
+    const rows = within(dayOne).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    mariaDayOne.forEach((item, index) => {
+      const row = within(rows[index]);
+      expect(row.getByText(String(index + 1))).toBeDefined();
+      expect(row.getByText(item.title)).toBeDefined();
+      expect(row.getByText(item.description)).toBeDefined();
+      expect(row.getByText(item.timing)).toBeDefined();
+    });
+    // Nothing in the section is derived from the bundled workflows.
+    expect(within(dayOne).queryByText("LinkedIn Post Generator")).toBeNull();
+    const skills = screen.getByRole("region", { name: "Skills" });
+    expect(
+      dayOne.compareDocumentPosition(skills) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test("hides the day-one section when the creator wrote none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([{ ...mariaTemplate, day_one: [] }]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /sets up on day one/ }),
+    ).toBeNull();
   });
 
   test("waits for the roster before offering to hire an expert already hired", async () => {
