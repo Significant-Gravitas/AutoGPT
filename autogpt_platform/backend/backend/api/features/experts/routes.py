@@ -303,7 +303,7 @@ async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
-    expert = await experts_db.get_expert(user_id, expert_id)
+    expert = await experts_db.get_expert(user_id, expert_id, include_credentials=True)
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert

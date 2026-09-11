@@ -189,9 +189,14 @@ describe("managing an expert's integrations", () => {
     ).toBeDefined();
   });
 
-  it("revokes an integration through the API", async () => {
+  it("revokes an integration through the API and refreshes the expert", async () => {
     let revoked: string | null = null;
+    let expertReads = 0;
     server.use(
+      getGetExpertMockHandler(() => {
+        expertReads += 1;
+        return maria;
+      }),
       getListExpertCredentialsMockHandler([linkedin]),
       http.delete(
         "*/api/experts/expert-maria/credentials/:credentialId",
@@ -211,6 +216,8 @@ describe("managing an expert's integrations", () => {
     );
 
     await waitFor(() => expect(revoked).toBe("cred-linkedin"));
+    // The header logos come from the expert, so it is read again.
+    await waitFor(() => expect(expertReads).toBe(2));
   });
 
   it("only offers credentials the expert does not already have", async () => {

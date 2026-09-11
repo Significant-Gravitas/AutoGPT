@@ -845,7 +845,7 @@ async def _baseline_llm_caller(
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
             # Local backends govern their own context window at launch (e.g.
-            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
             # compaction (see local_context_probe). Send no extra_body — skip
             # the OpenRouter ``usage.include`` extension and reasoning params,
             # which stricter local backends reject outright.

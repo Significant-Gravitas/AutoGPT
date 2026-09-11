@@ -73,7 +73,7 @@ def test_plan_assembles_each_experts_own_prompt_set():
 
 
 def test_the_control_arm_warms_one_prompt_prefix_for_the_whole_roster():
-    """Its system prompt and tools are plain AutoPilot's whatever expert's
+    """Its system prompt and tools are plain Otto's whatever expert's
     prompts it runs; a per-expert key would pay the cache write three times."""
     jobs = plan_jobs(roster_experts(), load_fixtures(), RunOptions(control=3))
     controls = {cache_prefix(j) for j in jobs if j.arm == "no_suffix"}

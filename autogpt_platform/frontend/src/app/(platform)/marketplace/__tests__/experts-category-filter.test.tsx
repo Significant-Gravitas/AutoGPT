@@ -181,7 +181,7 @@ describe("Marketplace category filter over experts", () => {
     );
     // Not the empty-roster fallback either: a filtered shelf offers no
     // invitation to raise an expert.
-    expect(screen.queryByText(/raise your own expert/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Raise your own" })).toBeNull();
   });
 
   test("a failed roster request under a category still offers the raise link", async () => {
@@ -199,8 +199,14 @@ describe("Marketplace category filter over experts", () => {
 
     await userEvent.click(await findCategoryChip("Sales"));
 
-    // A failure is not an answer about the category, so the section stays.
-    expect(await screen.findByText(/raise your own expert/i)).toBeDefined();
+    // The header carries its own "Raise your own" link, so wait for it to go:
+    // a failure is not an answer about the category, so the fallback stays.
+    await waitFor(() =>
+      expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
+    );
+    expect(
+      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+    ).toBe("/raise");
   });
 });
 

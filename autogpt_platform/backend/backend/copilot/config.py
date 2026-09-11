@@ -628,7 +628,7 @@ class ChatConfig(BaseSettings):
         description="HTTP request timeout (seconds) for the OpenAI-compatible "
         "client when ``use_local`` is True. The OpenAI Python client defaults "
         "to 600 s — tighter than what an 8 B model running on a CPU-only host "
-        "needs for a single AutoPilot turn (system prompt ≈ 8 k tokens; the "
+        "needs for a single Otto turn (system prompt ≈ 8 k tokens; the "
         "tool-call loop multiplies that across iterations). Set to the longest "
         "single-call wait an operator is willing to tolerate before bailing. "
         "30 minutes accommodates CPU-only setups; drop it to ≤120 s if you "
@@ -1034,7 +1034,7 @@ class ChatConfig(BaseSettings):
 
         Without this guard, ``CHAT_USE_LOCAL=true`` silently inherits the
         ``OPENROUTER_BASE_URL`` default from the ``base_url`` field
-        validator and AutoPilot routes local-intended traffic at
+        validator and Otto routes local-intended traffic at
         OpenRouter — usually with the operator's `OPENAI_API_KEY` as the
         bearer (since the api_key fallback chain ran in OpenRouter's
         order before the model_validator phase). The user gets an opaque

@@ -5,6 +5,7 @@
   "categories": [],
   "color": "",
   "credential_count": 0,
+  "credential_providers": [],
   "id": "expert-1",
   "identity": "You are Maria, a pragmatic marketing specialist.",
   "is_archived": false,
