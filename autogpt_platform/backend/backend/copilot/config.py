@@ -358,15 +358,24 @@ class ChatConfig(BaseSettings):
     #
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
+    #
+    # A negative value disables that window's cap. Self-hosted distributions
+    # (the single-container image and the unraid template) export -1 for both
+    # because the operator pays the model provider directly and, without
+    # LaunchDarkly, every account resolves to NO_TIER → BASIC multiplier and
+    # would otherwise inherit these cloud ceilings. The defaults here stay
+    # positive so a LaunchDarkly outage on cloud never removes the cap.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
-        "0 means no spend allowed (will block); there is no unlimited tier.",
+        "0 means no spend allowed (will block); a negative value disables the "
+        "daily cap (the self-hosted default).",
     )
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
         description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
-        "0 means no spend allowed (will block); there is no unlimited tier.",
+        "0 means no spend allowed (will block); a negative value disables the "
+        "weekly cap (the self-hosted default).",
     )
 
     # Cost (in credits / cents) to reset the daily rate limit using credits.
