@@ -28,7 +28,7 @@ _logger = logging.getLogger(__name__)
 async def _ensure_db_connected() -> None:
     """Ensure the Prisma connection is alive on the current event loop.
 
-    On Python 3.11, the httpx2 transport inside Prisma can reference a stale
+    On Python 3.11, the httpx transport inside Prisma can reference a stale
     (closed) event loop when session-scoped async fixtures are evaluated long
     after the initial ``server`` fixture connected Prisma.  A cheap health-check
     followed by a reconnect fixes this without affecting other fixtures.

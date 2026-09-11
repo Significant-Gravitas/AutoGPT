@@ -2,7 +2,7 @@
 
 Admin trigger endpoints used to block synchronously waiting for the
 dream pass / nightly batch / community rebuild to finish — easy
-5-minute httpx2 ``ReadTimeout`` when an LLM phase legitimately took
+5-minute httpx ``ReadTimeout`` when an LLM phase legitimately took
 longer than the RPC timeout, plus no way to recover the result if the
 client tab closed mid-run.
 

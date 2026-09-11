@@ -1000,7 +1000,7 @@ def _make_sdk_patches(
         # Unmocked, build_skills_context runs get_or_create_workspace — a
         # REAL Prisma write — on this test's function-scoped event loop
         # whenever an earlier test already connected Prisma. That leaves
-        # connections in the shared Prisma httpx2 pool bound to a dead loop,
+        # connections in the shared Prisma httpx pool bound to a dead loop,
         # and the next session-loop test to touch Prisma dies with
         # "RuntimeError: Event loop is closed" (seen as
         # test_chatsession_redis_storage / test_sdk_resume_multi_turn

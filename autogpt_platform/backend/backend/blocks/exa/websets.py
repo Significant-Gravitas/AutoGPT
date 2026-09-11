@@ -476,7 +476,7 @@ class ExaCreateOrFindWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        import httpx2
+        import httpx
 
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
@@ -488,7 +488,7 @@ class ExaCreateOrFindWebsetBlock(Block):
             yield "webset", webset_result
             yield "was_created", False
 
-        except httpx2.HTTPStatusError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 # Not found - create new webset
                 search_params = None

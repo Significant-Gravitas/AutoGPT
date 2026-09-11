@@ -89,7 +89,7 @@ def _stub_boundaries(mocker):
     # queries on this test's function-scoped event loop whenever an earlier
     # test already connected Prisma (its except swallows the failure when
     # not connected, so the leak is invisible locally). Those connections
-    # stay in the shared Prisma httpx2 pool bound to a dead loop and the
+    # stay in the shared Prisma httpx pool bound to a dead loop and the
     # next session-loop test touching Prisma dies with "Event loop is
     # closed" (test_chatsession_redis_storage in CI).
     mocker.patch(

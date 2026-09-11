@@ -355,7 +355,7 @@ async def _llm_call(
         prompt = result.messages
 
     # Sanitize unpaired surrogates in message content to prevent
-    # UnicodeEncodeError when httpx2 encodes the JSON request body.
+    # UnicodeEncodeError when httpx encodes the JSON request body.
     for msg in prompt:
         content = msg.get("content")
         if isinstance(content, str):

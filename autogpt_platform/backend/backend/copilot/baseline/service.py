@@ -895,7 +895,7 @@ async def _baseline_llm_caller(
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
-        # break, exception) always release the underlying httpx2 connection.
+        # break, exception) always release the underlying httpx connection.
         # Without this, openai.AsyncStream leaks the streaming response and
         # the TCP socket ends up in CLOSE_WAIT until the process exits.
         try:
@@ -995,7 +995,7 @@ async def _baseline_llm_caller(
                         if tc.function and tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
         finally:
-            # Release the streaming httpx2 connection back to the pool on every
+            # Release the streaming httpx connection back to the pool on every
             # exit path (normal completion, break, exception). openai.AsyncStream
             # does not auto-close when the async-for loop exits early.
             try:

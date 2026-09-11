@@ -13,8 +13,9 @@ def configure_logging():
     else:
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=True)
 
-    # Silence httpx2 logger
-    logging.getLogger("httpx2").setLevel(logging.WARNING)
+    # httpx is the LLM SDKs' transport, httpx2 our own clients'; silence both.
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def is_structured_logging_enabled() -> bool:
