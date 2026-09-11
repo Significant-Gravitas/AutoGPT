@@ -208,7 +208,9 @@ class Expert(BaseModel):
     # choice in voice_preferences instead.
     voice_samples: list[VoiceSample] = []
     # Roster templates only; a hire does not copy it.
-    day_one: list[ExpertDayOneItem] = []
+    day_one: list[ExpertDayOneItem] = Field(
+        default=[], max_length=EXPERT_DAY_ONE_MAX_ITEMS
+    )
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool

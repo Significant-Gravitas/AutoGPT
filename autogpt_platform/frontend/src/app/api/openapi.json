@@ -20591,6 +20591,7 @@
           "day_one": {
             "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
             "type": "array",
+            "maxItems": 3,
             "title": "Day One",
             "default": []
           },

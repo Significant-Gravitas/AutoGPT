@@ -2765,9 +2765,11 @@ async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
     too_many = maria.copy()
     too_many["day_one"] = [*maria["day_one"], maria["day_one"][0]]
 
-    with patch.object(prisma.models.Expert, "prisma") as expert_client:
-        with pytest.raises(pydantic.ValidationError):
-            await seed._upsert_template(too_many)
+    with (
+        patch.object(prisma.models.Expert, "prisma") as expert_client,
+        pytest.raises(pydantic.ValidationError),
+    ):
+        await seed._upsert_template(too_many)
     expert_client.assert_not_called()
 
 

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
     EXPERT_IDENTITY_MAX_LENGTH,
+    Expert,
     ExpertDayOneItem,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
@@ -148,6 +149,7 @@ def test_day_one_caps_at_three_rows():
     assert len(encode_day_one([row] * EXPERT_DAY_ONE_MAX_ITEMS)) == 3
     with pytest.raises(ValidationError):
         encode_day_one([row] * (EXPERT_DAY_ONE_MAX_ITEMS + 1))
+    assert Expert.model_json_schema()["properties"]["day_one"]["maxItems"] == 3
 
 
 def test_day_one_item_rejects_a_blank_title():
