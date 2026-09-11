@@ -29,8 +29,6 @@ x-backend-env:
   GRAPHITI_FALKORDB_PORT: "6379"
   # JWKS endpoint of the Better Auth service embedded in the frontend.
   # Containers reach it via the compose service name, not localhost.
-  # JWT_VERIFY_KEY (legacy HS256, from backend/.env.default) stays in place
-  # for the migration window while old Supabase-issued tokens circulate.
   JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
