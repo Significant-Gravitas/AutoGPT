@@ -199,6 +199,7 @@ class TestGating:
                 session=_caller(expert_id="expert-a"),
                 tool_call_id="call-1",
                 disabled_groups=["expert_admin"],
+                disabled_tools=(),
             )
         execute_mock.assert_not_awaited()
         assert result.success is False

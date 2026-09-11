@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import prisma.models
@@ -141,12 +142,13 @@ async def test_create_workflow_schedule_fills_credentials_from_the_allow_list(
 ) -> None:
     """The scheduler validates credential inputs, so an empty map fails every
     graph that needs one; the expert's reachable credentials must be passed."""
-    from types import SimpleNamespace
-
     from backend.data.model import CredentialsMetaInput
 
     meta = CredentialsMetaInput(
         id="cred-notion", provider="notion", type="api_key", title="Notion"
+    )
+    mocker.patch.object(
+        scheduling, "_load_workflow_graph", new=AsyncMock(return_value=_graph([]))
     )
     mocker.patch.object(
         scheduling,
@@ -187,8 +189,6 @@ async def test_create_workflow_schedule_fills_credentials_from_the_allow_list(
 
 @pytest.mark.asyncio
 async def test_pending_schedules_are_retried_per_workflow(mocker) -> None:
-    from types import SimpleNamespace
-
     workflow_client = mocker.MagicMock()
     workflow_client.find_many = AsyncMock(
         return_value=[
@@ -242,4 +242,109 @@ async def test_pending_schedules_are_retried_per_workflow(mocker) -> None:
         graph_version=2,
         name="SEO Audit",
         user_timezone="Europe/Madrid",
+    )
+
+
+def _graph(required: list[str], titles: dict[str, str] | None = None):
+    return SimpleNamespace(
+        input_schema={
+            "properties": {
+                name: {"title": (titles or {}).get(name)} for name in required
+            },
+            "required": required,
+        }
+    )
+
+
+def test_unsatisfied_required_inputs_prefers_the_field_title() -> None:
+    graph = _graph(["recipient"], {"recipient": "Email Address"})
+    assert scheduling.unsatisfied_required_inputs(graph) == ["Email Address"]
+
+
+def test_unsatisfied_required_inputs_falls_back_to_the_field_name() -> None:
+    assert scheduling.unsatisfied_required_inputs(_graph(["recipient"])) == [
+        "recipient"
+    ]
+
+
+def test_a_graph_whose_inputs_all_have_defaults_has_nothing_unsatisfied() -> None:
+    assert scheduling.unsatisfied_required_inputs(_graph([])) == []
+
+
+@pytest.mark.asyncio
+async def test_no_schedule_is_created_while_an_input_is_unsatisfied(mocker) -> None:
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.add_execution_schedule = AsyncMock()
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
+    workflow_client = mocker.MagicMock()
+    workflow_client.update_many = AsyncMock()
+    mocker.patch.object(
+        scheduling.prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
+    )
+    mocker.patch.object(
+        scheduling,
+        "_load_workflow_graph",
+        new=AsyncMock(return_value=_graph(["recipient"], {"recipient": "Email"})),
+    )
+    # Mocked so the guard is the only thing that can stop the schedule:
+    # the real resolver raises on a stub graph, which would pass this test
+    # with the guard removed.
+    mocker.patch.object(
+        scheduling, "_resolve_workflow_credentials", new=AsyncMock(return_value={})
+    )
+
+    created = await scheduling.create_workflow_schedule(
+        workflow_row_id="wf-1",
+        expert_id="expert-1",
+        user_id="owner",
+        cron="40 7 * * *",
+        graph_id="g1",
+        graph_version=1,
+        name="Personal Newsletter",
+        user_timezone="UTC",
+    )
+
+    assert created is False
+    scheduler_client.add_execution_schedule.assert_not_awaited()
+    workflow_client.update_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_fully_defaulted_graph_still_gets_its_schedule(mocker) -> None:
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
+    workflow_client = mocker.MagicMock()
+    workflow_client.update_many = AsyncMock(return_value=1)
+    mocker.patch.object(
+        scheduling.prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
+    )
+    mocker.patch.object(
+        scheduling, "_load_workflow_graph", new=AsyncMock(return_value=_graph([]))
+    )
+    mocker.patch.object(
+        scheduling, "_resolve_workflow_credentials", new=AsyncMock(return_value={})
+    )
+
+    created = await scheduling.create_workflow_schedule(
+        workflow_row_id="wf-1",
+        expert_id="expert-1",
+        user_id="owner",
+        cron="40 7 * * *",
+        graph_id="g1",
+        graph_version=1,
+        name="Lead Finder",
+        user_timezone="UTC",
+    )
+
+    assert created is True
+    scheduler_client.add_execution_schedule.assert_awaited_once()
+    workflow_client.update_many.assert_awaited_once_with(
+        where={"id": "wf-1", "scheduleId": None}, data={"scheduleId": "sched-1"}
     )

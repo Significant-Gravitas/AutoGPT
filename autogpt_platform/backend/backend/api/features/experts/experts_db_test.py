@@ -19,6 +19,7 @@ import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import (
     ExpertBundledSkill,
+    ExpertDayOneItem,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     HireResult,
@@ -38,6 +39,7 @@ from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
 from backend.data.user import get_or_create_user
+from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -113,6 +115,7 @@ async def _seed_store_listing(
     server: SpinTestServer,
     approved: bool = True,
     extra_block_ids: list[str] | None = None,
+    input_value: str | None = "seeded",
 ) -> str:
     """Create a graph plus a store listing on top of it.
 
@@ -122,6 +125,9 @@ async def _seed_store_listing(
     blocks in the graph — a credentialed one gives the listing an integration
     to summarise. Mirrors the seeding pattern from
     ``backend/data/graph_test.py::test_access_store_listing_graph``.
+
+    ``input_value=None`` leaves the graph's one input without a default,
+    which is what makes it a required user-supplied field.
     """
     owner = await _create_seed_user()
     admin = await _create_seed_user()
@@ -132,7 +138,8 @@ async def _seed_store_listing(
         nodes=[
             Node(
                 block_id=AgentInputBlock().id,
-                input_default={"name": "input_1"},
+                input_default={"name": "input_1"}
+                | ({} if input_value is None else {"value": input_value}),
             ),
             *(Node(block_id=block_id) for block_id in extra_block_ids or []),
         ],
@@ -2529,6 +2536,89 @@ async def test_hire_creates_schedule_from_template_cadence(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_hire_creates_the_schedule_on_the_hiring_users_clock(
+    server: SpinTestServer, test_user
+):
+    """A 07:40 cadence means 07:40 where the user is, not UTC."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-tz")
+    )
+    with (
+        patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone="Pacific/Auckland")),
+        ),
+    ):
+        await experts_db.hire_expert(test_user.id, template.id, None)
+
+    kwargs = mock_scheduler.add_execution_schedule.call_args.kwargs
+    assert kwargs["user_timezone"] == "Pacific/Auckland"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_skips_the_schedule_when_the_graph_needs_user_input(
+    server: SpinTestServer, test_user
+):
+    """A cadence on a workflow whose inputs only the user can supply gets no
+    schedule: the cadence stays on the row so the Team page can ask for them."""
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler):
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    wf = result.expert.workflows[0]
+    assert wf.schedule_cron == "40 7 * * *"
+    assert wf.schedule_id is None
+    assert result.failed_preloads == []
+    mock_scheduler.add_execution_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_scheduler_accepts_a_schedule_missing_a_required_input(
+    server: SpinTestServer, test_user
+):
+    """Why the skip above is load-bearing: nothing downstream refuses it.
+
+    ``add_graph_execution_schedule`` validates through this call, and an
+    ``AgentInputBlock`` with no value validates clean — so an unguarded
+    install creates a schedule that fires daily on an input yielding nothing.
+    """
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(name="Frankie", preload_listings=[slv_id])
+    result = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent_id = result.expert.workflows[0].library_agent_id
+    assert library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None
+
+    await execution_utils.validate_and_construct_node_execution_input(
+        graph_id=library_agent.agentGraphId,
+        user_id=test_user.id,
+        graph_inputs={},
+        graph_version=library_agent.agentGraphVersion,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_hire_schedule_failure_marks_needs_setup(
     server: SpinTestServer, test_user
 ):
@@ -2945,6 +3035,33 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     upsert.assert_not_awaited()
 
 
+def test_roster_day_one_is_marias_three_rows_and_hidden_for_the_rest():
+    day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
+
+    assert [(item.title, item.timing) for item in day_one["Maria"]] == [
+        ("Social listening on your brand", "first scan · 1 hr"),
+        ("Morning briefing, in your Slack", "tomorrow · 9 AM"),
+        ("Two-week content calendar", "day 1"),
+    ]
+    # Max's and Frankie's rows are the roster owner's to write.
+    assert day_one["Max"] == []
+    assert day_one["Frankie"] == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
+    maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
+    too_many = maria.copy()
+    too_many["day_one"] = [*maria["day_one"], maria["day_one"][0]]
+
+    with (
+        patch.object(prisma.models.Expert, "prisma") as expert_client,
+        pytest.raises(pydantic.ValidationError),
+    ):
+        await seed._upsert_template(too_many)
+    expert_client.assert_not_called()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     server: SpinTestServer,
@@ -2967,6 +3084,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     for entry in seed.ROSTER:
         expected_versions = {expected[p["slug"]] for p in entry["preloads"]}
         assert len(expected_versions) == len(entry["preloads"])
+        assert templates[entry["name"]].day_one == entry["day_one"]
         assert {
             w.store_listing_version_id for w in templates[entry["name"]].workflows
         } == expected_versions
@@ -2982,6 +3100,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     assert frankie_crons == ["40 7 * * *"]
     for name in ("Maria", "Max"):
         assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    assert all(result.expert.day_one == [] for result in results.values())
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3477,6 +3596,10 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert hired.expert.avatar_url is None
     assert hired.expert.bio is None
     assert hired.expert.skills == []
+    # The owner's own skill edit after hire, which no re-seed may touch.
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"skills": ["Customer interviews"]}
+    )
 
     entry: seed.RosterEntry = {
         "name": template.name,
@@ -3488,9 +3611,13 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
+        "day_one": [ExpertDayOneItem(title="Social listening on your brand")],
         "preloads": [],
     }
     refreshed_template = await seed._upsert_template(entry)
+    assert refreshed_template.dayOne == [
+        {"title": "Social listening on your brand", "description": "", "timing": ""}
+    ]
     assert await seed._backfill_hired_copies(refreshed_template) == 1
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
@@ -3498,8 +3625,12 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.avatar_url == "/experts/maria.svg"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
-    # A user's rename of their own hire survives the refresh.
+    # A user's rename and skill list survive the refresh: the template's
+    # skills neither replace the owner's nor get merged back into them.
+    assert refreshed.skills == ["Customer interviews"]
     assert refreshed.name == "My Maria"
+    # Day one stays on the template; the backfill must not copy it onto hires.
+    assert refreshed.day_one == []
 
 
 # ─── Pods ──────────────────────────────────────────────────────────────

@@ -158,6 +158,8 @@ class TestBuildExpertIdentitySuffix:
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
         assert "never present yourself as Otto" in result
+        assert "call `expert_onboarding` exactly once" in result
+        assert "Do not use `ask_question` for it" in result
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):

@@ -3914,7 +3914,10 @@
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
                     { "$ref": "#/components/schemas/TodoWriteResponse" },
-                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
+                    {
+                      "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
+                    },
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -20645,6 +20648,13 @@
             "title": "Voice Samples",
             "default": []
           },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
+            "default": []
+          },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
             "items": { "type": "string" },
@@ -20802,6 +20812,32 @@
         "title": "ExpertCredentialRef",
         "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
       },
+      "ExpertDayOneItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 240,
+            "title": "Description",
+            "default": ""
+          },
+          "timing": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Timing",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "ExpertDayOneItem",
+        "description": "One row of a template profile's \"What {name} sets up on day one\",\nwritten by the template's creator rather than derived from its workflows."
+      },
       "ExpertDetachPreview": {
         "properties": {
           "schedule_names": {
@@ -20838,6 +20874,45 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertOnboardingResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_onboarding"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/ExpertOnboardingStep" },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["message", "expert_id", "greeting"],
+        "title": "ExpertOnboardingResponse",
+        "description": "The intake card a freshly hired expert opens its first turn with."
+      },
+      "ExpertOnboardingStep": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "keyword": { "type": "string", "title": "Keyword" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["question", "keyword"],
+        "title": "ExpertOnboardingStep",
+        "description": "One step of a freshly hired expert's intake card."
       },
       "ExpertPod": {
         "properties": {
@@ -20982,12 +21057,17 @@
           },
           "resolution": {
             "type": "string",
-            "enum": ["connect", "allow", "workflow"],
+            "enum": ["connect", "allow", "inputs", "workflow"],
             "title": "Resolution"
           },
           "credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Credential Id"
+          },
+          "missing_inputs": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Missing Inputs"
           }
         },
         "type": "object",
@@ -21002,7 +21082,7 @@
           "resolution"
         ],
         "title": "ExpertSetupItem",
-        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``inputs``: the\nworkflow needs the values in ``missing_inputs`` before it can run\nunattended. ``workflow``: nothing is missing, so the schedule needs\ncreating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {
@@ -21116,6 +21196,13 @@
             "items": { "$ref": "#/components/schemas/VoiceSample" },
             "type": "array",
             "title": "Voice Samples",
+            "default": []
+          },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
             "default": []
           },
           "boundaries": { "type": "string", "title": "Boundaries" },
@@ -26928,7 +27015,8 @@
           "expert_change_applied",
           "team_roster",
           "expert_chat_list",
-          "expert_chat_transcript"
+          "expert_chat_transcript",
+          "expert_onboarding"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
