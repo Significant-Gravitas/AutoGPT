@@ -23,6 +23,7 @@ resolves to a template with at least one ``ready`` build.
 import asyncio
 import enum
 import hashlib
+import hmac
 import logging
 import uuid
 
@@ -121,7 +122,11 @@ async def _provision(spec: TemplateSpec, api_key: str) -> None:
     lock_key = f"e2b:template:{_scoped_key(spec, api_key)}:build"
     token = uuid.uuid4().hex
     if not await redis.set(lock_key, token, nx=True, ex=_BUILD_LOCK_TTL_SECONDS):
-        await _wait_until_ready(spec, api_key, lock_key)
+        if await _wait_until_ready(spec, api_key, lock_key) is not TemplateState.READY:
+            raise RuntimeError(
+                f"E2B template {spec.alias} was not built by the process "
+                "holding the build lock"
+            )
         return
     try:
         # Re-check under the lock: the previous holder may have just finished,
@@ -129,8 +134,8 @@ async def _provision(spec: TemplateSpec, api_key: str) -> None:
         # running.  Only a genuinely missing template gets a new build.
         state = await get_template_state(spec, api_key)
         if state is TemplateState.BUILDING:
-            await _wait_until_ready(spec, api_key, lock_key)
-        elif state is TemplateState.MISSING:
+            state = await _wait_until_ready(spec, api_key, builder_lock=None)
+        if state is TemplateState.MISSING:
             await asyncio.wait_for(
                 build_template(spec, api_key), timeout=_BUILD_TIMEOUT_SECONDS
             )
@@ -196,25 +201,37 @@ def forget_ready_templates() -> None:
 
 
 def _scoped_key(spec: TemplateSpec, api_key: str) -> str:
-    """Alias plus a fingerprint of the team's key: aliases live per team."""
-    team = hashlib.sha256(api_key.encode()).hexdigest()[:16]
-    return f"{spec.alias}@{team}"
+    """Alias plus a fingerprint of the team's key: aliases live per team.
+
+    The fingerprint only namespaces cache and lock keys.  It is a keyed MAC
+    of a fixed label, so the key is never hashed as data and the value does
+    not lead back to it.
+    """
+    team = hmac.new(api_key.encode(), b"e2b-template", hashlib.sha256).hexdigest()
+    return f"{spec.alias}@{team[:16]}"
 
 
-async def _wait_until_ready(spec: TemplateSpec, api_key: str, lock_key: str) -> None:
-    """Another process is building: wait for its build to become usable."""
+async def _wait_until_ready(
+    spec: TemplateSpec, api_key: str, builder_lock: str | None
+) -> TemplateState:
+    """Wait for a build this process did not start.
+
+    *builder_lock* is the lock the building process holds, or ``None`` when
+    this process holds the lock itself and is watching a build started
+    elsewhere.  Returns READY, or MISSING once the watched build has failed:
+    for a lock holder that is the moment the state drops out of BUILDING, for
+    a follower it is MISSING with the builder's lock gone.  Waiting any longer
+    would only run out the clock.
+    """
     redis = await get_redis_async()
     for _ in range(int(_BUILD_WAIT_SECONDS / _BUILD_POLL_SECONDS)):
         state = await get_template_state(spec, api_key)
         if state is TemplateState.READY:
-            return
-        if state is TemplateState.MISSING and not await redis.exists(lock_key):
-            # The builder released the lock without leaving a build behind:
-            # it failed, and waiting would only run out the clock.
-            raise RuntimeError(
-                f"E2B template {spec.alias} was not built by the process "
-                "holding the build lock"
-            )
+            return state
+        if state is TemplateState.MISSING and (
+            builder_lock is None or not await redis.exists(builder_lock)
+        ):
+            return state
         await asyncio.sleep(_BUILD_POLL_SECONDS)
     raise TimeoutError(
         f"E2B template {spec.alias} was not ready within {_BUILD_WAIT_SECONDS}s"

@@ -155,6 +155,41 @@ class TestEnsureTemplate:
         redis.eval.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_lock_winner_builds_when_the_watched_build_fails(self):
+        redis = _redis(lock_acquired=True)
+        with (
+            patch(
+                f"{_M}.get_template_state",
+                _states(
+                    TemplateState.MISSING,
+                    TemplateState.BUILDING,
+                    TemplateState.BUILDING,
+                    TemplateState.MISSING,
+                ),
+            ),
+            patch(f"{_M}.AsyncTemplate") as tpl,
+            patch(f"{_M}.Template"),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}.asyncio.sleep", AsyncMock()) as sleep,
+        ):
+            tpl.build = AsyncMock(return_value=MagicMock(template_id="t1"))
+            await ensure_template(DESKTOP_IMAGE.alias, _KEY)
+        # The holder owns the lock, so failure is read from the build state
+        # alone: BUILDING dropping to MISSING means build now, not wait 180 s.
+        tpl.build.assert_awaited_once()
+        assert sleep.await_count == 1
+        redis.exists.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fingerprint_is_not_a_plain_hash_of_the_key(self):
+        import hashlib
+
+        key = e2b_template._scoped_key(DESKTOP_IMAGE, _KEY)
+        assert key.startswith(f"{DESKTOP_IMAGE.alias}@") and _KEY not in key
+        assert hashlib.sha256(_KEY.encode()).hexdigest()[:16] not in key
+        assert key != e2b_template._scoped_key(DESKTOP_IMAGE, _OTHER_KEY)
+
+    @pytest.mark.asyncio
     async def test_build_failure_releases_the_lock_and_propagates(self):
         redis = _redis(lock_acquired=True)
         with (
