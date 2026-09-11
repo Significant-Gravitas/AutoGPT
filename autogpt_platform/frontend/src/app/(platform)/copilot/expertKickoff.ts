@@ -123,21 +123,12 @@ export function shouldClearKickoffParam(
   return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
 }
 
-// The kickoff prompt reads in the thread like any other opening message, so a
-// freshly raised expert answers something visible rather than thin air. Older
-// threads carry an inline marker that was never meant to be read.
-export function revealKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
-  return messages.map((message) => {
-    if (!isKickoffMessage(message)) return message;
-    return {
-      ...message,
-      parts: message.parts.map((part) =>
-        part.type === "text"
-          ? { ...part, text: stripLegacyKickoffMarker(part.text) }
-          : part,
-      ),
-    };
-  });
+// The kickoff prompt is a control turn the client sends on the user's behalf.
+// It reads as an instruction, not as something the user typed, so the thread
+// never shows it. The backend marks the persisted row hidden for the same
+// reason.
+export function hideKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
+  return messages.filter((message) => !isKickoffMessage(message));
 }
 
 export function kickoffStorageKey(userId: string, expertId: string): string {

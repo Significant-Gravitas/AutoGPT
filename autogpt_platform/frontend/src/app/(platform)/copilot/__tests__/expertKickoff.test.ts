@@ -7,13 +7,13 @@ import {
   getKickoffExpertId,
   getKickoffExpertIdFromMetadata,
   getKickoffStatus,
+  hideKickoffMessages,
   isKickoffMessage,
   isKickoffText,
   kickoffStorageKey,
   markKickoffDone,
   markKickoffPending,
   parseLegacyKickoffExpertId,
-  revealKickoffMessages,
   shouldClearKickoffParam,
   stripLegacyKickoffMarker,
   withKickoffLock,
@@ -33,11 +33,6 @@ function userMessage(
     parts: [{ type: "text", text }],
     metadata,
   } as UIMessage;
-}
-
-function firstText(message: UIMessage): string | undefined {
-  const part = message.parts.find((candidate) => candidate.type === "text");
-  return part && "text" in part ? part.text : undefined;
 }
 
 function assistantMessage(
@@ -125,7 +120,7 @@ describe("kickoff message identification", () => {
     ).toBeNull();
   });
 
-  it("keeps every message in the transcript, kickoff included", () => {
+  it("drops the kickoff prompt from the transcript and keeps the rest", () => {
     const kickoff = buildKickoffMessage(EXPERT_ID);
     const messages = [
       userMessage("m1", kickoff.text, kickoff.metadata),
@@ -133,40 +128,28 @@ describe("kickoff message identification", () => {
       userMessage("m3", "Sounds good, go ahead."),
     ];
 
-    const revealed = revealKickoffMessages(messages);
+    const visible = hideKickoffMessages(messages);
 
-    expect(revealed.map((message) => message.id)).toEqual(["m1", "m2", "m3"]);
-    expect(firstText(revealed[0])).toBe(kickoff.text);
+    expect(visible.map((message) => message.id)).toEqual(["m2", "m3"]);
   });
 
-  it("carries non-text parts of a kickoff message through the reveal", () => {
-    const kickoff = buildKickoffMessage(EXPERT_ID);
-    const filePart = {
-      type: "file",
-      mediaType: "application/json",
-      filename: "workflow.json",
-      url: "https://example.test/api/workspace/files/file-1",
-    };
-    const message = {
-      id: "m1",
-      role: "user",
-      parts: [{ type: "text", text: kickoff.text }, filePart],
-      metadata: kickoff.metadata,
-    } as UIMessage;
-
-    const [revealed] = revealKickoffMessages([message]);
-
-    expect(revealed.parts).toHaveLength(2);
-    expect(firstText(revealed)).toBe(kickoff.text);
-    expect(revealed.parts[1]).toEqual(filePart);
-  });
-
-  it("hides the legacy marker from a revealed kickoff message", () => {
+  it("drops a legacy-marker kickoff message from the transcript", () => {
     const legacy = `[[EXPERT_KICKOFF:${EXPERT_ID}]]\n\nIntroduce yourself.`;
 
-    const revealed = revealKickoffMessages([userMessage("m1", legacy)]);
+    const visible = hideKickoffMessages([
+      userMessage("m1", legacy),
+      assistantMessage("m2", "Hi, I'm Maria."),
+    ]);
 
-    expect(firstText(revealed[0])).toBe("Introduce yourself.");
+    expect(visible.map((message) => message.id)).toEqual(["m2"]);
+  });
+
+  it("keeps a user message that merely repeats the kickoff wording", () => {
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
+    const visible = hideKickoffMessages([userMessage("m1", kickoff.text)]);
+
+    expect(visible.map((message) => message.id)).toEqual(["m1"]);
   });
 
   it("strictly recognizes legacy markers for backward compatibility", () => {
