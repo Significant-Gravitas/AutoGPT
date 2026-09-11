@@ -252,9 +252,32 @@ def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
     return frozenset(name for name, g in TOOL_GROUPS.items() if g in group_set)
 
 
+# The one tool a freshly hired expert may reach on its kickoff turn.  That
+# turn is a control message the server sends on the user's behalf, so
+# nothing on it was asked for — one click on Hire once ran a Gmail send
+# (SECRT-2622).  The kickoff prompt already says "call expert_onboarding
+# once, and nothing else"; ``kickoff_turn_disabled_tools`` is that sentence
+# as an enforcement boundary, for the replayed-transcript, prompt-injection
+# and plain-disobedience cases a prompt cannot cover.
+KICKOFF_TURN_TOOL = "expert_onboarding"
+
+
+def kickoff_turn_disabled_tools() -> frozenset[str]:
+    """Copilot tools to refuse on an expert's kickoff turn.
+
+    Scoped to this registry on purpose: the SDK built-ins it leaves alone
+    (file and shell tools) are confined to the session workspace by the
+    security hooks, so they reach nothing the user would have to undo.
+    Everything that can touch the world outside — ``run_agent``,
+    ``schedule_followup``, ``post_to_chat_platform`` — lives here.
+    """
+    return frozenset(TOOL_REGISTRY) - {KICKOFF_TURN_TOOL}
+
+
 def get_available_tools(
     *,
     disabled_groups: Iterable[ToolGroup] = (),
+    disabled_tools: Iterable[str] = (),
 ) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
@@ -263,8 +286,10 @@ def get_available_tools(
     CLI is not installed).  Tools belonging to any *disabled_groups* are
     also filtered out — use this to hide capability-gated tools (e.g.
     ``graphiti`` when the memory backend is off for the current user).
+    *disabled_tools* hides individual tools for gates that don't follow the
+    group split, e.g. ``kickoff_turn_disabled_tools`` on a hire's first turn.
     """
-    hidden = tool_names_in_groups(disabled_groups)
+    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()
@@ -285,8 +310,9 @@ async def execute_tool(
     tool_call_id: str,
     *,
     disabled_groups: Iterable[ToolGroup],
+    disabled_tools: Iterable[str],
 ) -> StreamToolOutputAvailable:
-    """Execute a tool by name, refusing anything in *disabled_groups*.
+    """Execute a tool by name, refusing anything the turn disabled.
 
     ``get_available_tools`` only hides disabled tools from the schema list it
     hands the model, which is a presentation filter: a model that names a
@@ -295,16 +321,20 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
-    ``disabled_groups`` is keyword-only and has no default on purpose: it is
-    an enforcement boundary, so a new call site must state its gate rather
-    than silently inherit "nothing is disabled" and drop back to the
-    presentation-only behaviour this function exists to close.
+    ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
+    default on purpose: they are an enforcement boundary, so a new call site
+    must state its gate rather than silently inherit "nothing is disabled"
+    and drop back to the presentation-only behaviour this function exists to
+    close.  Both must be the same values used to build the turn's schema
+    list.
     """
     tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
 
-    if tool_name in tool_names_in_groups(disabled_groups):
+    if tool_name in tool_names_in_groups(disabled_groups) or tool_name in frozenset(
+        disabled_tools
+    ):
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
             tool_name,

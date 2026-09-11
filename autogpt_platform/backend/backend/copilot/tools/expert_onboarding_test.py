@@ -1,10 +1,21 @@
 """Tests for ExpertOnboardingTool."""
 
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.expert_kickoff import (
+    expert_kickoff_metadata,
+    is_expert_kickoff_turn,
+)
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.tools import (
+    execute_tool,
+    get_available_tools,
+    get_tool,
+    kickoff_turn_disabled_tools,
+)
 from backend.copilot.tools.expert_onboarding import (
     MAX_OPTION_LENGTH,
     MAX_OPTIONS,
@@ -293,3 +304,112 @@ async def test_rejects_steps_with_no_valid_entry(
             greeting="Hi.",
             steps=["not a dict", {"question": "   "}],
         )
+
+
+# ── Kickoff-turn dispatch gate ───────────────────────────────────────
+#
+# The kickoff prompt tells the model to open the card and nothing else.
+# These cover that sentence as an enforcement boundary: what a model can
+# dispatch before the card exists, and after the user has answered it.
+
+
+def _kickoff_session() -> ChatSession:
+    session = ChatSession.new(user_id="alice", dry_run=False, expert_id=EXPERT_ID)
+    session.messages.append(
+        ChatMessage(
+            role="user",
+            content="You were just hired.",
+            metadata=expert_kickoff_metadata(EXPERT_ID),
+        )
+    )
+    return session
+
+
+def test_the_kickoff_turn_offers_the_card_and_nothing_else():
+    gated = kickoff_turn_disabled_tools()
+
+    names = {
+        schema["function"]["name"]
+        for schema in get_available_tools(disabled_tools=gated)
+    }
+
+    assert names == {"expert_onboarding"}
+    assert {"run_agent", "schedule_followup"} <= gated
+
+
+@pytest.mark.asyncio
+async def test_run_agent_is_refused_on_the_kickoff_turn():
+    run_agent = get_tool("run_agent")
+    assert run_agent is not None
+
+    with patch.object(
+        run_agent, "execute", new=AsyncMock(return_value="should never run")
+    ) as execute_mock:
+        result = await execute_tool(
+            tool_name="run_agent",
+            parameters={},
+            user_id="alice",
+            session=_kickoff_session(),
+            tool_call_id="call-1",
+            disabled_groups=(),
+            disabled_tools=kickoff_turn_disabled_tools(),
+        )
+
+    execute_mock.assert_not_awaited()
+    assert result.success is False
+    assert ErrorResponse.model_validate_json(result.output).error == "tool_disabled"
+
+
+@pytest.mark.asyncio
+async def test_the_onboarding_card_itself_still_dispatches_on_the_kickoff_turn():
+    onboarding = get_tool("expert_onboarding")
+    assert onboarding is not None
+
+    with patch.object(
+        onboarding, "execute", new=AsyncMock(return_value="the card")
+    ) as execute_mock:
+        result = await execute_tool(
+            tool_name="expert_onboarding",
+            parameters={},
+            user_id="alice",
+            session=_kickoff_session(),
+            tool_call_id="call-1",
+            disabled_groups=(),
+            disabled_tools=kickoff_turn_disabled_tools(),
+        )
+
+    execute_mock.assert_awaited_once()
+    assert result == "the card"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_dispatches_once_the_user_has_answered_the_card():
+    """The gate is the kickoff turn, not onboarding state.
+
+    A user who skipped the card, or one whose expert never managed to open
+    it, still gets the work they ask for on their own turns.
+    """
+    session = _kickoff_session()
+    session.messages.append(ChatMessage(role="user", content="Run the digest now."))
+    run_agent = get_tool("run_agent")
+    assert run_agent is not None
+
+    with patch.object(
+        run_agent, "execute", new=AsyncMock(return_value="it ran")
+    ) as execute_mock:
+        result = await execute_tool(
+            tool_name="run_agent",
+            parameters={},
+            user_id="alice",
+            session=session,
+            tool_call_id="call-1",
+            disabled_groups=(),
+            disabled_tools=(
+                kickoff_turn_disabled_tools()
+                if is_expert_kickoff_turn(session)
+                else frozenset()
+            ),
+        )
+
+    execute_mock.assert_awaited_once()
+    assert result == "it ran"
