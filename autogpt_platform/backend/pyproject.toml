@@ -75,7 +75,7 @@ python-multipart = "^0.0.22"
 redis = "^8.1.0"
 regex = "^2025.9.18"
 replicate = "^1.0.6"
-sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.44.0"}
+sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.63.0"}
 slack-sdk = "^3.41.0"
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
