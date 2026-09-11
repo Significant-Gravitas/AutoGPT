@@ -1,4 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { describeSendFailure } from "./helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
@@ -114,11 +115,4 @@ export function useChatInput({
 function restoreFailedDraft(current: string, failed: string) {
   if (!current.trim() || current === failed) return failed;
   return `${failed}\n\n${current}`;
-}
-
-function describeSendFailure(error: unknown) {
-  const reason = error instanceof Error ? error.message.trim() : "";
-  return reason
-    ? `${reason} — your message is back in the composer.`
-    : "Your message is back in the composer. Try again.";
 }

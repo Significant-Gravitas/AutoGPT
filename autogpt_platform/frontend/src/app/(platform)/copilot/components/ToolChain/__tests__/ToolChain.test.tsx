@@ -1,12 +1,22 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render as baseRender, screen } from "@/tests/integrations/test-utils";
+import {
+  render as baseRender,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { PendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { ToolChain } from "../ToolChain";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
 
 vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
   const { useContext, useEffect } = await import("react");
@@ -82,6 +92,7 @@ function getRowToggle(name: RegExp): HTMLElement {
 describe("ToolChain", () => {
   beforeEach(() => {
     onSend.mockClear();
+    vi.mocked(toast).mockClear();
   });
 
   afterEach(() => {
@@ -384,6 +395,52 @@ describe("ToolChain", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith(
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
+    );
+    expect(screen.queryByText("Answer a few questions")).toBeNull();
+  });
+
+  it("reports a rejected send without bringing the card back", async () => {
+    const user = userEvent.setup();
+    onSend.mockRejectedValueOnce(new Error("boom"));
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolChain
+            parts={[
+              toolPart("ask_question", "output-available", {
+                output: {
+                  type: "agent_builder_clarification_needed",
+                  questions: pending.questions,
+                },
+              }),
+            ]}
+            isStreaming={false}
+          />
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("e.g. Europe"),
+      "Western Europe",
+    );
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't send message",
+          variant: "destructive",
+        }),
+      ),
     );
     expect(screen.queryByText("Answer a few questions")).toBeNull();
   });

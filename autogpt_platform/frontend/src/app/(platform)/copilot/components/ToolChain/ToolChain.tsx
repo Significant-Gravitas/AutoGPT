@@ -23,6 +23,8 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { describeSendFailure } from "../ChatInput/helpers";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
@@ -150,7 +152,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         .join("\n\n");
       if (!message) return;
       pendingActions.forEach((entry) => entry.onSent?.());
-      void onSend(message);
+      sendReply(message);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
@@ -210,6 +212,20 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
+  // The cards are already gone by the time a send can fail — the user's
+  // message is appended optimistically and the chat's error banner offers
+  // Retry — so the failure only needs to be said out loud, like the
+  // composer does.
+  function sendReply(message: string) {
+    void Promise.resolve(onSend(message)).catch((error: unknown) =>
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(error),
+        variant: "destructive",
+      }),
+    );
+  }
+
   // Proceed sends the combined reply of every READY card as one message,
   // and their onSent callbacks fire at that moment. Unready cards (e.g. an
   // unconnected MCP server) are left out instead of blocking the ready ones.
@@ -221,7 +237,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       .join("\n\n");
     if (!message) return;
     readyActions.forEach((entry) => entry.onSent?.());
-    void onSend(message);
+    sendReply(message);
   }
 
   return (
