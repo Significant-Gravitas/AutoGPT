@@ -82,9 +82,9 @@ from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.exceptions import (
+    ConflictError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
-    ExpertSkillsConflictError,
     ExpertWriteNotReadableError,
     NotFoundError,
 )
@@ -1258,7 +1258,7 @@ async def _rewrite_skill_names(
             data={"skills": {"set": names}},
         ):
             return
-    raise ExpertSkillsConflictError(
+    raise ConflictError(
         "This expert's skills were changed by another update at the same time. "
         "Try again."
     )

@@ -353,5 +353,5 @@ class ExpertRunPausedError(ValueError):
         return self.message
 
 
-class ExpertSkillsConflictError(Exception):
-    """An expert's skill list kept changing under a write; retrying resolves it."""
+class ConflictError(Exception):
+    """The request lost to a concurrent change of the same resource; retrying may succeed."""
