@@ -31,9 +31,9 @@ def main() -> None:
         memory_mb=args.mem,
     )
     info = asyncio.run(build_template(spec, os.environ["E2B_API_KEY"]))
-    print(f"Built {info.alias} ({info.template_id}) tags={info.tags}")
+    print(f"Built {info.name} ({info.template_id}) tags={info.tags}")
     if spec != DESKTOP_IMAGE:
-        print(f"Set CHAT_E2B_SANDBOX_TEMPLATE={info.alias} to use it.")
+        print(f"Set CHAT_E2B_SANDBOX_TEMPLATE={info.name} to use it.")
 
 
 def _parse_args() -> argparse.Namespace:

@@ -180,6 +180,13 @@ class TestGetOrCreateSandbox:
             order.append("create")
             return new_sb
 
+        async def fake_set(key, value, **kwargs):
+            if value == _CREATING_SENTINEL:
+                order.append("claim")
+            return True
+
+        redis.set = AsyncMock(side_effect=fake_set)
+
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             patch(
@@ -195,7 +202,9 @@ class TestGetOrCreateSandbox:
                 )
             )
 
-        assert order == [f"ensure:agpt-desktop-1x2:{_API_KEY}", "create"]
+        # The build can take longer than the creation slot's TTL, so it must
+        # finish before the slot is claimed.
+        assert order == [f"ensure:agpt-desktop-1x2:{_API_KEY}", "claim", "create"]
 
     def test_create_with_on_timeout_kill(self):
         """on_timeout='kill' disables auto_resume automatically."""

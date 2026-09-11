@@ -175,7 +175,13 @@ async def get_or_create_sandbox(
             await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
             continue
 
-        # No sandbox and no active creation — atomically claim the creation slot.
+        # No sandbox and no active creation.  Our own image is built on the
+        # team the first time it is needed; that happens before the creation
+        # slot is claimed because a build can outlive the slot's TTL.  Cached
+        # per process after the first check, so the repeat is free.
+        await ensure_template(template, api_key)
+
+        # Atomically claim the creation slot.
         claimed = await redis.set(
             key, _CREATING_SENTINEL, nx=True, ex=_CREATION_LOCK_TTL
         )
@@ -189,8 +195,6 @@ async def get_or_create_sandbox(
         # for the same session wait rather than racing to create duplicates.
         sandbox: AsyncSandbox | None = None
         try:
-            # Our own image is built on the team the first time it is needed.
-            await ensure_template(template, api_key)
             lifecycle = SandboxLifecycle(
                 on_timeout=on_timeout,
                 auto_resume=on_timeout == "pause",

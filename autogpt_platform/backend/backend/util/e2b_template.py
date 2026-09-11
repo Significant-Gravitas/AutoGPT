@@ -13,12 +13,31 @@ key) has to build it.  ``ensure_template`` checks the alias and builds it
 from ``desktop`` when missing (12-25 s, once per team), serialised through
 Redis so parallel first turns don't each start a build.  Templates we don't
 manage are left alone.
+
+"Exists" is not "ready": E2B registers an alias the moment a build is
+requested, before the build has run, and a failed build leaves the alias in
+place with nothing usable behind it.  Readiness therefore means the alias
+resolves to a template with at least one ``ready`` build.
 """
 
 import asyncio
+import enum
+import hashlib
 import logging
+import uuid
 
 from e2b import AsyncTemplate, Template
+from e2b.api.client.api.templates import (
+    get_templates_aliases_alias,
+    get_templates_template_id,
+)
+from e2b.api.client.models import (
+    TemplateAliasResponse,
+    TemplateBuildStatus,
+    TemplateWithBuilds,
+)
+from e2b.api.client_async import get_api_client
+from e2b.connection_config import ConnectionConfig
 from e2b.template.types import BuildInfo
 from pydantic import BaseModel, ConfigDict
 
@@ -54,40 +73,69 @@ DESKTOP_IMAGE = TemplateSpec(
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 
-# A build takes 12-25 s; the lock outlives a slow one so a crashed builder
-# doesn't block the team for long either.
+# A build takes 12-25 s.  The build is cut off before the lock can expire, so
+# the lock is only ever released by its owner (or by the TTL after a crash).
 _BUILD_LOCK_TTL_SECONDS = 300
+_BUILD_TIMEOUT_SECONDS = 240
 _BUILD_WAIT_SECONDS = 180
 _BUILD_POLL_SECONDS = 2.0
 
-# Aliases this process has already confirmed on the team: one API call per
-# alias per process lifetime, not one per sandbox.
+# Release only if we still own the lock: a build that outlived the TTL must
+# not delete the lock a later builder took.
+_UNLOCK_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("del", KEYS[1]) else return 0 end'
+)
+
+# Templates this process has already confirmed ready, keyed by alias and
+# team: one round of API calls per alias per team per process lifetime.
 _ready: set[str] = set()
 
 
+class TemplateState(enum.Enum):
+    READY = "ready"  # a build finished; sandboxes can be created
+    BUILDING = "building"  # a build is queued or running
+    MISSING = "missing"  # no alias, or an alias with no usable build
+
+
 async def ensure_template(template: str, api_key: str) -> None:
-    """Make sure *template* exists on the team before a sandbox is created from it.
+    """Make sure *template* is ready on the team before a sandbox is created from it.
 
     Only templates in ``MANAGED_TEMPLATES`` are ever built; anything else is
     assumed to be provisioned out of band and returns immediately.
     """
     spec = MANAGED_TEMPLATES.get(template)
-    if spec is None or template in _ready:
+    if spec is None:
         return
-    if await AsyncTemplate.alias_exists(spec.alias, api_key=api_key):
-        _ready.add(template)
+    cache_key = _scoped_key(spec, api_key)
+    if cache_key in _ready:
         return
+    if await get_template_state(spec, api_key) is not TemplateState.READY:
+        await _provision(spec, api_key)
+    _ready.add(cache_key)
 
+
+async def _provision(spec: TemplateSpec, api_key: str) -> None:
+    """Build *spec* on the team, or wait for whichever process is building it."""
     redis = await get_redis_async()
-    lock_key = f"e2b:template:{spec.alias}:build"
-    if await redis.set(lock_key, "1", nx=True, ex=_BUILD_LOCK_TTL_SECONDS):
-        try:
-            await build_template(spec, api_key)
-        finally:
-            await redis.delete(lock_key)
-    else:
-        await _wait_until_exists(spec, api_key)
-    _ready.add(template)
+    lock_key = f"e2b:template:{_scoped_key(spec, api_key)}:build"
+    token = uuid.uuid4().hex
+    if not await redis.set(lock_key, token, nx=True, ex=_BUILD_LOCK_TTL_SECONDS):
+        await _wait_until_ready(spec, api_key, lock_key)
+        return
+    try:
+        # Re-check under the lock: the previous holder may have just finished,
+        # or a build started elsewhere (the CLI, a crashed holder) may be
+        # running.  Only a genuinely missing template gets a new build.
+        state = await get_template_state(spec, api_key)
+        if state is TemplateState.BUILDING:
+            await _wait_until_ready(spec, api_key, lock_key)
+        elif state is TemplateState.MISSING:
+            await asyncio.wait_for(
+                build_template(spec, api_key), timeout=_BUILD_TIMEOUT_SECONDS
+            )
+    finally:
+        await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
 
 
 async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
@@ -111,17 +159,63 @@ async def build_template(spec: TemplateSpec, api_key: str) -> BuildInfo:
     return info
 
 
+async def get_template_state(spec: TemplateSpec, api_key: str) -> TemplateState:
+    """What the team has behind *spec*'s alias right now."""
+    async with get_api_client(ConnectionConfig(api_key=api_key)) as client:
+        alias = await get_templates_aliases_alias.asyncio_detailed(
+            alias=spec.alias, client=client
+        )
+        if alias.status_code == 404:
+            return TemplateState.MISSING
+        if alias.status_code == 403:
+            # The alias exists on another team: we can neither inspect its
+            # builds nor build our own under that name, so use it as-is.
+            return TemplateState.READY
+        if not isinstance(alias.parsed, TemplateAliasResponse):
+            raise RuntimeError(
+                f"E2B alias lookup for {spec.alias} failed: HTTP {alias.status_code}"
+            )
+        template = await get_templates_template_id.asyncio_detailed(
+            template_id=alias.parsed.template_id, client=client
+        )
+    if not isinstance(template.parsed, TemplateWithBuilds):
+        raise RuntimeError(
+            f"E2B template lookup for {spec.alias} failed: HTTP {template.status_code}"
+        )
+    statuses = {build.status for build in template.parsed.builds}
+    if TemplateBuildStatus.READY in statuses:
+        return TemplateState.READY
+    if statuses & {TemplateBuildStatus.BUILDING, TemplateBuildStatus.WAITING}:
+        return TemplateState.BUILDING
+    return TemplateState.MISSING
+
+
 def forget_ready_templates() -> None:
     """Drop the process-level cache (tests, or after a template is deleted)."""
     _ready.clear()
 
 
-async def _wait_until_exists(spec: TemplateSpec, api_key: str) -> None:
-    """Another process holds the build lock: wait for its build to land."""
+def _scoped_key(spec: TemplateSpec, api_key: str) -> str:
+    """Alias plus a fingerprint of the team's key: aliases live per team."""
+    team = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    return f"{spec.alias}@{team}"
+
+
+async def _wait_until_ready(spec: TemplateSpec, api_key: str, lock_key: str) -> None:
+    """Another process is building: wait for its build to become usable."""
+    redis = await get_redis_async()
     for _ in range(int(_BUILD_WAIT_SECONDS / _BUILD_POLL_SECONDS)):
-        if await AsyncTemplate.alias_exists(spec.alias, api_key=api_key):
+        state = await get_template_state(spec, api_key)
+        if state is TemplateState.READY:
             return
+        if state is TemplateState.MISSING and not await redis.exists(lock_key):
+            # The builder released the lock without leaving a build behind:
+            # it failed, and waiting would only run out the clock.
+            raise RuntimeError(
+                f"E2B template {spec.alias} was not built by the process "
+                "holding the build lock"
+            )
         await asyncio.sleep(_BUILD_POLL_SECONDS)
     raise TimeoutError(
-        f"E2B template {spec.alias} did not appear within {_BUILD_WAIT_SECONDS}s"
+        f"E2B template {spec.alias} was not ready within {_BUILD_WAIT_SECONDS}s"
     )
