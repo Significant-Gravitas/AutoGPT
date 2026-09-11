@@ -109,6 +109,36 @@ async def test_upload_media_falls_back_to_local_storage(
     assert stored_path.is_file()
 
 
+async def test_upload_media_local_storage_url_is_absolute(
+    mock_storage_client, tmp_path, monkeypatch
+):
+    # Local media is served by this backend, not the frontend origin the
+    # browser would otherwise resolve a root-relative URL against (see GCS
+    # branch, which already returns an absolute storage.googleapis.com URL).
+    settings = Settings()
+    settings.config.media_gcs_bucket_name = ""
+    settings.config.platform_base_url = "http://localhost:8006"
+    monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.media.get_data_path", lambda: tmp_path
+    )
+
+    test_file = fastapi.UploadFile(
+        filename="laptop.jpeg",
+        file=io.BytesIO(b"\xff\xd8\xff" + b"test data"),  # Valid JPEG signature
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.startswith("http://localhost:8006/api/store/media/test-user/images/")
+
+    exists_result = await store_media.check_media_exists(
+        "test-user", result.rsplit("/", 1)[-1]
+    )
+    assert exists_result == result
+
+
 @pytest.mark.parametrize(
     "user_id,filename",
     [

@@ -86,10 +86,16 @@ def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
 
 
 def _local_media_url(user_id: str, media_type: str, filename: str) -> str:
-    return (
+    path = (
         f"/api/store/media/{_validate_path_component(user_id)}"
         f"/{media_type}/{_validate_path_component(filename)}"
     )
+    # Local media is served by this backend, not the frontend origin the
+    # browser would otherwise resolve a root-relative URL against, so make
+    # it absolute the same way the GCS branch already returns an absolute
+    # https://storage.googleapis.com/... URL.
+    base_url = Settings().config.platform_base_url
+    return f"{base_url}{path}" if base_url else path
 
 
 def _check_media_exists_locally(user_id: str, filename: str) -> str | None:
