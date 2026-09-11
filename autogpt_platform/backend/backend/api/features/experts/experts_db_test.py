@@ -106,12 +106,18 @@ async def _create_seed_user():
     )
 
 
-async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> str:
+async def _seed_store_listing(
+    server: SpinTestServer,
+    approved: bool = True,
+    extra_block_ids: list[str] | None = None,
+) -> str:
     """Create a graph plus a store listing on top of it.
 
     Returns the StoreListingVersion ID, ready for
     ``add_store_agent_to_library``. With ``approved=False`` the version is
-    left in its submitted PENDING state. Mirrors the seeding pattern from
+    left in its submitted PENDING state. Pass ``extra_block_ids`` to put more
+    blocks in the graph — a credentialed one gives the listing an integration
+    to summarise. Mirrors the seeding pattern from
     ``backend/data/graph_test.py::test_access_store_listing_graph``.
     """
     owner = await _create_seed_user()
@@ -125,6 +131,7 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
                 block_id=AgentInputBlock().id,
                 input_default={"name": "input_1"},
             ),
+            *(Node(block_id=block_id) for block_id in extra_block_ids or []),
         ],
         links=[],
     )
@@ -3133,6 +3140,90 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
     fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert fetched is not None
     assert fetched.last_run_status == "COMPLETED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hired_workflows_order_by_created_at_then_id(
+    server: SpinTestServer, test_user
+):
+    oldest_listing = await _seed_store_listing(server)
+    earlier_listing = await _seed_store_listing(server)
+    later_listing = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    now = datetime.now(timezone.utc)
+
+    later_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": later_listing,
+            "createdAt": now,
+        }
+    )
+    earlier_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": earlier_listing,
+            "createdAt": now,
+        }
+    )
+    oldest_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": oldest_listing,
+            "createdAt": now - timedelta(days=1),
+        }
+    )
+
+    expected_workflows = sorted(
+        [later_workflow, earlier_workflow, oldest_workflow],
+        key=lambda workflow: (workflow.createdAt, workflow.id),
+    )
+    rehired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert [workflow.id for workflow in rehired.expert.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [
+        workflow.store_listing_version_id for workflow in rehired.expert.workflows
+    ] == [workflow.storeListingVersionId for workflow in expected_workflows]
+
+    listed = next(
+        expert
+        for expert in await experts_db.list_experts(test_user.id)
+        if expert.id == rehired.expert.id
+    )
+    assert [workflow.id for workflow in listed.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [workflow.store_listing_version_id for workflow in listed.workflows] == [
+        workflow.storeListingVersionId for workflow in expected_workflows
+    ]
+
+
+# Airtable: a provider the platform holds no credentials for, so a user has to
+# connect it — which is what the profile's access list is for.
+_AIRTABLE_BLOCK_ID = "f59b88a8-54ce-4676-a508-fd614b4e8dce"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_template_workflow_chain_comes_from_the_listing_graph(
+    server: SpinTestServer,
+):
+    """A template row has no LibraryAgent, so without the listing fallback the
+    marketplace profile has neither a chain nor an access list to build."""
+    slv_id = await _seed_store_listing(server, extra_block_ids=[_AIRTABLE_BLOCK_ID])
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+
+    listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
+
+    workflow = listed.workflows[0]
+    assert workflow.library_agent_id is None
+    # The integration is the property the access list depends on: a fallback
+    # that yielded only the input step would satisfy a non-empty chain.
+    assert ("integration", "airtable") in [
+        (item.kind, item.provider) for item in workflow.chain
+    ]
+    assert workflow.integration_providers == ["airtable"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
