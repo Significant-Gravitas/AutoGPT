@@ -34,6 +34,13 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     setAnswers((previous) => ({ ...previous, [currentStep.keyword]: next }));
   }
 
+  // A tap on an option is the whole answer, so the pager moves on by itself;
+  // the last question keeps the send button as its explicit final step.
+  function pickAnswer(next: string) {
+    setAnswer(next);
+    if (!isLast) setStep(current + 1);
+  }
+
   function goBack() {
     setStep(Math.max(current - 1, 0));
   }
@@ -78,6 +85,7 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     value,
     advance,
     goBack,
+    pickAnswer,
     setAnswer,
     skip,
   };
