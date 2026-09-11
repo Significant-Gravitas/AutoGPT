@@ -76,9 +76,11 @@ MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE
 
 # A build takes 12-25 s.  The build is cut off before the lock can expire, so
 # the lock is only ever released by its owner (or by the TTL after a crash).
+# Followers wait as long as the lock can live, so they never give up on a
+# build that is still allowed to finish.
 _BUILD_LOCK_TTL_SECONDS = 300
 _BUILD_TIMEOUT_SECONDS = 240
-_BUILD_WAIT_SECONDS = 180
+_BUILD_WAIT_SECONDS = _BUILD_LOCK_TTL_SECONDS
 _BUILD_POLL_SECONDS = 2.0
 
 # Release only if we still own the lock: a build that outlived the TTL must

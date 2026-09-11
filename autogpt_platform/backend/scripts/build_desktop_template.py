@@ -24,13 +24,16 @@ from backend.util.e2b_template import DESKTOP_IMAGE, TemplateSpec, build_templat
 def main() -> None:
     args = _parse_args()
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    api_key = os.getenv("E2B_API_KEY")
+    if not api_key:
+        raise SystemExit("E2B_API_KEY must be set in the environment or backend/.env")
     spec = TemplateSpec(
         alias=args.alias,
         source=DESKTOP_IMAGE.source,
         cpu_count=args.cpu,
         memory_mb=args.mem,
     )
-    info = asyncio.run(build_template(spec, os.environ["E2B_API_KEY"]))
+    info = asyncio.run(build_template(spec, api_key))
     print(f"Built {info.name} ({info.template_id}) tags={info.tags}")
     if spec != DESKTOP_IMAGE:
         print(f"Set CHAT_E2B_SANDBOX_TEMPLATE={info.name} to use it.")

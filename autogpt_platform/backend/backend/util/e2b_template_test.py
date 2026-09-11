@@ -180,6 +180,12 @@ class TestEnsureTemplate:
         assert sleep.await_count == 1
         redis.exists.assert_not_awaited()
 
+    def test_followers_wait_as_long_as_the_lock_can_live(self):
+        assert e2b_template._BUILD_WAIT_SECONDS >= e2b_template._BUILD_LOCK_TTL_SECONDS
+        assert (
+            e2b_template._BUILD_TIMEOUT_SECONDS < e2b_template._BUILD_LOCK_TTL_SECONDS
+        )
+
     @pytest.mark.asyncio
     async def test_fingerprint_is_not_a_plain_hash_of_the_key(self):
         import hashlib
