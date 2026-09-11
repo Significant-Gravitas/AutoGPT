@@ -45,6 +45,15 @@ from backend.util.exceptions import (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_trial_attribution(mocker):
+    store = MagicMock()
+    store.get_subscription_trial = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+    )
+
+
 class TestResolveUseSdk:
     """Which engine runs a turn — entirely the server's call."""
 
@@ -1497,3 +1506,28 @@ class TestBuildingModeForcesSdk:
             new=AsyncMock(return_value=session),
         ):
             assert await _building_mode_forces_sdk(session.session_id) is True
+
+
+def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
+    """A chat-platform prompt is authored off-platform by someone who need not
+    be the account owner, so the turn's envelope must carry taint. This is the
+    taint bit's only producer today and nothing asserted it.
+    """
+    from backend.copilot.executor.processor import taint_for_source_platform
+    from backend.copilot.tree import root_envelope
+
+    clean = root_envelope("turn-1")
+    assert clean.tainted is False
+
+    web = MagicMock()
+    web.metadata.source_platform = None
+    assert taint_for_source_platform(clean, web) is clean
+
+    slack = MagicMock()
+    slack.metadata.source_platform = "slack"
+    promoted = taint_for_source_platform(clean, slack)
+    assert promoted.tainted is True
+    assert promoted.tree_id == clean.tree_id
+
+    # No envelope (a legacy queue entry) stays None rather than inventing one.
+    assert taint_for_source_platform(None, slack) is None

@@ -8,6 +8,7 @@ backend test job (and counted by codecov), not just the integration suite.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,11 +34,13 @@ from backend.executor.scheduler import (
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
     _self_delete_copilot_turn_schedule,
+    _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserPaywalledError,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -1059,9 +1062,10 @@ def test_graph_args_expert_id_defaults_to_none():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_forwards_expert_id():
-    """An expert-attributed schedule must stamp its expert_id onto the
-    execution it creates, so any surface can answer "who ran this"."""
+async def test_execute_graph_forwards_expert_id_and_schedule_id():
+    """An expert-attributed schedule must stamp its expert_id and its own id
+    onto the execution it creates, so any surface can answer "who ran this"
+    and "did it run on schedule"."""
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1086,6 +1090,43 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+    assert mock_add.call_args.kwargs["schedule_id"] == "sched-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    mock_add = AsyncMock(
+        side_effect=UserPaywalledError("A subscription is required to run agents.")
+    )
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert any(
+        record.levelno == logging.INFO
+        and "Skipping scheduled run for graph #graph-1" in record.getMessage()
+        for record in caplog.records
+    )
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -1446,14 +1487,23 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 # ---------------------------------------------------------------------------
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+class _StartupRun(NamedTuple):
+    add_job_calls: list
+    embedding_backfill: MagicMock
+    backfill_calls_at_readiness: int
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
-    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    a mock APScheduler, recording what it registered and what it ran before
+    handing over to ``AppService.run_service``."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
     mock_scheduler = MagicMock()
+    embedding_backfill = MagicMock(return_value=None)
+    at_readiness = []
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
@@ -1466,12 +1516,17 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", embedding_backfill),
         # super().run_service() blocks forever keeping the service alive; no-op it.
-        patch("backend.util.service.AppService.run_service", return_value=None),
+        patch(
+            "backend.util.service.AppService.run_service",
+            side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
+        ),
     ):
         Scheduler(register_system_tasks=True).run_service()
-    return mock_scheduler.add_job.call_args_list
+    return _StartupRun(
+        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+    )
 
 
 def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
@@ -1479,7 +1534,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 ):
     """The sweep must be registered as an interval job keyed off the configured
     interval setting and capped to a single concurrent instance."""
-    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
     matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
     assert len(matches) == 1
@@ -1493,9 +1548,38 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
-    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
+    """``AppService.run_service`` starts the event loop uvicorn is scheduled
+    onto, so anything run before it keeps the RPC port closed. The backfill
+    takes minutes on a fresh stack; it must not sit on that path."""
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    assert run.backfill_calls_at_readiness == 0
+
+
+def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
+    """Dropping the startup call must not delay coverage: the six-hourly job
+    is due now, and cannot be skipped as a misfire however late it starts."""
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.args[0] is run.embedding_backfill
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
 
 
 class TestScheduleOrgVisibility:
@@ -1745,5 +1829,124 @@ class TestMorningBriefingSchedule:
 
         assert any(
             r.levelno == logging.ERROR and "Morning briefing failed" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def _remove(self, existing=None, user_id="user-1"):
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        sched._invalidate_jobs_cache = MagicMock()
+        result = Scheduler.remove_morning_briefing_schedule(sched, user_id=user_id)
+        return sched, result
+
+    def test_removing_deletes_the_job_and_invalidates_the_read_cache(self):
+        job = MagicMock(id="morning_briefing_user-1")
+
+        sched, result = self._remove(existing=job)
+
+        job.remove.assert_called_once()
+        sched._invalidate_jobs_cache.assert_called_once()
+        assert result == {
+            "id": "morning_briefing_user-1",
+            "user_id": "user-1",
+            "removed": True,
+        }
+
+    def test_removing_a_job_that_is_already_gone_is_a_no_op(self):
+        """The job body retries on every fire, so a second pass must not
+        raise once the first one removed the schedule."""
+        sched, result = self._remove(existing=None)
+
+        sched._invalidate_jobs_cache.assert_not_called()
+        assert result["removed"] is False
+
+    def test_job_body_removes_the_schedule_once_the_flag_is_off(self):
+        """Without this the cron outlives the feature, firing daily forever
+        to return flag_disabled."""
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}.run_async",
+                side_effect=[{"status": "skipped", "reason": "flag_disabled"}, None],
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
+                new=MagicMock(),
+            ) as self_delete,
+        ):
+            execute_morning_briefing("user-1")
+
+        self_delete.assert_called_once_with("user-1")
+
+    @pytest.mark.parametrize(
+        "result",
+        [
+            {"status": "skipped", "reason": "nothing_to_say"},
+            {"status": "skipped", "reason": "already_delivered"},
+            # An unreachable LaunchDarkly must cost one morning, not the cron.
+            {"status": "skipped", "reason": "flag_unavailable"},
+            {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
+        ],
+    )
+    def test_job_body_keeps_the_schedule_on_every_other_outcome(self, result):
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=[result]),
+            patch(
+                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
+                new=MagicMock(),
+            ) as self_delete,
+        ):
+            execute_morning_briefing("user-1")
+
+        self_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_self_delete_also_clears_the_registration_marker(self):
+        """A marker left behind would suppress lazy re-registration for the
+        rest of its TTL if the flag is turned back on."""
+        client = MagicMock()
+        client.remove_morning_briefing_schedule = AsyncMock()
+        with (
+            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
+            patch(
+                "backend.copilot.briefing.scheduling."
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ) as clear_marker,
+        ):
+            await _self_delete_morning_briefing_schedule("user-1")
+
+        client.remove_morning_briefing_schedule.assert_awaited_once_with(
+            user_id="user-1"
+        )
+        clear_marker.assert_awaited_once_with("user-1")
+
+    @pytest.mark.asyncio
+    async def test_self_delete_swallows_a_scheduler_rpc_failure(self, caplog):
+        """It runs inside a job body; raising here would fail the whole run."""
+        client = MagicMock()
+        client.remove_morning_briefing_schedule = AsyncMock(
+            side_effect=RuntimeError("pyro down")
+        )
+        with (
+            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
+            caplog.at_level(logging.WARNING),
+        ):
+            await _self_delete_morning_briefing_schedule("user-1")
+
+        assert any(
+            "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
         )

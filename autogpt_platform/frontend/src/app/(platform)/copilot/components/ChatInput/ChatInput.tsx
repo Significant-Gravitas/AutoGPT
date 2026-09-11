@@ -39,7 +39,13 @@ import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceF
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
-import { getFilesFromClipboard } from "./helpers";
+import {
+  CARD_ICON_BUTTON_CLASS,
+  CARD_SEND_BUTTON_CLASS,
+  COMPACT_ICON_BUTTON_CLASS,
+  COMPACT_SEND_BUTTON_CLASS,
+  getFilesFromClipboard,
+} from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
@@ -74,6 +80,23 @@ interface Props {
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
   recipientPicker?: ReactNode;
+  /** Card composer: the text always keeps its own row above the controls,
+   *  instead of sharing a single pill row until it wraps. Empty state only. */
+  stacked?: boolean;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
+  /**
+   * Replaces the composer's controls while voice mode is on: typing,
+   * attachments and send do nothing hands-free, and a bar of its own above
+   * the composer covered the last message's buttons.
+   */
+  voiceBar?: ReactNode;
+  /** Compact composer for side panels: tighter radius, flat shadow, smaller
+   *  controls, and no per-message connection chip. */
+  variant?: "default" | "compact";
+  /** Expert the chat is scoped to. Workspace-file suggestions and the picker
+   *  then only offer files from that expert's conversations. */
+  expertId?: string | null;
 }
 
 export function ChatInput({
@@ -92,6 +115,11 @@ export function ChatInput({
   sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
+  stacked = false,
+  voiceToggle,
+  voiceBar,
+  variant = "default",
+  expertId = null,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -169,6 +197,7 @@ export function ChatInput({
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
+    expertId,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -257,6 +286,18 @@ export function ChatInput({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }
 
+  const isCompact = variant === "compact";
+  const iconButtonClass = stacked
+    ? CARD_ICON_BUTTON_CLASS
+    : isCompact
+      ? COMPACT_ICON_BUTTON_CLASS
+      : undefined;
+  const sendButtonClass = stacked
+    ? CARD_SEND_BUTTON_CLASS
+    : isCompact
+      ? COMPACT_SEND_BUTTON_CLASS
+      : undefined;
+
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
@@ -275,40 +316,63 @@ export function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          // Card composer: a hairline border and a shallow drop instead of
+          // the pill's deep shadow, so it reads as a surface the text sits on.
+          stacked &&
+            "gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
+          isCompact &&
+            "!rounded-xl border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        {voiceBar}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
+          stacked={stacked}
         />
-        <div className="flex w-full flex-wrap items-end">
+        <div
+          className={cn(
+            "flex w-full flex-wrap",
+            stacked || isCompact ? "items-center" : "items-end",
+            // tailwind-merge drops `flex` for `hidden`: the draft and the
+            // attachments survive the round trip through voice mode.
+            voiceBar && "hidden",
+          )}
+        >
           <InputGroupAddon
             align="inline-start"
-            className="order-none gap-1 py-1 pl-1.5"
+            className={cn(
+              "order-none gap-1 py-1 pl-1.5",
+              stacked && "gap-1.5 p-0",
+              isCompact && "gap-0.5 py-1 pl-1",
+            )}
           >
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              className={
+                stacked
+                  ? cn(
+                      CARD_ICON_BUTTON_CLASS,
+                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                    )
+                  : iconButtonClass
+              }
             />
             {recipientPicker}
-            {/* Connection and tier are per-message settings, so they remain
-                changeable between turns in an existing session. */}
-            {(!hasSession || !isStreaming) && (
-              <ConnectionPicker connectionLocked={hasSession} />
-            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
           <div
             className={cn(
               "relative",
-              isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
             <PromptInputTextarea
@@ -322,6 +386,10 @@ export function ChatInput({
               disabled={isInputDisabled}
               placeholder={resolvedPlaceholder}
               onMultilineChange={setIsMultiline}
+              className={cn(
+                stacked && "px-0.5 py-1",
+                isCompact && "text-sm leading-5 md:text-sm",
+              )}
             />
             {isRecording && !value && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -334,8 +402,18 @@ export function ChatInput({
           </div>
           <InputGroupAddon
             align="inline-end"
-            className="order-none ml-auto gap-1 py-1 pr-1.5"
+            className={cn(
+              "order-none ml-auto gap-1 py-1 pr-1.5",
+              stacked && "gap-1.5 p-0",
+              isCompact && "gap-0.5 py-1 pr-1",
+            )}
           >
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. The card
+                composer leaves this to the page's top-right control. */}
+            {!stacked && !isCompact && (!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
@@ -345,6 +423,7 @@ export function ChatInput({
             {devtoolSessionId && (
               <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
+            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -352,6 +431,7 @@ export function ChatInput({
                 isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
                 highlight={isMicGlowing}
+                className={iconButtonClass}
                 onClick={() => {
                   dismissGlow();
                   toggleRecording();
@@ -377,7 +457,10 @@ export function ChatInput({
                     }
                   }
                 }}
-                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
+                className={cn(
+                  "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+                  sendButtonClass,
+                )}
               >
                 <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
@@ -385,12 +468,19 @@ export function ChatInput({
             {isStreaming ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <PromptInputSubmit status="streaming" onStop={onStop} />
+                  <PromptInputSubmit
+                    status="streaming"
+                    onStop={onStop}
+                    className={sendButtonClass}
+                  />
                 </TooltipTrigger>
                 <TooltipContent side="top">Stop</TooltipContent>
               </Tooltip>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
-              <PromptInputSubmit disabled={!canSend} />
+              <PromptInputSubmit
+                disabled={!canSend}
+                className={sendButtonClass}
+              />
             )}
           </InputGroupAddon>
         </div>
@@ -401,9 +491,11 @@ export function ChatInput({
       </InputGroup>
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
+          key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
           onConfirm={handleWorkspaceFilesConfirmed}
+          expertId={expertId}
         />
       )}
     </form>

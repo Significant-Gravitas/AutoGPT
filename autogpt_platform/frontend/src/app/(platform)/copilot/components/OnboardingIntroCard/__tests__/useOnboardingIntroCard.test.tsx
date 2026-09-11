@@ -21,7 +21,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
 const flagsReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
+  Flag: {
+    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
+    HIRE_EXPERTS: "hire-experts",
+  },
   useGetFlag: (flag: string) => flags.current[flag] ?? false,
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
@@ -109,7 +113,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     // The regression: with the flag off the intro query is disabled, so it
     // never answers — and "no answer yet" was read as "still generating".
     // isAwaitingGreeting stayed true forever and EmptySession hides the
-    // composer, PulseChips and SuggestionThemes behind it, so the default
+    // composer and SuggestionThemes behind it, so the default
     // flag-off copilot rendered a hero with no way to type.
     flags.current = {};
 
@@ -457,4 +461,31 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
   });
+});
+
+describe("useOnboardingIntroCard — team selection belongs to the wizard", () => {
+  it.each([false, true])(
+    "does not poll for a team after the greeting settles (done=%s)",
+    async (greetingDone) => {
+      flags.current = {
+        "onboarding-brain-dump": true,
+        "onboarding-expert-team": true,
+        "hire-experts": true,
+      };
+      const requests = countIntroRequests({
+        ...READY_INTRO,
+        greeting_done: greetingDone,
+        team_pending: true,
+      });
+      const { result } = renderIntro();
+      await waitFor(() => expect(requests).toHaveLength(1));
+      await waitFor(() =>
+        expect(result.current.isAwaitingGreeting).toBe(false),
+      );
+      expect(result.current.isVisible).toBe(!greetingDone);
+      await new Promise((resolve) => setTimeout(resolve, 3200));
+      expect(requests).toHaveLength(1);
+    },
+    10_000,
+  );
 });

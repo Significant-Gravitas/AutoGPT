@@ -5,6 +5,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { getExpertAccent } from "../helpers";
 import {
   ArrowRight02Icon,
@@ -16,17 +17,17 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   expert: Expert;
   isHired: boolean;
-  onClick: () => void;
 }
 
-export function ExpertCard({ expert, isHired, onClick }: Props) {
+/** Each card is a plain link to the expert's own page, so a profile can be
+ *  shared and opened directly. */
+export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+    <Link
+      href={`/marketplace/experts/${expert.id}`}
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div
         className={cn(
@@ -100,7 +101,7 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
-              Hire
+              View
               <Icon
                 icon={ArrowRight02Icon}
                 size={16}
@@ -110,6 +111,6 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           )}
         </div>
       </div>
-    </button>
+    </Link>
   );
 }

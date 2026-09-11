@@ -583,14 +583,24 @@ class TestClaude5FamilyThinking:
 
     @pytest.mark.parametrize(
         "family_member",
-        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-5",
+        ],
     )
     def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
         assert reasoning_extra_body(f"anthropic/{family_member}", 5000) is None
 
     @pytest.mark.parametrize(
         "family_member",
-        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-5",
+        ],
     )
     def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):
         assert anthropic_thinking_extra_body(family_member, 5000) is None
@@ -603,7 +613,8 @@ class TestClaude5FamilyThinking:
             "thinking": {"type": "enabled", "budget_tokens": 5000}
         }
 
-    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch):
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-opus-5"])
+    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch, model: str):
         """The explicit ``_is_claude_5_family`` guard must suppress the
         fragment even if a 5-family slug is (mistakenly) added to
         ``_THINKING_CAPABLE_PREFIXES`` — otherwise the guard is dead code
@@ -613,9 +624,9 @@ class TestClaude5FamilyThinking:
         monkeypatch.setattr(
             reasoning,
             "_THINKING_CAPABLE_PREFIXES",
-            reasoning._THINKING_CAPABLE_PREFIXES + ("claude-sonnet-5",),
+            reasoning._THINKING_CAPABLE_PREFIXES + (model,),
         )
-        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+        assert anthropic_thinking_extra_body(model, 5000) is None
 
     def test_sonnet_4_6_keeps_budget_fragments(self):
         assert reasoning_extra_body("anthropic/claude-sonnet-4.6", 5000) == {

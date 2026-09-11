@@ -7,20 +7,46 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipPortal,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  AUTOPILOT_AVATAR,
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import Link, { useLinkStatus } from "next/link";
 import { ReactNode, useState } from "react";
 
 export const EXPERT_GROUP_PREVIEW_COUNT = 10;
 
+// The chevron, the slot the header reserves next to it, and the new-chat link
+// that floats over that slot are all one size.
+const CHEVRON_SIZE_CLASS = "size-5";
+// Where that slot starts, measured in from the header's right edge: the
+// trigger's `px-2` (0.5rem) + the chevron's `size-5` (1.25rem) + the `gap-2`
+// between them (0.5rem) = 2.25rem. Change any of the three and this moves.
+const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
+
 interface Props {
   label: string;
   avatarUrl: string | null;
+  newChatHref: string | null;
+  color?: string | null;
+  isAutopilot?: boolean;
   sessions: SessionSummaryResponse[];
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
@@ -28,12 +54,12 @@ interface Props {
 export function ExpertChatGroup({
   label,
   avatarUrl,
+  newChatHref,
+  color,
+  isAutopilot,
   sessions,
   renderItem,
 }: Props) {
-  // Open on mount: the sidebar's job is to show the chats, so a group that
-  // hides them behind a click on every render is a step backwards. Controlled
-  // rather than `defaultOpen` because the collapsed branch below reads it.
   const [isOpen, setIsOpen] = useState(true);
   const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
   const visibleSessions = sessions.slice(0, visibleCount);
@@ -46,25 +72,56 @@ export function ExpertChatGroup({
       onOpenChange={setIsOpen}
       className="group/expert-group"
     >
-      <CollapsibleTrigger
-        aria-label={`${label} chats`}
-        className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-0.5 text-left text-[13px] font-medium text-zinc-900 hover:bg-zinc-100"
-      >
-        <Avatar className="h-5 w-5">
-          {avatarUrl ? <AvatarImage src={avatarUrl} alt={label} /> : null}
-          <AvatarFallback className="text-[9px]">
-            {label.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <span className="truncate">{label}</span>
-        <Icon
-          icon={ArrowDown01Icon}
-          className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none"
-        />
-      </CollapsibleTrigger>
+      {/* The trigger is itself a button, so the new-chat link sits beside it
+          and floats over a slot the trigger reserves before the chevron —
+          long labels then truncate against the link rather than under it. */}
+      <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-zinc-100">
+        <CollapsibleTrigger
+          aria-label={`${label} chats`}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900"
+        >
+          {isUploadedAvatar(avatarUrl) ? (
+            <Avatar className="h-6 w-6">
+              <AvatarImage
+                src={avatarUrl ?? undefined}
+                alt={label}
+                width={48}
+                height={48}
+              />
+              <AvatarFallback>{label}</AvatarFallback>
+            </Avatar>
+          ) : (
+            <BotAvatar
+              config={
+                isAutopilot
+                  ? AUTOPILOT_AVATAR
+                  : expertAvatarConfig({ name: label, avatarUrl, color })
+              }
+              size={24}
+              animated={false}
+              showBadge={false}
+              title={label}
+            />
+          )}
+          <span className="truncate">{label}</span>
+          {newChatHref && (
+            <span
+              aria-hidden
+              className={cn("ml-auto shrink-0", CHEVRON_SIZE_CLASS)}
+            />
+          )}
+          <Icon
+            icon={ArrowDown01Icon}
+            className={cn(
+              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none",
+              CHEVRON_SIZE_CLASS,
+              !newChatHref && "ml-auto",
+            )}
+          />
+        </CollapsibleTrigger>
+        {newChatHref && <NewChatLink href={newChatHref} label={label} />}
+      </div>
 
-      {/* Running chats stay visible while the group is collapsed so an
-          in-flight session is never hidden behind a closed toggle. */}
       {!isOpen && runningSessions.length > 0 && (
         <GroupBody>
           <SidebarMenu>{runningSessions.map(renderItem)}</SidebarMenu>
@@ -92,9 +149,42 @@ export function ExpertChatGroup({
   );
 }
 
+function NewChatLink({ href, label }: { href: string; label: string }) {
+  const name = `New chat with ${label}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          href={href}
+          aria-label={name}
+          className={cn(
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
+            CHEVRON_SIZE_CLASS,
+            NEW_CHAT_LINK_OFFSET_CLASS,
+          )}
+        >
+          <NewChatIcon />
+        </Link>
+      </TooltipTrigger>
+      <TooltipPortal>
+        <TooltipContent side="top">{name}</TooltipContent>
+      </TooltipPortal>
+    </Tooltip>
+  );
+}
+
+function NewChatIcon() {
+  const { pending } = useLinkStatus();
+
+  if (pending) {
+    return <LoadingSpinner size="small" className="!size-4 text-zinc-500" />;
+  }
+
+  return <Icon icon={PlusSignIcon} className="size-4" />;
+}
+
 function GroupBody({ children }: { children: ReactNode }) {
-  // A hard border reads heavier than the rail deserves — a 1px gradient
-  // strip fades out toward the bottom instead.
   return (
     <div className="relative ml-[17px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
       {children}

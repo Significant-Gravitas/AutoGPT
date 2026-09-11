@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
+    EXPERT_TAGLINE_MAX_LENGTH,
     WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
     ExpertSoulFieldsPatch,
@@ -25,6 +26,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
+from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -69,6 +71,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
 
@@ -86,17 +89,7 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Propose a brand-new expert when no roster template fits. Give "
-            "them a personal first name (the role field carries the job "
-            "title) and an accent color, then write their charter: what they "
-            "own, what good looks like, and where they stop (always fill "
-            "boundaries — an expert without them oversteps). Never writes: "
-            "returns the proposed expert plus a one-time confirmation_id. "
-            "Read the FULL charter back — name, role, color, what they own, "
-            "where they stop, voice, weekly budget — and only after the user "
-            "approves, call confirm_expert_change with that id."
-        )
+        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -106,28 +99,40 @@ class RaiseExpertTool(BaseTool):
                 "name": {
                     "type": "string",
                     "description": (
-                        "A personal first name the user will call them — "
-                        "like a teammate's name, never a job title. The "
-                        "role field carries the title."
+                        "Personal first name, not a job title (use role for that)."
                     ),
                 },
                 "role": {
                     "type": "string",
                     "description": "Short title for what they own.",
                 },
+                "tagline": {
+                    "type": "string",
+                    "description": (
+                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                    ),
+                },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
+                    "description": ("Accent token for the avatar and chat theme."),
+                },
+                "avatar_shape": {
+                    "type": "string",
+                    "enum": AVATAR_SHAPES,
+                    "description": ("Avatar silhouette; omit for a name-seeded shape."),
+                },
+                "avatar_accessory": {
+                    "type": "string",
+                    "enum": AVATAR_ACCESSORIES,
                     "description": (
-                        "Accent color for their avatar and chat theme. "
-                        "Pick one that fits their personality."
+                        "One accessory suited to their role or personality; omit for a name-seeded choice."
                     ),
                 },
                 "about": {
                     "type": "string",
                     "description": (
-                        "Their charter in second person: what they own, how "
-                        "they work, what good looks like. Becomes identity."
+                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
                     ),
                 },
                 "boundaries": {
@@ -146,7 +151,7 @@ class RaiseExpertTool(BaseTool):
                     "description": "Weekly credit cap (100 = $1); omit for default.",
                 },
             },
-            "required": ["name", "about", "boundaries"],
+            "required": ["name", "tagline", "about", "boundaries"],
         }
 
     async def _execute(
@@ -156,7 +161,10 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        tagline: str = "",
         color: str = "",
+        avatar_shape: str = "",
+        avatar_accessory: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -177,6 +185,24 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        avatar_shape = avatar_shape.strip()
+        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_shape must be one of: "
+                    + ", ".join(AVATAR_SHAPES)
+                ),
+                session_id=session_id,
+            )
+        avatar_accessory = avatar_accessory.strip()
+        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_accessory must be one of: "
+                    + ", ".join(AVATAR_ACCESSORIES)
+                ),
+                session_id=session_id,
+            )
         try:
             params = _RaiseParams(
                 # Collapsed, not just stripped: the roster block in
@@ -185,6 +211,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
             )
@@ -235,7 +262,14 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            tagline=params.tagline,
             color=params.color,
+            avatar_url=build_avatar_url(
+                params.name,
+                shape=avatar_shape or None,
+                accessory=avatar_accessory or None,
+                color_token=params.color or None,
+            ),
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
@@ -254,11 +288,11 @@ class RaiseExpertTool(BaseTool):
         )
         return ExpertChangeProposedResponse(
             message=(
-                "Nothing created yet. Read the full charter back to the "
-                "user — name, role, color, what this expert owns, where "
-                "they stop, voice and weekly budget — and only after they "
-                "explicitly approve, call confirm_expert_change with this "
-                "confirmation_id."
+                "Nothing created yet. The user is looking at this charter on "
+                "a card with Approve and Decline buttons — do not repeat any "
+                "of it in text. Reply with one short line at most and wait. "
+                "Only after they explicitly approve, call "
+                "confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,

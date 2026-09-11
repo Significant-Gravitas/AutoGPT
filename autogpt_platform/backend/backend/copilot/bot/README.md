@@ -71,6 +71,9 @@ bot/
     │   ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
     │   ├── commands.py      # Slash commands (/setup, /help, /unlink)
     │   ├── config.py        # Slack token + signing secret + platform limits
+    │   ├── history.py       # Thread-history fetch (paginated tail + char budget)
+    │   ├── oauth.py         # Multi-workspace "Add to Slack" install flow
+    │   ├── pending.py       # Pending-install flags for the Bots settings page
     │   ├── signing.py       # HMAC-SHA256 request signature verification
     │   ├── text.py          # CommonMark → Slack mrkdwn
     │   └── app-manifest.yaml # Importable Slack app definition (scopes, events, commands)

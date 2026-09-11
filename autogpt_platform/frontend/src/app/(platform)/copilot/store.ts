@@ -16,6 +16,24 @@ export interface DeleteTarget {
  * or from `FileUIPart` attachments; see `getMessageArtifacts` in
  * `ChatMessagesContainer/helpers.ts`.
  */
+/** The expert an ``ExpertChangeCard`` opens in the panel — a hire/raise
+ *  preview or the teammate it became. Not a file: no fetch, copy or
+ *  download; the panel renders the charter straight from this. */
+export interface ExpertArtifact {
+  id: string | null;
+  kind: "hire" | "raise" | "update" | null;
+  name: string;
+  role: string | null;
+  color: string | null;
+  tagline: string | null;
+  about: string | null;
+  boundaries: string | null;
+  voicePreferences: string | null;
+  weeklyBudget: number | null;
+  avatarUrl: string | null;
+  applied: boolean;
+}
+
 export interface ArtifactRef {
   /** Workspace file ID (matches the backend `WorkspaceFile.id`). */
   id: string;
@@ -36,6 +54,8 @@ export interface ArtifactRef {
   origin: "agent" | "user-upload";
   /** Size in bytes if known — used by `classifyArtifact` for size gating. */
   sizeBytes?: number;
+  /** Set when the ref is an expert rather than a workspace file. */
+  expert?: ExpertArtifact;
 }
 
 interface ArtifactPanelState {
