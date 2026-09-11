@@ -83,16 +83,22 @@ _BUILD_TIMEOUT_SECONDS = 240
 _BUILD_WAIT_SECONDS = _BUILD_LOCK_TTL_SECONDS
 _BUILD_POLL_SECONDS = 2.0
 
-# Release only if we still own the lock: a build that outlived the TTL must
-# not delete the lock a later builder took.
+# Release or extend only if we still own the lock: a build that outlived the
+# TTL must not touch the lock a later builder took.
 _UNLOCK_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("del", KEYS[1]) else return 0 end'
+)
+_EXTEND_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
 )
 
 # Templates this process has already confirmed ready, keyed by alias and
 # team: one round of API calls per alias per team per process lifetime.
 _ready: set[str] = set()
+# Checks in flight in this process, so concurrent first turns share one.
+_inflight: dict[str, "asyncio.Future[None]"] = {}
 
 
 class TemplateState(enum.Enum):
@@ -113,8 +119,32 @@ async def ensure_template(template: str, api_key: str) -> None:
     cache_key = _scoped_key(spec, api_key)
     if cache_key in _ready:
         return
-    if await get_template_state(spec, api_key) is not TemplateState.READY:
-        await _provision(spec, api_key)
+    check = _inflight.get(cache_key)
+    if check is None:
+        check = _inflight[cache_key] = asyncio.ensure_future(
+            _check_or_provision(spec, api_key, cache_key)
+        )
+        try:
+            await asyncio.shield(check)
+        finally:
+            _inflight.pop(cache_key, None)
+    else:
+        await asyncio.shield(check)
+
+
+async def _check_or_provision(spec: TemplateSpec, api_key: str, cache_key: str) -> None:
+    try:
+        if await get_template_state(spec, api_key) is not TemplateState.READY:
+            await _provision(spec, api_key)
+    except Exception:
+        logger.error(
+            "[E2B] Template %s is not available on this team and could not be "
+            "built. Building it needs an E2B plan that allows template builds "
+            "with a 20 GiB build disk. Set CHAT_E2B_SANDBOX_TEMPLATE=base to "
+            "use E2B's stock image instead.",
+            spec.alias,
+        )
+        raise
     _ready.add(cache_key)
 
 
@@ -138,6 +168,14 @@ async def _provision(spec: TemplateSpec, api_key: str) -> None:
         if state is TemplateState.BUILDING:
             state = await _wait_until_ready(spec, api_key, builder_lock=None)
         if state is TemplateState.MISSING:
+            # Watching that build may have used up most of the lock.  Take a
+            # fresh TTL so the build cannot outlive it; if the lock is no
+            # longer ours, someone else is provisioning, so start over as a
+            # follower (or the next holder).
+            if not await redis.eval(
+                _EXTEND_SCRIPT, 1, lock_key, token, _BUILD_LOCK_TTL_SECONDS
+            ):
+                return await _provision(spec, api_key)
             await asyncio.wait_for(
                 build_template(spec, api_key), timeout=_BUILD_TIMEOUT_SECONDS
             )
@@ -200,6 +238,18 @@ async def get_template_state(spec: TemplateSpec, api_key: str) -> TemplateState:
 def forget_ready_templates() -> None:
     """Drop the process-level cache (tests, or after a template is deleted)."""
     _ready.clear()
+    _inflight.clear()
+
+
+def forget_template(template: str, api_key: str) -> None:
+    """Re-check *template* on the next ``ensure_template``.
+
+    Called when creating a sandbox from it failed: the template may have
+    been deleted out of band since this process confirmed it.
+    """
+    spec = MANAGED_TEMPLATES.get(template)
+    if spec is not None:
+        _ready.discard(_scoped_key(spec, api_key))
 
 
 def _scoped_key(spec: TemplateSpec, api_key: str) -> str:

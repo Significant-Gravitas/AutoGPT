@@ -52,7 +52,7 @@ from typing import Any, Awaitable, Callable, Literal
 from e2b import AsyncSandbox, SandboxLifecycle
 
 from backend.data.redis_client import get_redis_async
-from backend.util.e2b_template import ensure_template
+from backend.util.e2b_template import ensure_template, forget_template
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +235,9 @@ async def get_or_create_sandbox(
                         await asyncio.sleep(2 ** (attempt - 1))  # 1 s, 2 s
 
             if last_exc is not None:
+                # The template may have gone away since this process last
+                # confirmed it; make the next attempt look again.
+                forget_template(template, api_key)
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit

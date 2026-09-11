@@ -109,10 +109,13 @@ class TestEnsureTemplate:
         ]
         assert key_a != key_b and _KEY not in key_a and _OTHER_KEY not in key_b
         assert redis.set.await_args_list[0].kwargs == {"nx": True, "ex": 300}
-        # Compare-and-delete with the token this caller wrote, never a bare DEL.
-        released = [c.args for c in redis.eval.await_args_list]
-        assert released == [
+        # The TTL is re-asserted with our token right before building, and the
+        # release is a compare-and-delete with the same token, never a bare DEL.
+        evals = [c.args for c in redis.eval.await_args_list]
+        assert evals == [
+            (e2b_template._EXTEND_SCRIPT, 1, key_a, token_a, 300),
             (e2b_template._UNLOCK_SCRIPT, 1, key_a, token_a),
+            (e2b_template._EXTEND_SCRIPT, 1, key_b, token_b, 300),
             (e2b_template._UNLOCK_SCRIPT, 1, key_b, token_b),
         ]
 
@@ -196,6 +199,72 @@ class TestEnsureTemplate:
         assert key != e2b_template._scoped_key(DESKTOP_IMAGE, _OTHER_KEY)
 
     @pytest.mark.asyncio
+    async def test_lost_lock_is_not_built_on(self):
+        """A holder whose lock lapsed while it watched a foreign build steps
+        back: it becomes a follower of whoever holds the lock now."""
+        redis = _redis(lock_acquired=True)
+        redis.set = AsyncMock(side_effect=[True, False])
+
+        async def eval_(script, *args):
+            return 0 if script is e2b_template._EXTEND_SCRIPT else 1
+
+        redis.eval = AsyncMock(side_effect=eval_)
+        with (
+            patch(
+                f"{_M}.get_template_state",
+                _states(
+                    TemplateState.MISSING,
+                    TemplateState.BUILDING,
+                    TemplateState.MISSING,
+                    TemplateState.READY,
+                ),
+            ),
+            patch(f"{_M}.AsyncTemplate") as tpl,
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}.asyncio.sleep", AsyncMock()),
+        ):
+            tpl.build = AsyncMock()
+            await ensure_template(DESKTOP_IMAGE.alias, _KEY)
+        tpl.build.assert_not_awaited()
+        assert redis.set.await_count == 2
+        assert len(e2b_template._ready) == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_turns_share_one_check(self):
+        gate = asyncio.Event()
+
+        async def slow_state(*_args):
+            await gate.wait()
+            return TemplateState.READY
+
+        with patch(f"{_M}.get_template_state", AsyncMock(side_effect=slow_state)) as st:
+            first = asyncio.ensure_future(ensure_template(DESKTOP_IMAGE.alias, _KEY))
+            second = asyncio.ensure_future(ensure_template(DESKTOP_IMAGE.alias, _KEY))
+            await asyncio.sleep(0)
+            gate.set()
+            await asyncio.gather(first, second)
+        st.assert_awaited_once()
+        assert not e2b_template._inflight
+
+    @pytest.mark.asyncio
+    async def test_failure_names_the_opt_out(self, caplog):
+        with (
+            patch(f"{_M}.get_template_state", AsyncMock(side_effect=OSError("403"))),
+            caplog.at_level("ERROR"),
+        ):
+            with pytest.raises(OSError):
+                await ensure_template(DESKTOP_IMAGE.alias, _KEY)
+        assert "CHAT_E2B_SANDBOX_TEMPLATE=base" in caplog.text
+        assert not e2b_template._inflight
+
+    def test_forget_template_forces_a_recheck(self):
+        e2b_template._ready.add(e2b_template._scoped_key(DESKTOP_IMAGE, _KEY))
+        e2b_template.forget_template("base", _KEY)
+        assert e2b_template._ready
+        e2b_template.forget_template(DESKTOP_IMAGE.alias, _KEY)
+        assert not e2b_template._ready
+
+    @pytest.mark.asyncio
     async def test_build_failure_releases_the_lock_and_propagates(self):
         redis = _redis(lock_acquired=True)
         with (
@@ -207,7 +276,7 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock(side_effect=RuntimeError("build failed"))
             with pytest.raises(RuntimeError):
                 await ensure_template(DESKTOP_IMAGE.alias, _KEY)
-        redis.eval.assert_awaited_once()
+        assert redis.eval.await_args.args[0] is e2b_template._UNLOCK_SCRIPT
         assert not e2b_template._ready
 
     @pytest.mark.asyncio
@@ -230,7 +299,7 @@ class TestEnsureTemplate:
         assert (
             e2b_template._BUILD_TIMEOUT_SECONDS < e2b_template._BUILD_LOCK_TTL_SECONDS
         )
-        redis.eval.assert_awaited_once()
+        assert redis.eval.await_args.args[0] is e2b_template._UNLOCK_SCRIPT
         assert not e2b_template._ready
 
     @pytest.mark.asyncio
