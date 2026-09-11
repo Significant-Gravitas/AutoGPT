@@ -18,23 +18,19 @@ interface Props {
   sessionId: string;
 }
 
-function StatePill({ state }: { state: "running" | "paused" | null }) {
+function Pill({ tone, label }: { tone: "on" | "off" | "none"; label: string }) {
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
-        state === "running"
+        tone === "on"
           ? "bg-emerald-50 text-emerald-700"
-          : state === "paused"
+          : tone === "off"
             ? "bg-zinc-100 text-zinc-600"
             : "bg-zinc-50 text-zinc-500",
       )}
     >
-      {state === "running"
-        ? "Running"
-        : state === "paused"
-          ? "Suspended"
-          : "None"}
+      {label}
     </span>
   );
 }
@@ -81,19 +77,34 @@ export function ComputerPanelContent({ sessionId }: Props) {
   });
 
   const isExpert = computer?.owner_kind === "expert";
-  const hasDesktop = computer?.desktop != null;
+  const box = computer?.box ?? null;
+  const machineLabel = !box
+    ? "None"
+    : box.state === "running"
+      ? "Running"
+      : "Suspended";
+  const machineTone = !box ? "none" : box.state === "running" ? "on" : "off";
+  const screenOn = computer?.screen_on === true;
+  const actionLabel = stream
+    ? "Refresh"
+    : screenOn
+      ? "Open desktop"
+      : "Turn on screen";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
       <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
         <div className="flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Shell</span>
-            <StatePill state={computer?.shell?.state ?? null} />
+            <span className="text-zinc-500">Machine</span>
+            <Pill tone={machineTone} label={machineLabel} />
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Desktop</span>
-            <StatePill state={computer?.desktop?.state ?? null} />
+            <span className="text-zinc-500">Screen</span>
+            <Pill
+              tone={!box ? "none" : screenOn ? "on" : "off"}
+              label={!box ? "None" : screenOn ? "On" : "Off"}
+            />
           </span>
         </div>
         <Button
@@ -103,7 +114,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
           disabled={computer != null && !computer.e2b_active}
           onClick={() => startDesktop({ sessionId })}
         >
-          {stream ? "Refresh" : hasDesktop ? "Resume desktop" : "Start desktop"}
+          {actionLabel}
         </Button>
       </div>
 
@@ -113,11 +124,11 @@ export function ComputerPanelContent({ sessionId }: Props) {
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-200 p-6 text-center">
-          <Text variant="small-medium">No desktop on screen yet</Text>
+          <Text variant="small-medium">Screen is not on this panel yet</Text>
           <Text variant="small" className="max-w-xs text-zinc-500">
             {isExpert
-              ? "This chat runs on the expert's own computer. Start the desktop to watch it work, or ask for one in the chat."
-              : "Start the desktop to watch this chat work in a real browser, or ask for one in the chat."}
+              ? "This chat runs on the expert's own computer. Turn on its screen to watch it work in a real browser, or ask for one in the chat."
+              : "Turn on this chat's screen to watch it work in a real browser, or ask for one in the chat. It is the same machine your commands run in."}
           </Text>
         </div>
       )}
