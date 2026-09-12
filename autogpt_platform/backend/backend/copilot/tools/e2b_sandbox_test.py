@@ -898,6 +898,25 @@ class TestExpertShellBox:
             asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
         redis.incr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
 
+    def test_a_turn_that_cannot_be_counted_does_not_get_the_box(self):
+        """An uncounted turn's release would decrement someone else's count
+        and could pause the box under them, so the count failure surfaces."""
+        sb = _mock_sandbox("sb-expert")
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
+        redis.incr = AsyncMock(side_effect=ConnectionError("redis down"))
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            with pytest.raises(ConnectionError):
+                asyncio.run(
+                    get_or_create_sandbox(
+                        _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                    )
+                )
+        redis.eval.assert_not_awaited()
+
     def test_creates_expert_box_with_home_and_shared_volumes(self):
         sb = _mock_sandbox("sb-expert-new")
         sb.commands = MagicMock()

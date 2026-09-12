@@ -377,16 +377,18 @@ def _active_turns_key(owner: SandboxOwner) -> str:
 
 
 async def _acquire_turn(owner: SandboxOwner) -> None:
-    """Count this turn on an expert's box so another turn's end can't pause it."""
+    """Count this turn on an expert's box so another turn's end can't pause it.
+
+    Fails closed: if the count cannot be recorded the turn must not run on
+    the box, because its eventual release would decrement a count it never
+    added and could pause the box under a concurrent turn.
+    """
     if not owner.is_expert:
         return
-    try:
-        redis = await get_redis_async()
-        key = _active_turns_key(owner)
-        await redis.incr(key)
-        await redis.expire(key, _ACTIVE_TURN_TTL)
-    except Exception as exc:
-        logger.warning("[E2B] Could not record active turn for %s: %s", owner, exc)
+    redis = await get_redis_async()
+    key = _active_turns_key(owner)
+    await redis.incr(key)
+    await redis.expire(key, _ACTIVE_TURN_TTL)
 
 
 async def count_expert_turn(session_id: str, expert_id: str | None) -> None:
