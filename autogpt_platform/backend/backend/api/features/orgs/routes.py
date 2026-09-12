@@ -158,6 +158,7 @@ async def upload_org_avatar(
     The storage path is derived server-side from the verified org id; the
     client-supplied filename is only used for extension validation.
     """
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
 
     if file.content_type not in store_media.ALLOWED_IMAGE_TYPES:
