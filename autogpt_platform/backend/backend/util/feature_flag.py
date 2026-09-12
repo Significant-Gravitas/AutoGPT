@@ -50,6 +50,11 @@ class Flag(str, Enum):
     CHAT_SHARING = "chat-sharing"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
+    # AutoPilot auto mode: the permission gate in ``copilot/gate``.
+    # A ROLLOUT control, not a safety control — off means today's
+    # ungated behaviour, which is why it defaults False rather than
+    # fail-closed. Failures *inside* an enabled gate fail to ASK.
+    COPILOT_AUTO_MODE = "copilot-auto-mode"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable

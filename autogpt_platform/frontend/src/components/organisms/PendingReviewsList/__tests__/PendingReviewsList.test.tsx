@@ -114,3 +114,44 @@ test("a collapsed group offers no way to decide it", async () => {
   expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
 });
+
+test("action-gate approvals offer no auto-approve toggle", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          editable: false,
+        }),
+        makeReview({ node_exec_id: "ne-2", node_id: "n-2" }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getAllByText("Auto-approve future executions of this node"),
+  ).toHaveLength(1);
+});
+
+test("auto-approve on an ordinary node is sent with the approval", async () => {
+  const captured = captureReviewAction();
+
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ node_exec_id: "ne-1", node_id: "n-1" })]}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("switch"));
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews).toEqual([
+    expect.objectContaining({
+      node_exec_id: "ne-1",
+      approved: true,
+      auto_approve_future: true,
+    }),
+  ]);
+});

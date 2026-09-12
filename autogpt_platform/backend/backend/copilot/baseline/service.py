@@ -47,6 +47,7 @@ from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
+from backend.copilot.gate import gate_active
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -78,6 +79,7 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.copilot.prompting import (
+    AUTO_MODE_SUPPLEMENT,
     SHARED_TOOL_NOTES,
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -1878,6 +1880,9 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    auto_mode_supplement = (
+        AUTO_MODE_SUPPLEMENT if await gate_active(user_id, session) else ""
+    )
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the
     # tool-filtering site below so the delegation rules can be gated on the
@@ -1906,6 +1911,7 @@ async def stream_chat_completion_baseline(
         + oversight_supplement
         + team_building_supplement
         + graphiti_supplement
+        + auto_mode_supplement
         + builder_session_suffix
         + expert_session_suffix
     )
