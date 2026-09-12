@@ -8,6 +8,7 @@ allowing frontend code generators like Orval to create corresponding TypeScript 
 from pydantic import BaseModel, Field
 
 from backend.data.model import CredentialsType
+from backend.integrations.mcp_catalog import MCPServerMetadata
 from backend.integrations.providers import ProviderName
 from backend.sdk.registry import AutoRegistry
 
@@ -52,6 +53,12 @@ class ProviderMetadata(BaseModel):
     """Display metadata for a provider, shown in the settings integrations UI."""
 
     name: str = Field(description="Provider slug (e.g. ``github``)")
+    display_name: str | None = Field(
+        default=None, description="Human-readable provider name"
+    )
+    mcp_server: MCPServerMetadata | None = Field(
+        default=None, description="Official MCP catalog connection and setup metadata"
+    )
     description: str | None = Field(
         default=None,
         description=(

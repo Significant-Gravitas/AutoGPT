@@ -42,6 +42,16 @@ Depending on the service, you'll be prompted to authenticate in one of three way
 Credentials are reusable, but each block or task retains its selected credential reference.
 {% endhint %}
 
+## Connecting MCP Services
+
+Open **Settings → Integrations**, find a service with the **MCP** badge, and follow its setup instructions. The same services appear in **Connect Service**.
+
+- Choose the offered sign-in or token option for account access, or **No sign-in → Check connection** for public tools.
+- If prompted, select your account's region or enter the official server URL for your tenant or deployment.
+- Review the requested permissions. **Allow changes**, when offered, adds the service's optional actions.
+
+For catalog updates, see [Maintaining MCP Integrations](contributing/hosted-mcp-catalog.md).
+
 ## Managing Credentials
 
 1. Open **Settings**.

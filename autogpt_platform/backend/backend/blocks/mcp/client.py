@@ -761,6 +761,12 @@ class MCPClient:
                     f"{base}{path}",
                 )
             )
+            candidates.append(
+                (
+                    f"{base}{path}/.well-known/openid-configuration",
+                    f"{base}{path}",
+                )
+            )
         candidates.append((f"{base}/.well-known/oauth-authorization-server", base))
         candidates.append((f"{base}/.well-known/openid-configuration", base))
 

@@ -24,16 +24,18 @@ def _mock_response(json_data: dict, status: int = 200) -> MagicMock:
 class TestMCPOAuthHandler:
     """Tests for the MCPOAuthHandler."""
 
-    def _make_handler(self, **overrides) -> MCPOAuthHandler:
-        defaults = {
-            "client_id": "test-client-id",
-            "client_secret": "test-client-secret",
-            "redirect_uri": "https://app.example.com/callback",
-            "authorize_url": "https://auth.example.com/authorize",
-            "token_url": "https://auth.example.com/token",
-        }
-        defaults.update(overrides)
-        return MCPOAuthHandler(**defaults)
+    def _make_handler(
+        self, *, revoke_url: str | None = None, resource_url: str | None = None
+    ) -> MCPOAuthHandler:
+        return MCPOAuthHandler(
+            client_id="test-client-id",
+            client_secret="<test-client-secret>",
+            redirect_uri="https://app.example.com/callback",
+            authorize_url="https://auth.example.com/authorize",
+            token_url="https://auth.example.com/token",
+            revoke_url=revoke_url,
+            resource_url=resource_url,
+        )
 
     def test_get_login_url_basic(self):
         handler = self._make_handler()
@@ -246,3 +248,27 @@ class TestMCPClientDiscovery:
         # RFC 8414 §3.3: a document served at the well-known root must declare
         # the bare origin as its issuer.
         assert expected_issuer == "https://auth.example.com"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_discovers_oidc_metadata_under_issuer_path(self):
+        client = MCPClient("https://mcp.example.com/mcp")
+        issuer = "https://auth.example.com/v1/oauth2/console"
+        metadata = {
+            "issuer": issuer,
+            "authorization_endpoint": f"{issuer}/authorize",
+            "token_endpoint": f"{issuer}/token",
+        }
+
+        async def get_metadata(url):
+            return _mock_response(
+                metadata if url == f"{issuer}/.well-known/openid-configuration" else {},
+                status=(
+                    200 if url == f"{issuer}/.well-known/openid-configuration" else 404
+                ),
+            )
+
+        with patch("backend.blocks.mcp.client.Requests") as requests:
+            requests.return_value.get = AsyncMock(side_effect=get_metadata)
+            result = await client.discover_auth_server_metadata(issuer)
+
+        assert result == (metadata, issuer)

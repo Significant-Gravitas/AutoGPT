@@ -583,3 +583,42 @@ async def test_credentials_survive_a_same_origin_redirect():
 
     assert seen["authorization"] == "Basic dXNlcjpwYXNz"
     assert seen["cookie"] == "session=secret_session_value"
+
+
+@pytest.mark.asyncio
+async def test_post_follows_redirect_to_trailing_slash_without_looping():
+    from backend.util.request import Requests
+
+    seen: list[str] = []
+
+    async def redirect(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        raise web.HTTPTemporaryRedirect("/mcp/")
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        assert await request.json() == {"method": "initialize"}
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    app = web.Application()
+    app.router.add_post("/mcp", redirect)
+    app.router.add_post("/mcp/", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests(
+            trusted_origins=["127.0.0.1"], raise_for_status=False
+        ).post(
+            f"http://127.0.0.1:{port}/mcp",
+            json={"method": "initialize"},
+            max_redirects=2,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 401
+    assert response.json() == {"error": "unauthorized"}
+    assert seen == ["/mcp", "/mcp/"]

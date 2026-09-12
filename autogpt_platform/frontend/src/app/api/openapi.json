@@ -8294,7 +8294,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nOfficial MCP catalog entries are appended as display metadata and use the\ngeneric MCP connection flow. They are not registered credential providers,\nso PROVIDER_NAMES continues to contain only credential-provider names.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
@@ -10215,7 +10215,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth credential.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically unless use_saved_credentials is false.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -19738,6 +19738,12 @@
             "title": "Server Url",
             "description": "URL of the MCP server"
           },
+          "use_saved_credentials": {
+            "type": "boolean",
+            "title": "Use Saved Credentials",
+            "description": "Use a saved credential when no auth token is supplied. Set false to discover public tools without signing in.",
+            "default": true
+          },
           "auth_token": {
             "anyOf": [
               {
@@ -23980,6 +23986,14 @@
             "type": "string",
             "title": "Server Url",
             "description": "URL of the MCP server that requires OAuth"
+          },
+          "scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Scopes",
+            "description": "OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; an empty list requests no scopes."
           }
         },
         "type": "object",
@@ -23996,6 +24010,83 @@
         "required": ["login_url", "state_token"],
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPServerMetadata": {
+        "properties": {
+          "server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Url"
+          },
+          "documentation_url": {
+            "type": "string",
+            "title": "Documentation Url"
+          },
+          "setup_instructions": {
+            "type": "string",
+            "title": "Setup Instructions"
+          },
+          "connection_mode": {
+            "type": "string",
+            "enum": ["hosted", "custom"],
+            "title": "Connection Mode"
+          },
+          "auth_methods": {
+            "items": {
+              "type": "string",
+              "enum": ["oauth", "bearer", "basic", "none"]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Auth Methods"
+          },
+          "server_url_options": {
+            "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
+            "type": "array",
+            "title": "Server Url Options"
+          },
+          "oauth_server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Oauth Server Url"
+          },
+          "oauth_scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Oauth Scopes"
+          },
+          "oauth_write_scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Oauth Write Scopes"
+          },
+          "icon_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+              { "type": "null" }
+            ],
+            "title": "Icon Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documentation_url",
+          "setup_instructions",
+          "connection_mode",
+          "auth_methods"
+        ],
+        "title": "MCPServerMetadata"
+      },
+      "MCPServerURLPreset": {
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "title": "Label" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "url"],
+        "title": "MCPServerURLPreset"
       },
       "MCPStoreTokenRequest": {
         "properties": {
@@ -26233,6 +26324,18 @@
             "type": "string",
             "title": "Name",
             "description": "Provider slug (e.g. ``github``)"
+          },
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name",
+            "description": "Human-readable provider name"
+          },
+          "mcp_server": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MCPServerMetadata" },
+              { "type": "null" }
+            ],
+            "description": "Official MCP catalog connection and setup metadata"
           },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
