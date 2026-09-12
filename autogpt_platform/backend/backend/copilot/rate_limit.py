@@ -1221,8 +1221,8 @@ async def get_global_rate_limits(
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
         # last microdollar, which is well below any meaningful precision.
-        daily = int(daily * multiplier)
-        weekly = int(weekly * multiplier)
+        daily = int(daily * multiplier) if daily >= 0 else daily
+        weekly = int(weekly * multiplier) if weekly >= 0 else weekly
 
     return daily, weekly, tier
 
