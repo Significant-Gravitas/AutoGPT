@@ -7,13 +7,14 @@ import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { environment } from "../environment";
+import { usesLaunchDarkly } from "./flag-backend";
 import { buildLDContext } from "./helpers";
 
 const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useAuth();
-  const envEnabled = environment.areFeatureFlagsEnabled();
+  const envEnabled = usesLaunchDarkly() && environment.areFeatureFlagsEnabled();
   const clientId = environment.getLaunchDarklyClientId();
 
   const context = useMemo(() => {

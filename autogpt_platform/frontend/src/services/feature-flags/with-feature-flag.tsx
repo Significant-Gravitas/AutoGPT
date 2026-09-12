@@ -1,33 +1,27 @@
 "use client";
 
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { Flag, useFlagStatus } from "./use-get-flag";
 
-export function withFeatureFlag<P extends object>(
+export function withFeatureFlag<P extends object, T extends Flag>(
   WrappedComponent: React.ComponentType<P>,
-  flagKey: string,
+  flag: T,
 ) {
   return function FeatureFlaggedComponent(props: P) {
-    const flags = useFlags();
+    const { enabled, ready } = useFlagStatus(flag);
     const router = useRouter();
-    const [hasFlagLoaded, setHasFlagLoaded] = useState(false);
 
     useEffect(() => {
-      // Only proceed if flags received
-      if (flags && flagKey in flags) {
-        setHasFlagLoaded(true);
-      }
-    }, [flags]);
-
-    useEffect(() => {
-      if (hasFlagLoaded && !flags[flagKey]) {
+      if (ready && !enabled) {
         router.push("/404");
       }
-    }, [hasFlagLoaded, flags, router]);
+    }, [ready, enabled, router]);
 
-    // Show loading state until flags loaded
-    if (!hasFlagLoaded) {
+    // Reading through useFlagStatus rather than the LaunchDarkly SDK is what
+    // bounds this wait: `ready` resolves on the vendor's answer, on the 5s
+    // timeout, or immediately when no vendor is configured.
+    if (!ready) {
       return (
         <div className="flex min-h-screen items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -35,12 +29,10 @@ export function withFeatureFlag<P extends object>(
       );
     }
 
-    // If flag is loaded but false, return null (will redirect)
-    if (!flags[flagKey]) {
+    if (!enabled) {
       return null;
     }
 
-    // Flag is loaded and true, show component
     return <WrappedComponent {...props} />;
   };
 }

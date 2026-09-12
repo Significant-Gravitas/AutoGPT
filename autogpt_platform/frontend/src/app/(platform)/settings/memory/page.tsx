@@ -2,6 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag } from "@/services/feature-flags/use-get-flag";
 import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import { useEffect } from "react";
 
@@ -102,4 +103,4 @@ function SettingsMemoryPage() {
   );
 }
 
-export default withFeatureFlag(SettingsMemoryPage, "graphiti-memory");
+export default withFeatureFlag(SettingsMemoryPage, Flag.GRAPHITI_MEMORY);
