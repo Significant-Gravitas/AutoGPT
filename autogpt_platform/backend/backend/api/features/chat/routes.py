@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -22,6 +23,13 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
+from backend.copilot.computer import (
+    ComputerInfo,
+    computer_owner,
+    describe_computer,
+    mounts_for,
+    open_desktop,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
@@ -848,6 +856,76 @@ async def create_session(
         metadata=session.metadata,
         expert_id=session.expert_id,
     )
+
+
+@router.get(
+    "/sessions/{session_id}/computer",
+    dependencies=[Security(auth.requires_user)],
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def get_session_computer(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ComputerInfo:
+    """The computer behind this chat.
+
+    A plain chat has its own boxes; a chat that runs as a hired expert reports
+    the expert's persistent computer instead. Listing never wakes a paused box.
+    """
+    # Metadata only: the panel polls this, and the history is not needed.
+    session = await _validate_and_get_session(session_id, user_id)
+    return await describe_computer(
+        computer_owner(session_id, session.expert_id),
+        mounts_for(user_id, session.expert_id),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/desktop",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Session not found or access denied"},
+        502: {"description": "The desktop could not be started"},
+        503: {"description": "E2B is not configured"},
+    },
+)
+async def start_session_desktop(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> DesktopStream:
+    """Start or resume the desktop behind this chat and return its live stream.
+
+    Same box the ``start_desktop`` tool uses from inside a turn, so the side
+    panel and the model always look at one screen.
+    """
+    # Same gate as a turn: an archived expert's chat must not resurrect the
+    # expert's box (the archive already killed it, and nothing would kill
+    # the new one).
+    session = await _validate_and_get_writable_session(session_id, user_id)
+    api_key = ChatConfig().active_e2b_api_key
+    if not api_key:
+        raise HTTPException(
+            status_code=503, detail="E2B is not configured on this deployment."
+        )
+    try:
+        stream, _created, _shared = await open_desktop(
+            computer_owner(session_id, session.expert_id),
+            mounts_for(user_id, session.expert_id),
+            api_key,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "[E2B] start_session_desktop failed for %s: %s",
+            session_id[:12],
+            exc,
+            exc_info=True,
+        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise HTTPException(status_code=502, detail="Failed to start the desktop.")
+    return stream
 
 
 @router.delete(

@@ -73,6 +73,7 @@ ToolName = Literal[
     "add_understanding",
     "ask_question",
     "bash_exec",
+    "start_desktop",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",

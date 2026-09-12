@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
@@ -128,6 +129,11 @@ from backend.copilot.tools import (
     get_available_tools,
     kickoff_turn_disabled_tools,
 )
+from backend.copilot.tools.e2b_sandbox import (
+    count_expert_turn,
+    get_or_create_sandbox,
+    pause_sandbox_direct,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -169,6 +175,25 @@ logger = logging.getLogger(__name__)
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _pause_uncounted_box(
+    sandbox: Any, session_id: str, expert_id: str | None
+) -> asyncio.Task[Any] | None:
+    """Pause a box opened for a turn that ended before its turn was counted.
+
+    A session's box has nobody else on it, so it is paused straight away
+    (fire-and-forget, like the turn-end pause).  An expert's box may be
+    carrying another turn and this one never counted itself, so it is left
+    for the lifecycle timeout rather than paused under someone else.
+    """
+    if expert_id:
+        return None
+    task = asyncio.create_task(pause_sandbox_direct(sandbox, session_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 # Hint appended on the last tool round so the model wraps up with a summary
 # instead of issuing another tool call that gets cut off cold. The shared
@@ -1794,14 +1819,22 @@ async def stream_chat_completion_baseline(
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
-            from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
-
+            # An expert session runs on the expert's own persistent box;
+            # everything else gets a per-session sandbox.
             e2b_sandbox = await get_or_create_sandbox(
                 session_id,
                 api_key=e2b_api_key,
                 template=config.e2b_sandbox_template,
                 timeout=config.e2b_sandbox_timeout,
                 on_timeout=config.e2b_sandbox_on_timeout,
+                volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
+                expert_id=session.expert_id,
+                user_id=user_id,
+                # Counted just before the try/finally that releases it, below:
+                # everything between here and there can still fail or be
+                # stopped, and a count with no release keeps the expert's box
+                # unpaused at every later turn end.
+                count_turn=False,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
@@ -2202,7 +2235,18 @@ async def stream_chat_completion_baseline(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
+    try:
+        yield StreamStart(messageId=message_id, sessionId=session_id)
+    except BaseException:
+        # Closed or cancelled while suspended on the first yield: the finally
+        # that pauses the box sits further down and would never run.
+        if e2b_sandbox is not None:
+            _pause_uncounted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
+
+    if e2b_sandbox is not None:
+        # From here the finally below always runs, so the turn can be counted.
+        await count_expert_turn(session_id, session.expert_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.
@@ -2574,6 +2618,19 @@ async def stream_chat_completion_baseline(
         # run unconditionally.
         session.clear_inflight_tool_calls()
         state.tool_persistence.finish(state.session_messages)
+
+        # --- Pause E2B sandbox to stop billing between turns (parity with
+        # the SDK path). Fire-and-forget: best-effort and must not block the
+        # cleanup below. An expert's box is left running while another of
+        # its turns is still active.
+        if e2b_sandbox is not None:
+            pause_task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox, session_id, expert_id=session.expert_id
+                )
+            )
+            _background_tasks.add(pause_task)
+            pause_task.add_done_callback(_background_tasks.discard)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.
