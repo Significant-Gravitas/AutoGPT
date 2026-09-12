@@ -235,17 +235,19 @@ def test_execute_graph_block(
         return_value=mock_user,
     )
 
-    # Default to free block: cost = 0, no charge call.
+    # Default to free block: cost = 0, no charge call. The credit model is
+    # patched where the charge would actually go through — the sibling
+    # charging test below patches the same target — so "not awaited" is a
+    # claim about the code path rather than about an unrelated mock.
     cost_mock = mocker.patch(
         "backend.api.features.v1.execution_utils.block_usage_cost",
         return_value=(0, {}),
     )
     mock_credit_model = mocker.AsyncMock()
     mocker.patch(
-        "backend.api.features.v1.get_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         return_value=mock_credit_model,
     )
-
     request_data = {
         "input_name": "test_input",
         "input_value": "test_value",

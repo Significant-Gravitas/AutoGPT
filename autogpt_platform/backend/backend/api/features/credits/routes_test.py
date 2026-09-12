@@ -92,14 +92,23 @@ def test_credit_surface_has_no_other_operations():
     assert served == EXPECTED_OPERATIONS
 
 
-# The subscription and Stripe routes stay in v1 for now and share the /credits
-# prefix; /credits/{transaction_key}/refund is the only wildcard among them.
+# The subscription and Stripe routes share the /credits prefix from their own
+# module; /credits/{transaction_key}/refund is the only wildcard among them.
 @pytest.mark.parametrize(
     "path,module",
     [
-        ("/api/credits/subscription", "backend.api.features.v1"),
-        ("/api/credits/manage", "backend.api.features.v1"),
-        ("/api/credits/stripe_webhook", "backend.api.features.v1"),
+        (
+            "/api/credits/subscription",
+            "backend.api.features.subscriptions.routes",
+        ),
+        (
+            "/api/credits/manage",
+            "backend.api.features.subscriptions.routes",
+        ),
+        (
+            "/api/credits/stripe_webhook",
+            "backend.api.features.subscriptions.routes",
+        ),
         ("/api/credits/transactions", "backend.api.features.credits.routes"),
         (
             "/api/credits/{transaction_key}/refund",
