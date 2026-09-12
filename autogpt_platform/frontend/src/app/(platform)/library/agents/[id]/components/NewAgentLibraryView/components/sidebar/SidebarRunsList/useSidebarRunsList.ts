@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   okData,
@@ -49,6 +49,7 @@ type Args = {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 };
 
@@ -66,6 +67,7 @@ export function useSidebarRunsList({
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const queryClient = useQueryClient();
+  const lastReportedError = useRef(false);
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId,
@@ -135,6 +137,11 @@ export function useSidebarRunsList({
     schedulesQuery.isStale ||
     presetsQuery.isStale ||
     (triggerAgentsEnabled && triggerAgentsQuery.isStale);
+  const error =
+    schedulesQuery.error ||
+    runsQuery.error ||
+    presetsQuery.error ||
+    (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -151,13 +158,15 @@ export function useSidebarRunsList({
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange && !stale) {
+    if (onCountsChange && (!stale || error || lastReportedError.current)) {
+      lastReportedError.current = !!error;
       onCountsChange({
         runsCount,
         schedulesCount,
         templatesCount,
         triggersCount,
         loading,
+        hasError: !!error,
       });
     }
   }, [
@@ -168,6 +177,7 @@ export function useSidebarRunsList({
     triggersCount,
     loading,
     stale,
+    error,
   ]);
 
   useEffect(() => {
@@ -210,11 +220,7 @@ export function useSidebarRunsList({
     templates,
     triggers,
     triggerAgents,
-    error:
-      schedulesQuery.error ||
-      runsQuery.error ||
-      presetsQuery.error ||
-      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
+    error,
     loading,
     runsQuery,
     tabValue,

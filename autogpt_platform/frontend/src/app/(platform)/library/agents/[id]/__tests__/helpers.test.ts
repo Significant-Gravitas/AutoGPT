@@ -3,9 +3,64 @@ import { describe, expect, test } from "vitest";
 import {
   activeItemParamFor,
   deriveSelectedTriggerKind,
+  isNewAgentTaskDisabled,
   parseActiveItemParam,
   retryUnlessClientError,
 } from "../components/NewAgentLibraryView/helpers";
+
+describe("new agent task availability", () => {
+  test("stays disabled while the sidebar layout can still change", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: true,
+        isTemplateLoading: false,
+        activeTab: "runs",
+      }),
+    ).toBe(true);
+  });
+
+  test("stays disabled while the selected template is loading", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: false,
+        isTemplateLoading: true,
+        activeTab: "templates",
+      }),
+    ).toBe(true);
+  });
+
+  test("is enabled after the active layout data is stable", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: false,
+        isTemplateLoading: false,
+        activeTab: "runs",
+      }),
+    ).toBe(false);
+  });
+
+  test("is enabled when sidebar data failed instead of loading forever", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: true,
+        sidebarHasError: true,
+        isTemplateLoading: false,
+        activeTab: "runs",
+      }),
+    ).toBe(false);
+  });
+
+  test("still waits for the selected template when sidebar data failed", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: true,
+        sidebarHasError: true,
+        isTemplateLoading: true,
+        activeTab: "templates",
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("activeItem param prefix contract", () => {
   test("round-trips both kinds and passes through bare IDs and null", () => {
