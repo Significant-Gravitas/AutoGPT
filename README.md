@@ -32,6 +32,9 @@
   <a href="https://docs.agpt.co">
     <img src="https://img.shields.io/badge/Docs-read-0A7AFF?logo=gitbook&logoColor=white" alt="Read the docs" />
   </a>
+  <a href="https://lintspace.com/verdict/595c6da1-06f3-41d3-834d-4e6e4318cf02">
+    <img src="https://lintspace.com/api/badge/595c6da1-06f3-41d3-834d-4e6e4318cf02.svg" alt="Lintspace Score" />
+  </a>
 </p>
 
 ---
