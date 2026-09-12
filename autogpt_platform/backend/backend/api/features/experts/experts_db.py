@@ -37,6 +37,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertBundledSkill,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -44,6 +45,7 @@ from backend.api.features.experts.models import (
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -58,6 +60,7 @@ from backend.api.features.experts.workflow_chain import (
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.store import skill_db
 from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
@@ -91,6 +94,7 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -295,6 +299,46 @@ def _template_where(
             {"bio": {"contains": needle, "mode": "insensitive"}},
         ]
     return where
+
+
+async def with_bundled_skills(
+    templates: list[Expert], user_id: str | None
+) -> list[ExpertTemplate]:
+    """Attach to each template the live Skills Hub listings it bundles —
+    exactly what ``hire_expert`` installs."""
+    bundled = await _live_bundled_skills(user_id, [t.id for t in templates])
+    return [
+        ExpertTemplate(
+            **template.model_dump(), bundled_skills=bundled.get(template.id, [])
+        )
+        for template in templates
+    ]
+
+
+async def _live_bundled_skills(
+    user_id: str | None, template_ids: list[str]
+) -> dict[str, list[ExpertBundledSkill]]:
+    """Per template id, the live Hub listings it bundles, in roster order."""
+    # The Hub routes' key, so nothing is linked or installed that would 404.
+    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
+        return {}
+    rows = await prisma.models.ExpertSkillListing.prisma().find_many(
+        where={"expertId": {"in": template_ids}}, order={"position": "asc"}
+    )
+    live = await skill_db.get_live_skills(sorted({r.skillListingId for r in rows}))
+    return {
+        template_id: [
+            ExpertBundledSkill(
+                id=row.skillListingId,
+                slug=skill.slug,
+                name=skill.name,
+                description=skill.description,
+            )
+            for row in rows
+            if row.expertId == template_id and (skill := live.get(row.skillListingId))
+        ]
+        for template_id in template_ids
+    }
 
 
 # Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
@@ -814,7 +858,9 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "role": template.role,
         "tagline": template.tagline,
         "bio": template.bio,
-        "skills": template.skills or [],
+        # The bundled installs below record each name, so the row lists only
+        # skills the hire actually owns.
+        "skills": [],
         "categories": template.categories or [],
         # No dayOne: it is the template's pre-hire promise, not the hire's.
         "identity": template.identity,
@@ -841,6 +887,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
+    await _install_bundled_skills(user_id, expert.id, template.id)
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1596,6 +1643,26 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _install_bundled_skills(
+    user_id: str, expert_id: str, template_id: str
+) -> None:
+    """Install the Hub skills the template bundles into the new expert's folder.
+
+    Each install records its name on the row; a failed one is logged and
+    leaves no name, so the hire never lists a skill it does not have.
+    """
+    bundled = await _live_bundled_skills(user_id, [template_id])
+    for skill in bundled.get(template_id, []):
+        try:
+            await skill_db.install_marketplace_skill(
+                user_id, skill.slug, expert_id=expert_id
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+            )
 
 
 async def install_workflow(

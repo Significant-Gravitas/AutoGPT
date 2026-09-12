@@ -25,6 +25,7 @@ from backend.api.features.experts.models import (
     ExpertSetupItem,
     ExpertSkillsUpdate,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -131,12 +132,16 @@ class CreateRaisedExpertRequest(BaseModel):
 async def list_expert_templates(
     search_query: str | None = fastapi.Query(default=None),
     category: str | None = fastapi.Query(default=None),
-) -> list[Expert]:
+    user_id: str | None = Security(autogpt_auth_lib.get_optional_user_id),
+) -> list[ExpertTemplate]:
     """Roster templates, narrowed by a search term and/or a marketplace category.
 
     Unpaginated: the roster is small, and every caller reads the whole list.
     """
-    return await experts_db.list_templates(search_query=search_query, category=category)
+    templates = await experts_db.list_templates(
+        search_query=search_query, category=category
+    )
+    return await experts_db.with_bundled_skills(templates, user_id)
 
 
 @router.post(

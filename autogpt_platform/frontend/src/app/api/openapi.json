@@ -6539,6 +6539,7 @@
         "summary": "List Expert Templates",
         "description": "Roster templates, narrowed by a search term and/or a marketplace category.\n\nUnpaginated: the roster is small, and every caller reads the whole list.",
         "operationId": "list_expert_templates",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "search_query",
@@ -6566,7 +6567,7 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "items": { "$ref": "#/components/schemas/ExpertTemplate" },
                   "title": "Response List Expert Templates"
                 }
               }
@@ -20822,6 +20823,18 @@
         "title": "ExpertBudgetUpdate",
         "description": "Set an expert's weekly spend cap in credits (100 = $1).\n\n``None`` falls back to the platform default; ``0`` disables the cap."
       },
+      "ExpertBundledSkill": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["id", "slug", "name", "description"],
+        "title": "ExpertBundledSkill",
+        "description": "A live Skills Hub listing a roster template comes with."
+      },
       "ExpertCredentialRef": {
         "properties": {
           "credential_id": { "type": "string", "title": "Credential Id" },
@@ -21185,6 +21198,139 @@
         "required": ["message"],
         "title": "ExpertSoulUpdatedResponse",
         "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
+      },
+      "ExpertTemplate": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": { "type": "string", "title": "Color", "default": "" },
+          "role": { "type": "string", "title": "Role" },
+          "tagline": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tagline"
+          },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
+          },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
+            "default": []
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
+          "is_template": { "type": "boolean", "title": "Is Template" },
+          "source_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Template Id"
+          },
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
+            "type": "array",
+            "title": "Workflows"
+          },
+          "credential_count": {
+            "type": "integer",
+            "title": "Credential Count",
+            "default": 0
+          },
+          "credential_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Credential Providers",
+            "default": []
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
+          },
+          "weekly_budget": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Weekly Budget"
+          },
+          "weekly_spend": {
+            "type": "integer",
+            "title": "Weekly Spend",
+            "default": 0
+          },
+          "schedules_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Schedules Paused At"
+          },
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
+          },
+          "bundled_skills": {
+            "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
+            "type": "array",
+            "title": "Bundled Skills"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "avatar_url",
+          "role",
+          "tagline",
+          "bio",
+          "skills",
+          "identity",
+          "voice_preferences",
+          "boundaries",
+          "protected_soul_rules",
+          "is_template",
+          "source_template_id",
+          "is_archived",
+          "workflows"
+        ],
+        "title": "ExpertTemplate",
+        "description": "A roster template as the marketplace shows it."
       },
       "ExpertWorkflowChainItem": {
         "properties": {
