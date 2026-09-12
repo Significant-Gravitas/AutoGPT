@@ -9,6 +9,7 @@ import starlette.datastructures
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
+from . import local_media
 from . import media as store_media
 
 
@@ -77,6 +78,28 @@ async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     mock_storage_client.upload.assert_not_called()
 
 
+async def test_upload_media_missing_content_type_still_validates_signature(
+    mock_settings,
+    mock_storage_client,
+):
+    upload = fastapi.UploadFile(filename="image.jpeg", file=io.BytesIO(b"not an image"))
+    with pytest.raises(store_exceptions.InvalidFileTypeError):
+        await store_media.upload_media("test-user", upload)
+    mock_storage_client.upload.assert_not_called()
+
+
+async def test_upload_media_missing_content_type_accepts_valid_jpeg(
+    mock_settings,
+    mock_storage_client,
+):
+    upload = fastapi.UploadFile(
+        filename="image.jpeg", file=io.BytesIO(b"\xff\xd8\xffimage")
+    )
+    result = await store_media.upload_media("test-user", upload)
+    assert result.startswith("https://storage.googleapis.com/test-bucket/")
+    assert mock_storage_client.upload.call_args.kwargs["content_type"] == "image/jpeg"
+
+
 @pytest.fixture
 def local_storage_settings(monkeypatch, tmp_path):
     settings = Settings()
@@ -85,6 +108,9 @@ def local_storage_settings(monkeypatch, tmp_path):
     settings.config.workspace_storage_dir = str(tmp_path / "workspaces")
     settings.config.platform_base_url = ""
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.local_media.Settings", lambda: settings
+    )
     monkeypatch.setattr(
         "backend.api.features.store.media.scan_content_safe",
         unittest.mock.AsyncMock(),
@@ -111,8 +137,10 @@ async def test_upload_media_missing_credentials(local_storage_settings, tmp_path
     assert files[0].read_bytes() == test_data
 
 
-async def test_check_media_exists_without_gcs(local_storage_settings, tmp_path):
-    filename = "agent_graph-1.jpeg"
+@pytest.mark.parametrize("filename", ["agent_graph-1.jpeg", "agent_graph-1.jpg"])
+async def test_check_media_exists_without_gcs(
+    local_storage_settings, tmp_path, filename
+):
     missing = await store_media.check_media_exists("test-user", filename)
     assert missing is None
 
@@ -124,9 +152,10 @@ async def test_check_media_exists_without_gcs(local_storage_settings, tmp_path):
     uploaded = await store_media.upload_media(
         "test-user", test_file, use_file_name=True
     )
-    assert uploaded == f"/api/store/media/test-user/images/{filename}"
+    stored_filename = "agent_graph-1.jpeg"
+    assert uploaded == f"/api/store/media/test-user/images/{stored_filename}"
     assert (
-        tmp_path / "store-media" / "users" / "test-user" / "images" / filename
+        tmp_path / "store-media" / "users" / "test-user" / "images" / stored_filename
     ).is_file()
 
     found = await store_media.check_media_exists("test-user", filename)
@@ -137,9 +166,9 @@ async def test_check_media_exists_without_gcs(local_storage_settings, tmp_path):
 
 def test_get_local_media_path_rejects_traversal(local_storage_settings):
     with pytest.raises(ValueError):
-        store_media.get_local_media_path("test-user", "images", "../secret.jpeg")
+        local_media.get_media_path("test-user", "images", "../secret.jpeg")
     with pytest.raises(ValueError):
-        store_media.get_local_media_path("test-user", "other", "file.jpeg")
+        local_media.get_media_path("test-user", "other", "file.jpeg")
 
 
 async def test_upload_media_video_type(mock_settings, mock_storage_client):

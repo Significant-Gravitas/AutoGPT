@@ -541,6 +541,7 @@ The named volume mounted at `/data` contains all durable appliance state:
 | `/data/valkey` | Three-node Valkey state |
 | `/data/falkordb` | Graphiti memory data |
 | `/data/workspaces` | User workspaces |
+| `/data/store-media` | Marketplace images and videos when GCS is not configured |
 | `/data/home` and `/data/frontend-home` | Application home directories |
 | `/data/cache` | Regenerable backend and Next.js caches (excluded from backups) |
 
@@ -923,6 +924,7 @@ same `RESTORE_IMAGE`:
       test -d /data/valkey/17002
       test -d /data/falkordb
       test -d /data/workspaces
+      test -d /data/store-media
       test -d /data/home
       test -d /data/frontend-home
       quote="$(printf "\047")"

@@ -40,7 +40,7 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/workspaces /data/home /data/frontend-home \
+    /data/workspaces /data/store-media /data/home /data/frontend-home \
     /data/cache /data/cache/backend /data/cache/next \
     "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
@@ -54,6 +54,7 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
+  install -d -m 0750 -o autogpt -g autogpt /data/store-media
   install -d -m 0750 -o autogpt -g autogpt /data/home
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
   install -d -m 0711 -o root -g root /data/cache

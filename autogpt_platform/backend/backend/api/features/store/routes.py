@@ -19,6 +19,7 @@ from . import cache as store_cache
 from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
+from . import local_media
 from . import media as store_media
 from . import model as store_model
 
@@ -521,23 +522,34 @@ async def edit_submission(
 @router.get(
     "/media/{user_id}/{media_type}/{filename}",
     summary="Get stored marketplace media",
+    response_class=fastapi.responses.FileResponse,
+    responses={
+        200: {
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            }
+        }
+    },
     tags=["store", "public"],
 )
-async def get_store_media(
+def get_store_media(
     user_id: str,
     media_type: str,
     filename: str,
 ) -> fastapi.responses.FileResponse:
-    content_type = store_media.content_type_for_filename(filename)
-    if content_type is None or media_type not in store_media.MEDIA_TYPES:
+    content_type = local_media.content_type_for_filename(filename)
+    if content_type is None or media_type not in local_media.MEDIA_TYPES:
         raise NotFoundError("Media not found")
     try:
-        path = store_media.get_local_media_path(user_id, media_type, filename)
+        path = local_media.get_media_path(user_id, media_type, filename)
     except ValueError:
         raise NotFoundError("Media not found")
     if not path.is_file():
         raise NotFoundError("Media not found")
-    return fastapi.responses.FileResponse(path, media_type=content_type)
+    return fastapi.responses.FileResponse(
+        path, media_type=content_type, headers={"X-Content-Type-Options": "nosniff"}
+    )
 
 
 @router.post(
