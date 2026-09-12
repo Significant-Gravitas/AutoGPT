@@ -9,6 +9,7 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
+import { deriveFieldTitle } from "./helpers";
 
 interface Props {
   output: BlockDetailsResponse;
@@ -35,7 +36,9 @@ function SchemaFieldList({
         {entries.map(([name, schema]) => {
           const field = schema as Record<string, unknown> | undefined;
           const fieldTitle =
-            typeof field?.title === "string" ? field.title : name;
+            typeof field?.title === "string"
+              ? field.title
+              : deriveFieldTitle(name);
           const fieldType =
             typeof field?.type === "string" ? field.type : "unknown";
           const description =
