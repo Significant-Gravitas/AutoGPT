@@ -446,6 +446,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         artifactPanel: {
           ...state.artifactPanel,
           computer: ref,
+          // Selecting the face is not enough if the panel itself is closed.
+          isOpen: showNow ? true : state.artifactPanel.isOpen,
           isComputerOpen: showNow || isComputerOpen,
           mode: showNow ? "computer" : state.artifactPanel.mode,
         },

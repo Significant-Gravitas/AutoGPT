@@ -29,6 +29,8 @@ describe("copilot store: computer face", () => {
     expect(panel.computer?.sandbox_id).toBe("sbx-1");
     expect(panel.mode).toBe("computer");
     expect(panel.isComputerOpen).toBe(true);
+    // A closed panel would hide the desktop that was just started.
+    expect(panel.isOpen).toBe(true);
   });
 
   it("does not steal the panel from an open artifact, but remembers the desktop", () => {

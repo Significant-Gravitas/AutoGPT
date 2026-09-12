@@ -4359,23 +4359,22 @@ def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
 ) -> None:
     """The archive killed the expert's boxes; a Start from an old chat must not
     create a new one that nothing will ever kill."""
-    from backend.util.exceptions import NotAuthorizedError
-
     mocker.patch(
         "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=_session_like("exp-archived"),
     )
-    mocker.patch(
-        "backend.api.features.chat.routes._validate_session_expert_writable_by_user",
+    owns_active = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
-        side_effect=NotAuthorizedError("archived"),
+        return_value=False,
     )
     open_desktop = mocker.patch(
         "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
     )
-    # The test app has no exception handlers, so the gate's error surfaces
-    # here; the real app maps it to an HTTP error before anything is opened.
-    with pytest.raises(NotAuthorizedError):
-        client.post("/sessions/sess-1/desktop")
+    response = client.post("/sessions/sess-1/desktop")
+    # Same non-enumerable 404 a turn gets for a fired or foreign expert.
+    assert response.status_code == 404
+    owns_active.assert_awaited_once()
+    assert owns_active.await_args.args[1] == "exp-archived"
     open_desktop.assert_not_awaited()

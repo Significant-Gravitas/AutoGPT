@@ -67,7 +67,8 @@ import asyncio
 import contextlib
 import logging
 import math
-from typing import Any, Awaitable, Callable, Literal, Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, Literal
 
 from e2b import (
     AsyncSandbox,

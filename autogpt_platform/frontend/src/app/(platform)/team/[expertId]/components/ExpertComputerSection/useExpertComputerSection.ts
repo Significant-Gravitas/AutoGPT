@@ -17,7 +17,13 @@ interface Args {
 export function useExpertComputerSection({ expertId, enabled }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [stream, setStream] = useState<DesktopStream | null>(null);
+  // Kept with the expert it was opened for: the section can be re-rendered
+  // for another expert, whose page must not show this one's desktop.
+  const [opened, setOpened] = useState<{
+    expertId: string;
+    stream: DesktopStream;
+  } | null>(null);
+  const stream = opened?.expertId === expertId ? opened.stream : null;
 
   const computerQuery = useGetV2GetExpertComputer(expertId, {
     query: {
@@ -30,9 +36,9 @@ export function useExpertComputerSection({ expertId, enabled }: Args) {
   const { mutate: startDesktop, isPending: isOpening } =
     usePostV2StartExpertDesktop({
       mutation: {
-        onSuccess: (res) => {
+        onSuccess: (res, variables) => {
           const next = okData(res);
-          if (next) setStream(next);
+          if (next) setOpened({ expertId: variables.expertId, stream: next });
           queryClient.invalidateQueries({
             queryKey: getGetV2GetExpertComputerQueryKey(expertId),
           });

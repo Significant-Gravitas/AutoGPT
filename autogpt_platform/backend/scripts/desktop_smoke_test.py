@@ -12,6 +12,7 @@ import asyncio
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -50,9 +51,13 @@ async def main() -> None:
         t = time.monotonic()
         stream = await session.start_stream()
         timed("stream_start", t, timings)
-        print(f"  stream_url={stream.url}")
+        # The URL carries the VNC password; log where it points, not the secret.
+        print(
+            f"  stream host={urlsplit(stream.url).netloc} sandbox={stream.sandbox_id}"
+        )
         async with httpx.AsyncClient() as client:
             resp = await client.get(stream.url, timeout=15)
+        resp.raise_for_status()
         print(f"  stream HTTP status: {resp.status_code}")
 
         # Input actions (click / screenshot) live with the desktop blocks in
@@ -71,6 +76,9 @@ async def main() -> None:
         resumed = await DesktopSession.connect(session.sandbox_id, api_key)
         timed("resume", t, timings)
         content = await resumed.sandbox.files.read(TEST_FILE)
+        assert (
+            content == "persistence check"
+        ), f"file changed across resume: {content!r}"
         print(f"  file after resume: {content!r}")
         session = resumed
 
@@ -85,6 +93,7 @@ async def main() -> None:
             )
             try:
                 cross = await other.sandbox.files.read(TEST_FILE)
+                assert cross == "persistence check", f"volume not shared: {cross!r}"
                 print(f"  volume file in second sandbox: {cross!r}")
             finally:
                 await other.kill()

@@ -75,6 +75,41 @@ describe("ExpertComputerSection", () => {
     );
   });
 
+  it("does not show one expert's desktop under another expert", async () => {
+    server.use(
+      getGetV2GetExpertComputerMockHandler(computer),
+      getPostV2StartExpertDesktopMockHandler({
+        kind: "desktop_stream",
+        url: "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+        provider: "e2b",
+        sandbox_id: "sbx-desktop",
+        requires_auth: false,
+      }),
+    );
+
+    const { rerender } = render(
+      <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Start desktop" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTitle("Interactive desktop (sbx-desktop)"),
+      ).toBeDefined(),
+    );
+
+    rerender(
+      <ExpertComputerSection expertId="expert-2" expertName="Ada" enabled />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByTitle("Interactive desktop (sbx-desktop)"),
+      ).toBeNull(),
+    );
+  });
+
   it("explains when sandboxes are not configured", async () => {
     server.use(
       getGetV2GetExpertComputerMockHandler({

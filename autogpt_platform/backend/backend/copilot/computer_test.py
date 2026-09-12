@@ -193,6 +193,53 @@ class TestOpenDesktop:
         redis.eval.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_a_gone_desktop_is_replaced(self):
+        from e2b.exceptions import NotFoundException
+
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis("sb-gone")
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            cfg.e2b_desktop_template = "desktop"
+            desktop_cls.connect = AsyncMock(side_effect=NotFoundException("gone"))
+            desktop_cls.create = AsyncMock(
+                return_value=(_desktop("sb-new"), PersistenceInfo())
+            )
+            stream, created, _ = await open_desktop(owner, {}, "k")
+        assert created and stream.sandbox_id == "sb-new"
+        redis.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_transient_reconnect_failure_is_retried_then_raised(self):
+        """A network blip must not fork an expert's desktop: one retry, then
+        the error surfaces and the cached id is kept for next time."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis("sb-live")
+        desktop = _desktop("sb-live")
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.asyncio.sleep", AsyncMock()),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            desktop_cls.connect = AsyncMock(side_effect=[RuntimeError("502"), desktop])
+            desktop_cls.create = AsyncMock()
+            stream, created, _ = await open_desktop(owner, {}, "k")
+            assert not created and stream.sandbox_id == "sb-live"
+            assert desktop_cls.connect.await_count == 2
+
+            desktop_cls.connect = AsyncMock(side_effect=RuntimeError("502"))
+            with pytest.raises(RuntimeError, match="502"):
+                await open_desktop(owner, {}, "k")
+        desktop_cls.create.assert_not_awaited()
+        redis.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_a_failure_after_reconnect_is_an_error_not_a_new_box(self):
         """Only a failed connect means the box is gone.  A display or stream
         failure on a live box must surface, not abandon the box and bill for

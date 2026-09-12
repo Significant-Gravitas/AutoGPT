@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any, Literal, Mapping, Optional
 
 from e2b import SandboxState
+from e2b.exceptions import NotFoundException
 from pydantic import BaseModel
 
 from backend.blocks.desktop._api import DesktopSession, DesktopStream
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 _DESKTOP_RESOLUTION = (1280, 720)
 _KILL_TIMEOUT_SECONDS = 10
+_RECONNECT_RETRY_DELAY_SECONDS = 1.0
 
 # Opening a desktop can be volume resolution, two create attempts, the
 # display coming up and the home setup: about four minutes at the very worst.
@@ -233,15 +235,33 @@ async def _open_desktop_locked(
 async def _reconnect_desktop(
     sandbox_id: str, api_key: str, redis: Any, key: str
 ) -> Optional[DesktopSession]:
-    """Reattach to a cached or recovered desktop, or ``None`` if it is gone."""
-    try:
-        return await DesktopSession.connect(
-            sandbox_id, api_key, timeout_seconds=chat_config.e2b_desktop_timeout
-        )
-    except Exception as exc:
-        logger.warning("[E2B] Desktop %.12s reconnect failed: %s", sandbox_id, exc)
-        await redis.delete(key)
-        return None
+    """Reattach to a cached or recovered desktop, or ``None`` if it is gone.
+
+    Only a box E2B no longer has is given up on (and dropped from the cache
+    so the owner gets a new one).  A transient failure is retried once and
+    then raised: forking an expert's desktop over a network blip is worse
+    than asking the user to try again.
+    """
+    for attempt in (1, 2):
+        try:
+            return await DesktopSession.connect(
+                sandbox_id, api_key, timeout_seconds=chat_config.e2b_desktop_timeout
+            )
+        except NotFoundException:
+            logger.warning("[E2B] Desktop %.12s is gone; replacing it", sandbox_id)
+            await redis.delete(key)
+            return None
+        except Exception as exc:
+            if attempt == 1:
+                logger.warning(
+                    "[E2B] Desktop %.12s reconnect failed (%s); retrying once",
+                    sandbox_id,
+                    exc,
+                )
+                await asyncio.sleep(_RECONNECT_RETRY_DELAY_SECONDS)
+                continue
+            raise
+    raise AssertionError("unreachable")
 
 
 def mounts_for(user_id: Optional[str], expert_id: Optional[str]) -> dict[str, str]:

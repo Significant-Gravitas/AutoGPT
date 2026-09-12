@@ -176,6 +176,25 @@ logger = logging.getLogger(__name__)
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
+
+def _pause_uncounted_box(
+    sandbox: Any, session_id: str, expert_id: str | None
+) -> asyncio.Task[Any] | None:
+    """Pause a box opened for a turn that ended before its turn was counted.
+
+    A session's box has nobody else on it, so it is paused straight away
+    (fire-and-forget, like the turn-end pause).  An expert's box may be
+    carrying another turn and this one never counted itself, so it is left
+    for the lifecycle timeout rather than paused under someone else.
+    """
+    if expert_id:
+        return None
+    task = asyncio.create_task(pause_sandbox_direct(sandbox, session_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
 # Hint appended on the last tool round so the model wraps up with a summary
 # instead of issuing another tool call that gets cut off cold. The shared
 # ``tool_call_loop`` drops ``tools`` on the last iteration (see util/tool_call_loop.py),
@@ -2216,7 +2235,14 @@ async def stream_chat_completion_baseline(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
+    try:
+        yield StreamStart(messageId=message_id, sessionId=session_id)
+    except BaseException:
+        # Closed or cancelled while suspended on the first yield: the finally
+        # that pauses the box sits further down and would never run.
+        if e2b_sandbox is not None:
+            _pause_uncounted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
 
     if e2b_sandbox is not None:
         # From here the finally below always runs, so the turn can be counted.

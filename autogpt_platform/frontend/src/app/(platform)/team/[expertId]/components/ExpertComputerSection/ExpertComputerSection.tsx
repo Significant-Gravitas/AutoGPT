@@ -25,17 +25,14 @@ interface Props {
   enabled: boolean;
 }
 
-function SandboxCard({
-  title,
-  icon,
-  summary,
-  idleHint,
-}: {
+interface SandboxCardProps {
   title: string;
   icon: IconSvgElement;
   summary: SandboxSummary | null | undefined;
   idleHint: string;
-}) {
+}
+
+function SandboxCard({ title, icon, summary, idleHint }: SandboxCardProps) {
   const running = summary?.state === "running";
   const resources = formatResources(summary);
   return (
