@@ -2,7 +2,7 @@
 
 graphiti-core requires sequential ``add_episode()`` calls within the same
 group_id. This module provides one asyncio.Queue per resolved memory group so
-AutoPilot and each hired expert serialize their own writes independently.
+Otto and each hired expert serialize their own writes independently.
 """
 
 import asyncio
@@ -56,7 +56,7 @@ class MemoryScopeViolationError(ValueError):
     """An ingestion payload targeted a different memory group than its worker.
 
     This is the worker's only isolation check — every payload that would
-    cross an AutoPilot/expert memory boundary funnels through it — so it is
+    cross an Otto/expert memory boundary funnels through it — so it is
     raised (and logged) distinctly from transient ingestion failures.
     """
 
@@ -250,7 +250,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
     Exits after ``_WORKER_IDLE_TIMEOUT`` seconds of inactivity so that
     idle workers don't leak memory indefinitely. ``group_id`` is resolved by
     the enqueuer and is never re-derived here; this is what prevents an expert
-    write from falling back into the owning user's AutoPilot graph.
+    write from falling back into the owning user's Otto graph.
     """
     # Snapshot the loop-local state at task start so cleanup always runs
     # against the same state dict the worker was registered in, even if the
