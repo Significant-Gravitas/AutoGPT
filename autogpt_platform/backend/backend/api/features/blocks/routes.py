@@ -18,7 +18,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from starlette.status import HTTP_402_PAYMENT_REQUIRED
 
-from backend.api.model import UploadFileResponse
+from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.block import BlockInput, CompletedBlockOutput
@@ -181,7 +181,7 @@ async def upload_file(
     ctx: Annotated[RequestContext, Security(get_request_context)],
     file: UploadFile = File(...),
     expiration_hours: int = 24,
-) -> UploadFileResponse:
+) -> CloudStorageUploadResponse:
     """
     Upload a file to cloud storage and return a storage key that can be used
     with FileStoreBlock and AgentFileInputBlock.
@@ -230,7 +230,7 @@ async def upload_file(
         base64_content = base64.b64encode(content).decode("utf-8")
         data_uri = f"data:{content_type};base64,{base64_content}"
 
-        return UploadFileResponse(
+        return CloudStorageUploadResponse(
             file_uri=data_uri,
             file_name=file_name,
             size=content_size,
@@ -246,7 +246,7 @@ async def upload_file(
         user_id=user_id,
     )
 
-    return UploadFileResponse(
+    return CloudStorageUploadResponse(
         file_uri=storage_path,
         file_name=file_name,
         size=content_size,
