@@ -17,7 +17,7 @@ This means:
 
 - You do **not** need to manually register your block anywhere — just create the file and your `Block` subclass will be picked up automatically.
 - Any **module-level side effects** (e.g., global registrations, print statements) in your block files will execute on import. Keep block packages clean and avoid side-effect-heavy code at module scope.
-- If you're adding a new integration package (e.g., `blocks/my_provider/`), you only need the block files and an `_auth.py` for credentials — no extra registration or config files are required for simple API key integrations.
+- Block auto-discovery does not replace provider setup. For a new API-key integration, follow the [provider auth setup](#api-key-only-provider-auth-recommended-pattern) below: add the provider name, credentials, display metadata, and [integration icon](#integration-icon-required). Frontend provider data is loaded dynamically; no manual frontend provider registration is needed.
 
 ## Creating and Testing a New Block
 
@@ -356,8 +356,8 @@ response = requests.post(
 )
 ```
 
-The `ProviderName` enum is the single source of truth for which providers exist in our system.
-Naturally, to add an authenticated block for a new provider, you'll have to add it here too.
+The backend discovers provider names from the `ProviderName` enum and the SDK's `AutoRegistry`.
+The `_auth.py` pattern below uses a `ProviderName` member, so add the new provider to that enum. SDK integrations can instead register provider names through `ProviderBuilder`; see the [Block SDK Guide](block-sdk-guide.md).
 
 <details>
 <summary><code>ProviderName</code> definition</summary>
@@ -370,11 +370,13 @@ Naturally, to add an authenticated block for a new provider, you'll have to add 
 
 #### API-Key-Only Provider Auth (Recommended Pattern)
 
-For integrations that only use API key authentication (no OAuth), you do **not** need `ProviderBuilder` or `_config.py`. The minimal setup is:
+For integrations that only use API key authentication (no OAuth), keep credential definitions in `_auth.py` and register display metadata separately. The setup is:
 
 1. **Add to `ProviderName` enum** in `backend/integrations/providers.py`
 2. **Create `_auth.py`** in your block package with credentials type, field factory, and test credentials
 3. **Create the block** using the credentials field from `_auth.py`
+4. **Create `_config.py`** with the provider description and supported auth types for the settings UI
+5. **Add the integration icon** as described [below](#integration-icon-required)
 
 Here's the complete `_auth.py` pattern (using ZeroBounce as a reference):
 
@@ -440,8 +442,21 @@ class MyBlock(Block):
         yield "result", ...
 ```
 
-!!! note
-    **`ProviderBuilder` and `_config.py`** are only needed for OAuth providers or advanced use cases (webhooks, cost tracking). For simple API key integrations, the `_auth.py` pattern above is all you need.
+Register the provider metadata in `_config.py`, following `backend/blocks/zerobounce/_config.py`:
+
+```python title="backend/blocks/my_provider/_config.py"
+from backend.integrations.providers import ProviderName
+from backend.sdk import ProviderBuilder
+
+my_provider = (
+    ProviderBuilder(ProviderName.MY_PROVIDER.value)
+    .with_description("A short description of the integration")
+    .with_supported_auth_types("api_key")
+    .build()
+)
+```
+
+This metadata tells the settings UI which connection methods to offer. It does not replace the credentials declared in `_auth.py`. The block loader imports `_config.py` automatically, and `.build()` registers the provider. OAuth, webhooks, and cost tracking use additional `ProviderBuilder` methods described in the [Block SDK Guide](block-sdk-guide.md).
 
 #### Multiple credentials inputs
 
@@ -495,7 +510,7 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 When adding a new integration provider, you **must** add a PNG icon at:
 
-```
+```text
 autogpt_platform/frontend/public/integrations/{provider_name}.png
 ```
 
@@ -505,26 +520,11 @@ Use the same `provider_name` that matches your `ProviderName` enum value (lowerc
 
 ##### Frontend Provider Registration
 
-You will need to add the provider (api or oauth) to the `CredentialsInput` component in [`/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx`](<https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx>).
+No manual frontend provider registration is required. The credentials provider context fetches provider names from the backend, and the integrations UI uses the description and `supported_auth_types` returned by `GET /integrations/providers`. Set those fields in the backend provider configuration as shown above.
 
-```ts title="frontend/src/components/integrations/credentials-input.tsx"
---8 <
-  --"autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx:ProviderIconsEmbed";
-```
+Block credential inputs derive their accepted credential types from the block's input schema. `CredentialsProviderName` is a string type; `CredentialsType` describes authentication methods, not provider names, so neither needs a new frontend enum entry for a provider.
 
-You will also need to add the provider to the credentials provider list in [`frontend/src/components/integrations/helper.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/helper.ts).
-
-```ts title="frontend/src/components/integrations/helper.ts"
---8 <
-  --"autogpt_platform/frontend/src/components/integrations/helper.ts:CredentialsProviderNames";
-```
-
-Finally you will need to add the provider to the `CredentialsType` enum in [`frontend/src/lib/autogpt-server-api/types.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts).
-
-```ts title="frontend/src/lib/autogpt-server-api/types.ts"
---8 <
-  --"autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts:BlockIOCredentialsSubSchema";
-```
+The credentials list has an optional `providerIcons` map in `frontend/src/components/contextual/CredentialsInput/helpers.ts`; unlisted providers use a fallback icon. This is separate from the PNG asset required by the block menu.
 
 #### Example: GitHub integration
 
