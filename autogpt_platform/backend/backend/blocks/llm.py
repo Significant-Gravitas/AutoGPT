@@ -41,7 +41,7 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util import json
 
 # ``ToolCall`` and ``ToolContentBlock`` live in the shared
@@ -347,7 +347,7 @@ async def _llm_call(
     context_window = llm_model.context_window
     if credentials is None and provider != ProviderName.OLLAMA:
         raise ValueError(
-            f"Credentials are required for {provider.value}/{llm_model.value}."
+            f"Credentials are required for {provider_key(provider)}/{llm_model.value}."
         )
     api_key = credentials.api_key.get_secret_value() if credentials else ""
 
