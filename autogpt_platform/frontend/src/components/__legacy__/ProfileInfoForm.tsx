@@ -10,6 +10,7 @@ import { postV2UpdateUserProfile } from "@/app/api/__generated__/endpoints/store
 import { resolveResponse } from "@/app/api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import {
   isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
@@ -89,6 +90,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
             {profileData.avatar_url ? (
               <Image
                 src={profileData.avatar_url}
+                unoptimized={isLocalStoreMediaUrl(profileData.avatar_url)}
                 alt="Profile"
                 fill
                 className="rounded-full"
