@@ -13,17 +13,27 @@ export const PROTECTED_PAGES = [
   "/library",
   "/settings",
   "/team",
+  "/avatar",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
 
+// A prefix only counts at a path boundary, so "/avatar" protects the avatar
+// maker without also claiming the public "/avatars/<config>.svg" images.
+// Callers pass a full href here as well as a bare pathname, so the query
+// string and hash are trimmed off before the prefix is compared.
+function matchesPrefix(pathname: string, prefix: string): boolean {
+  const path = pathname.split(/[?#]/)[0];
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
 // Page protection utilities
 export function isProtectedPage(pathname: string): boolean {
-  return PROTECTED_PAGES.some((page) => pathname.startsWith(page));
+  return PROTECTED_PAGES.some((page) => matchesPrefix(pathname, page));
 }
 
 export function isAdminPage(pathname: string): boolean {
-  return ADMIN_PAGES.some((page) => pathname.startsWith(page));
+  return ADMIN_PAGES.some((page) => matchesPrefix(pathname, page));
 }
 
 export function shouldRedirectOnLogout(pathname: string): boolean {
