@@ -1054,10 +1054,16 @@ model Expert {
   identity         String
   bio              String?
   skills           String[] @default([])
+  // Free-text `role` cannot stand in: "Ops" folds onto no canonical
+  // category, and a raised expert's role is whatever its owner typed.
+  categories       String[] @default([])
   voicePreferences String   @default("")
   boundaries       String   @default("")
 
   toolProfile Json?
+
+  // Template-only: up to three creator-written "sets up on day one" rows.
+  dayOne Json?
 
   isTemplate       Boolean  @default(false)
   sourceTemplateId String?
@@ -1134,7 +1140,7 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
-  @@index([expertId])
+  @@index([expertId, createdAt, id])
 }
 
 // Which of the owner's integration credentials an expert may use.

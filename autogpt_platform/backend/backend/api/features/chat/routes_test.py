@@ -417,7 +417,7 @@ def test_stream_chat_rejects_an_archived_expert_session(
 def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Plain Autopilot turns must not pay for the write-gate's extra query."""
+    """Plain Otto turns must not pay for the write-gate's extra query."""
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = None
 

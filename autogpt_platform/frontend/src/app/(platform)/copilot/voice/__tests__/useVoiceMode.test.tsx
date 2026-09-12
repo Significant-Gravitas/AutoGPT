@@ -296,7 +296,7 @@ describe("useVoiceMode", () => {
     // refuses them all — and 429 (over the usage cap) is exactly what the
     // spend pre-flight returns.
     vi.mocked(synthesizeSpeech).mockRejectedValue(
-      new Error("You've reached your AutoPilot usage limit"),
+      new Error("You've reached your Otto usage limit"),
     );
     const view = render({});
     await enable(view);

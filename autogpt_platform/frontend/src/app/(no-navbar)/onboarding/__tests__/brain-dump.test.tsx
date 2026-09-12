@@ -370,7 +370,7 @@ describe("onboarding brain dump — flag gating", () => {
     expect(screen.queryByText(PILLBOX_HEADING)).toBeNull();
   });
 
-  it("renders AutoPilot as the visual, waiting at rest", async () => {
+  it("renders Otto as the visual, waiting at rest", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
@@ -390,7 +390,7 @@ describe("onboarding brain dump — flag gating", () => {
 
     expect(await screen.findByText(PILLBOX_HEADING)).toBeDefined();
     expect(
-      screen.getByText("Pick the tasks you'd love to hand off to AutoPilot"),
+      screen.getByText("Pick the tasks you'd love to hand off to Otto"),
     ).toBeDefined();
     expect(screen.queryByText(DUMP_HEADLINE)).toBeNull();
     expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();

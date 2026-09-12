@@ -151,7 +151,7 @@ export default function ExpertDetailPage() {
             than floating between the label and the bar. */}
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
           {expert.tagline ? (
-            <Text variant="large" tone="muted" className="min-w-0 flex-1">
+            <Text variant="large" className="min-w-0 flex-1 text-zinc-800">
               {expert.tagline}
             </Text>
           ) : null}

@@ -33,10 +33,10 @@ async def _invalid_json_chunks() -> AsyncIterator[bytes]:
 @pytest.mark.asyncio
 async def test_stream_parser_emits_only_new_text_from_full_snapshots() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
-        iter_copilot_text_deltas,
+        iter_copilot_text_updates,
     )
 
-    deltas = [delta async for delta in iter_copilot_text_deltas(_chunks())]
+    deltas = [update.delta async for update in iter_copilot_text_updates(_chunks())]
 
     assert deltas == ["Hello", " world"]
 
@@ -44,10 +44,12 @@ async def test_stream_parser_emits_only_new_text_from_full_snapshots() -> None:
 @pytest.mark.asyncio
 async def test_stream_parser_handles_utf8_characters_split_between_chunks() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
-        iter_copilot_text_deltas,
+        iter_copilot_text_updates,
     )
 
-    deltas = [delta async for delta in iter_copilot_text_deltas(_split_utf8_chunks())]
+    deltas = [
+        update.delta async for update in iter_copilot_text_updates(_split_utf8_chunks())
+    ]
 
     assert deltas == ["Hello 👋"]
 
@@ -56,11 +58,11 @@ async def test_stream_parser_handles_utf8_characters_split_between_chunks() -> N
 async def test_stream_parser_normalizes_invalid_json() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
         Microsoft365CopilotError,
-        iter_copilot_text_deltas,
+        iter_copilot_text_updates,
     )
 
     with pytest.raises(Microsoft365CopilotError, match="invalid stream response"):
-        async for _ in iter_copilot_text_deltas(_invalid_json_chunks()):
+        async for _ in iter_copilot_text_updates(_invalid_json_chunks()):
             pass
 
 
@@ -153,20 +155,22 @@ async def _rewrite_chunks() -> AsyncIterator[bytes]:
 async def test_stream_parser_raises_on_responsible_ai_refusal() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
         Microsoft365CopilotDeclined,
-        iter_copilot_text_deltas,
+        iter_copilot_text_updates,
     )
 
     with pytest.raises(Microsoft365CopilotDeclined):
-        async for _ in iter_copilot_text_deltas(_refusal_chunks()):
+        async for _ in iter_copilot_text_updates(_refusal_chunks()):
             pass
 
 
 @pytest.mark.asyncio
-async def test_stream_parser_keeps_streaming_after_a_snapshot_rewrite() -> None:
+async def test_stream_parser_stops_preview_deltas_after_a_snapshot_rewrite() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
-        iter_copilot_text_deltas,
+        iter_copilot_text_updates,
     )
 
-    deltas = [delta async for delta in iter_copilot_text_deltas(_rewrite_chunks())]
+    deltas = [
+        update.delta async for update in iter_copilot_text_updates(_rewrite_chunks())
+    ]
 
-    assert deltas == ["Hello world", "!"]
+    assert deltas == ["Hello world", "", ""]

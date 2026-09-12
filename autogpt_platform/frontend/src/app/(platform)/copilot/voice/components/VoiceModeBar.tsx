@@ -5,7 +5,7 @@ import { VoiceTrace, type TraceSource } from "./VoiceTrace";
 
 /**
  * Each stage of the turn gets its own colour as well as its own motion:
- * green while the mic is live, the AutoGPT accent while AutoPilot works,
+ * green while the mic is live, the AutoGPT accent while Otto works,
  * near-black while it speaks. Colour is what makes the handover legible at
  * a glance — the shape alone read as one continuous animation.
  */
@@ -24,7 +24,7 @@ interface Props {
   state: VoiceState;
   /** Read by screen readers only; sighted users get the trace instead. */
   statusLabel: string;
-  /** Leaves voice mode — and while AutoPilot speaks, is the stop control. */
+  /** Leaves voice mode — and while Otto speaks, is the stop control. */
   leaveButton?: React.ReactNode;
 }
 

@@ -6,7 +6,10 @@ from pydantic import SecretStr
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.data.model import OAuth2Credentials
-from backend.integrations.microsoft_365_copilot.client import Microsoft365CopilotError
+from backend.integrations.microsoft_365_copilot.client import (
+    CopilotTextUpdate,
+    Microsoft365CopilotError,
+)
 from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
@@ -35,8 +38,8 @@ class _FakeClient:
             "message": message,
             **kwargs,
         }
-        yield "Hello"
-        yield " world"
+        yield CopilotTextUpdate(text="Hello", delta="Hello")
+        yield CopilotTextUpdate(text="Hello world", delta=" world")
 
 
 class _ExpiredConversationClient(_FakeClient):
@@ -52,7 +55,7 @@ class _ExpiredConversationClient(_FakeClient):
 
 class _MidStreamFailureClient(_FakeClient):
     async def stream_chat(self, conversation_id: str, message: str, **kwargs):
-        yield "Partial"
+        yield CopilotTextUpdate(text="Partial", delta="Partial")
         raise Microsoft365CopilotError("Copilot connection ended")
 
 
@@ -125,6 +128,11 @@ async def test_service_streams_and_persists_graph_conversation(mocker) -> None:
     assert "launch" in client.stream_kwargs["additional_context"][0]
     assert upsert.await_count == 2
     record_usage.assert_awaited_once()
+    usage = record_usage.await_args.kwargs
+    assert usage["cost_usd"] is None
+    assert usage["extra_metadata"] == {"billing_mode": "user_subscription"}
+    assert usage["provider"] == "microsoft_365_copilot"
+    assert usage["credential_id_override"] == "credential-1"
 
 
 @pytest.mark.asyncio

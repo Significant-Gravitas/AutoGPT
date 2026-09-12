@@ -182,7 +182,7 @@ describe("OnboardingPage — intro steps", () => {
     expect(screen.queryByTestId("step-role")).toBeNull();
   });
 
-  it("walks Team → Meet AutoPilot → Role, tracking each as a step", async () => {
+  it("walks Team → Meet Otto → Role, tracking each as a step", async () => {
     mockExpertTeamEnabled = true;
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-team")).toBeDefined();
@@ -201,7 +201,7 @@ describe("OnboardingPage — intro steps", () => {
     expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBe("3");
   });
 
-  it("lets Back return from Role to Meet AutoPilot", async () => {
+  it("lets Back return from Role to Meet Otto", async () => {
     mockExpertTeamEnabled = true;
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
     currentSearchParams = new URLSearchParams("step=3");
@@ -219,7 +219,7 @@ describe("OnboardingPage — intro steps", () => {
     expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
   });
 
-  it("resumes on Meet AutoPilot when that is the highest step reached", async () => {
+  it("resumes on Meet Otto when that is the highest step reached", async () => {
     mockExpertTeamEnabled = true;
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
     render(<OnboardingPage />);
@@ -252,7 +252,7 @@ describe("OnboardingPage — hire step", () => {
     mockExpertTeamEnabled = true;
     mockBrainDumpEnabled = true;
     mockFlagValue = true;
-    // Paywall 1, Team 2, Meet AutoPilot 3, Role 4, Brain dump 5, Hire 6,
+    // Paywall 1, Team 2, Meet Otto 3, Role 4, Brain dump 5, Hire 6,
     // Preparing 7.
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     currentSearchParams = new URLSearchParams("step=5");
@@ -287,7 +287,7 @@ describe("OnboardingPage — hire step", () => {
   it("has no hire step without the brain dump it reads from", async () => {
     mockExpertTeamEnabled = true;
     mockFlagValue = true;
-    // Paywall 1, Team 2, Meet AutoPilot 3, Role 4, Pain points 5, Preparing 6.
+    // Paywall 1, Team 2, Meet Otto 3, Role 4, Pain points 5, Preparing 6.
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     currentSearchParams = new URLSearchParams("step=5");
     render(<OnboardingPage />);

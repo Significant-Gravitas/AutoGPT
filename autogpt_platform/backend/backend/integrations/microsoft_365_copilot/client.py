@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import aiohttp
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +98,17 @@ async def _iter_sse_json(chunks: AsyncIterator[bytes]) -> AsyncIterator[dict[str
             yield event
 
 
-async def iter_copilot_text_deltas(
+class CopilotTextUpdate(BaseModel):
+    text: str
+    delta: str
+
+
+async def iter_copilot_text_updates(
     chunks: AsyncIterator[bytes],
-) -> AsyncIterator[str]:
+) -> AsyncIterator[CopilotTextUpdate]:
     response_message_id: str | None = None
-    emitted_text = ""
+    previous_text = ""
+    preview_frozen = False
 
     async for conversation in _iter_sse_json(chunks):
         # Responsible AI refusals arrive as ordinary 200 snapshots with the
@@ -137,23 +144,15 @@ async def iter_copilot_text_deltas(
         text = selected.get("text")
         if not isinstance(text, str):
             continue
-        if not text.startswith(emitted_text):
-            # Graph occasionally rewrites already-streamed prose (citation
-            # markers, entity tags). A streamed delta cannot un-emit text, so
-            # resync to the new snapshot and keep streaming from there
-            # instead of dropping every later delta.
-            logger.warning(
-                "Microsoft 365 Copilot rewrote streamed text; resyncing "
-                "(%d emitted, %d in snapshot)",
-                len(emitted_text),
-                len(text),
-            )
-            emitted_text = text
+        if text == previous_text:
             continue
-        delta = text[len(emitted_text) :]
-        if delta:
-            emitted_text = text
-            yield delta
+        if not text.startswith(previous_text):
+            # Append-only previews cannot replace prose. Preserve Graph's
+            # canonical snapshot for persistence and the UI's finish/refetch.
+            preview_frozen = True
+        delta = "" if preview_frozen else text[len(previous_text) :]
+        previous_text = text
+        yield CopilotTextUpdate(text=text, delta=delta)
 
 
 class Microsoft365CopilotClient:
@@ -231,7 +230,7 @@ class Microsoft365CopilotClient:
         additional_context: list[str] | None = None,
         web_enabled: bool | None = None,
         file_uris: list[str] | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[CopilotTextUpdate]:
         url = f"{self._base_url}/copilot/conversations/{conversation_id}/chatOverStream"
         request = build_chat_request(
             message,
@@ -245,10 +244,10 @@ class Microsoft365CopilotClient:
                 url, headers=self._headers, json=request
             ) as response:
                 await self._raise_for_error(response, "continue a Copilot conversation")
-                async for delta in iter_copilot_text_deltas(
+                async for update in iter_copilot_text_updates(
                     response.content.iter_any()
                 ):
-                    yield delta
+                    yield update
         except Microsoft365CopilotError:
             raise
         except (aiohttp.ClientError, asyncio.TimeoutError) as error:

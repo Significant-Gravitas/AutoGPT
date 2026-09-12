@@ -3,8 +3,17 @@
     "avatar_url": null,
     "bio": null,
     "boundaries": "Ask before external actions.",
+    "categories": [],
     "color": "",
     "credential_count": 0,
+    "credential_providers": [],
+    "day_one": [
+      {
+        "description": "Tracks mentions across X, LinkedIn, Reddit, and news.",
+        "timing": "first scan \u00b7 1 hr",
+        "title": "Social listening on your brand"
+      }
+    ],
     "id": "template-1",
     "identity": "You are Maria, a pragmatic marketing specialist.",
     "is_archived": false,
@@ -32,6 +41,7 @@
         "description": "Writes SEO-optimized blog posts",
         "graph_id": null,
         "id": "workflow-ref-1",
+        "integration_providers": [],
         "library_agent_id": null,
         "name": "SEO Blog Writer",
         "schedule_cron": null,

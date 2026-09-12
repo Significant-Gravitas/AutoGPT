@@ -628,7 +628,7 @@ class ChatConfig(BaseSettings):
         description="HTTP request timeout (seconds) for the OpenAI-compatible "
         "client when ``use_local`` is True. The OpenAI Python client defaults "
         "to 600 s — tighter than what an 8 B model running on a CPU-only host "
-        "needs for a single AutoPilot turn (system prompt ≈ 8 k tokens; the "
+        "needs for a single Otto turn (system prompt ≈ 8 k tokens; the "
         "tool-call loop multiplies that across iterations). Set to the longest "
         "single-call wait an operator is willing to tolerate before bailing. "
         "30 minutes accommodates CPU-only setups; drop it to ≤120 s if you "
@@ -670,8 +670,12 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="base",
-        description="E2B sandbox template to use for copilot sessions.",
+        default="agpt-desktop-1x2",
+        description="E2B sandbox template for copilot sessions. The default is our "
+        "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
+        "no display started), built on the team automatically the first time "
+        "it is needed; see backend.util.e2b_template. Any other value is used "
+        "as-is and must already exist on the team.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries
@@ -1034,7 +1038,7 @@ class ChatConfig(BaseSettings):
 
         Without this guard, ``CHAT_USE_LOCAL=true`` silently inherits the
         ``OPENROUTER_BASE_URL`` default from the ``base_url`` field
-        validator and AutoPilot routes local-intended traffic at
+        validator and Otto routes local-intended traffic at
         OpenRouter — usually with the operator's `OPENAI_API_KEY` as the
         bearer (since the api_key fallback chain ran in OpenRouter's
         order before the model_validator phase). The user gets an opaque

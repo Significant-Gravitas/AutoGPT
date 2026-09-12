@@ -164,6 +164,7 @@ async def stream_chat_completion_microsoft_365(
     message_id = str(uuid4())
     text_id = f"{message_id}-text"
     response_text = ""
+    received_response = False
     timezone = await _get_timezone(user_id)
     stream_started = False
 
@@ -189,7 +190,7 @@ async def stream_chat_completion_microsoft_365(
             web_enabled = _web_enabled(context)
             file_uris = _file_uris(context)
             try:
-                async for delta in client.stream_chat(
+                async for update in client.stream_chat(
                     conversation_id,
                     sanitized_message,
                     timezone=timezone,
@@ -197,20 +198,22 @@ async def stream_chat_completion_microsoft_365(
                     web_enabled=web_enabled,
                     file_uris=file_uris,
                 ):
-                    response_text += delta
-                    yield StreamTextDelta(id=text_id, delta=delta)
+                    received_response = True
+                    response_text = update.text
+                    if update.delta:
+                        yield StreamTextDelta(id=text_id, delta=update.delta)
             except Microsoft365CopilotError as error:
                 # Graph can retire a conversation while our local chat session
                 # remains active. A 404/410 received before any answer bytes is
                 # safe to recover once by replacing the stored provider thread.
-                if error.status not in {404, 410} or response_text:
+                if error.status not in {404, 410} or received_response:
                     raise
                 conversation_id = await client.create_conversation()
                 session.metadata.llm_provider_session_ids[conversation_key] = (
                     conversation_id
                 )
                 session = await upsert_chat_session(session)
-                async for delta in client.stream_chat(
+                async for update in client.stream_chat(
                     conversation_id,
                     sanitized_message,
                     timezone=timezone,
@@ -218,8 +221,9 @@ async def stream_chat_completion_microsoft_365(
                     web_enabled=web_enabled,
                     file_uris=file_uris,
                 ):
-                    response_text += delta
-                    yield StreamTextDelta(id=text_id, delta=delta)
+                    response_text = update.text
+                    if update.delta:
+                        yield StreamTextDelta(id=text_id, delta=update.delta)
     except Microsoft365CopilotError as error:
         if stream_started:
             yield StreamTextEnd(id=text_id)

@@ -128,8 +128,15 @@ class CreateRaisedExpertRequest(BaseModel):
 
 
 @public_router.get("/templates", operation_id="list_expert_templates")
-async def list_expert_templates() -> list[Expert]:
-    return await experts_db.list_templates()
+async def list_expert_templates(
+    search_query: str | None = fastapi.Query(default=None),
+    category: str | None = fastapi.Query(default=None),
+) -> list[Expert]:
+    """Roster templates, narrowed by a search term and/or a marketplace category.
+
+    Unpaginated: the roster is small, and every caller reads the whole list.
+    """
+    return await experts_db.list_templates(search_query=search_query, category=category)
 
 
 @router.post(
@@ -296,7 +303,7 @@ async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
-    expert = await experts_db.get_expert(user_id, expert_id)
+    expert = await experts_db.get_expert(user_id, expert_id, include_credentials=True)
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert
