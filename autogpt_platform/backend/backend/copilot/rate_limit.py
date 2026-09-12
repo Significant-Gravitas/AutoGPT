@@ -342,9 +342,9 @@ class UsageWindow(BaseModel):
     used: int
     limit: int = Field(
         description="Maximum microdollars of spend allowed in this window. "
-        "0 means no spend allowed (the user is over-cap immediately); there "
-        "is no unlimited tier — the public model uses ``None`` for "
-        "no-cap-configured."
+        "0 means no spend allowed (the user is over-cap immediately); a "
+        "negative value means no cap is configured for this window (the "
+        "self-hosted default) and projects to ``None`` in the public model."
     )
     resets_at: datetime
 
@@ -406,9 +406,9 @@ class CoPilotUsagePublic(BaseModel):
 
         def window(w: UsageWindow) -> UsageWindowPublic | None:
             if w.limit < 0:
-                # Defensive: nothing produces a negative limit today, but
-                # treat it as "no cap configured" → hide the window from
-                # the UI rather than divide-by-negative.
+                # Negative limit = no cap configured for this window (the
+                # self-hosted default, see ChatConfig) → hide the window
+                # from the UI rather than divide-by-negative.
                 return None
             if w.limit == 0:
                 # Limit of 0 means "no spend allowed" — surface as fully
@@ -540,8 +540,9 @@ async def get_remaining_usd_budget(
     per-turn budget hint via :func:`build_budget_ctx`.
 
     A limit of ``0`` is treated as "no spend allowed" — remaining = 0
-    on that window. There is no real-world unlimited tier; callers
-    should not pass 0 expecting it to mean "no cap".
+    on that window; callers should not pass 0 expecting it to mean "no
+    cap". A negative limit means that window has no cap (the self-hosted
+    default); when both windows are uncapped the result is ``inf``.
 
     Failure modes:
         * Redis brown-out → ``floor_usd`` (so callers using the value
@@ -552,9 +553,9 @@ async def get_remaining_usd_budget(
     Args:
         user_id: The user's ID.
         daily_cost_limit: Daily cap in microdollars. 0 = no spend allowed
-            on this window.
+            on this window; negative = no cap on this window.
         weekly_cost_limit: Weekly cap in microdollars. 0 = no spend allowed
-            on this window.
+            on this window; negative = no cap on this window.
         floor_usd: Lower bound on the returned value (USD).  Avoids
             handing the SDK a degenerate ``$0`` budget that would refuse
             to start a turn.  Set to ``0.0`` when the caller wants a
@@ -579,8 +580,9 @@ async def get_remaining_usd_budget(
         return 0.0 if trial else floor_usd
 
     # ``>= 0`` (not ``> 0``): a limit of 0 is "no spend allowed", so the
-    # remaining is 0 on that window. Mirrors check_rate_limit's semantics
-    # — there is no unlimited tier, so we never short-circuit to float(inf).
+    # remaining is 0 on that window. Mirrors check_rate_limit's semantics:
+    # only an explicitly negative limit (the self-hosted "no cap" sentinel)
+    # skips a window, so an uncapped deployment resolves to float(inf).
     remaining_microdollars = float("inf")
     if daily_cost_limit >= 0:
         remaining_microdollars = min(
@@ -663,8 +665,10 @@ async def check_rate_limit(
     caller must fail closed (HTTP 503) — the daily/weekly USD caps are
     real money and cannot be bypassed by a Redis brown-out.
 
-    A limit of ``0`` means "no spend allowed", not "unlimited" — there is
-    no real-world unlimited tier. Routes that want to skip rate-limiting
+    A limit of ``0`` means "no spend allowed", not "unlimited". A negative
+    limit disables that window's check entirely — the explicit "no cap"
+    sentinel that self-hosted distributions export (see ChatConfig) — so
+    an uncapped window never raises. Routes that want to skip rate-limiting
     entirely should not call this function. Entitlement (``NO_TIER`` +
     ``ENABLE_PLATFORM_PAYMENT``) is enforced upstream by the route
     dependency :func:`enforce_payment_paywall`, so this function is
@@ -688,6 +692,8 @@ async def check_rate_limit(
             raise RateLimitExceeded("trial", now)
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
             raise RateLimitExceeded("trial", trial.ends_at or now)
+    if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
+        return
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
@@ -717,7 +723,8 @@ async def check_rate_limit(
     # any usage at or above 0 is over-cap. The previous ``> 0`` check
     # silently treated 0 as unlimited, which collided with the multiplier-
     # collapse semantics of :func:`get_global_rate_limits` and produced
-    # the autopilot paywall bypass.
+    # the autopilot paywall bypass. Only an explicitly negative limit — the
+    # self-hosted "no cap" sentinel — skips a window.
     if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
@@ -1216,8 +1223,8 @@ async def get_global_rate_limits(
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
         # last microdollar, which is well below any meaningful precision.
-        daily = int(daily * multiplier)
-        weekly = int(weekly * multiplier)
+        daily = int(daily * multiplier) if daily >= 0 else daily
+        weekly = int(weekly * multiplier) if weekly >= 0 else weekly
 
     return daily, weekly, tier
 

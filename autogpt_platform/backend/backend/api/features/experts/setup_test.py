@@ -59,6 +59,7 @@ def _arrange(
     credentials: list[APIKeyCredentials],
     allowed: list[str],
     fields: dict,
+    required_inputs: list[str] | None = None,
 ) -> None:
     expert_client = mocker.MagicMock()
     expert_client.find_many = AsyncMock(return_value=experts)
@@ -73,7 +74,15 @@ def _arrange(
     )
     mocker.patch(
         "backend.data.graph.get_graph",
-        new=AsyncMock(return_value=SimpleNamespace(regular_credentials_inputs=fields)),
+        new=AsyncMock(
+            return_value=SimpleNamespace(
+                regular_credentials_inputs=fields,
+                input_schema={
+                    "properties": {},
+                    "required": required_inputs or [],
+                },
+            )
+        ),
     )
 
 
@@ -187,3 +196,42 @@ async def test_a_graph_that_fails_to_load_still_reports_the_workflow(
     [item] = await setup.list_setup_items("user-1")
 
     assert item.resolution == "workflow"
+
+
+@pytest.mark.asyncio
+async def test_an_input_only_the_user_can_supply_gets_its_own_row(
+    mocker: pytest_mock.MockFixture,
+):
+    """The newsletter's recipient: named, so the row says what to fill in."""
+    _arrange(
+        mocker,
+        experts=[_expert(_workflow())],
+        credentials=[],
+        allowed=[],
+        fields={},
+        required_inputs=["Email Address"],
+    )
+
+    [item] = await setup.list_setup_items("user-1")
+
+    assert item.resolution == "inputs"
+    assert item.missing_inputs == ["Email Address"]
+    assert item.library_agent_id == "lib-1"
+
+
+@pytest.mark.asyncio
+async def test_a_missing_credential_and_a_missing_input_are_separate_rows(
+    mocker: pytest_mock.MockFixture,
+):
+    _arrange(
+        mocker,
+        experts=[_expert(_workflow())],
+        credentials=[],
+        allowed=[],
+        fields={"notion": _field("notion")},
+        required_inputs=["Email Address"],
+    )
+
+    items = await setup.list_setup_items("user-1")
+
+    assert [item.resolution for item in items] == ["connect", "inputs"]

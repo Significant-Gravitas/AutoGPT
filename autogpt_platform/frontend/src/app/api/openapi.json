@@ -3914,7 +3914,10 @@
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
                     { "$ref": "#/components/schemas/TodoWriteResponse" },
-                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
+                    {
+                      "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
+                    },
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -6390,6 +6393,72 @@
         }
       }
     },
+    "/api/experiments/assignments": {
+      "get": {
+        "tags": ["experiments"],
+        "summary": "List experiment assignments",
+        "operationId": "getExperimentsList experiment assignments",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentAssignment"
+                  },
+                  "type": "array",
+                  "title": "Response Getexperimentslist Experiment Assignments"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["experiments"],
+        "summary": "Record experiment assignment",
+        "operationId": "postExperimentsRecord experiment assignment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6614,17 +6683,47 @@
       "get": {
         "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
+        "description": "Roster templates, narrowed by a search term and/or a marketplace category.\n\nUnpaginated: the roster is small, and every caller reads the whole list.",
         "operationId": "list_expert_templates",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/Expert" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertTemplate" },
                   "title": "Response List Expert Templates"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -13758,16 +13857,30 @@
       "get": {
         "tags": ["v1", "skills"],
         "summary": "List user-distilled copilot skills",
-        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "description": "Return the skills owned by personal Otto, or by one expert.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
         "operationId": "listCopilotSkills",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "List this expert's own skills instead of personal Otto's.",
+              "title": "Expert Id"
+            },
+            "description": "List this expert's own skills instead of personal Otto's."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
                   "title": "Response Listcopilotskills"
                 }
               }
@@ -13775,24 +13888,45 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       },
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
         "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Store the skill as this expert's own.",
+              "title": "Expert Id"
+            },
+            "description": "Store the skill as this expert's own."
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UploadCopilotSkillRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -13816,8 +13950,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/skills/{name}": {
@@ -13838,6 +13971,17 @@
               "title": "Name"
             },
             "description": "Slug of the skill to delete"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Delete this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Delete this expert's own copy of the skill."
           }
         ],
         "responses": {
@@ -13883,6 +14027,17 @@
               "title": "Name"
             },
             "description": "Slug of the skill to read"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Read this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Read this expert's own copy of the skill."
           }
         ],
         "responses": {
@@ -16243,6 +16398,11 @@
       "AIConnectionOffer": {
         "properties": {
           "offer_id": { "type": "string", "title": "Offer Id" },
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
+            "title": "Auth Provider"
+          },
           "provider_family": { "type": "string", "title": "Provider Family" },
           "display_name": { "type": "string", "title": "Display Name" },
           "auth_method": { "type": "string", "title": "Auth Method" },
@@ -16277,6 +16437,7 @@
         "type": "object",
         "required": [
           "offer_id",
+          "auth_provider",
           "provider_family",
           "display_name",
           "auth_method",
@@ -18208,7 +18369,7 @@
         "properties": {
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider"
           },
           "llm_credential_id": {
@@ -18266,13 +18427,18 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
           "llm_credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Llm Credential Id"
+          },
+          "llm_provider_session_ids": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Llm Provider Session Ids"
           },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18357,7 +18523,7 @@
         "properties": {
           "auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Auth Provider"
           },
           "credential_id": {
@@ -19262,7 +19428,7 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -19304,6 +19470,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -20783,6 +20950,21 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "ExperimentAssignment": {
+        "properties": {
+          "experiment_key": { "type": "string", "title": "Experiment Key" },
+          "variant": { "type": "string", "title": "Variant" },
+          "source": { "type": "string", "title": "Source" },
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assigned At"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant", "source", "assigned_at"],
+        "title": "ExperimentAssignment"
+      },
       "Expert": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -20806,6 +20988,12 @@
             "type": "array",
             "title": "Skills"
           },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
           "identity": { "type": "string", "title": "Identity" },
           "voice_preferences": {
             "type": "string",
@@ -20815,6 +21003,13 @@
             "items": { "$ref": "#/components/schemas/VoiceSample" },
             "type": "array",
             "title": "Voice Samples",
+            "default": []
+          },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
             "default": []
           },
           "boundaries": { "type": "string", "title": "Boundaries" },
@@ -20950,6 +21145,18 @@
         "title": "ExpertBudgetUpdate",
         "description": "Set an expert's weekly spend cap in credits (100 = $1).\n\n``None`` falls back to the platform default; ``0`` disables the cap."
       },
+      "ExpertBundledSkill": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["id", "slug", "name", "description"],
+        "title": "ExpertBundledSkill",
+        "description": "A live Skills Hub listing a roster template comes with."
+      },
       "ExpertCredentialRef": {
         "properties": {
           "credential_id": { "type": "string", "title": "Credential Id" },
@@ -20961,6 +21168,32 @@
         "required": ["credential_id", "provider", "title", "type"],
         "title": "ExpertCredentialRef",
         "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
+      },
+      "ExpertDayOneItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 240,
+            "title": "Description",
+            "default": ""
+          },
+          "timing": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Timing",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "ExpertDayOneItem",
+        "description": "One row of a template profile's \"What {name} sets up on day one\",\nwritten by the template's creator rather than derived from its workflows."
       },
       "ExpertDetachPreview": {
         "properties": {
@@ -20998,6 +21231,45 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertOnboardingResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_onboarding"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/ExpertOnboardingStep" },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["message", "expert_id", "greeting"],
+        "title": "ExpertOnboardingResponse",
+        "description": "The intake card a freshly hired expert opens its first turn with."
+      },
+      "ExpertOnboardingStep": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "keyword": { "type": "string", "title": "Keyword" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["question", "keyword"],
+        "title": "ExpertOnboardingStep",
+        "description": "One step of a freshly hired expert's intake card."
       },
       "ExpertPod": {
         "properties": {
@@ -21142,12 +21414,17 @@
           },
           "resolution": {
             "type": "string",
-            "enum": ["connect", "allow", "workflow"],
+            "enum": ["connect", "allow", "inputs", "workflow"],
             "title": "Resolution"
           },
           "credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Credential Id"
+          },
+          "missing_inputs": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Missing Inputs"
           }
         },
         "type": "object",
@@ -21162,7 +21439,7 @@
           "resolution"
         ],
         "title": "ExpertSetupItem",
-        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``inputs``: the\nworkflow needs the values in ``missing_inputs`` before it can run\nunattended. ``workflow``: nothing is missing, so the schedule needs\ncreating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {
@@ -21243,6 +21520,139 @@
         "required": ["message"],
         "title": "ExpertSoulUpdatedResponse",
         "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
+      },
+      "ExpertTemplate": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": { "type": "string", "title": "Color", "default": "" },
+          "role": { "type": "string", "title": "Role" },
+          "tagline": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tagline"
+          },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
+          },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One",
+            "default": []
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
+          "is_template": { "type": "boolean", "title": "Is Template" },
+          "source_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Template Id"
+          },
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
+            "type": "array",
+            "title": "Workflows"
+          },
+          "credential_count": {
+            "type": "integer",
+            "title": "Credential Count",
+            "default": 0
+          },
+          "credential_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Credential Providers",
+            "default": []
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
+          },
+          "weekly_budget": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Weekly Budget"
+          },
+          "weekly_spend": {
+            "type": "integer",
+            "title": "Weekly Spend",
+            "default": 0
+          },
+          "schedules_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Schedules Paused At"
+          },
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
+          },
+          "bundled_skills": {
+            "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
+            "type": "array",
+            "title": "Bundled Skills"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "avatar_url",
+          "role",
+          "tagline",
+          "bio",
+          "skills",
+          "identity",
+          "voice_preferences",
+          "boundaries",
+          "protected_soul_rules",
+          "is_template",
+          "source_template_id",
+          "is_archived",
+          "workflows"
+        ],
+        "title": "ExpertTemplate",
+        "description": "A roster template as the marketplace shows it."
       },
       "ExpertWorkflowChainItem": {
         "properties": {
@@ -21815,6 +22225,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22004,6 +22422,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22116,6 +22542,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
           },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -26821,6 +27255,31 @@
         "title": "RecommendedProvidersResponse",
         "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
       },
+      "RecordAssignmentRequest": {
+        "properties": {
+          "experiment_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Key"
+          },
+          "variant": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Variant"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["posthog", "launchdarkly", "backend"],
+            "title": "Source",
+            "default": "posthog"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant"],
+        "title": "RecordAssignmentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -26969,7 +27428,8 @@
           "expert_change_applied",
           "team_roster",
           "expert_chat_list",
-          "expert_chat_transcript"
+          "expert_chat_transcript",
+          "expert_onboarding"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -27604,6 +28064,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -27667,7 +28128,10 @@
         "properties": {
           "auth_provider": {
             "anyOf": [
-              { "type": "string", "enum": ["platform", "codex"] },
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
               { "type": "null" }
             ],
             "title": "Auth Provider"
@@ -27683,7 +28147,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SetDefaultTransportRequest",
-        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. Sending ``codex`` requires naming the credential, so the\ndefault keeps pointing at one account rather than \"whichever ChatGPT\"."
+        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. A user-backed provider requires naming the credential, so the\ndefault keeps pointing at one account rather than whichever account exists."
       },
       "SetGraphActiveVersion": {
         "properties": {

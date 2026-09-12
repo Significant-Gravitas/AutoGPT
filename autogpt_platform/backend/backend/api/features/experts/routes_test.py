@@ -7,13 +7,15 @@ with AsyncMock at the route module's import site.
 
 import json
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
+import prisma.models
 import pytest
 import pytest_mock
-from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
@@ -25,6 +27,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertDayOneItem,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -37,11 +40,16 @@ from backend.api.features.experts.models import (
     RaiseResult,
 )
 from backend.api.features.experts.routes import public_router, router
-from backend.util.exceptions import NotFoundError
+from backend.api.features.store.skill_model import MarketplaceSkill
+from backend.api.rest_api import app as rest_app
+from backend.util.exceptions import ConflictError, NotFoundError
+from backend.util.feature_flag import Flag
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
 app.include_router(router)
+# The real app's mapping, so dropping it from rest_api.py fails here too.
+app.add_exception_handler(ConflictError, rest_app.exception_handlers[ConflictError])
 
 client = fastapi.testclient.TestClient(app)
 
@@ -122,6 +130,13 @@ def test_list_expert_templates(
         id="template-1",
         is_template=True,
         source_template_id=None,
+        day_one=[
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            )
+        ],
         workflows=[
             _make_workflow_ref(library_agent_id=None, graph_id=None),
         ],
@@ -131,6 +146,11 @@ def test_list_expert_templates(
         new_callable=AsyncMock,
         return_value=[template],
     )
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=AsyncMock(return_value=[])),
+    )
 
     response = client.get("/experts/templates")
 
@@ -139,11 +159,109 @@ def test_list_expert_templates(
     assert len(data) == 1
     assert data[0]["id"] == "template-1"
     assert data[0]["is_template"] is True
-    mock_list.assert_awaited_once_with()
+    mock_list.assert_awaited_once_with(search_query=None, category=None)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_templates_list"
     )
+
+
+def test_list_expert_templates_forwards_search_and_category(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The chip and the search box only work if both reach the db layer."""
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_templates",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get(
+        "/experts/templates", params={"search_query": "Maria", "category": "marketing"}
+    )
+
+    assert response.status_code == 200
+    mock_list.assert_awaited_once_with(search_query="Maria", category="marketing")
+
+
+@pytest.mark.parametrize(
+    ("user_id", "flag_key"), [(None, "anonymous"), ("user-1", "user-1")]
+)
+def test_list_expert_templates_links_live_hub_skills(
+    mocker: pytest_mock.MockerFixture, user_id: str | None, flag_key: str
+) -> None:
+    app.dependency_overrides[get_optional_user_id] = lambda: user_id
+    flag, _ = _mock_templates_with_hub_skill(mocker, hub_on=True)
+
+    response = client.get("/experts/templates")
+
+    assert response.status_code == 200
+    assert response.json()[0]["bundled_skills"] == [
+        {
+            "id": "listing-1",
+            "slug": "brand-voice-guide",
+            "name": "brand-voice-guide",
+            "description": "Keeps every draft on-brand.",
+        }
+    ]
+    flag.assert_awaited_once_with(Flag.SKILLS_HUB, flag_key)
+
+
+def test_list_expert_templates_links_nothing_with_the_hub_off(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _, rows_query = _mock_templates_with_hub_skill(mocker, hub_on=False)
+
+    response = client.get("/experts/templates")
+
+    assert response.status_code == 200
+    assert response.json()[0]["bundled_skills"] == []
+    rows_query.assert_not_awaited()
+
+
+def _mock_templates_with_hub_skill(
+    mocker: pytest_mock.MockerFixture, *, hub_on: bool
+) -> tuple[AsyncMock, AsyncMock]:
+    template = _make_expert(
+        id="template-1",
+        is_template=True,
+        source_template_id=None,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_templates",
+        new_callable=AsyncMock,
+        return_value=[template],
+    )
+    rows_query = AsyncMock(
+        return_value=[
+            SimpleNamespace(expertId="template-1", skillListingId="listing-1")
+        ]
+    )
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=rows_query),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.skill_db.get_live_skills",
+        new_callable=AsyncMock,
+        return_value={
+            "listing-1": MarketplaceSkill(
+                slug="brand-voice-guide",
+                name="brand-voice-guide",
+                description="Keeps every draft on-brand.",
+                categories=[],
+                required_providers=[],
+                install_count=0,
+            )
+        },
+    )
+    flag = mocker.patch(
+        "backend.api.features.experts.experts_db.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=hub_on,
+    )
+    return flag, rows_query
 
 
 # ─── Hire ──────────────────────────────────────────────────────────────
@@ -934,6 +1052,24 @@ def test_update_expert_skills_unknown_skill_returns_404(
     response = client.put("/experts/expert-1/skills", json={"skills": ["Nope"]})
 
     assert response.status_code == 404
+
+
+def test_update_expert_skills_conflict_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=ConflictError(
+            "This expert's skills were changed by another update at the same time. "
+            "Try again."
+        ),
+    )
+
+    response = client.put("/experts/expert-1/skills", json={"skills": ["SEO"]})
+
+    assert response.status_code == 409
+    assert "Try again" in response.text
 
 
 def test_update_expert_soul_not_found_returns_404(
