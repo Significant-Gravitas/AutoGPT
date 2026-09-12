@@ -6,7 +6,10 @@ import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
+import Image from "next/image";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
@@ -41,11 +44,12 @@ export function ExpertWorkflowCard({
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
+  const [hasImageError, setHasImageError] = useState(false);
 
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-white transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink
@@ -56,13 +60,26 @@ export function ExpertWorkflowCard({
       ) : null}
 
       <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
-        <ExpertCover
-          className="absolute inset-0 h-full w-full rounded-none"
-          color={coverColor}
-        />
-        <div className="relative">
-          <WorkflowChain chain={workflow.chain ?? []} size="sm" />
-        </div>
+        {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
+          <Image
+            src={libraryAgent.image_url}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            onError={() => setHasImageError(true)}
+            className="object-cover"
+          />
+        ) : (
+          <>
+            <ExpertCover
+              className="absolute inset-0 h-full w-full rounded-none"
+              color={coverColor}
+            />
+            <div className="relative">
+              <WorkflowChain chain={workflow.chain ?? []} size="sm" />
+            </div>
+          </>
+        )}
         <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
           <ExpertWorkflowActions
             workflow={workflow}

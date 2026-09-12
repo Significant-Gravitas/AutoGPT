@@ -3,10 +3,12 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { describe, expect, test } from "vitest";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import {
   filterExpertSchedules,
   filterExpertWorkflows,
   getAssignToastTitle,
+  getExpertCover,
   getExpertRosterStatus,
   groupExpertsByPods,
 } from "./helpers";
@@ -105,7 +107,7 @@ describe("getExpertRosterStatus", () => {
     expert.last_run_status = "RUNNING";
     expert.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(expert, 1)).toBe("working");
+    expect(getExpertRosterStatus(expert)).toBe("working");
   });
 
   test.each(["FAILED", "TERMINATED", "REVIEW"])(
@@ -114,7 +116,7 @@ describe("getExpertRosterStatus", () => {
       const expert = makeExpert("attention");
       expert.last_run_status = lastRunStatus;
 
-      expect(getExpertRosterStatus(expert, 0)).toBe("needs-you");
+      expect(getExpertRosterStatus(expert)).toBe("needs-you");
     },
   );
 
@@ -122,15 +124,15 @@ describe("getExpertRosterStatus", () => {
     const paused = makeExpert("paused");
     paused.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(paused, 0)).toBe("needs-you");
-    expect(getExpertRosterStatus(makeExpert("setup"), 1)).toBe("needs-you");
+    expect(getExpertRosterStatus(paused)).toBe("needs-you");
+    expect(getExpertRosterStatus(makeExpert("setup"))).toBe("idle");
   });
 
   test("reports an expert with no active issue as idle", () => {
     const expert = makeExpert("idle");
     expert.last_run_status = "COMPLETED";
 
-    expect(getExpertRosterStatus(expert, 0)).toBe("idle");
+    expect(getExpertRosterStatus(expert)).toBe("idle");
   });
 });
 
@@ -256,5 +258,59 @@ describe("filterExpertSchedules", () => {
     expect(
       filterExpertSchedules(all, "", "later", now).map((s) => s.id),
     ).toEqual(["s3", "s4"]);
+  });
+});
+
+describe("getExpertCover", () => {
+  const paletteIds = COLOR_OPTIONS.map((option) => option.id);
+
+  test("keeps the expert's own colour", () => {
+    const cover = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/experts/max.svg",
+      color: "sky-300",
+    });
+    expect(cover.color).toBe("sky-300");
+    expect(cover.art).toBe("/experts/covers/max-1.jpg");
+  });
+
+  test("gives a seeded expert its cover art and pastel", () => {
+    const cover = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/experts/maria.svg",
+      color: "",
+    });
+    expect(cover).toEqual({
+      art: "/experts/covers/maria-1.jpg",
+      color: "orange-300",
+    });
+  });
+
+  test("picks a palette colour for a colourless custom expert, stable by id", () => {
+    const first = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/uploads/custom.png",
+      color: "",
+    });
+    const again = getExpertCover({
+      id: "expert-1",
+      avatar_url: null,
+      color: "",
+    });
+    expect(first.art).toBeNull();
+    expect(paletteIds).toContain(first.color);
+    expect(again.color).toBe(first.color);
+  });
+
+  test("spreads colourless experts across the palette", () => {
+    const colours = new Set(
+      Array.from(
+        { length: 40 },
+        (_, index) =>
+          getExpertCover({ id: `expert-${index}`, avatar_url: null, color: "" })
+            .color,
+      ),
+    );
+    expect(colours.size).toBeGreaterThan(1);
   });
 });

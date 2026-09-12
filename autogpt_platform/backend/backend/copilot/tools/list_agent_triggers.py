@@ -133,7 +133,7 @@ class ListAgentTriggersTool(BaseTool):
                 library_agent_id=library_agent_id,
                 parent_graph_id=parent.graph_id,
             ),
-            # Scope to the session's memory scope (its expert, or AutoPilot's
+            # Scope to the session's memory scope (its expert, or Otto's
             # unattributed presets) — without this the listing leaks other
             # scopes' presets AND their webhook ingress URLs into the chat.
             ldb.list_presets(
