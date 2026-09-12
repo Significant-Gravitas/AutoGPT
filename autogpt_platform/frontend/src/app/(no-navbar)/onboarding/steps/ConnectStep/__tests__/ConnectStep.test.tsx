@@ -31,21 +31,27 @@ vi.mock(
   }),
 );
 
-vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => ({
-  DeviceAuthConnectButton: ({
-    provider,
-    providerName,
-    onSuccess,
-  }: {
+vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => {
+  interface Props {
     provider: string;
     providerName: string;
     onSuccess: () => void;
-  }) => (
-    <button data-provider={provider} onClick={onSuccess}>
-      Connect {providerName}
-    </button>
-  ),
-}));
+  }
+
+  function MockDeviceAuthConnectButton({
+    provider,
+    providerName,
+    onSuccess,
+  }: Props) {
+    return (
+      <button data-provider={provider} onClick={onSuccess}>
+        Connect {providerName}
+      </button>
+    );
+  }
+
+  return { DeviceAuthConnectButton: MockDeviceAuthConnectButton };
+});
 
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
