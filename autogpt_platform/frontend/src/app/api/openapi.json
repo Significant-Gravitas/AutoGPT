@@ -27259,7 +27259,8 @@
           "team_roster",
           "expert_chat_list",
           "expert_chat_transcript",
-          "expert_onboarding"
+          "expert_onboarding",
+          "team_consult"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

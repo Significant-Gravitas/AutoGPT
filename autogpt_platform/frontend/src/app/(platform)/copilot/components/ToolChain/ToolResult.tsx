@@ -13,6 +13,7 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
@@ -276,6 +277,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
     }
+    case "consult_teammate":
+      return output ? <ConsultVerdictCard output={output} /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);

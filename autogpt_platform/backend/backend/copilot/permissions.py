@@ -79,6 +79,7 @@ ToolName = Literal[
     "confirm_expert_change",
     "confirm_expert_soul_update",
     "connect_integration",
+    "consult_teammate",
     "continue_run_block",
     "create_agent",
     "create_feature_request",
