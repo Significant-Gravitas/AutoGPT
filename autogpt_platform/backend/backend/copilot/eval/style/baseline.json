@@ -1,0 +1,289 @@
+{
+  "run_id": "style-5784acf3",
+  "ts": "2026-09-10T13:24:29.920161Z",
+  "chat_model": "anthropic/claude-sonnet-5",
+  "judge_model": "anthropic/claude-haiku-4-5",
+  "delegation_enabled": true,
+  "cost_usd": 5.2676,
+  "note": "One pass, 2026-09-10, on the 27 chat prompts per expert, measured on dev at dd71bda0df. Seven turns that were still calling tools at the round cap are excluded as errors (Frankie 5, Max 2), so 74 of 81 responses are scored. It replaces the 2026-09-07 run, which predated the tool-stub fix and ten dev commits to the prompt assembly; against it the paired per-prompt change is Maria +1.15 +/- 5.03, Max +4.57 +/- 7.69, Frankie -9.29 +/- 7.07, and -0.86 +/- 3.80 over all 70 shared prompts. No pass threshold is set: the per-prompt spread (sd 31.8) makes a single pass sensitive only to a shift of about 10 points per expert.",
+  "fingerprint": "ba94f8d3cff7bdf60fcfd21e51041b8c2584dfc7acbd10bd58ae58113006d525",
+  "parts": {
+    "autopilot": "4e4ab6206736428d334c26ff206644dfd89c9a79b03bf3960a4b1c04eeceebe5",
+    "rubric": "a86a379960470eaa04b2bdcbd4a42425e0ff9ea9b6aa184b0eb27721d2a65719",
+    "models": "1e6729fadf146170eb9aaca3c2d65318e35cf5e883bd81fbc59a65f1c27561c8",
+    "delegation": "3cbc87c7681f34db4617feaa2c8801931bc5e42d8d0f560e756dd4cd92885f18",
+    "harness": "9d2e4c4247daf166c80b1ebba0ab3d8123fe632de0bc7f7cb417a2c10d55336f",
+    "context:Frankie": "6b1d175ec17ee91731aec98619ec5dc723d6dd90f84a730bfbc0ca6f0715196f",
+    "context:Maria": "3a5ace81d95923c24c5ed337d77286d9454fae845817c8c4bfcb2eabaaf801c6",
+    "context:Max": "a4b73b5fb381ba7e65fbcccf0d68ef553545bdf27dc12ec93890d3b455d09023",
+    "fixture:Frankie": "3bf40ca2039ac60d45394a4a420eadb89240509e3906a9947ef91fa834db00dd",
+    "fixture:Maria": "d6748e4ec5ad6c1851450684a7b63d7adad6f96f0b2ed845960419b2449eca0a",
+    "fixture:Max": "8e361cf6a0bbf2342dc86fcf7326c10cdc3f094a3253faa5fa9c18da4d225b19",
+    "prompt:Frankie": "c7b4291e8f094ba655e957ec616cdbf19ca7bef65ef8ee950f5a45bc43175568",
+    "prompt:Maria": "624a9b4a43dc780c3651c2fbd4b966fab2ef399b459362847972f23d3357741a",
+    "prompt:Max": "5516868051bc7892162ef1d0aa97596bcd84be93fcda9f7fb4ad8faa5c4c85ee"
+  },
+  "experts": [
+    {
+      "expert": "Maria",
+      "scores": {
+        "n": 27,
+        "mean": 87.41,
+        "sd": 26.03,
+        "min": 10.0,
+        "p25": 95.0,
+        "median": 100.0,
+        "p75": 100.0,
+        "max": 100.0
+      },
+      "by_kind": {
+        "briefing": {
+          "n": 6,
+          "mean": 97.5,
+          "sd": 2.74,
+          "min": 95.0,
+          "p25": 95.0,
+          "median": 97.5,
+          "p75": 100.0,
+          "max": 100.0
+        },
+        "escalation": {
+          "n": 7,
+          "mean": 98.57,
+          "sd": 2.44,
+          "min": 95.0,
+          "p25": 97.5,
+          "median": 100.0,
+          "p75": 100.0,
+          "max": 100.0
+        },
+        "failure": {
+          "n": 6,
+          "mean": 50.0,
+          "sd": 36.47,
+          "min": 10.0,
+          "p25": 21.25,
+          "median": 47.5,
+          "p75": 73.75,
+          "max": 100.0
+        },
+        "reply_draft": {
+          "n": 8,
+          "mean": 98.12,
+          "sd": 3.72,
+          "min": 90.0,
+          "p25": 98.75,
+          "median": 100.0,
+          "p75": 100.0,
+          "max": 100.0
+        }
+      },
+      "by_prompt": {
+        "maria-briefing-01": 95.0,
+        "maria-briefing-02": 100.0,
+        "maria-briefing-03": 100.0,
+        "maria-briefing-04": 95.0,
+        "maria-briefing-05": 95.0,
+        "maria-briefing-06": 100.0,
+        "maria-reply-01": 90.0,
+        "maria-reply-02": 100.0,
+        "maria-reply-03": 100.0,
+        "maria-reply-04": 95.0,
+        "maria-reply-05": 100.0,
+        "maria-reply-06": 100.0,
+        "maria-reply-07": 100.0,
+        "maria-reply-08": 100.0,
+        "maria-escalation-01": 100.0,
+        "maria-escalation-02": 95.0,
+        "maria-escalation-03": 100.0,
+        "maria-escalation-04": 100.0,
+        "maria-escalation-05": 100.0,
+        "maria-escalation-06": 95.0,
+        "maria-escalation-07": 100.0,
+        "maria-failure-01": 25.0,
+        "maria-failure-02": 100.0,
+        "maria-failure-03": 20.0,
+        "maria-failure-04": 10.0,
+        "maria-failure-05": 70.0,
+        "maria-failure-06": 75.0
+      }
+    },
+    {
+      "expert": "Max",
+      "scores": {
+        "n": 25,
+        "mean": 86.8,
+        "sd": 21.35,
+        "min": 25.0,
+        "p25": 85.0,
+        "median": 95.0,
+        "p75": 100.0,
+        "max": 100.0
+      },
+      "by_kind": {
+        "briefing": {
+          "n": 6,
+          "mean": 88.33,
+          "sd": 12.52,
+          "min": 65.0,
+          "p25": 86.25,
+          "median": 92.5,
+          "p75": 95.0,
+          "max": 100.0
+        },
+        "escalation": {
+          "n": 7,
+          "mean": 83.57,
+          "sd": 28.83,
+          "min": 25.0,
+          "p25": 80.0,
+          "median": 100.0,
+          "p75": 100.0,
+          "max": 100.0
+        },
+        "failure": {
+          "n": 5,
+          "mean": 88.0,
+          "sd": 9.75,
+          "min": 75.0,
+          "p25": 85.0,
+          "median": 85.0,
+          "p75": 95.0,
+          "max": 100.0
+        },
+        "reply_draft": {
+          "n": 7,
+          "mean": 87.86,
+          "sd": 27.97,
+          "min": 25.0,
+          "p25": 95.0,
+          "median": 100.0,
+          "p75": 100.0,
+          "max": 100.0
+        }
+      },
+      "by_prompt": {
+        "max-briefing-01": 65.0,
+        "max-briefing-02": 90.0,
+        "max-briefing-03": 100.0,
+        "max-briefing-04": 95.0,
+        "max-briefing-05": 85.0,
+        "max-briefing-06": 95.0,
+        "max-reply-01": 100.0,
+        "max-reply-03": 90.0,
+        "max-reply-04": 100.0,
+        "max-reply-05": 25.0,
+        "max-reply-06": 100.0,
+        "max-reply-07": 100.0,
+        "max-reply-08": 100.0,
+        "max-escalation-01": 100.0,
+        "max-escalation-02": 100.0,
+        "max-escalation-03": 65.0,
+        "max-escalation-04": 100.0,
+        "max-escalation-05": 95.0,
+        "max-escalation-06": 25.0,
+        "max-escalation-07": 100.0,
+        "max-failure-01": 100.0,
+        "max-failure-03": 85.0,
+        "max-failure-04": 95.0,
+        "max-failure-05": 85.0,
+        "max-failure-06": 75.0
+      }
+    },
+    {
+      "expert": "Frankie",
+      "scores": {
+        "n": 22,
+        "mean": 67.5,
+        "sd": 30.74,
+        "min": 20.0,
+        "p25": 36.25,
+        "median": 75.0,
+        "p75": 95.0,
+        "max": 100.0
+      },
+      "by_kind": {
+        "briefing": {
+          "n": 3,
+          "mean": 46.67,
+          "sd": 16.07,
+          "min": 35.0,
+          "p25": 37.5,
+          "median": 40.0,
+          "p75": 52.5,
+          "max": 65.0
+        },
+        "escalation": {
+          "n": 6,
+          "mean": 81.67,
+          "sd": 27.87,
+          "min": 25.0,
+          "p25": 90.0,
+          "median": 92.5,
+          "p75": 95.0,
+          "max": 95.0
+        },
+        "failure": {
+          "n": 5,
+          "mean": 47.0,
+          "sd": 33.09,
+          "min": 20.0,
+          "p25": 20.0,
+          "median": 30.0,
+          "p75": 75.0,
+          "max": 90.0
+        },
+        "reply_draft": {
+          "n": 8,
+          "mean": 77.5,
+          "sd": 28.41,
+          "min": 20.0,
+          "p25": 70.0,
+          "median": 85.0,
+          "p75": 100.0,
+          "max": 100.0
+        }
+      },
+      "by_prompt": {
+        "frankie-briefing-02": 35.0,
+        "frankie-briefing-04": 40.0,
+        "frankie-briefing-05": 65.0,
+        "frankie-reply-01": 20.0,
+        "frankie-reply-02": 100.0,
+        "frankie-reply-03": 95.0,
+        "frankie-reply-04": 75.0,
+        "frankie-reply-05": 75.0,
+        "frankie-reply-06": 100.0,
+        "frankie-reply-07": 100.0,
+        "frankie-reply-08": 55.0,
+        "frankie-escalation-01": 25.0,
+        "frankie-escalation-02": 95.0,
+        "frankie-escalation-03": 95.0,
+        "frankie-escalation-05": 90.0,
+        "frankie-escalation-06": 90.0,
+        "frankie-escalation-07": 95.0,
+        "frankie-failure-01": 30.0,
+        "frankie-failure-02": 20.0,
+        "frankie-failure-03": 90.0,
+        "frankie-failure-04": 20.0,
+        "frankie-failure-06": 75.0
+      }
+    }
+  ],
+  "separation": {
+    "right_spec_mean": 81.28,
+    "right_spec_sd": 27.29,
+    "wrong_spec_mean": 51.66,
+    "no_suffix_mean": 16.67,
+    "gap": 29.63,
+    "paired": {
+      "n": 74,
+      "mean": 29.63,
+      "sem": 3.72,
+      "wins": 63,
+      "ties": 5,
+      "win_rate": 0.851
+    },
+    "separated": true
+  }
+}
