@@ -22,3 +22,6 @@ migrations/*/rollback*.sql
 
 # Workspace files
 workspaces/
+
+# Local fallback storage for marketplace media (self-hosted, no GCS bucket)
+store_media/

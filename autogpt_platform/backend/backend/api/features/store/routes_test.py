@@ -1,5 +1,6 @@
 import datetime
 import json
+import uuid
 
 import fastapi
 import fastapi.testclient
@@ -851,3 +852,15 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
     # Verify no DB calls were made
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
     mock_db_call.assert_not_called()
+
+
+def test_get_local_submission_media_invalid_media_type_rejected():
+    response = client.get("/media/some-user-id/documents/file.png")
+    assert response.status_code == 422
+
+
+def test_get_local_submission_media_missing_file_returns_404():
+    unique_filename = f"{uuid.uuid4()}.png"
+    response = client.get(f"/media/some-user-id/images/{unique_filename}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Media not found"
