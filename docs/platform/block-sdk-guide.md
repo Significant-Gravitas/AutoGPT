@@ -143,7 +143,7 @@ class MyBlock(Block):
 ### Provider Configuration
 
 !!! tip "Simple API Key Integrations"
-    For integrations that only use API key authentication, you do **not** need `ProviderBuilder` or `_config.py`. Use the simpler `_auth.py` pattern instead — see [API-Key-Only Provider Auth](new_blocks.md#api-key-only-provider-auth-recommended-pattern) in the main block guide.
+    For integrations that only use API key authentication, define credentials in `_auth.py` and use a small `_config.py` to register the provider description and supported auth types for the settings UI. See [API-Key-Only Provider Auth](new_blocks.md#api-key-only-provider-auth-recommended-pattern) in the main block guide for the complete pattern.
 
 The `ProviderBuilder` is available for advanced use cases (OAuth, webhooks, cost tracking). It allows you to:
 - **`.with_api_key()`**: Add API key authentication
@@ -361,8 +361,8 @@ poetry run pytest 'backend/blocks/test/test_block.py::test_available_blocks[MyBl
 
 ## Integration Checklist
 
-- [ ] Add provider to `ProviderName` enum in `backend/integrations/providers.py`
-- [ ] Create `_auth.py` with credentials type, field factory, and test credentials (or `_config.py` for OAuth/advanced providers)
+- [ ] Add provider to `ProviderName` in `backend/integrations/providers.py` if using that enum in credentials; SDK integrations can register names through `ProviderBuilder`
+- [ ] Define credentials with `_auth.py` helpers or the SDK provider configuration, and register the description and supported auth types in `_config.py`
 - [ ] Implement block class with Input/Output schemas
 - [ ] Generate unique block ID with `uuid.uuid4()`
 - [ ] Choose appropriate block categories
