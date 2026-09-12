@@ -6,6 +6,7 @@ triggers:
   - check this docker-compose
   - why does my container keep restarting
   - is this stack safe
+version: "1"
 ---
 
 # Reviewing a Docker Compose stack

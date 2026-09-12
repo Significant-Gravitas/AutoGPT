@@ -6,6 +6,7 @@ triggers:
   - check my backup setup
   - would this restore
   - disaster recovery
+version: "1"
 ---
 
 # Checking a backup is restorable

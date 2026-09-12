@@ -6,6 +6,7 @@ triggers:
   - is this a duplicate
   - work the issue backlog
   - is this actually a bug
+version: "1"
 ---
 
 # Triaging an incoming issue

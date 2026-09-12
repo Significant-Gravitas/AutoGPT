@@ -6,6 +6,7 @@ triggers:
   - what changed
   - catch me up on the repo
   - what needs my attention
+version: "1"
 ---
 
 # Daily repository brief

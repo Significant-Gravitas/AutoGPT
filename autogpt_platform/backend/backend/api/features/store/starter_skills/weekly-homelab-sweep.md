@@ -6,6 +6,7 @@ triggers:
   - what needs updating
   - homelab check
   - anything i should do on the servers
+version: "1"
 ---
 
 # Weekly homelab sweep

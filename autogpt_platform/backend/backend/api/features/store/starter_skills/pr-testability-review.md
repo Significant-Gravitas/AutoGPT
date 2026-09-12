@@ -6,6 +6,7 @@ triggers:
   - is this PR ready
   - does this need tests
   - what does this break
+version: "1"
 ---
 
 # Reviewing a pull request for testability and necessity
