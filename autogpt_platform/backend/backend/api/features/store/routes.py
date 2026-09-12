@@ -8,6 +8,7 @@ import fastapi.responses
 import prisma.enums
 from fastapi import Query, Security
 from pydantic import BaseModel
+from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
@@ -605,6 +606,7 @@ async def generate_image(
     image_file = fastapi.UploadFile(
         file=image,
         filename=filename,
+        headers=Headers({"content-type": "image/jpeg"}),
     )
     image_url = await store_media.upload_media(
         user_id=user_id, file=image_file, use_file_name=True
