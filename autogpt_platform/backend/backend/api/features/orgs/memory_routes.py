@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Security
 
 from . import memory_db
 from .memory_model import HeldMemoryListResponse, MemoryActionResult
+from .rollout import require_org_collaboration
 
 router = APIRouter()
 
@@ -40,6 +41,7 @@ async def list_held_memories(
     ],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> HeldMemoryListResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await memory_db.list_held_memories(org_id, limit)
 
@@ -57,6 +59,7 @@ async def approve_held_memory(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> MemoryActionResult:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await memory_db.approve_held_memory(org_id, memory_id, ctx.user_id)
 
