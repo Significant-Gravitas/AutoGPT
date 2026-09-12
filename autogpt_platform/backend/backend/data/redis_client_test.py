@@ -4,6 +4,7 @@ Patches the redis-py constructors + ``ping()`` so no real Redis is needed.
 """
 
 import asyncio
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -242,20 +243,8 @@ async def test_disconnect_async_no_cached_client_is_noop() -> None:
 # Skipped when no cluster is reachable so CI without docker doesn't flap.
 
 
-def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
-
-
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 def test_sharded_pubsub_end_to_end_sync() -> None:
@@ -291,7 +280,7 @@ def test_sharded_pubsub_end_to_end_sync() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 async def test_sharded_spublish_end_to_end_async() -> None:
@@ -551,7 +540,7 @@ def _channels_on_distinct_shards(n: int = 3) -> list[str]:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
@@ -567,7 +556,7 @@ def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
@@ -618,7 +607,7 @@ def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
@@ -656,7 +645,7 @@ def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_reconnect_after_forced_disconnect() -> None:
@@ -702,3 +691,51 @@ def test_sharded_pubsub_reconnect_after_forced_disconnect() -> None:
         ps2.close()
         client2.close()
         redis_client.disconnect()
+
+
+class TestServerReachable:
+    """Unit tests for the collection-time reachability probe."""
+
+    def test_true_for_a_live_tcp_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        with listener:
+            monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+            monkeypatch.setattr(redis_client, "PORT", port)
+            assert redis_client.server_reachable() is True
+
+    def test_false_when_connection_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.close()  # nothing is listening on the port anymore
+        monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+        monkeypatch.setattr(redis_client, "PORT", port)
+        assert redis_client.server_reachable() is False
+
+    def test_false_when_host_does_not_resolve(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fail_getaddrinfo(*args: object, **kwargs: object) -> list:
+            raise OSError("resolution failed")
+
+        monkeypatch.setattr(redis_client.socket, "getaddrinfo", _fail_getaddrinfo)
+        monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+        monkeypatch.setattr(redis_client, "PORT", 6379)
+        assert redis_client.server_reachable() is False
+
+    def test_false_when_the_deadline_is_already_spent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        with listener:
+            monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+            monkeypatch.setattr(redis_client, "PORT", port)
+            assert redis_client.server_reachable(timeout=0) is False

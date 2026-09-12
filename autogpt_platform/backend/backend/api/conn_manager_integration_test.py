@@ -28,21 +28,8 @@ from backend.data.execution import (
     graph_all_channel,
 )
 
-
-def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
-
-
 pytestmark = pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip conn_manager integration",
 )
 

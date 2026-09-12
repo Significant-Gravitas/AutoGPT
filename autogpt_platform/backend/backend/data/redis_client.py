@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import socket
+import time
 from collections.abc import AsyncGenerator
 from weakref import ReferenceType, WeakKeyDictionary, ref
 
@@ -91,6 +93,39 @@ def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
         return addr
     _, port = addr
     return HOST, port
+
+
+def server_reachable(timeout: float = 1.0) -> bool:
+    """Probe the configured `HOST:PORT` with a single TCP connect.
+
+    Safe to call from collection-time ``skipif`` guards: unlike
+    :func:`connect`, a dead host fails after ``timeout`` seconds instead of
+    retrying for ~45 minutes (``conn_retry``'s defaults) before the guard
+    can resolve.
+
+    ``timeout`` bounds the whole probe: when `HOST` resolves to several
+    addresses, the remaining time is re-derived for each attempt instead of
+    being spent per address. DNS resolution itself happens outside any
+    socket timeout; it is assumed to be healthy in environments where this
+    guard is used.
+    """
+    deadline = time.monotonic() + timeout
+    try:
+        infos = socket.getaddrinfo(HOST, PORT, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+    for family, socktype, proto, _, address in infos:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            with socket.socket(family, socktype, proto) as sock:
+                sock.settimeout(remaining)
+                if sock.connect_ex(address) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 @conn_retry("Redis", "Acquiring connection")
