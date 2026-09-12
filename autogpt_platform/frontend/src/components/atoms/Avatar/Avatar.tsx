@@ -10,6 +10,7 @@ import React, {
 import BoringAvatar from "boring-avatars";
 
 import Image, { ImageProps } from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { cn } from "@/lib/utils";
 
 type AvatarContextValue = {
@@ -156,7 +157,7 @@ export function AvatarImage({
       fill={Boolean(fill)}
       sizes={sizes}
       priority={priority}
-      unoptimized={unoptimized}
+      unoptimized={unoptimized || isLocalStoreMediaUrl(normalizedSrc)}
       onLoad={handleLoadingComplete}
       onError={handleErrorNext as ImageProps["onError"]}
     />

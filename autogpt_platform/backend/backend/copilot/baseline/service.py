@@ -1714,6 +1714,9 @@ async def stream_chat_completion_baseline(
                 user_id=user_id,
                 session_id=session_id,
                 message_length=len(message or ""),
+                expert_id=session.expert_id,
+                origin=session.metadata.origin,
+                surface=session.metadata.source_platform,
             )
 
     # Capture count *before* the pending drain so is_first_turn and the
@@ -1985,7 +1988,9 @@ async def stream_chat_completion_baseline(
         # here MUST NOT block the turn; log and proceed with empty index.
         skills_ctx = ""
         try:
-            skills_ctx = await build_skills_context(user_id)
+            skills_ctx = await build_skills_context(
+                user_id, expert_id=session.expert_id
+            )
         except Exception:
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"

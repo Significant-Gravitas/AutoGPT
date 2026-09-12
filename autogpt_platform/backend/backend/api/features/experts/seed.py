@@ -3,9 +3,9 @@
 Run with: poetry run python -m backend.api.features.experts.seed
 
 Upserts the three roster templates (Maria, Max, Frankie) by template name,
-so repeated runs keep the same template ids. Preload workflows are resolved
-from official store listing slugs; all listings are validated before any
-template is mutated. Each upsert also refreshes the presentation fields
+so repeated runs keep the same template ids. Preload workflows and bundled
+Skills Hub skills are resolved from listing slugs; all are validated before
+any template is mutated. Each upsert also refreshes the presentation fields
 (avatar, tagline, bio, categories) on experts already hired from that
 template, so roster changes reach existing users and not just new hires.
 """
@@ -57,7 +57,9 @@ class RosterEntry(TypedDict):
     tagline: str
     avatar_url: str | None
     bio: str
-    skills: list[str]
+    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
+    # environment, so the seed resolves these to ids and the relation stores those.
+    bundled_skills: list[str]
     # Canonical marketplace categories, so the category chip narrows the roster.
     # Declared here rather than derived from `role`: "Ops" folds onto no
     # canonical value, and a raised expert's role is free text.
@@ -80,13 +82,7 @@ ROSTER: list[RosterEntry] = [
         "tagline": "Writes your LinkedIn posts, SEO articles, and webpage copy.",
         "avatar_url": "/experts/maria.svg",
         "bio": """I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.""",
-        "skills": [
-            "Content strategy",
-            "Social copy",
-            "SEO writing",
-            "Web copy",
-            "Positioning",
-        ],
+        "bundled_skills": [],
         "categories": ["marketing", "content"],
         "identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
 
@@ -134,13 +130,7 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
         "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
         "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
-        "skills": [
-            "Prospecting",
-            "Lead qualification",
-            "Contact research",
-            "ICP targeting",
-            "Account research",
-        ],
+        "bundled_skills": [],
         "categories": ["sales"],
         "identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
 
@@ -172,13 +162,7 @@ You are rigorous about data quality. You flag when contact information looks sta
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
         "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
-        "skills": [
-            "Meeting prep",
-            "Follow-ups",
-            "Support triage",
-            "Scheduling",
-            "Checklists",
-        ],
+        "bundled_skills": [],
         "categories": ["operations", "support"],
         "identity": """You are Frankie, an operations specialist who has run the back office for fast-growing teams. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
 
@@ -329,7 +313,6 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         ),
         "boundaries": entry["boundaries"],
         "bio": entry["bio"],
-        "skills": entry["skills"],
         "categories": validate_canonical_categories(entry["categories"]),
         "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
@@ -428,13 +411,57 @@ async def _resolve_roster_preloads() -> dict[str, str]:
     return resolved
 
 
+async def _resolve_roster_skills() -> dict[str, str]:
+    slugs = {slug for entry in ROSTER for slug in entry["bundled_skills"]}
+    if not slugs:
+        return {}
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where={"slug": {"in": sorted(slugs)}, "isDeleted": False}
+    )
+    resolved = {listing.slug: listing.id for listing in listings}
+    missing = sorted(slugs - resolved.keys())
+    if missing:
+        raise RuntimeError(
+            f"Skills Hub is missing roster listings for: {', '.join(missing)}. "
+            "Seed the starter skills before seeding the expert roster."
+        )
+    return resolved
+
+
+async def _sync_bundled_skills(template_id: str, listing_ids: list[str]) -> None:
+    await prisma.models.ExpertSkillListing.prisma().delete_many(
+        where={"expertId": template_id, "skillListingId": {"not_in": listing_ids}}
+    )
+    for position, listing_id in enumerate(listing_ids):
+        await prisma.models.ExpertSkillListing.prisma().upsert(
+            where={
+                "expertId_skillListingId": {
+                    "expertId": template_id,
+                    "skillListingId": listing_id,
+                }
+            },
+            data={
+                "create": {
+                    "expertId": template_id,
+                    "skillListingId": listing_id,
+                    "position": position,
+                },
+                "update": {"position": position},
+            },
+        )
+
+
 async def seed_roster() -> list[str]:
     """Upsert the roster templates and their preloads. Returns template ids."""
     resolved_versions = await _resolve_roster_preloads()
+    resolved_skills = await _resolve_roster_skills()
     template_ids = []
     for entry in ROSTER:
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry, resolved_versions)
+        await _sync_bundled_skills(
+            template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
+        )
         refreshed = await _backfill_hired_copies(template)
         template_ids.append(template.id)
         logger.info(

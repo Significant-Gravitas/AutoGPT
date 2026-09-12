@@ -7,6 +7,7 @@ import Avatar, {
 } from "@/components/atoms/Avatar/Avatar";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
 import { isKey } from "@/lib/keyboard";
@@ -70,6 +71,7 @@ export function StoreCard({
             )}
             <Image
               src={agentImage}
+              unoptimized={isLocalStoreMediaUrl(agentImage)}
               alt={`${agentName} preview image`}
               fill
               className="object-cover"

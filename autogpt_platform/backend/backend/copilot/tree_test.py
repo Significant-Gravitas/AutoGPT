@@ -391,11 +391,14 @@ def test_all_tool_names_cover_the_denied_set() -> None:
 # ── ceiling formula (finding 3) ────────────────────────────────────────
 
 
-def _ceiling(daily: int, remaining_usd: float, monkeypatch) -> int:
+def _ceiling(
+    daily: int, remaining_usd: float, monkeypatch, *, weekly: int | None = None
+) -> int:
     """Drive resolve_root_ceiling_microdollars with a fixed tier + balance."""
+    weekly_limit = daily * 5 if weekly is None else weekly
 
     async def _limits(_uid, _d, _w):
-        return daily, daily * 5, "TIER"
+        return daily, weekly_limit, "TIER"
 
     async def _remaining(**_kw):
         return remaining_usd
@@ -441,6 +444,26 @@ def test_remaining_budget_clamps_the_ceiling(monkeypatch) -> None:
     monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
     # Formula would allow $4.00; only $0.75 is left today.
     assert _ceiling(8_000_000, 0.75, monkeypatch) == 750_000
+
+
+def test_uncapped_daily_limit_yields_the_absolute_cap(monkeypatch) -> None:
+    """A negative daily limit is the self-hosted "no cap" sentinel. There is
+    no tier daily to scale from, so the absolute cap alone bounds a tree —
+    scaling the sentinel would collapse it to 0 and refuse every spawn."""
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    assert _ceiling(-1, float("inf"), monkeypatch) == 10_000_000
+
+
+def test_uncapped_daily_limit_still_respects_remaining_weekly_budget(
+    monkeypatch,
+) -> None:
+    # Daily off, weekly on with $0.75 left: the weekly remainder still clamps.
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    assert _ceiling(-1, 0.75, monkeypatch, weekly=50_000_000) == 750_000
 
 
 def test_isolate_denied_names_are_real_tools() -> None:
