@@ -1,5 +1,5 @@
 -- Delete every persona phrase the roster seed ever wrote as a skill (none has a
--- SKILL.md behind it); an expert owning a skill folder of that slug keeps it.
+-- SKILL.md behind it); a phrase whose SKILL.md does exist is a real assignment.
 WITH "phrases" AS (
   SELECT ARRAY[
     'Content strategy', 'Social copy', 'SEO writing', 'Web copy', 'Positioning',
@@ -12,7 +12,12 @@ WITH "phrases" AS (
   SELECT e."id",
          ARRAY(
            SELECT t."name"
-           FROM   UNNEST(e."skills") WITH ORDINALITY AS t("name", "position")
+           FROM   UNNEST(e."skills") WITH ORDINALITY AS t("name", "position"),
+                  -- The row may carry a display name ("Content strategy") for the
+                  -- folder "content-strategy": skill_name_key()'s key, in SQL.
+                  LATERAL (
+                    SELECT regexp_replace(BTRIM(LOWER(t."name")), '[\s_-]+', '-', 'g')
+                  ) AS k("slug")
            WHERE  t."name" <> ALL (p."list")
               OR  EXISTS (
                     SELECT 1
@@ -20,8 +25,13 @@ WITH "phrases" AS (
                     JOIN   "UserWorkspace" w ON w."id" = f."workspaceId"
                     WHERE  w."userId" = e."ownerUserId"
                       AND  NOT f."isDeleted"
-                      AND  f."path" = '/experts/' || e."id" || '/skills/'
-                                      || LOWER(t."name") || '/SKILL.md'
+                      -- The expert's own copy, or the owner-library file that the
+                      -- per-expert ownership backfill copies on the next cold
+                      -- listing — deleting the name is what would strand it.
+                      AND  f."path" IN (
+                             '/experts/' || e."id" || '/skills/' || k."slug" || '/SKILL.md',
+                             '/skills/' || k."slug" || '/SKILL.md'
+                           )
                   )
            ORDER BY t."position"
          ) AS "skills"
