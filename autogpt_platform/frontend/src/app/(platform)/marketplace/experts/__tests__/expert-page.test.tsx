@@ -167,6 +167,21 @@ describe("Marketplace expert page", () => {
     );
   });
 
+  test("renders the live generated face in the header", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Maria" });
+    const header = heading.closest("header");
+    expect(
+      header?.querySelector('svg[data-testid="bot-avatar"]'),
+    ).not.toBeNull();
+  });
+
   test("shows the profile and hires from the page", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),

@@ -1,9 +1,4 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
@@ -13,6 +8,7 @@ import {
   FlashIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ExpertFace } from "./ExpertFace";
 
 interface Props {
   expert: Expert;
@@ -37,12 +33,7 @@ export function ExpertCard({ expert, isHired }: Props) {
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
-            {expert.avatar_url ? (
-              <AvatarImage src={expert.avatar_url} alt={expert.name} />
-            ) : null}
-            <AvatarFallback>{expert.name}</AvatarFallback>
-          </Avatar>
+          <ExpertFace expert={expert} size={80} className="h-20 w-20" />
           <span
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",

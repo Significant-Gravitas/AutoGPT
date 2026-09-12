@@ -126,6 +126,37 @@ describe("Marketplace ExpertsSection", () => {
     expect(rosterRequested).toBe(false);
   });
 
+  test("renders a live generated face for experts without an uploaded picture", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, avatar_url: "/avatars/round.sky.glasses.svg" },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    const face = card.querySelector('svg[data-testid="bot-avatar"]');
+    expect(face).not.toBeNull();
+    expect(face?.getAttribute("data-avatar")).toBe("round.sky.glasses");
+    expect(card.querySelector("img")).toBeNull();
+  });
+
+  test("keeps an uploaded picture as a static image", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, avatar_url: "https://example.com/maria.png" },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(card.querySelector('svg[data-testid="bot-avatar"]')).toBeNull();
+  });
+
   test("stays hidden and fetches nothing for signed-in users outside the beta", async () => {
     hireExpertsFlag.enabled = false;
     let templatesRequested = false;
