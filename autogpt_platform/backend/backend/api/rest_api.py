@@ -60,6 +60,7 @@ import backend.api.features.search.routes as search_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
@@ -91,6 +92,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
+    ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
@@ -177,7 +179,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.org_migration.run_migration()
 
     # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for AutoPilot nodes saved before `transport`
+    # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
     # changes nothing about which account pays — and refusing to boot the
     # platform over a cosmetic migration would be the worse outcome.
@@ -187,7 +189,7 @@ async def lifespan_context(app: fastapi.FastAPI):
             timeout=30,
         )
     except Exception:
-        logger.error("AutoPilot transport backfill failed", exc_info=True)
+        logger.error("Otto transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
@@ -367,6 +369,7 @@ async def validation_error_handler(
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
@@ -428,6 +431,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.api.features.store.skill_routes.router,
+    tags=["v2"],
+    prefix="/api/store/skills",
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"

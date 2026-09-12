@@ -137,7 +137,7 @@ export function SubscriptionTierSection() {
           <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
           <p className="mt-1">
             Your account doesn&apos;t have an active subscription. Choose a tier
-            below to unlock AutoPilot and start running agents.
+            below to unlock Otto and start running agents.
           </p>
         </div>
       )}

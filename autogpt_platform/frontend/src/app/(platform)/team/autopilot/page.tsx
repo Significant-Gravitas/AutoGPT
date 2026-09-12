@@ -21,6 +21,7 @@ import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedules
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { AUTOPILOT_PILL_CLASS } from "../helpers";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
@@ -60,7 +61,7 @@ export default function AutopilotPage() {
       <main className={MAIN_CLASS}>
         <BackToTeamLink />
         <ErrorCard
-          context="Autopilot"
+          context={AUTOPILOT_NAME}
           hint="We could not load your team."
           onRetry={() => refetch()}
         />
@@ -101,7 +102,7 @@ export default function AutopilotPage() {
 
         <TabsLineContent value="workflows">
           <ExpertWorkflowsSection
-            expertName="Autopilot"
+            expertName={AUTOPILOT_NAME}
             workflows={workflows}
             accentClassName={AUTOPILOT_PILL_CLASS}
             emptyMessage="No workflows yet. Workflows in your library that no expert owns show up here."

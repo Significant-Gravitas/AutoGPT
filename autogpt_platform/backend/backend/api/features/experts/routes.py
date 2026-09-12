@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
@@ -21,8 +22,10 @@ from backend.api.features.experts.models import (
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertSetupItem,
     ExpertSkillsUpdate,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -126,8 +129,19 @@ class CreateRaisedExpertRequest(BaseModel):
 
 
 @public_router.get("/templates", operation_id="list_expert_templates")
-async def list_expert_templates() -> list[Expert]:
-    return await experts_db.list_templates()
+async def list_expert_templates(
+    search_query: str | None = fastapi.Query(default=None),
+    category: str | None = fastapi.Query(default=None),
+    user_id: str | None = Security(autogpt_auth_lib.get_optional_user_id),
+) -> list[ExpertTemplate]:
+    """Roster templates, narrowed by a search term and/or a marketplace category.
+
+    Unpaginated: the roster is small, and every caller reads the whole list.
+    """
+    templates = await experts_db.list_templates(
+        search_query=search_query, category=category
+    )
+    return await experts_db.with_bundled_skills(templates, user_id)
 
 
 @router.post(
@@ -277,6 +291,14 @@ async def list_expert_identities(
     return await experts_db.list_expert_identities(user_id)
 
 
+@router.get("/setup", operation_id="list_expert_setup_items")
+async def list_expert_setup_items(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertSetupItem]:
+    """What still stands between each expert's scheduled workflows and a schedule."""
+    return await expert_setup.list_setup_items(user_id)
+
+
 @router.get(
     "/{expert_id}",
     operation_id="get_expert",
@@ -286,7 +308,7 @@ async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
-    expert = await experts_db.get_expert(user_id, expert_id)
+    expert = await experts_db.get_expert(user_id, expert_id, include_credentials=True)
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert

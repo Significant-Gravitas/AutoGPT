@@ -1,4 +1,4 @@
-"""Per-user FIFO queue for AutoPilot chat turns that exceeded the soft
+"""Per-user FIFO queue for Otto chat turns that exceeded the soft
 running cap.
 
 Queue state lives on :class:`prisma.models.ChatSession`'s ``chatStatus``

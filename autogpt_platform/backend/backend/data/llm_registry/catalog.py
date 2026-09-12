@@ -874,6 +874,20 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
             CatalogModel(
+                slug="qwen/qwen3.8-max-0902",
+                display_name="Qwen 3.8 Max (0902)",
+                provider="open_router",
+                creator="qwen",
+                context_window=262144,
+                max_output_tokens=131072,
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=900.0,
+                ),
+            ),
+            CatalogModel(
                 slug="qwen/qwen3-coder",
                 display_name="Qwen 3 Coder",
                 provider="open_router",

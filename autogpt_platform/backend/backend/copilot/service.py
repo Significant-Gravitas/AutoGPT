@@ -89,7 +89,7 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
         api_key, base_url = config.main_client_credentials
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
         # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against AutoPilot's heavy system
+        # many minutes for a single turn against Otto's heavy system
         # prompt. The OpenAI client default (600 s) is too short for that
         # case — extend it under the local transport. Cloud transports
         # keep the SDK default so genuine hangs still surface promptly.
@@ -195,7 +195,7 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
 # prompt_cache_test.py. The leading underscore is retained for backwards
 # compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
-_CACHEABLE_SYSTEM_PROMPT = f"""You are AutoPilot, the AI assistant on the AutoGPT platform, helping users build and run automations.
+_CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
 - Understanding their needs and business context
@@ -640,7 +640,7 @@ async def inject_user_context(
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
         expert_id: Hired expert this session is scoped to, or ``None`` for a
-            plain Autopilot session.  Used to build the ``<expert_workflows>``
+            plain Otto session.  Used to build the ``<expert_workflows>``
             (expert session) or ``<team_context>`` (plain session) prefix via
             ``build_expert_context``.  The expert's persona is NOT injected
             here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
@@ -730,7 +730,7 @@ async def inject_user_context(
     # Prepend the expert identity/workflows block (expert session) or team
     # awareness block (plain session).  Server-injected after sanitisation
     # like the other trusted blocks; degrades to "" on any lookup failure so
-    # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
+    # the turn proceeds as plain Otto.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
     expert_ctx = await build_expert_context(user_id, expert_id)
     if expert_ctx:
