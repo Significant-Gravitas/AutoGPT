@@ -31,9 +31,11 @@ from forge.agent_protocol.models import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
+from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
 from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
+from forge.permissions import CommandPermissionManager
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
 
@@ -144,6 +146,9 @@ class AgentProtocolServer:
             app_config=self.app_config,
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
+            permission_manager=self._get_permission_manager(
+                task_agent_id(task.task_id)
+            ),
         )
         await task_agent.file_manager.save_state()
 
@@ -188,6 +193,7 @@ class AgentProtocolServer:
             app_config=self.app_config,
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
+            permission_manager=self._get_permission_manager(task_agent_id(task_id)),
         )
 
         if user_id := (task.additional_input or {}).get("user_id"):
@@ -447,6 +453,25 @@ class AgentProtocolServer:
             headers={
                 "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
+        )
+
+    def _get_permission_manager(self, agent_id: str) -> CommandPermissionManager:
+        """Create a permission manager for the given agent.
+
+        Server mode uses no interactive prompt function, so any command not
+        explicitly allowed or denied by workspace/agent policy is denied.
+        """
+        workspace = self.app_config.workspace
+        workspace_settings = WorkspaceSettings.load_or_create(workspace)
+        agent_dir = self.app_config.app_data_dir / "agents" / agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        return CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=None,
+            on_auto_approve=None,
         )
 
     def _get_task_agent_file_workspace(self, task_id: str | int) -> FileStorage:
