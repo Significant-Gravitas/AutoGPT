@@ -3,16 +3,19 @@ import { getListCopilotSkillsMockHandler200 } from "@/app/api/__generated__/endp
 import {
   getGetV2ListMarketplaceSkillsMockHandler200,
   getGetV2ListStoreAgentsMockHandler,
+  getGetV2ListStoreCategoriesMockHandler,
   getGetV2ListStoreCreatorsMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { server } from "@/mocks/mock-server";
 import { HttpResponse, http } from "msw";
+import userEvent from "@testing-library/user-event";
 import {
   configure,
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -84,6 +87,11 @@ const outreach: MarketplaceSkill = {
   required_providers: ["google"],
 };
 
+const CATEGORIES = [
+  { value: "sales", label: "Sales", description: "Leads and outreach" },
+  { value: "content", label: "Content", description: "Writing and editing" },
+];
+
 function listing(skills: MarketplaceSkill[], totalItems = skills.length) {
   return getGetV2ListMarketplaceSkillsMockHandler200({
     skills,
@@ -116,7 +124,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("AutoPilot Skills", undefined, {
+      await screen.findByText("Otto Skills", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
@@ -132,7 +140,7 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const skills = await screen.findByText("AutoPilot Skills", undefined, {
+    const skills = await screen.findByText("Otto Skills", undefined, {
       timeout: 10000,
     });
     const workflows = await screen.findByText("All AI Workflows");
@@ -210,11 +218,66 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("AutoPilot Skills", undefined, {
+      await screen.findByText("Otto Skills", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
+  test("a category with no skills hides the shelf rather than showing it empty", async () => {
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
+      http.get("/api/proxy/api/store/skills", ({ request }) => {
+        const filtered = new URL(request.url).searchParams.has("category");
+        const skills = filtered ? [] : [brandVoice];
+        return HttpResponse.json({
+          skills,
+          pagination: {
+            total_items: skills.length,
+            total_pages: 1,
+            current_page: 1,
+            page_size: 4,
+          },
+        });
+      }),
+    );
+    render(<MainMarkeplacePage />);
+    await screen.findByRole("link", { name: /Brand voice guide/ });
+
+    await userEvent.click(await findCategoryChip("Sales"));
+
+    // Without the category guard this falls through to the signed-in empty state.
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    expect(screen.queryByTestId("skills-shelf-empty")).toBeNull();
+  });
+
+  test("a failed filtered request keeps the shelf and offers a retry", async () => {
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
+      http.get("/api/proxy/api/store/skills", ({ request }) => {
+        if (new URL(request.url).searchParams.has("category")) {
+          return HttpResponse.json({ detail: "Unavailable" }, { status: 500 });
+        }
+        return HttpResponse.json({
+          skills: [brandVoice],
+          pagination: {
+            total_items: 1,
+            total_pages: 1,
+            current_page: 1,
+            page_size: 4,
+          },
+        });
+      }),
+    );
+    render(<MainMarkeplacePage />);
+    await screen.findByRole("link", { name: /Brand voice guide/ });
+
+    await userEvent.click(await findCategoryChip("Sales"));
+
+    // A failure is not an answer about the category, so the shelf stays.
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
+    expect(screen.getByText("Otto Skills")).toBeDefined();
   });
 
   test("points a signed-in user at their own skills when none are published", async () => {
@@ -236,9 +299,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("AutoPilot Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 
   test("stays hidden and fetches nothing outside the beta", async () => {
@@ -262,7 +323,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("AutoPilot Skills")).toBeNull();
+    expect(screen.queryByText("Otto Skills")).toBeNull();
     await waitFor(() => expect(requested).toBe(false));
   });
 
@@ -273,8 +334,13 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("AutoPilot Skills")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
   });
 });
+
+async function findCategoryChip(name: string) {
+  const group = await screen.findByRole("group", {
+    name: "Browse by category",
+  });
+  return within(group).findByRole("button", { name });
+}

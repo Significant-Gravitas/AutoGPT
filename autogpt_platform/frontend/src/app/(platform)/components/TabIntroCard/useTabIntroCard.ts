@@ -71,7 +71,7 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
     // "Got it", Escape, or a click on the backdrop.
     dismiss: () => finish(),
     // Any of the card's calls to action, named so the funnel can tell a
-    // Build "ask AutoPilot" apart from a Build "learn it yourself".
+    // Build "ask Otto" apart from a Build "learn it yourself".
     takeAction: (cta: TabIntroCta) => finish(cta),
   };
 }

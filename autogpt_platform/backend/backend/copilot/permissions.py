@@ -99,6 +99,7 @@ ToolName = Literal[
     "edit_agent",
     "edit_chat_platform_message",
     "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
     "find_block",
     "find_library_agent",

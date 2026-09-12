@@ -87,7 +87,7 @@ async def test_expert_suffix_is_the_production_rendering():
 @pytest.mark.asyncio
 async def test_user_prefix_is_the_production_first_turn_context():
     """``build_expert_context`` (DB-backed) and the pure renderers must emit
-    the same workflow and teammate blocks, for an expert and for AutoPilot."""
+    the same workflow and teammate blocks, for an expert and for Otto."""
     roster = _installed(roster_experts(), load_fixtures())
     max_ = next(e for e in roster if e.name == "Max")
     db = MagicMock()
@@ -213,7 +213,7 @@ def test_the_fingerprint_names_the_component_that_moved():
     assert _moved(base, fingerprint_parts(installed, fixtures, rubric, **models)) == {
         "autopilot",
         *(f"context:{e.name}" for e in experts),
-    }, "installed workflows show in every first-turn block, AutoPilot's included"
+    }, "installed workflows show in every first-turn block, Otto's included"
 
 
 def _installed(experts, fixtures):

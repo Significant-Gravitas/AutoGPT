@@ -344,6 +344,33 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
+  test("shows the expert's integrations as logos after the role pill", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        credential_providers: ["github", "openai"],
+      })),
+    );
+
+    render(<ExpertDetailPage />);
+
+    const header = (await screen.findByRole("heading", { name: "Maria" }))
+      .parentElement as HTMLElement;
+    const integrations = within(header).getByRole("list", {
+      name: "Integrations",
+    });
+    expect(
+      within(integrations)
+        .getAllByRole("img")
+        .map((logo) => logo.getAttribute("alt")),
+    ).toEqual(["GitHub", "OpenAI"]);
+    const pill = within(header).getByText("Marketing Strategist");
+    expect(
+      pill.compareDocumentPosition(integrations) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test("keeps the budget above the tabs and the summary in Basics", async () => {
     render(<ExpertDetailPage />);
 
@@ -591,6 +618,64 @@ describe("ExpertDetailPage", () => {
     });
     expect(within(stack).getAllByRole("listitem")).toHaveLength(4);
     expect(within(stack).getByText("+3")).toBeDefined();
+  });
+
+  test("shows expert-owned skill metadata without claiming it belongs to the personal library", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({ ...maria, skills: ["expert-only"] })),
+      getListCopilotSkillsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("expert_id") === maria.id
+          ? [
+              {
+                name: "expert-only",
+                description: "Instructions owned by Maria",
+                triggers: ["expert task"],
+              },
+            ]
+          : [],
+      ),
+    );
+    render(<ExpertDetailPage />);
+    await openTab("Skills");
+    expect(
+      await screen.findByText("Instructions owned by Maria"),
+    ).toBeDefined();
+    expect(screen.getByText("expert task")).toBeDefined();
+    expect(screen.queryByText(/Marketplace skill/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open in library" })).toBeNull();
+  });
+
+  test("falls back to the library entry for an expert assigned a skill before it owned one", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        skills: ["content-strategy"],
+      })),
+      getListCopilotSkillsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("expert_id") === maria.id
+          ? []
+          : [
+              {
+                name: "content-strategy",
+                description: "How we plan the content calendar",
+                triggers: ["content plan"],
+              },
+            ],
+      ),
+    );
+    render(<ExpertDetailPage />);
+    await openTab("Skills");
+    expect(
+      await screen.findByText("How we plan the content calendar"),
+    ).toBeDefined();
+    expect(screen.getByText("content plan")).toBeDefined();
+    expect(screen.queryByText("Skill details unavailable.")).toBeNull();
+
+    // The row searches on the description it actually shows.
+    await userEvent
+      .setup()
+      .type(screen.getByPlaceholderText(/search/i), "content calendar");
+    expect(screen.getByText("How we plan the content calendar")).toBeDefined();
   });
 
   test("lists the expert's skills with library details and adds one", async () => {
