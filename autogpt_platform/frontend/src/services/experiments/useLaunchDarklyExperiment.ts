@@ -50,7 +50,7 @@ export function useLaunchDarklyExperiment(flagKey: string) {
 
   const isResolved = !flagsEnabled || isClientReady;
   const raw = flags[flagKey];
-  const variant = typeof raw === "string" ? raw : null;
+  const variant = flagsEnabled && typeof raw === "string" ? raw : null;
 
   useReportAssignment({
     experimentKey: flagKey,
