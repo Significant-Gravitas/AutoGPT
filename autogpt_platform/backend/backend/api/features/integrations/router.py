@@ -1736,6 +1736,20 @@ def _get_provider_oauth_handler(
     key = provider_key(provider_name)
 
     if key not in HANDLERS_BY_NAME:
+        if key in DEVICE_HANDLERS_BY_NAME:
+            # A device-code provider is a public client with no client secret,
+            # so there is no authorization-code flow to start. Point the caller
+            # at the device-auth endpoint rather than reporting "does not
+            # support OAuth". The detail is shown to end users verbatim.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Provider '{key}' connects with a device code, not an "
+                    "OAuth redirect. Connect it through the device-code flow "
+                    f"instead (API: POST /api/integrations/{key}"
+                    "/device-auth/initiate)."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",
