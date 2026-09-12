@@ -13,6 +13,14 @@ const nextConfig = {
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  async rewrites() {
+    return [
+      {
+        source: "/api/store/media/:path*",
+        destination: "/api/proxy/api/store/media/:path*",
+      },
+    ];
+  },
   productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [

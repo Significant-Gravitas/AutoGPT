@@ -1,9 +1,9 @@
 """Trusted file scope for expert chat sessions.
 
 Resolved from persisted session attribution, never from tool arguments. An
-expert session may read and write under its own conversations, read under
-conversations it delegated, and read the account's skills registry. ``None``
-scope means unrestricted: the account owner acting through personal
+expert session may read and write under its own conversations and its own
+skills folder, and read under conversations it delegated. ``None`` scope
+means unrestricted: the account owner acting through personal
 Otto, REST endpoints, or system paths.
 """
 
@@ -17,12 +17,16 @@ from prisma.models import Expert as PrismaExpert
 from pydantic import BaseModel, Field
 
 SESSIONS_ROOT = "/sessions/"
-SKILLS_ROOT = "/skills/"
+EXPERTS_ROOT = "/experts/"
 
 EXPERT_FILE_ACCESS_DENIED = (
     "This file is outside this expert's scope. Experts can only access files "
-    "from their own conversations. Open personal Otto to work with other "
-    "files."
+    "from their own conversations and their own skills. Open personal Otto "
+    "to work with other files."
+)
+EXPERT_SKILL_SCOPE_DENIED = (
+    "Experts can only use and manage their own skills. Open personal Otto "
+    "to manage another expert's skills or the account's skills."
 )
 
 
@@ -32,6 +36,10 @@ class WorkspaceAccessDeniedError(PermissionError):
 
 def session_path_prefix(session_id: str) -> str:
     return f"{SESSIONS_ROOT}{session_id}/"
+
+
+def expert_skills_folder(expert_id: str) -> str:
+    return f"{EXPERTS_ROOT}{expert_id}/skills"
 
 
 class WorkspaceScope(BaseModel):
@@ -44,6 +52,10 @@ class WorkspaceScope(BaseModel):
     expert_id: str | None = None
     session_ids: list[str] = Field(default_factory=list)
     delegated_session_ids: list[str] = Field(default_factory=list)
+    # A carried grant, never inferred from ``expert_id``: this model crosses an
+    # RPC boundary and is rebuilt as this class, so a subclass that withheld the
+    # folder would come back granting it.
+    owns_skills_folder: bool = False
 
     def with_session(self, session_id: str) -> "WorkspaceScope":
         if session_id in self.session_ids:
@@ -51,16 +63,21 @@ class WorkspaceScope(BaseModel):
         return self.model_copy(update={"session_ids": [*self.session_ids, session_id]})
 
     @property
+    def skills_prefix(self) -> str | None:
+        if self.expert_id is None or not self.owns_skills_folder:
+            return None
+        return f"{expert_skills_folder(self.expert_id)}/"
+
+    @property
     def write_prefixes(self) -> list[str]:
-        return [session_path_prefix(s) for s in self.session_ids]
+        own = [session_path_prefix(s) for s in self.session_ids]
+        return own if self.skills_prefix is None else own + [self.skills_prefix]
 
     @property
     def read_prefixes(self) -> list[str]:
-        return (
-            self.write_prefixes
-            + [session_path_prefix(s) for s in self.delegated_session_ids]
-            + [SKILLS_ROOT]
-        )
+        return self.write_prefixes + [
+            session_path_prefix(s) for s in self.delegated_session_ids
+        ]
 
     def allows_path(self, path: str, *, write: bool = False) -> bool:
         if not path.startswith("/") or "\\" in path or posixpath.normpath(path) != path:
@@ -107,6 +124,7 @@ async def resolve_expert_workspace_scope(
     )
     return WorkspaceScope(
         expert_id=expert_id,
+        owns_skills_folder=True,
         session_ids=[row.id for row in own_sessions],
         delegated_session_ids=[
             row.id for row in delegated_sessions if row.expertId != expert_id

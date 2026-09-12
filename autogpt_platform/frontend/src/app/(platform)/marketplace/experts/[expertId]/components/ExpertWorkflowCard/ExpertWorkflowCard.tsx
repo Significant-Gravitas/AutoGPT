@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Calendar03Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useImageFallback } from "@/hooks/useImageFallback";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { getCadenceLabel } from "./helpers";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
 
@@ -28,6 +29,7 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
         {showImage && imageUrl ? (
           <Image
             src={imageUrl}
+            unoptimized={isLocalStoreMediaUrl(imageUrl)}
             alt={`${name} preview image`}
             fill
             sizes="(min-width: 640px) 360px, 100vw"

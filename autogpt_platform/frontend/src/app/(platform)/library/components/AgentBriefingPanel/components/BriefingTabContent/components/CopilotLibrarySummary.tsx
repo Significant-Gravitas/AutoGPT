@@ -11,7 +11,7 @@ export function CopilotLibrarySummary() {
   // itself flag-gated.  No second flag here because the count-based
   // hide below already keeps the pill quiet for users who don't use
   // the feature.
-  const { data: skillsRes } = useListCopilotSkills({
+  const { data: skillsRes } = useListCopilotSkills(undefined, {
     query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({

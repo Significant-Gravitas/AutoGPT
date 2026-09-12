@@ -8,7 +8,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useOnboardingWizardStore } from "../../store";
-import { hasLinkedSubscription } from "./helpers";
 
 export function useConnectStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -22,20 +21,30 @@ export function useConnectStep() {
       ? connectionsQuery.data.data.offers
       : undefined;
 
-  // A successful sign-in does not move the wizard on: the box turns to
-  // "Connected" and the user goes on with Next when they are ready.
+  function finishConnection() {
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListChatConnectionsQueryKey(),
+    });
+  }
+
   const { connect, isPending } = useOAuthConnect({
     provider: "codex",
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
-        queryKey: getGetV2ListChatConnectionsQueryKey(),
-      }),
+    onSuccess: finishConnection,
   });
 
   return {
     connect,
+    finishConnection,
     isConnecting: isPending,
     skip: nextStep,
-    isAlreadyLinked: hasLinkedSubscription(offers),
+    isChatGPTLinked: (offers ?? []).some(
+      (offer) =>
+        offer.auth_provider === "codex" && Boolean(offer.credential_id),
+    ),
+    isMicrosoftLinked: (offers ?? []).some(
+      (offer) =>
+        offer.auth_provider === "microsoft_365_copilot" &&
+        Boolean(offer.credential_id),
+    ),
   };
 }

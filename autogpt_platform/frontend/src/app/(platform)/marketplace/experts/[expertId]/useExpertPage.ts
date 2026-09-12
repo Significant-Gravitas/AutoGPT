@@ -5,6 +5,7 @@ import {
 import { useGetV1ListSystemProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { okData } from "@/app/api/helpers";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 
@@ -22,8 +23,8 @@ export function useExpertPage({ expertId }: Args) {
   const isHiringOpen = Boolean(enabled);
   const canHire = isLoggedIn && isHiringOpen;
 
-  const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[] },
+  const templatesQuery = useListExpertTemplates(undefined, {
+    query: { select: (x) => x.data as ExpertTemplate[] },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: canHire },

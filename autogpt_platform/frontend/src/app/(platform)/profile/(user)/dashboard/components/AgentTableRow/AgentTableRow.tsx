@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -75,6 +76,7 @@ export const AgentTableRow = ({
             <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
               <Image
                 src={image_urls[0]}
+                unoptimized={isLocalStoreMediaUrl(image_urls[0])}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}

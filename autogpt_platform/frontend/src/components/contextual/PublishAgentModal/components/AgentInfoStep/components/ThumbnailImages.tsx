@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useThumbnailImages } from "./useThumbnailImages";
 import { cn } from "@/lib/utils";
 import {
@@ -125,6 +126,7 @@ export function ThumbnailImages({
                   >
                     <Image
                       src={src}
+                      unoptimized={isLocalStoreMediaUrl(src)}
                       alt={`Thumbnail ${index + 1}`}
                       fill
                       style={{ objectFit: "cover" }}

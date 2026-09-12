@@ -206,6 +206,8 @@ class Expert(BaseModel):
     tagline: str | None
     bio: str | None
     skills: list[str]
+    # Canonical marketplace categories the roster is filtered by.
+    categories: list[str] = []
     identity: str
     voice_preferences: str
     # Populated only on roster templates so the hire flow can offer a voice
@@ -237,6 +239,22 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+
+
+class ExpertBundledSkill(BaseModel):
+    """A live Skills Hub listing a roster template comes with."""
+
+    id: str
+    slug: str
+    name: str
+    description: str
+
+
+class ExpertTemplate(Expert):
+    """A roster template as the marketplace shows it."""
+
+    # What a hire gets installed, in roster order; a template's `skills` is unused.
+    bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 
 # Membership is deliberately not embedded: clients already hold the expert

@@ -2,6 +2,7 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
@@ -47,6 +48,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
           <Image
             src={image_url}
+            unoptimized={isLocalStoreMediaUrl(image_url)}
             alt="integration-icon"
             fill
             sizes="5.625rem"
