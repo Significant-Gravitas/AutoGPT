@@ -1,6 +1,6 @@
 """Cross-process helpers: dispatch + await a copilot session turn.
 
-The sub-AutoPilot tools (``run_sub_session``, ``get_sub_session_result``)
+The sub-Otto tools (``run_sub_session``, ``get_sub_session_result``)
 and ``AutoPilotBlock`` all delegate a copilot turn to the
 ``copilot_executor`` queue and then wait on the shared
 ``stream_registry`` for the terminal event. This module is the
@@ -176,7 +176,7 @@ async def run_copilot_turn_via_queue(
     sub-session, ``"autopilot_block"`` for an AutoPilotBlock run).
 
     Self-defensive queue-fallback: if the target session already has a
-    turn running (another ``run_sub_session`` / AutoPilot block / UI
+    turn running (another ``run_sub_session`` / Otto block / UI
     chat), don't race it on the cluster lock.  Push the message onto the
     pending buffer so the existing turn drains it at its next round
     boundary, then:
@@ -257,7 +257,7 @@ async def run_copilot_turn_via_queue(
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:
-        # Sub-AutoPilot / run_sub_session caller is at the cap (this is
+        # Sub-Otto / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a
         # distinct ``rejected_concurrent_turn_cap`` outcome so callers
         # render an actionable "wait for an in-flight turn to finish"

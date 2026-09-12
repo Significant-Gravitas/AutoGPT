@@ -13,7 +13,11 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -363,7 +367,7 @@ class RunAgentTool(BaseTool):
             # Webhook-trigger agents can't be run or scheduled directly — they
             # fire on incoming HTTP events. Hand off to the trigger-setup tool,
             # surfacing the same AgentDetails (with trigger_info) that run_agent
-            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            # uses elsewhere so Otto has the provider + config schema ready.
             if graph.has_external_trigger:
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
@@ -921,6 +925,8 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                trigger=ExecutionTrigger.COPILOT,
+                trigger_ref=session_id,
                 # Keeps a graph containing an AutoPilotBlock inside this turn's
                 # tree rather than letting it start a fresh, unbounded one.
                 copilot_tree=get_current_envelope(),
@@ -933,6 +939,26 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
                 action_verb="running",
                 inputs=inputs,
+            )
+
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        if execution.status == ExecutionStatus.REVIEW:
+            # Parked for spend approval (SECRT-2599): it runs once the user
+            # approves it on Home or the run page. Not a successful run yet.
+            return ExecutionStartedResponse(
+                message=(
+                    f"Agent '{library_agent.name}' is waiting for the user's "
+                    "approval to spend more credits (spend threshold reached). "
+                    f"It runs once they approve it on Home or at "
+                    f"{library_agent_link}. {MSG_DO_NOT_RUN_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=execution.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=ExecutionStatus.REVIEW.value,
             )
 
         # Track successful run (dry runs don't count against the session limit)
@@ -950,8 +976,6 @@ class RunAgentTool(BaseTool):
             execution_id=execution.id,
             library_agent_id=library_agent.id,
         )
-
-        library_agent_link = f"/library/agents/{library_agent.id}"
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:

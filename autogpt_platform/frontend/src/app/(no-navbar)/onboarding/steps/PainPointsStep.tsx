@@ -9,49 +9,66 @@ import { ReactNode } from "react";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { SelectableCard } from "../components/SelectableCard";
 import { usePainPointsStep } from "./usePainPointsStep";
-import { Emoji } from "@/components/atoms/Emoji/Emoji";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Analytics01Icon,
+  Calendar03Icon,
+  CustomerSupportIcon,
+  Database01Icon,
+  Mail01Icon,
+  Megaphone01Icon,
+  MicroscopeIcon,
+  MoreHorizontalIcon,
+  UserSearch01Icon,
+} from "@hugeicons/core-free-icons";
+
+const ICON_SIZE = 20;
 
 const ALL_PAIN_POINTS: { id: string; label: string; icon: ReactNode }[] = [
   {
     id: "Finding leads",
     label: "Finding leads",
-    icon: <Emoji text="🔍" size={32} />,
+    icon: <Icon icon={UserSearch01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Email & outreach",
     label: "Email & outreach",
-    icon: <Emoji text="📧" size={32} />,
+    icon: <Icon icon={Mail01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Reports & data",
     label: "Reports & data",
-    icon: <Emoji text="📊" size={32} />,
+    icon: <Icon icon={Analytics01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Customer support",
     label: "Customer support",
-    icon: <Emoji text="💬" size={32} />,
+    icon: <Icon icon={CustomerSupportIcon} size={ICON_SIZE} />,
   },
   {
     id: "Social media",
     label: "Social media",
-    icon: <Emoji text="📱" size={32} />,
+    icon: <Icon icon={Megaphone01Icon} size={ICON_SIZE} />,
   },
   {
     id: "CRM & data entry",
     label: "CRM & data entry",
-    icon: <Emoji text="📝" size={32} />,
+    icon: <Icon icon={Database01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Scheduling",
     label: "Scheduling",
-    icon: <Emoji text="🗓️" size={32} />,
+    icon: <Icon icon={Calendar03Icon} size={ICON_SIZE} />,
   },
-  { id: "Research", label: "Research", icon: <Emoji text="🔬" size={32} /> },
+  {
+    id: "Research",
+    label: "Research",
+    icon: <Icon icon={MicroscopeIcon} size={ICON_SIZE} />,
+  },
   {
     id: "Something else",
     label: "Something else",
-    icon: <Emoji text="🚩" size={32} />,
+    icon: <Icon icon={MoreHorizontalIcon} size={ICON_SIZE} />,
   },
 ];
 
@@ -84,16 +101,11 @@ export function PainPointsStep() {
 
   return (
     <FadeIn>
-      <div className="flex w-full flex-col items-center gap-12 px-4">
+      <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="flex max-w-lg flex-col items-center gap-2 px-4 text-center">
-          <Text
-            variant="h3"
-            className="!text-[1.5rem] !leading-[2rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
-          >
-            What&apos;s eating your time?
-          </Text>
-          <Text variant="lead" className="!text-zinc-500">
-            Pick the tasks you&apos;d love to hand off to AutoPilot
+          <Text variant="h4">What&apos;s eating your time?</Text>
+          <Text variant="body" tone="muted">
+            Pick the tasks you&apos;d love to hand off to Otto
           </Text>
         </div>
 
@@ -106,15 +118,15 @@ export function PainPointsStep() {
                 label={p.label}
                 selected={painPoints.includes(p.id)}
                 onClick={() => togglePainPoint(p.id)}
-                className="p-8"
               />
             ))}
           </div>
           <Text
             variant="small"
+            tone={atLimit && canContinue ? undefined : "muted"}
             className={cn(
               "transition-colors",
-              atLimit && canContinue ? "!text-green-600" : "!text-zinc-500",
+              atLimit && canContinue && "text-green-600",
               shaking && "animate-shake",
             )}
           >
@@ -124,7 +136,7 @@ export function PainPointsStep() {
                 ? "3 selected — you're all set!"
                 : atLimit && hasSomethingElse
                   ? "Tell us what else takes up your time"
-                  : "Pick up to 3 to start — AutoPilot can help with anything else later"}
+                  : "Pick up to 3 to start — Otto can help with anything else later"}
           </Text>
         </div>
 

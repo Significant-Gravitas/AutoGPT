@@ -40,7 +40,7 @@ export function useVoiceRecording({
 
   const [isSupported, setIsSupported] = useState(false);
   // Sending the draft as transcription context ships with the brain-dump
-  // experience (Path B records a dump on top of AutoPilot's intro text).
+  // experience (Path B records a dump on top of Otto's intro text).
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
   isBrainDumpEnabledRef.current = isBrainDumpEnabled;

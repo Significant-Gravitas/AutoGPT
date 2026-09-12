@@ -26,6 +26,7 @@ from .delegate_to_expert import DelegateToExpertTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
+from .expert_onboarding import ExpertOnboardingTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -165,17 +166,19 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # The hire's first turn (expert sessions only): greeting + intake card.
+    "expert_onboarding": ExpertOnboardingTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
-    # Team changes from chat (Autopilot sessions only): preview + one
+    # Team changes from chat (Otto sessions only): preview + one
     # shared confirm.  Handoff is the expert-session counterpart.
     "hire_expert": HireExpertTool(),
     "raise_expert": RaiseExpertTool(),
     "update_expert": UpdateExpertTool(),
     "confirm_expert_change": ConfirmExpertChangeTool(),
     "handoff_to_expert": HandoffToExpertTool(),
-    # Reading a teammate's chats (Autopilot sessions only): the user's
+    # Reading a teammate's chats (Otto sessions only): the user's
     # own data, read with the query the chat API uses.
     "list_expert_chats": ListExpertChatsTool(),
     "read_expert_chat": ReadExpertChatTool(),
@@ -202,11 +205,13 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # Soul edits only make sense in an expert-scoped session; the engines
     # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
+    # The intake card names the expert it belongs to, so it needs one.
+    "expert_onboarding": "experts",
     "confirm_expert_soul_update": "experts",
     # A handoff transfers a task between experts, so it needs a caller with
     # an expert identity to hand it off from.
     "handoff_to_expert": "experts",
-    # Oversight of the team is the user's, exercised in the Autopilot chat:
+    # Oversight of the team is the user's, exercised in the Otto chat:
     # an expert must not hire its own teammates, and must not read another
     # expert's chats.  The engines disable this group whenever the session
     # HAS an expert_id (the opposite gate to ``experts`` above).
@@ -216,7 +221,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "confirm_expert_change": "expert_admin",
     "list_expert_chats": "expert_admin",
     "read_expert_chat": "expert_admin",
-    # Delegation works from either side of ``session.expert_id`` (AutoPilot
+    # Delegation works from either side of ``session.expert_id`` (Otto
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
@@ -233,7 +238,7 @@ def expert_tool_disabled_groups(
 
     Without the hire-experts flag every team tool is hidden. With it, the
     split follows the session role: an expert session loses the staffing
-    tools (``expert_admin``), a plain Autopilot session loses the
+    tools (``expert_admin``), a plain Otto session loses the
     expert-session tools (``experts``).
     """
     if not experts_enabled:
@@ -247,9 +252,32 @@ def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
     return frozenset(name for name, g in TOOL_GROUPS.items() if g in group_set)
 
 
+# The one tool a freshly hired expert may reach on its kickoff turn.  That
+# turn is a control message the server sends on the user's behalf, so
+# nothing on it was asked for — one click on Hire once ran a Gmail send
+# (SECRT-2622).  The kickoff prompt already says "call expert_onboarding
+# once, and nothing else"; ``kickoff_turn_disabled_tools`` is that sentence
+# as an enforcement boundary, for the replayed-transcript, prompt-injection
+# and plain-disobedience cases a prompt cannot cover.
+KICKOFF_TURN_TOOL = "expert_onboarding"
+
+
+def kickoff_turn_disabled_tools() -> frozenset[str]:
+    """Copilot tools to refuse on an expert's kickoff turn.
+
+    Scoped to this registry on purpose: the SDK built-ins it leaves alone
+    (file and shell tools) are confined to the session workspace by the
+    security hooks, so they reach nothing the user would have to undo.
+    Everything that can touch the world outside — ``run_agent``,
+    ``schedule_followup``, ``post_to_chat_platform`` — lives here.
+    """
+    return frozenset(TOOL_REGISTRY) - {KICKOFF_TURN_TOOL}
+
+
 def get_available_tools(
     *,
     disabled_groups: Iterable[ToolGroup] = (),
+    disabled_tools: Iterable[str] = (),
 ) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
@@ -258,8 +286,10 @@ def get_available_tools(
     CLI is not installed).  Tools belonging to any *disabled_groups* are
     also filtered out — use this to hide capability-gated tools (e.g.
     ``graphiti`` when the memory backend is off for the current user).
+    *disabled_tools* hides individual tools for gates that don't follow the
+    group split, e.g. ``kickoff_turn_disabled_tools`` on a hire's first turn.
     """
-    hidden = tool_names_in_groups(disabled_groups)
+    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()
@@ -280,8 +310,9 @@ async def execute_tool(
     tool_call_id: str,
     *,
     disabled_groups: Iterable[ToolGroup],
+    disabled_tools: Iterable[str],
 ) -> StreamToolOutputAvailable:
-    """Execute a tool by name, refusing anything in *disabled_groups*.
+    """Execute a tool by name, refusing anything the turn disabled.
 
     ``get_available_tools`` only hides disabled tools from the schema list it
     hands the model, which is a presentation filter: a model that names a
@@ -290,16 +321,20 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
-    ``disabled_groups`` is keyword-only and has no default on purpose: it is
-    an enforcement boundary, so a new call site must state its gate rather
-    than silently inherit "nothing is disabled" and drop back to the
-    presentation-only behaviour this function exists to close.
+    ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
+    default on purpose: they are an enforcement boundary, so a new call site
+    must state its gate rather than silently inherit "nothing is disabled"
+    and drop back to the presentation-only behaviour this function exists to
+    close.  Both must be the same values used to build the turn's schema
+    list.
     """
     tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
 
-    if tool_name in tool_names_in_groups(disabled_groups):
+    if tool_name in tool_names_in_groups(disabled_groups) or tool_name in frozenset(
+        disabled_tools
+    ):
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
             tool_name,

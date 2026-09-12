@@ -21,6 +21,7 @@ export function AIConnectionsSection() {
   const {
     connections,
     accountFor,
+    credentialFor,
     selectedKey,
     chooseDefault,
     isSaving,
@@ -79,7 +80,8 @@ export function AIConnectionsSection() {
               onSelect={() => chooseDefault(connection)}
               onManage={
                 connection.credential_id &&
-                connection.auth_method === "chatgpt_oauth"
+                (connection.auth_provider === "codex" ||
+                  connection.auth_provider === "microsoft_365_copilot")
                   ? () => setManaging(connection)
                   : undefined
               }
@@ -92,7 +94,7 @@ export function AIConnectionsSection() {
 
       <ManageConnectionDialog
         connection={managing}
-        account={managing ? accountFor(managing) : undefined}
+        credential={managing ? credentialFor(managing) : undefined}
         onOpenChange={(open) => {
           if (!open) setManaging(null);
         }}
@@ -141,7 +143,8 @@ function ConnectionRow({
           <Text variant="body-medium" as="span" className="text-black">
             {connection.display_name}
           </Text>
-          {connection.auth_method === "chatgpt_oauth" &&
+          {connection.auth_method !== "deployment" &&
+            connection.credential_id &&
             isSelectable(connection) && (
               <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
                 <Icon icon={CheckmarkCircle02Icon} size={13} />

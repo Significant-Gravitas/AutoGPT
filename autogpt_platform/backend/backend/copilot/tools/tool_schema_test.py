@@ -40,7 +40,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # (list_schedules, delete_schedule) needed by the trigger-agent flow.
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
-# AutoPilot can inspect/manage them).
+# Otto can inspect/manage them).
 # Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
 # of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
 # explicit "ends your turn" caveat, and an example wake-up message.
@@ -81,7 +81,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # trigger setup without inventing URLs or auto-picking credentials.
 # Bumped 42500 -> 45000 for the preset-management tools (list_presets /
 # update_preset / delete_preset) that complete the /presets lifecycle for
-# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# Otto. Adds ~1.6k chars: three tool skeletons plus the "is_active
 # pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
 # copy the model needs to manage triggers without re-running setup.
 # Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
@@ -109,7 +109,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # No single session sees them all (hire/raise/confirm and handoff/soul gate on
 # opposite sides of session.expert_id), but the registry total counts every
 # tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
-# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# Bumped 59_000 -> 61_000 for update_expert (the Otto-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
 # Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
@@ -121,6 +121,23 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ten merged; 2,253 headroom.
 # list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
 # under 65_000 without a bump of their own; merged registry measures 62,694.
+# Bumped 65_000 -> 67_651 on 2026-09-09: dev's 62,747 plus the six expert PRs
+# then in flight, which add 4,903 between them and blow the old ceiling by 2,650
+# while each branch's own CI, measuring only its own delta, stays green.
+# Measured per branch, not estimated:
+#     #14443 fix-expert-credential-grant-paths  +3,744
+#     #14207 multi-expert-teams                   +981
+#     #11220 input-blocks-alongside-trigger       +178
+#     #14244 agent-collab-architecture              +0
+#     #14209 autopilot-auto-mode-v2                 +0
+#     #14432 secrt-2593-publish                     +0
+# There is NO margin on top, deliberately. This limit is a brake: it exists to
+# make every increase in what Otto pays per turn a decision someone took,
+# so slack for growth nobody has measured is the one thing it must not carry.
+# The assertion below is a strict <, so the ceiling is the measured total plus
+# one — 67,651 admits exactly that aggregate and nothing beyond it.
+# The next tool that does not fit raises this line itself, with its own measured
+# number and its own row above.
 #
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
@@ -130,7 +147,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 65_000
+_CHAR_BUDGET = 67_651
 
 
 @pytest.fixture(scope="module")

@@ -291,9 +291,9 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Autopilot mode override ('fast' or 'extended_thinking'). None = server default.
+        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
-        permissions: Capability filter inherited from a parent run (sub-AutoPilot).
+        permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
     """
     from backend.util.clients import get_async_copilot_queue
@@ -598,6 +598,8 @@ async def schedule_chat_turn(
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
     is_user_message: bool = True,
+    expert_id: str | None = None,
+    session_origin: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
     file_ids: list[str] | None = None,
@@ -668,6 +670,9 @@ async def schedule_chat_turn(
                     user_id=user_id,
                     session_id=session_id,
                     message_length=raw_message_length,
+                    expert_id=expert_id,
+                    origin=session_origin,
+                    surface="chat",
                 )
 
         if is_duplicate:

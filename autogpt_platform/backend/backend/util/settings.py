@@ -2,7 +2,7 @@ import json
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -144,13 +144,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=21600,
         ge=60,
         le=21600,
-        description="Hard timeout for one native Codex AutoPilot turn.",
+        description="Hard timeout for one native Codex Otto turn.",
     )
     codex_copilot_tool_timeout_seconds: int = Field(
         default=900,
         ge=10,
         le=3600,
-        description="Maximum wait for one AutoPilot dynamic tool callback.",
+        description="Maximum wait for one Otto dynamic tool callback.",
     )
     codex_login_timeout_seconds: int = Field(
         default=900,
@@ -189,7 +189,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Wall-clock cap on a single LLM provider request, covering the whole "
             "generation (the block path is non-streaming). Raising it lengthens how "
             "long a stalled provider holds one of `num_graph_workers` slots. "
-            "AgentExecutor and AutoPilot opt out of the per-node cap, so for those "
+            "AgentExecutor and Otto opt out of the per-node cap, so for those "
             "this is the only per-call wall-clock bound."
         ),
     )
@@ -224,6 +224,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
+    expert_spend_approval_threshold_default: int = Field(
+        default=250,
+        ge=0,
+        description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
+    )
+    expert_spend_approval_window: Literal["week", "day"] = Field(
+        default="week",
+        description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -268,7 +277,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Hard cap on in-flight (running + queued) AutoPilot/CoPilot "
+            "Hard cap on in-flight (running + queued) Otto/CoPilot "
             "chat turns per user. Once running >= "
             "``max_running_copilot_turns_per_user`` and the queue brings the "
             "total to this number, ``POST /chat/stream`` returns 429. "
@@ -282,7 +291,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Soft cap on concurrently *running* AutoPilot/CoPilot chat "
+            "Soft cap on concurrently *running* Otto/CoPilot chat "
             "turns per user. Tasks submitted while the user is at this cap "
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
@@ -744,7 +753,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     external_oauth_callback_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed callback URL origins for external OAuth flows. "
-        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+        "External apps (like Otto) must have their callback URLs start with one of these origins.",
     )
 
     @field_validator("trusted_frontend_origins")
@@ -987,8 +996,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     microsoft_client_id: str = Field(
         default="",
         description="Entra application (client) ID, shared by Microsoft "
-        "integrations. Set together with the client secret and tenant ID to "
-        "mount the Teams bot adapter on the main API.",
+        "integrations. Microsoft 365 Copilot device auth falls back to "
+        "AutoGPT's public client ID when this is empty; set it together with "
+        "the server-only client secret and tenant ID to mount the Teams bot "
+        "adapter.",
     )
     microsoft_client_secret: str = Field(
         default="",

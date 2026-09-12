@@ -113,10 +113,10 @@ describe("RecentChats — expert groups", () => {
 
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
 
-    fireEvent.click(groupHeader("Autopilot"));
+    fireEvent.click(groupHeader("Otto"));
     expect(screen.queryByText("autopilot chat 1")).toBeNull();
 
-    fireEvent.click(groupHeader("Autopilot"));
+    fireEvent.click(groupHeader("Otto"));
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
   });
 
@@ -130,7 +130,7 @@ describe("RecentChats — expert groups", () => {
       getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
-    await collapseGroup("Autopilot");
+    await collapseGroup("Otto");
 
     expect(await screen.findByText("running chat")).toBeDefined();
     expect(screen.queryByText("autopilot chat 1")).toBeNull();
@@ -148,7 +148,7 @@ describe("RecentChats — expert groups", () => {
     expect(screen.queryByText("autopilot chat 11")).toBeNull();
 
     const loadMore = () =>
-      screen.getByRole("button", { name: "Load more Autopilot chats" });
+      screen.getByRole("button", { name: "Load more Otto chats" });
 
     fireEvent.click(loadMore());
     expect(await screen.findByText("autopilot chat 20")).toBeDefined();
@@ -157,7 +157,7 @@ describe("RecentChats — expert groups", () => {
     fireEvent.click(loadMore());
     expect(await screen.findByText("autopilot chat 22")).toBeDefined();
     expect(
-      screen.queryByRole("button", { name: "Load more Autopilot chats" }),
+      screen.queryByRole("button", { name: "Load more Otto chats" }),
     ).toBeNull();
   });
 
@@ -191,10 +191,32 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(
-      expertGroup.querySelector('svg[aria-label="AutoGPT Logo"]'),
-    ).not.toBe(null);
+    expect(expertGroup.querySelector('svg[data-testid="bot-avatar"]')).not.toBe(
+      null,
+    );
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
+  });
+
+  it("colours a generated sidebar avatar with the expert's owner token", async () => {
+    const novaExpert: Expert = {
+      ...mariaExpert,
+      id: "expert-nova",
+      name: "Nova",
+      avatar_url: null,
+      color: "violet-300",
+    };
+    const sessions = makeSessions(2, novaExpert.id);
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([novaExpert]),
+    );
+    renderRecentChats();
+
+    const expertGroup = await screen.findByRole("button", {
+      name: "Nova chats",
+    });
+    const avatar = expertGroup.querySelector('svg[data-testid="bot-avatar"]');
+    expect(avatar?.getAttribute("data-avatar")?.split(".")[1]).toBe("lavender");
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {
@@ -209,7 +231,7 @@ describe("RecentChats — expert groups", () => {
     renderRecentChats();
 
     expect(
-      await screen.findByRole("button", { name: "Load more Autopilot chats" }),
+      await screen.findByRole("button", { name: "Load more Otto chats" }),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Load more" })).toBeDefined();
   });
@@ -228,7 +250,7 @@ describe("RecentChats — expert groups", () => {
 
     await collapseGroup("Maria");
     fireEvent.click(
-      await screen.findByRole("button", { name: "Load more Autopilot chats" }),
+      await screen.findByRole("button", { name: "Load more Otto chats" }),
     );
     expect(await screen.findByText("autopilot chat 11")).toBeDefined();
 
@@ -266,7 +288,7 @@ describe("RecentChats — expert groups", () => {
     );
     expect(
       screen
-        .getByRole("link", { name: "New chat with Autopilot" })
+        .getByRole("link", { name: "New chat with Otto" })
         .getAttribute("href"),
     ).toBe("/copilot");
     expect(groupHeader("Max")).toBeDefined();
