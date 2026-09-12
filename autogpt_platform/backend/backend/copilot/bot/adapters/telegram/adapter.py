@@ -113,7 +113,8 @@ class TelegramAdapter(WebhookAdapter):
         app.add_api_route(UPDATES_PATH, self._handle_update_request, methods=["POST"])
         # Publish the command menu on startup so BotFather needs no manual
         # /setcommands step and the menu can't drift from the code.
-        app.add_event_handler("startup", self._register_command_menu)
+        # fastapi>=0.141 removed add_event_handler; append to the router's startup handlers
+        app.router.on_startup.append(self._register_command_menu)
 
     async def _register_command_menu(self) -> None:
         try:
@@ -508,7 +509,7 @@ class TelegramAdapter(WebhookAdapter):
                     message_thread_id=thread_id,
                 )
             except Exception:
-                # TelegramAPIError for 400/429, httpx errors for transport —
+                # TelegramAPIError for 400/429, httpx2 errors for transport —
                 # a partial send must survive either.
                 if not posted:
                     raise

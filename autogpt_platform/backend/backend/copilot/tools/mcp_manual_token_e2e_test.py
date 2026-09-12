@@ -21,7 +21,7 @@ import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
@@ -117,8 +117,8 @@ async def _noop_lock(*_args, **_kwargs):
 
 @pytest_asyncio.fixture
 async def client():
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
 

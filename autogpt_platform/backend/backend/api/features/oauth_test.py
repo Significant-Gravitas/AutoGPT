@@ -19,7 +19,7 @@ import secrets
 import uuid
 from typing import AsyncGenerator
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
@@ -138,7 +138,7 @@ def pkce_credentials() -> tuple[str, str]:
 
 
 @pytest_asyncio.fixture
-async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(server, test_user: str) -> AsyncGenerator[httpx2.AsyncClient, None]:
     """
     Create an async HTTP client that talks directly to the FastAPI app.
 
@@ -161,8 +161,8 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
     app.dependency_overrides[get_user_id] = override_get_user_id
 
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+        async with httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=app),
             base_url="http://test",
         ) as http_client:
             yield http_client
@@ -181,7 +181,7 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_creates_code_in_database(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
     pkce_credentials: tuple[str, str],
@@ -234,7 +234,7 @@ async def test_authorize_creates_code_in_database(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_with_pkce_stores_challenge(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
     pkce_credentials: tuple[str, str],
@@ -274,7 +274,7 @@ async def test_authorize_with_pkce_stores_challenge(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_invalid_client_returns_error(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -336,7 +336,7 @@ async def inactive_oauth_app(test_user: str):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_inactive_app(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     inactive_oauth_app: dict,
 ):
@@ -366,7 +366,7 @@ async def test_authorize_inactive_app(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_invalid_redirect_uri(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -394,7 +394,7 @@ async def test_authorize_invalid_redirect_uri(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_invalid_scope(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -424,7 +424,7 @@ async def test_authorize_invalid_scope(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_unauthorized_scope(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -456,7 +456,7 @@ async def test_authorize_unauthorized_scope(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_unsupported_response_type(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -491,7 +491,7 @@ async def test_authorize_unsupported_response_type(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_exchange_creates_tokens_in_database(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -573,7 +573,7 @@ async def test_token_exchange_creates_tokens_in_database(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_authorization_code_cannot_be_reused(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -633,7 +633,7 @@ async def test_authorization_code_cannot_be_reused(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_exchange_with_invalid_client_secret(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -679,7 +679,7 @@ async def test_token_exchange_with_invalid_client_secret(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_authorization_code_invalid_code(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -702,7 +702,7 @@ async def test_token_authorization_code_invalid_code(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_authorization_code_expired(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -742,7 +742,7 @@ async def test_token_authorization_code_expired(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_authorization_code_redirect_uri_mismatch(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -791,7 +791,7 @@ async def test_token_authorization_code_redirect_uri_mismatch(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_authorization_code_pkce_failure(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
     pkce_credentials: tuple[str, str],
@@ -844,7 +844,7 @@ async def test_token_authorization_code_pkce_failure(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_refresh_token_creates_new_tokens(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -924,7 +924,7 @@ async def test_refresh_token_creates_new_tokens(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_invalid_token(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_oauth_app: dict,
 ):
     """Test token refresh with invalid/nonexistent refresh token."""
@@ -944,7 +944,7 @@ async def test_token_refresh_invalid_token(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_expired(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -982,7 +982,7 @@ async def test_token_refresh_expired(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_revoked(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1053,7 +1053,7 @@ async def other_oauth_app(test_user: str):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_wrong_application(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
     other_oauth_app: dict,
@@ -1098,7 +1098,7 @@ async def test_token_refresh_wrong_application(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_introspect_valid_access_token(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1163,7 +1163,7 @@ async def test_introspect_valid_access_token(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_introspect_invalid_token_returns_inactive(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_oauth_app: dict,
 ):
     """Test introspection returns inactive for non-existent token."""
@@ -1182,7 +1182,7 @@ async def test_introspect_invalid_token_returns_inactive(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_introspect_active_refresh_token(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1245,7 +1245,7 @@ async def test_introspect_active_refresh_token(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_introspect_invalid_client(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_oauth_app: dict,
 ):
     """Test introspection with invalid client credentials."""
@@ -1337,7 +1337,7 @@ async def test_validate_access_token_fails_when_app_disabled(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_revoke_access_token_updates_database(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1410,7 +1410,7 @@ async def test_revoke_access_token_updates_database(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_revoke_unknown_token_returns_ok(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_oauth_app: dict,
 ):
     """Test that revoking unknown token returns 200 (per RFC 7009)."""
@@ -1430,7 +1430,7 @@ async def test_revoke_unknown_token_returns_ok(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_revoke_refresh_token_updates_database(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1503,7 +1503,7 @@ async def test_revoke_refresh_token_updates_database(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_revoke_invalid_client(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_oauth_app: dict,
 ):
     """Test revocation with invalid client credentials."""
@@ -1521,7 +1521,7 @@ async def test_revoke_invalid_client(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_revoke_token_from_different_app_fails_silently(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
 ):
@@ -1645,7 +1645,7 @@ async def test_revoke_token_from_different_app_fails_silently(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_complete_oauth_flow_end_to_end(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
     pkce_credentials: tuple[str, str],

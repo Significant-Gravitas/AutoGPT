@@ -26,7 +26,7 @@ from typing import (
     overload,
 )
 
-import httpx
+import httpx2
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
@@ -588,22 +588,22 @@ def get_service_client(
             self._async_clients = {}  # None key for default async client
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
-        def _create_sync_client(self) -> httpx.Client:
-            return httpx.Client(
+        def _create_sync_client(self) -> httpx2.Client:
+            return httpx2.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
             )
 
-        def _create_async_client(self) -> httpx.AsyncClient:
-            return httpx.AsyncClient(
+        def _create_async_client(self) -> httpx2.AsyncClient:
+            return httpx2.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
@@ -611,7 +611,7 @@ def get_service_client(
             )
 
         @property
-        def sync_client(self) -> httpx.Client:
+        def sync_client(self) -> httpx2.Client:
             """Get the sync client (thread-safe singleton)."""
             # Use service name as key for better identification
             service_name = service_client_type.get_service_type().__name__
@@ -622,7 +622,7 @@ def get_service_client(
             )
 
         @property
-        def async_client(self) -> httpx.AsyncClient:
+        def async_client(self) -> httpx2.AsyncClient:
             """Get the appropriate async client for the current context.
 
             Returns per-event-loop client when in async context,
@@ -662,14 +662,14 @@ def get_service_client(
                 self._last_client_reset = current_time
 
         def _handle_call_method_response(
-            self, *, response: httpx.Response, method_name: str
+            self, *, response: httpx2.Response, method_name: str
         ) -> Any:
             try:
                 response.raise_for_status()
                 # Reset failure count on successful response
                 self._connection_failure_count = 0
                 return response.json()
-            except httpx.HTTPStatusError as e:
+            except httpx2.HTTPStatusError as e:
                 status_code = e.response.status_code
 
                 # Try to parse the error response as RemoteCallError for mapped exceptions
@@ -731,7 +731,7 @@ def get_service_client(
                     method_name=method_name,
                     response=self.sync_client.post(method_name, json=to_dict(kwargs)),
                 )
-            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            except (httpx2.ConnectError, httpx2.ConnectTimeout) as e:
                 self._handle_connection_error(e)
                 raise
 
@@ -744,7 +744,7 @@ def get_service_client(
                         method_name, json=to_dict(kwargs)
                     ),
                 )
-            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            except (httpx2.ConnectError, httpx2.ConnectTimeout) as e:
                 self._handle_connection_error(e)
                 raise
 

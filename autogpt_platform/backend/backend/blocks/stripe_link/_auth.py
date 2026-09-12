@@ -10,7 +10,7 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 import logging
 from typing import Any, Literal
 
-import httpx
+import httpx2
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
@@ -106,7 +106,7 @@ async def link_api_request(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+    async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
         response = await client.request(
             method=method,
             url=f"{LINK_API_BASE_URL}{path}",

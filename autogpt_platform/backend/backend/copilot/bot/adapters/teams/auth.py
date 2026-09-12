@@ -28,7 +28,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-import httpx
+import httpx2
 import jwt
 
 from . import config
@@ -165,12 +165,12 @@ async def _fetch_signing_keys() -> dict[str, dict[str, Any]]:
     attaches a non-standard ``endorsements`` list to each key that the JWK
     parsers drop.
     """
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+    async with httpx2.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
         try:
             metadata = (await client.get(config.OPENID_METADATA_URL)).raise_for_status()
             jwks_uri = metadata.json()["jwks_uri"]
             jwks = (await client.get(jwks_uri)).raise_for_status().json()
-        except (httpx.HTTPError, KeyError, ValueError) as e:
+        except (httpx2.HTTPError, KeyError, ValueError) as e:
             raise TeamsAuthError(f"could not load Bot Connector signing keys: {e}")
     return {k["kid"]: k for k in jwks.get("keys", []) if k.get("kid")}
 

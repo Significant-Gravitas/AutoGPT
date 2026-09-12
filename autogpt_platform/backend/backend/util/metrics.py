@@ -283,6 +283,8 @@ def sentry_init():
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
         before_send=_before_send,
+        # sentry-sdk>=2.61 no longer truncates strings by default; keep the old cap.
+        max_value_length=100_000,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),

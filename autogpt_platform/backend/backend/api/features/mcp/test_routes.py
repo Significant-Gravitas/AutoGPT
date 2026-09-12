@@ -1,6 +1,6 @@
 """Tests for MCP API routes.
 
-Uses httpx.AsyncClient with ASGITransport instead of fastapi.testclient.TestClient
+Uses httpx2.AsyncClient with ASGITransport instead of fastapi.testclient.TestClient
 to avoid creating blocking portals that can corrupt pytest-asyncio's session event loop.
 """
 
@@ -8,7 +8,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
@@ -26,8 +26,8 @@ app.dependency_overrides[get_user_id] = lambda: "test-user-id"
 
 @pytest_asyncio.fixture(scope="module")
 async def client():
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
 

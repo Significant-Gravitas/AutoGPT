@@ -16,7 +16,7 @@ from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
 
 
 def mock_http(status_code: int, payload: dict, text: str = ""):
-    """Patch the module's httpx client to return one canned response."""
+    """Patch the module's httpx2 client to return one canned response."""
     response = MagicMock()
     response.status_code = status_code
     response.json = MagicMock(return_value=payload)
@@ -30,7 +30,7 @@ def mock_http(status_code: int, payload: dict, text: str = ""):
     ctx.__aexit__ = AsyncMock(return_value=False)
     return (
         patch(
-            "backend.integrations.oauth.stripe_link.httpx.AsyncClient",
+            "backend.integrations.oauth.stripe_link.httpx2.AsyncClient",
             return_value=ctx,
         ),
         client,
