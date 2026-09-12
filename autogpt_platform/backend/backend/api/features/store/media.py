@@ -1,11 +1,14 @@
 import logging
 import os
+import re
 import uuid
+from pathlib import Path
 
+import aiofiles
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.util.exceptions import MissingConfigError
+from backend.util.data import get_data_path
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -16,6 +19,27 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MEDIA_TYPES = frozenset({"images", "videos"})
+LOCAL_MEDIA_DIR_NAME = "store-media"
+
+_SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
+CONTENT_TYPE_EXTENSIONS = {
+    "image/jpeg": ".jpeg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
+EXTENSION_CONTENT_TYPES = {
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+}
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -32,7 +56,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     """
     settings = Settings()
     if not settings.config.media_gcs_bucket_name:
-        raise MissingConfigError("GCS media bucket is not configured")
+        return _check_media_exists_locally(user_id, filename)
 
     async with async_storage.Storage() as async_client:
         bucket_name = settings.config.media_gcs_bucket_name
@@ -113,13 +137,7 @@ async def upload_media(
             raise store_exceptions.InvalidFileTypeError("Invalid video file signature")
 
     settings = Settings()
-
-    # Check required settings first before doing any file processing
-    if not settings.config.media_gcs_bucket_name:
-        logger.error("Missing GCS bucket name setting")
-        raise store_exceptions.StorageConfigError(
-            "Missing storage bucket configuration"
-        )
+    use_local_storage = not settings.config.media_gcs_bucket_name
 
     try:
         # Validate file type
@@ -167,6 +185,17 @@ async def upload_media(
 
         # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
+
+        if use_local_storage:
+            unique_filename = _local_stored_filename(
+                unique_filename, content_type, use_file_name
+            )
+            file_bytes = await file.read()
+            await scan_content_safe(file_bytes, filename=unique_filename)
+            return await _store_media_locally(
+                user_id, media_type, unique_filename, file_bytes
+            )
+
         storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
@@ -202,3 +231,83 @@ async def upload_media(
         raise store_exceptions.MediaUploadError(
             "Unexpected error during media upload"
         ) from e
+
+
+def content_type_for_filename(filename: str) -> str | None:
+    return EXTENSION_CONTENT_TYPES.get(os.path.splitext(filename)[1].lower())
+
+
+def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
+    if media_type not in MEDIA_TYPES:
+        raise ValueError(f"Invalid media type: {media_type!r}")
+
+    base_dir = local_media_root()
+    candidate = os.path.join(
+        str(base_dir),
+        "users",
+        _validate_path_component(user_id),
+        media_type,
+        _validate_path_component(filename),
+    )
+    real_base_dir = os.path.realpath(str(base_dir))
+    real_candidate = os.path.realpath(candidate)
+    if not real_candidate.startswith(real_base_dir + os.sep):
+        raise ValueError("Invalid media path: path traversal detected")
+    return Path(real_candidate)
+
+
+def local_media_root() -> Path:
+    storage_dir = Settings().config.workspace_storage_dir
+    if storage_dir:
+        return Path(storage_dir).resolve().parent / LOCAL_MEDIA_DIR_NAME
+    return Path(get_data_path()) / LOCAL_MEDIA_DIR_NAME
+
+
+def local_media_url(user_id: str, media_type: str, filename: str) -> str:
+    path = (
+        f"/api/store/media/{_validate_path_component(user_id)}"
+        f"/{media_type}/{_validate_path_component(filename)}"
+    )
+    base_url = Settings().config.platform_base_url.rstrip("/")
+    return f"{base_url}{path}" if base_url else path
+
+
+def _validate_path_component(value: str) -> str:
+    if not _SAFE_PATH_COMPONENT.fullmatch(value):
+        raise ValueError(f"Invalid media path component: {value!r}")
+    return value
+
+
+def _local_stored_filename(
+    filename: str, content_type: str, use_file_name: bool
+) -> str:
+    ext = CONTENT_TYPE_EXTENSIONS[content_type]
+    if use_file_name:
+        return _validate_path_component(f"{Path(filename).stem}{ext}")
+    return f"{uuid.uuid4()}{ext}"
+
+
+def _check_media_exists_locally(user_id: str, filename: str) -> str | None:
+    try:
+        safe_user_id = _validate_path_component(user_id)
+        safe_filename = _validate_path_component(filename)
+    except ValueError:
+        return None
+
+    for media_type in ("images", "videos"):
+        if get_local_media_path(safe_user_id, media_type, safe_filename).is_file():
+            return local_media_url(safe_user_id, media_type, safe_filename)
+    return None
+
+
+async def _store_media_locally(
+    user_id: str, media_type: str, filename: str, content: bytes
+) -> str:
+    file_path = get_local_media_path(user_id, media_type, filename)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(content)
+
+    logger.info(f"Successfully uploaded file to local storage: {file_path}")
+    return local_media_url(user_id, media_type, filename)

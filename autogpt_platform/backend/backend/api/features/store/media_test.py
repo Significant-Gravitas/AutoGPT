@@ -77,20 +77,69 @@ async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     mock_storage_client.upload.assert_not_called()
 
 
-async def test_upload_media_missing_credentials(monkeypatch):
+@pytest.fixture
+def local_storage_settings(monkeypatch, tmp_path):
     settings = Settings()
     settings.config.media_gcs_bucket_name = ""
     settings.config.google_application_credentials = ""
+    settings.config.workspace_storage_dir = str(tmp_path / "workspaces")
+    settings.config.platform_base_url = ""
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.media.scan_content_safe",
+        unittest.mock.AsyncMock(),
+    )
+    return settings
 
+
+async def test_upload_media_missing_credentials(local_storage_settings, tmp_path):
+    test_data = b"\xff\xd8\xff" + b"test data"
     test_file = fastapi.UploadFile(
         filename="laptop.jpeg",
-        file=io.BytesIO(b"\xff\xd8\xff" + b"test data"),  # Valid JPEG signature
+        file=io.BytesIO(test_data),
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(store_exceptions.StorageConfigError):
-        await store_media.upload_media("test-user", test_file)
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.startswith("/api/store/media/test-user/images/")
+    assert result.endswith(".jpeg")
+
+    stored = tmp_path / "store-media" / "users" / "test-user" / "images"
+    files = list(stored.iterdir())
+    assert len(files) == 1
+    assert files[0].read_bytes() == test_data
+
+
+async def test_check_media_exists_without_gcs(local_storage_settings, tmp_path):
+    filename = "agent_graph-1.jpeg"
+    missing = await store_media.check_media_exists("test-user", filename)
+    assert missing is None
+
+    test_file = fastapi.UploadFile(
+        filename=filename,
+        file=io.BytesIO(b"\xff\xd8\xff" + b"existing"),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+    uploaded = await store_media.upload_media(
+        "test-user", test_file, use_file_name=True
+    )
+    assert uploaded == f"/api/store/media/test-user/images/{filename}"
+    assert (
+        tmp_path / "store-media" / "users" / "test-user" / "images" / filename
+    ).is_file()
+
+    found = await store_media.check_media_exists("test-user", filename)
+    assert found == uploaded
+
+    assert await store_media.check_media_exists("test-user", "../secret.jpeg") is None
+
+
+def test_get_local_media_path_rejects_traversal(local_storage_settings):
+    with pytest.raises(ValueError):
+        store_media.get_local_media_path("test-user", "images", "../secret.jpeg")
+    with pytest.raises(ValueError):
+        store_media.get_local_media_path("test-user", "other", "file.jpeg")
 
 
 async def test_upload_media_video_type(mock_settings, mock_storage_client):

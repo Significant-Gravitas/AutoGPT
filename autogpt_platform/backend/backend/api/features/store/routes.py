@@ -518,6 +518,28 @@ async def edit_submission(
     return result
 
 
+@router.get(
+    "/media/{user_id}/{media_type}/{filename}",
+    summary="Get stored marketplace media",
+    tags=["store", "public"],
+)
+async def get_store_media(
+    user_id: str,
+    media_type: str,
+    filename: str,
+) -> fastapi.responses.FileResponse:
+    content_type = store_media.content_type_for_filename(filename)
+    if content_type is None or media_type not in store_media.MEDIA_TYPES:
+        raise NotFoundError("Media not found")
+    try:
+        path = store_media.get_local_media_path(user_id, media_type, filename)
+    except ValueError:
+        raise NotFoundError("Media not found")
+    if not path.is_file():
+        raise NotFoundError("Media not found")
+    return fastapi.responses.FileResponse(path, media_type=content_type)
+
+
 @router.post(
     "/submissions/media",
     summary="Upload submission media",
