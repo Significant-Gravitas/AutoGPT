@@ -3,6 +3,7 @@ import {
   getGetV2ListChatConnectionsMockHandler401,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import { getGetV1ListProvidersMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { ConnectionTier } from "@/app/api/__generated__/models/connectionTier";
 import { server } from "@/mocks/mock-server";
 import {
@@ -445,11 +446,13 @@ describe("ConnectionPicker", () => {
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
 
-    expect(await screen.findByText("ChatGPT")).toBeDefined();
+    expect(await screen.findByText("Connect ChatGPT")).toBeDefined();
     expect(
-      screen.getByText("A Max plan or higher is required to use ChatGPT."),
+      screen.getByRole("group", {
+        name: /Connect ChatGPT.*A Max plan or higher is required/,
+      }),
     ).toBeDefined();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Upgrade to Max" })).toBeDefined();
   });
 
   it("keeps a locked-only offer visible", async () => {
@@ -461,11 +464,11 @@ describe("ConnectionPicker", () => {
     );
 
     expect(
-      await screen.findByText(
-        "A Max plan or higher is required to use ChatGPT.",
-      ),
+      await screen.findByRole("group", {
+        name: /Connect ChatGPT.*A Max plan or higher is required/,
+      }),
     ).toBeDefined();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Upgrade to Max" })).toBeDefined();
   });
 
   it("keeps a locked-only offer visible after an underway chat loses access", async () => {
@@ -477,11 +480,11 @@ describe("ConnectionPicker", () => {
     );
 
     expect(
-      await screen.findByText(
-        "A Max plan or higher is required to use ChatGPT.",
-      ),
+      await screen.findByRole("group", {
+        name: /Connect ChatGPT.*A Max plan or higher is required/,
+      }),
     ).toBeDefined();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Upgrade to Max" })).toBeDefined();
   });
 
   it("spends a locked row on the benefit, not on a plan the user may lack", async () => {
@@ -491,17 +494,18 @@ describe("ConnectionPicker", () => {
     await userEvent.click(await openPicker());
 
     expect(
-      await screen.findByText(/spending no AutoGPT credits/),
+      await screen.findByText("Save AutoGPT credits on chats."),
     ).toBeDefined();
     // "Your ChatGPT plan" above "a Max plan is required" reads as two
     // different plans, and presumes one they may not have.
     expect(screen.queryByText("Your ChatGPT plan")).toBeNull();
   });
 
-  it("keeps named models visible on a locked connection", async () => {
+  it("keeps named models on a locked connection with another unlock action", async () => {
     mockOffers([
       offer(),
       locked({
+        unlock_href: "/settings/integrations",
         tiers: [
           tier("standard", "Balanced", "gpt-5.6-terra"),
           tier("advanced", "Advanced", "gpt-5.6-sol"),
@@ -525,7 +529,9 @@ describe("ConnectionPicker", () => {
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
-    await screen.findByText("A Max plan or higher is required to use ChatGPT.");
+    await screen.findByRole("group", {
+      name: /Connect ChatGPT.*A Max plan or higher is required/,
+    });
 
     expect(screen.queryByRole("radio", { name: /ChatGPT/ })).toBeNull();
   });
@@ -540,7 +546,7 @@ describe("ConnectionPicker", () => {
     await userEvent.click(await openPicker());
     // What it lands on is what it marks selected: never the locked one.
     const landed = await screen.findByRole("radio", {
-      name: /AutoGPT Platform/,
+      name: "Balanced · sonnet-5",
     });
     expect(landed.getAttribute("aria-checked")).toBe("true");
     // What it lands on is what it shows: a locked offer is never the one the
@@ -597,7 +603,9 @@ describe("ConnectionPicker", () => {
     await userEvent.click(await openPicker());
 
     expect(
-      await screen.findByText(/A Max plan or higher is required for Advanced/),
+      await screen.findByRole("radio", {
+        name: /Advanced.*A Max plan or higher is required for Advanced/,
+      }),
     ).toBeDefined();
     // Still named, so the user sees what they would get. Scoped to the tier
     // control: the connection row's own summary also mentions Advanced.
@@ -613,10 +621,11 @@ describe("ConnectionPicker", () => {
     expect(within(tierGroup).getAllByRole("radio")).toHaveLength(2);
   });
 
-  it("offers to link ChatGPT when the user has no ChatGPT at all", async () => {
+  it("offers to link ChatGPT when discovery confirms the unconnected user has access", async () => {
     // Otherwise the one control about connections cannot make one, and the
     // user has to find Settings to act on what they are already looking at.
     mockOffers([offer()]);
+    server.use(getGetV1ListProvidersMockHandler200([{ name: "codex" }]));
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
@@ -675,7 +684,9 @@ describe("ConnectionPicker", () => {
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
-    await screen.findByText("A Max plan or higher is required to use ChatGPT.");
+    await screen.findByRole("group", {
+      name: /Connect ChatGPT.*A Max plan or higher is required/,
+    });
 
     expect(
       screen.queryByRole("button", { name: /Connect a ChatGPT subscription/ }),
@@ -752,7 +763,7 @@ describe("ConnectionPicker", () => {
 
   it("treats a locked alternative as no choice at all", async () => {
     // A row the user cannot pick is an explanation, not an option, so the chip
-    // stays on the tier — but the row still earns its place in the popover.
+    // stays on the tier while the shared upsell explains the locked benefit.
     mockOffers([offer({ is_default: true }), locked()]);
 
     render(<ConnectionPicker />);
@@ -761,7 +772,7 @@ describe("ConnectionPicker", () => {
       await screen.findByRole("button", { name: /Model tier/ }),
     ).toBeDefined();
     await userEvent.click(await openPicker());
-    expect(screen.getByText("ChatGPT")).toBeDefined();
+    expect(screen.getByText("Connect ChatGPT")).toBeDefined();
   });
 
   it("marks the chip with the tier it will run, whatever it is labelled", async () => {
