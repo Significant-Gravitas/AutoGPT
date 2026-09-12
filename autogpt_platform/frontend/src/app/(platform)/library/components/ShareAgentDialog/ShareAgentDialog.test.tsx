@@ -10,7 +10,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShareAgentDialog } from "./ShareAgentDialog";
 
 // happy-dom can't render Radix Dialog portals — mock the molecule so the
@@ -84,10 +84,33 @@ function renderDialog(agent: LibraryAgent = AGENT) {
 }
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
   seedTeams();
 });
 
+afterEach(() => {
+  delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+});
+
 describe("ShareAgentDialog", () => {
+  it.each(["false", undefined])(
+    "hides an open dialog and makes no grants request when the flag is %s",
+    (flag) => {
+      if (flag === undefined)
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
+      let requests = 0;
+      server.use(
+        http.get(GRANTS_URL, () => {
+          requests += 1;
+          return HttpResponse.json([GRANT]);
+        }),
+      );
+      renderDialog();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(requests).toBe(0);
+    },
+  );
   it("creates a grant pinned to the current version with the chosen team and capability", async () => {
     let body: Record<string, unknown> | null = null;
     server.use(

@@ -10,6 +10,7 @@ import type { GrantResponse } from "@/app/api/__generated__/models/grantResponse
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -20,6 +21,7 @@ import {
 } from "./helpers";
 
 export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
+  const enabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const orgId = useOrgTeamStore((s) => s.activeOrgID);
@@ -38,7 +40,7 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
 
   const grantsQuery = useGetV2ListGrantsOnAGraph(orgId ?? "", agent.graph_id, {
     query: {
-      enabled: Boolean(orgId) && isOpen,
+      enabled: enabled && Boolean(orgId) && isOpen,
       select: (res) => res.data as GrantResponse[],
     },
   });
@@ -55,7 +57,7 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   async function handleShare() {
-    if (!orgId || !teamId) return;
+    if (!enabled || !orgId || !teamId) return;
     try {
       await shareGraph({
         orgId,
@@ -86,7 +88,7 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   async function handleRevoke(grantId: string) {
-    if (!orgId) return;
+    if (!enabled || !orgId) return;
     try {
       await revokeGrant({ orgId, graphId: agent.graph_id, grantId });
       toast({ title: "Access revoked" });
@@ -102,7 +104,8 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   return {
-    teams,
+    enabled,
+    teams: enabled ? teams : [],
     teamId,
     setTeamId,
     capability,
@@ -112,11 +115,11 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
     credentialMode,
     setCredentialMode,
     isOwner,
-    grants: grantsQuery.data ?? [],
+    grants: enabled ? (grantsQuery.data ?? []) : [],
     isLoadingGrants: grantsQuery.isLoading,
     isGrantsError: grantsQuery.isError,
     isSharing,
-    canShare: Boolean(orgId) && Boolean(teamId),
+    canShare: enabled && Boolean(orgId) && Boolean(teamId),
     handleShare,
     handleRevoke,
   };

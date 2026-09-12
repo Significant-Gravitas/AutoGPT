@@ -25,6 +25,7 @@ interface Props {
 
 export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
   const {
+    enabled,
     teams,
     teamId,
     setTeamId,
@@ -43,6 +44,8 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
     handleShare,
     handleRevoke,
   } = useShareAgentDialog(agent, isOpen);
+
+  if (!enabled) return null;
 
   return (
     <Dialog

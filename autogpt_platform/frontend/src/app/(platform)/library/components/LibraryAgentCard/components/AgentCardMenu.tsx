@@ -22,6 +22,7 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,6 +37,7 @@ interface AgentCardMenuProps {
 }
 
 export function AgentCardMenu({ agent }: AgentCardMenuProps) {
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -48,7 +50,8 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
 
   // Sharing targets a team, so it only makes sense once the user has teams.
   // Ownership/admin rights are enforced by the backend (surfaced as a toast).
-  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
+  const hasTeams =
+    useOrgTeamStore((s) => s.teams.length > 0) && showOrgSettings;
 
   const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
   const { mutateAsync: forkAgent } = usePostV2ForkLibraryAgent();

@@ -1,8 +1,10 @@
 import { server } from "@/mocks/mock-server";
+import { getGetV2ListGrantsSharedWithMyTeamsQueryKey } from "@/app/api/__generated__/endpoints/grants/grants";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SharedWithTeamsSection } from "./SharedWithTeamsSection";
 
 const TEAM_A = {
@@ -41,10 +43,44 @@ function seedTeams(teams: (typeof TEAM_A)[]) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
   seedTeams([TEAM_A]);
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("SharedWithTeamsSection", () => {
+  it("does not fetch received grants for an account with teams when disabled", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SharedWithTeamsSection />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByTestId("shared-with-teams-section")).toBeNull();
+    expect(
+      queryClient.getQueryState(
+        getGetV2ListGrantsSharedWithMyTeamsQueryKey("org-1"),
+      )?.fetchStatus,
+    ).toBe("idle");
+  });
+
+  it("hides already loaded shared agents when the flag turns off", async () => {
+    server.use(
+      http.get(RECEIVED_URL, () => HttpResponse.json([RECEIVED_GRANT])),
+    );
+    const view = render(<SharedWithTeamsSection />);
+    await screen.findByText("Ops Copilot");
+
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    view.rerender(<SharedWithTeamsSection />);
+
+    expect(screen.queryByTestId("shared-with-teams-section")).toBeNull();
+    expect(screen.queryByText("Ops Copilot")).toBeNull();
+  });
+
   it("renders agents shared with the user's teams", async () => {
     server.use(
       http.get(RECEIVED_URL, () =>

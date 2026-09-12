@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -52,6 +53,7 @@ export function AgentActionsDropdown({
   scheduleId,
   onClearSelectedRun,
 }: Props) {
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
 
   const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
@@ -68,7 +70,8 @@ export function AgentActionsDropdown({
 
   // Share only makes sense once the user has teams; the backend enforces
   // owner/admin rights and any 400 is surfaced via the dialog's toast.
-  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
+  const hasTeams =
+    useOrgTeamStore((s) => s.teams.length > 0) && showOrgSettings;
 
   const { mutateAsync: deleteSchedule } = useDeleteV1DeleteExecutionSchedule();
   const [isDeletingSchedule, setIsDeletingSchedule] = useState(false);
