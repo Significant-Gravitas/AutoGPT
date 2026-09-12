@@ -116,6 +116,13 @@ class AccountRegistrationTest(unittest.TestCase):
 
 
 class EnvironmentPolicyTest(unittest.TestCase):
+    def test_image_preserves_background_embedding_backfill_at_startup(
+        self,
+    ) -> None:
+        dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+        self.assertNotIn("SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false", dockerfile)
+
     def test_rejects_required_email_verification(self) -> None:
         result = self._configure(AUTH_REQUIRE_EMAIL_VERIFICATION="true")
 
