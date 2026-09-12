@@ -18,6 +18,7 @@ from backend.util.exceptions import NotFoundError
 
 from . import db as org_db
 from .model import CreateInvitationRequest, InvitationCreateResponse, InvitationResponse
+from .rollout import require_org_collaboration
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ async def create_invitation(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> InvitationCreateResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
 
     # Reject team IDs outside this org at create time. The accept path's
@@ -127,6 +129,7 @@ async def list_invitations(
         ),
     ] = False,
 ) -> list[InvitationResponse]:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     where: OrgInvitationWhereInput = {
         "orgId": org_id,
@@ -188,6 +191,7 @@ async def resend_invitation(
     Rotating the token invalidates any previously sent link, so a resend
     also acts as a soft revoke of the old email.
     """
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     invitation = await _get_org_invitation(org_id, invitation_id)
     _reject_if_not_pending(invitation)
@@ -266,6 +270,7 @@ async def accept_invitation(
     token: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict:
+    await require_org_collaboration(user_id)
     invitation = await prisma.orginvitation.find_unique(where={"token": token})
     if invitation is None:
         raise NotFoundError("Invitation not found")
@@ -379,6 +384,7 @@ async def decline_invitation(
 async def list_pending_for_user(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[InvitationResponse]:
+    await require_org_collaboration(user_id)
     # Get user's email
     user = await prisma.user.find_unique(where={"id": user_id})
     if user is None:
