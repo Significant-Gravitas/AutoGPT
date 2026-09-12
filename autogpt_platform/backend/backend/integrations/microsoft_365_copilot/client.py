@@ -207,7 +207,12 @@ class Microsoft365CopilotClient:
                 url, headers=self._headers, json={}
             ) as response:
                 await self._raise_for_error(response, "create a Copilot conversation")
-                payload = await response.json()
+                try:
+                    payload = await response.json()
+                except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                    raise Microsoft365CopilotError(
+                        "Microsoft 365 Copilot returned an invalid conversation response"
+                    ) from error
         except Microsoft365CopilotError:
             raise
         except (aiohttp.ClientError, asyncio.TimeoutError) as error:
