@@ -12,7 +12,7 @@ import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentP
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { analytics } from "@/services/analytics";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -166,10 +166,10 @@ export function useAgentRunModal(
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
           callbacks?.onRun?.(response.data);
-          analytics.sendDatafastEvent("run_agent", {
-            name: agent.name,
-            id: agent.graph_id,
-          });
+          trackAgentRunGoal(
+            { id: agent.graph_id, name: agent.name },
+            "library",
+          );
           setIsOpen(false);
         }
       },
