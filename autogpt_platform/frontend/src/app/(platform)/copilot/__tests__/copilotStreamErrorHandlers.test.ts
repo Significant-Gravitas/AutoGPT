@@ -98,7 +98,7 @@ describe("handleStreamError", () => {
       title: string;
       description: string;
     };
-    expect(arg.title).toBe("AutoPilot stopped responding");
+    expect(arg.title).toBe("Otto stopped responding");
     // Backend message takes priority over fallbackDescription.
     expect(arg.description).toBe("tool sleeping");
   });
@@ -111,7 +111,7 @@ describe("handleStreamError", () => {
       isUserStoppingRef: makeRef(false),
     });
     const arg = mockToast.mock.calls[0][0] as { title: string };
-    expect(arg.title).toBe("AutoPilot ran into a problem");
+    expect(arg.title).toBe("Otto ran into a problem");
   });
 
   it("uses fallbackDescription when the backend message is empty", () => {
@@ -192,6 +192,60 @@ describe("handleStreamError", () => {
       isUserStoppingRef: makeRef(false),
     });
     expect(onReconnect).not.toHaveBeenCalled();
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleStreamError — telling the two usage limits apart", () => {
+  function limit(authProvider: string | null) {
+    return {
+      kind: "usage_limit" as const,
+      message: "Limit reached.",
+      authProvider,
+      credentialId: authProvider === "codex" ? "cred-1" : null,
+      resetsAt: null,
+      retryable: false,
+      reconnectFixesIt: false,
+    };
+  }
+
+  beforeEach(() => {
+    mockToast.mockClear();
+  });
+
+  it("hands a linked plan's limit to the caller with the failure attached", () => {
+    // The caller needs it to open the continue path rather than the plan
+    // dialog: asking someone to upgrade with us because OpenAI said no is
+    // the wrong answer to the wrong question.
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error("boom"),
+      providerFailure: limit("codex"),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    expect(onRateLimit.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ kind: "usage_limit", authProvider: "codex" }),
+    );
+  });
+
+  it("still routes our own limit the same way, so the composer text survives", () => {
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error("boom"),
+      providerFailure: limit("platform"),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    expect(onRateLimit.mock.calls[0][1]?.authProvider).toBe("platform");
     expect(mockToast).not.toHaveBeenCalled();
   });
 });

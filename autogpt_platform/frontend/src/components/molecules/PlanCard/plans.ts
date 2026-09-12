@@ -135,9 +135,9 @@ export const PLAN_METADATA: Record<
       "Help drive the roadmap for new features",
     ],
     cta: "Upgrade to Max",
-    highlighted: true,
-    badge: "Best value",
-    buttonVariant: "primary",
+    highlighted: false,
+    badge: null,
+    buttonVariant: "secondary",
   },
   BUSINESS: {
     key: PLAN_KEYS.BUSINESS,
@@ -147,7 +147,7 @@ export const PLAN_METADATA: Record<
       "For teams and heavy workloads that need expanded capacity and controls.",
     features: [
       "Includes everything in Max",
-      "Highest AutoPilot capacity",
+      "Highest Otto capacity",
       "Priority support and onboarding",
       "Advanced security & compliance options",
       "Dedicated account contact",

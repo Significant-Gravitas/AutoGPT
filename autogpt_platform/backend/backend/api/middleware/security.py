@@ -25,6 +25,8 @@ class SecurityHeadersMiddleware:
         "/api/status",
         "/api/blocks",
         "/api/v1/blocks",
+        # Workspace file previews (user-private; response sets Cache-Control: private)
+        "/api/workspace/files/*/preview",
         # Public store/marketplace pages (read-only)
         "/api/store/agents",
         "/api/v1/store/agents",

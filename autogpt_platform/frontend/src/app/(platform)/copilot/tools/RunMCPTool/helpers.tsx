@@ -4,9 +4,10 @@ import type { MCPToolOutputResponse } from "@/app/api/__generated__/models/mCPTo
 import type { MCPToolsDiscoveredResponse } from "@/app/api/__generated__/models/mCPToolsDiscoveredResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import { AlertDiamondIcon, PlugSocketIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // ------------------------------------------------------------------ //
 //  Re-export generated types for use by RunMCPTool components
@@ -214,18 +215,10 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <PlugsConnectedIcon
-      size={14}
-      weight="regular"
-      className="text-neutral-400"
-    />
-  );
+  return <Icon icon={PlugSocketIcon} size={14} className="text-neutral-400" />;
 }

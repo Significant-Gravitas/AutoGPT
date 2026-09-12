@@ -21,12 +21,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThree } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -158,7 +159,10 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThree className="h-5 w-5 text-neutral-600" />
+            <Icon
+              icon={MoreHorizontalIcon}
+              className="h-5 w-5 text-neutral-600"
+            />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

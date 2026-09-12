@@ -153,7 +153,7 @@ self.addEventListener("push", function (event) {
         var options = {
           body: config.body,
           icon: "/notification-icon-192.png",
-          badge: "/notification-icon-192.png",
+          badge: "/notification-badge-96.png",
           tag: tag,
           data: Object.assign({ url: targetUrl }, data),
           renotify: true,

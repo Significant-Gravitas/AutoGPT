@@ -62,10 +62,12 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.data.db_accessors import user_db
+from backend.copilot.trial_cost_context import record_attributed_trial_cost
+from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
+from backend.util.exceptions import UserPaywalledError
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ class SubscriptionTier(str, Enum):
     """
 
     NO_TIER = "NO_TIER"
+    TRIAL = "TRIAL"
     BASIC = "BASIC"
     PRO = "PRO"
     MAX = "MAX"
@@ -99,23 +102,24 @@ class SubscriptionTier(str, Enum):
 
 # Default multiplier applied to the base cost limits (from LD / config) for each
 # tier. Used as the fallback when the LD flag ``copilot-tier-multipliers`` is
-# unset or unparseable — see ``get_tier_multipliers``.  BUSINESS matches
-# ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier. Float-typed
+# unset or unparseable — see ``get_tier_multipliers``.  PRO and MAX are the two
+# self-serve plans; their multipliers set what those plans allow. Float-typed
 # so LD-provided fractional multipliers (e.g. 8.5×) compose naturally; the
 # eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
 # downstream microdollar math integer.
 _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
     # NO_TIER is the explicit "no active Stripe subscription" state —
     # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
-    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # all rate-limited routes (CoPilot chat, Otto) refuse with 429
     # before any business logic runs. This is the backend half of the
     # paywall (the frontend modal nudges UI users; this gate enforces
-    # server-side regardless of client). BASIC stays as a future paid-tier
-    # option; for now it falls back to the same baseline as paid tiers.
+    # server-side regardless of client). BASIC is not sold today and stays on
+    # the base limits.
     SubscriptionTier.NO_TIER: 0.0,
+    SubscriptionTier.TRIAL: 0.0,
     SubscriptionTier.BASIC: 1.0,
-    SubscriptionTier.PRO: 5.0,
-    SubscriptionTier.MAX: 20.0,
+    SubscriptionTier.PRO: 1.25,
+    SubscriptionTier.MAX: 10.6667,
     SubscriptionTier.BUSINESS: 60.0,
     SubscriptionTier.ENTERPRISE: 60.0,
 }
@@ -133,6 +137,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 # while LaunchDarkly can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
+    SubscriptionTier.TRIAL: 250,
     SubscriptionTier.BASIC: 250,  # 250 MB
     SubscriptionTier.PRO: 1024,  # 1 GB
     SubscriptionTier.MAX: 5 * 1024,  # 5 GB
@@ -467,25 +472,6 @@ class RateLimitUnavailable(Exception):
     """
 
 
-class UserPaywalledError(Exception):
-    """User has no entitlement to run a paywalled feature (NO_TIER tier
-    + ``ENABLE_PLATFORM_PAYMENT`` on).
-
-    Raised by ``add_graph_execution`` and other deep enqueue paths so
-    that *every* execution entry point (HTTP route, scheduled cron,
-    webhook trigger, external API, internal copilot tool) gets the same
-    gate without each one having to remember a route-level dependency.
-    Routes wrap this into HTTP 402; background tasks log and abandon
-    the run.
-    """
-
-    def __init__(
-        self,
-        message: str = "A subscription is required to run this feature.",
-    ) -> None:
-        super().__init__(message)
-
-
 async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
@@ -535,7 +521,7 @@ async def get_usage_status(
             resets_at=_weekly_reset_time(now=now),
         ),
         tier=tier,
-        reset_cost=rate_limit_reset_cost,
+        reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
     )
 
 
@@ -574,6 +560,11 @@ async def get_remaining_usd_budget(
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
     """
+    trial = None
+    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return 0.0
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -585,7 +576,7 @@ async def get_remaining_usd_budget(
         weekly_used = int(weekly_raw or 0)
     except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
         logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
-        return floor_usd
+        return 0.0 if trial else floor_usd
 
     # ``>= 0`` (not ``> 0``): a limit of 0 is "no spend allowed", so the
     # remaining is 0 on that window. Mirrors check_rate_limit's semantics
@@ -604,6 +595,11 @@ async def get_remaining_usd_budget(
         if remaining_microdollars != float("inf")
         else float("inf")
     )
+    if trial:
+        return min(
+            remaining_usd,
+            max(0, trial.offer.total_cost_limit - trial.cost_microdollars) / 1_000_000,
+        )
     return max(floor_usd, remaining_usd)
 
 
@@ -657,6 +653,8 @@ async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
+    *,
+    skip_daily: bool = False,
 ) -> None:
     """Check if user is within rate limits.
 
@@ -672,6 +670,11 @@ async def check_rate_limit(
     dependency :func:`enforce_payment_paywall`, so this function is
     purely about per-window USD usage.
 
+    ``skip_daily`` skips the daily-cap check; the weekly cap still
+    applies. Used by the dream pass so a user with a busy interactive
+    day still gets their nightly background pass — dream rolls under
+    the weekly account ceiling instead.
+
     This is a pre-turn soft check. The authoritative usage counter is updated
     by ``record_cost_usage()`` after the turn completes. Under concurrency,
     two parallel turns may both pass this check against the same snapshot.
@@ -679,6 +682,12 @@ async def check_rate_limit(
     (the exact cost is unknown until after generation).
     """
     now = datetime.now(UTC)
+    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            raise RateLimitExceeded("trial", now)
+        if trial.cost_microdollars >= trial.offer.total_cost_limit:
+            raise RateLimitExceeded("trial", trial.ends_at or now)
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
@@ -709,7 +718,7 @@ async def check_rate_limit(
     # silently treated 0 as unlimited, which collided with the multiplier-
     # collapse semantics of :func:`get_global_rate_limits` and produced
     # the autopilot paywall bypass.
-    if daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
+    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
@@ -817,6 +826,8 @@ async def increment_daily_reset_count(user_id: str) -> None:
 async def record_cost_usage(
     user_id: str,
     cost_microdollars: int,
+    *,
+    skip_daily: bool = False,
 ) -> None:
     """Record a user's generation spend against daily and weekly counters.
 
@@ -830,12 +841,26 @@ async def record_cost_usage(
         user_id: The user's ID.
         cost_microdollars: Spend to record in microdollars (1 USD = 1_000_000).
             Non-positive values are ignored.
+        skip_daily: When True, only the weekly counter is incremented. Used
+            by the dream pass so background work doesn't eat the user's
+            interactive daily budget. Dream still counts toward the weekly
+            cap so a user can't dream-pass their way out of an account-wide
+            spend ceiling.
     """
     cost_microdollars = max(0, cost_microdollars)
     if cost_microdollars <= 0:
         return
+    if (
+        not await record_attributed_trial_cost(user_id, cost_microdollars)
+        and await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL
+    ):
+        await credit_db().record_subscription_trial_cost(user_id, cost_microdollars)
 
-    logger.info("Recording copilot spend: %d microdollars", cost_microdollars)
+    logger.info(
+        "Recording copilot spend: %d microdollars (skip_daily=%s)",
+        cost_microdollars,
+        skip_daily,
+    )
 
     now = datetime.now(UTC)
     d_key = _daily_key(user_id, now=now)
@@ -848,7 +873,8 @@ async def record_cost_usage(
         # MULTI/EXEC is not supported, so each counter gets its own
         # single-key transaction. Per-counter INCRBY+EXPIRE atomicity is the
         # invariant that matters; the two counters are independent budgets.
-        await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
+        if not skip_daily:
+            await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
         await _incr_counter_atomic(redis, w_key, cost_microdollars, weekly_ttl)
     except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning(
@@ -936,6 +962,11 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
     all fan out simultaneously. The key is deleted on transient errors so
     the next request can retry. Returns True when a subscription was found
     and synced (tier was updated in DB + cache cleared).
+
+    The DB work routes through ``credit_db()`` so the reconcile also works
+    from Prisma-less processes (scheduler-server, copilot-executor), where
+    a direct ``backend.data.credit`` call would raise
+    ``ClientNotConnectedError``.
     """
     gate_key = f"{_STRIPE_RECONCILE_PREFIX}{user_id}"
     try:
@@ -949,9 +980,7 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
         return False
 
     try:
-        from backend.data.credit import reconcile_stripe_tier_for_user  # avoid circular
-
-        return await reconcile_stripe_tier_for_user(user_id)
+        return await credit_db().reconcile_stripe_tier_for_user(user_id)
     except Exception as exc:
         logger.warning("stripe_reconcile: check failed for %s: %s", user_id[:8], exc)
         try:
@@ -991,6 +1020,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         tier = DEFAULT_TIER
         tier_from_db = False
 
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        return tier if trial and trial.active else SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return tier
 
@@ -1169,6 +1201,11 @@ async def get_global_rate_limits(
     # only NO_TIER path that gets here is the beta cohort (flag off), which
     # falls back to BASIC limits so testers retain access.
     tier = await get_user_tier(user_id)
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return 0, 0, SubscriptionTier.NO_TIER
+        return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
     if tier == SubscriptionTier.NO_TIER and not await is_feature_enabled(
@@ -1293,6 +1330,9 @@ async def is_user_paywalled(user_id: str) -> bool:
             user_id[:8],
         )
         tier = SubscriptionTier.NO_TIER
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        return trial is None or not trial.active
     if tier != SubscriptionTier.NO_TIER:
         return False
     return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)

@@ -79,13 +79,14 @@ vi.mock("../useCopilotPage", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
 // sessionId is read via nuqs to key the chat-host subtree; stub it.
 vi.mock("nuqs", () => ({
   parseAsString: {},
+  parseAsStringLiteral: () => ({}),
   useQueryState: () => [null, vi.fn()],
 }));
 
@@ -125,7 +126,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("Autopilot low-credit banner", () => {
+describe("Otto low-credit banner", () => {
   test("shows the banner when the user is out of credits", async () => {
     // Suppress the daily auto-opener so only the banner is under test.
     localStorage.setItem(

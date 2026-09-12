@@ -46,6 +46,7 @@ from backend.copilot.response_model import (
 )
 
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
+from .tool_display import strip_display_token
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,11 @@ class SDKResponseAdapter:
         # so the empty-completion guard doesn't false-fire on a benign empty
         # trailing ResultMessage when the prior attempt already streamed content.
         self.prior_attempt_emitted_visible_content = False
-        self.current_tool_calls: dict[str, dict[str, str]] = {}
+        # Maps tool_use_id → {"name": <tool name>, "input": <call args>}.
+        # ``input`` is carried so the response adapter can pop the matching
+        # stashed output via ``_output_key`` when several same-name tools run
+        # in parallel (OPEN-3158).
+        self.current_tool_calls: dict[str, dict[str, Any]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
         # Track whether any ``TextBlock`` was emitted after the most recent
@@ -351,6 +356,7 @@ class SDKResponseAdapter:
                     # Strip MCP prefix so frontend sees "find_block"
                     # instead of "mcp__copilot__find_block".
                     tool_name = block.name.strip().removeprefix(MCP_TOOL_PREFIX)
+                    tool_input = strip_display_token(block.input)
 
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
@@ -359,10 +365,13 @@ class SDKResponseAdapter:
                         StreamToolInputAvailable(
                             toolCallId=block.id,
                             toolName=tool_name,
-                            input=block.input,
+                            input=tool_input,
                         )
                     )
-                    self.current_tool_calls[block.id] = {"name": tool_name}
+                    self.current_tool_calls[block.id] = {
+                        "name": tool_name,
+                        "input": tool_input,
+                    }
 
         elif isinstance(sdk_message, UserMessage):
             # UserMessage carries tool results back from tool execution.
@@ -395,9 +404,9 @@ class SDKResponseAdapter:
                     # (potentially truncated) ToolResultBlock content.
                     # The SDK truncates large results, writing them to disk,
                     # which breaks frontend widget parsing.
-                    output = pop_pending_tool_output(tool_name) or (
-                        _extract_tool_output(block.content)
-                    )
+                    output = pop_pending_tool_output(
+                        tool_name, tool_info.get("input")
+                    ) or (_extract_tool_output(block.content))
 
                     responses.append(
                         StreamToolOutputAvailable(
@@ -422,7 +431,7 @@ class SDKResponseAdapter:
 
                 # Try stashed output first (from PostToolUse hook),
                 # then tool_use_result dict, then string content.
-                output = pop_pending_tool_output(tool_name)
+                output = pop_pending_tool_output(tool_name, tool_info.get("input"))
                 if not output:
                     tur = sdk_message.tool_use_result
                     if tur is not None:
@@ -1005,7 +1014,7 @@ class SDKResponseAdapter:
         flips to ``False`` after the first invocation.
         """
         unresolved = [
-            (tid, info.get("name", "unknown"))
+            (tid, info.get("name", "unknown"), info.get("input"))
             for tid, info in self.current_tool_calls.items()
             if tid not in self.resolved_tool_calls
         ]
@@ -1021,13 +1030,13 @@ class SDKResponseAdapter:
             "[SDK] [%s] Flushing %d unresolved tool call(s): %s",
             sid,
             len(unresolved),
-            ", ".join(f"{name}({tid[:12]})" for tid, name in unresolved),
+            ", ".join(f"{name}({tid[:12]})" for tid, name, _ in unresolved),
         )
         self._any_orphan_flush_seen = True
 
         flushed = False
-        for tool_id, tool_name in unresolved:
-            output = pop_pending_tool_output(tool_name)
+        for tool_id, tool_name, tool_input in unresolved:
+            output = pop_pending_tool_output(tool_name, tool_input)
             if output is not None:
                 responses.append(
                     StreamToolOutputAvailable(

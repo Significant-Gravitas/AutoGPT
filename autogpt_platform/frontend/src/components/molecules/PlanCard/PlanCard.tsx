@@ -6,10 +6,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CheckIcon, StarIcon } from "@phosphor-icons/react";
 import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
+import { StarIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
 
@@ -21,6 +22,13 @@ interface Props {
   className?: string;
   loading?: boolean;
   disabled?: boolean;
+  // "charged-today" shows the prorated amount billed now; "billing-period"
+  // shows a plain "billed monthly/annually" caption instead (paywall surface).
+  priceCaption?: "charged-today" | "billing-period";
+  // Names the surface this card is rendered on to tag its CTA for DataFast.
+  // Omitted, the card reports nothing — each surface opts in so a shared goal
+  // never mixes clicks from the onboarding paywall and the upgrade modal.
+  ctaGoalSurface?: string;
 }
 
 export function PlanCard({
@@ -31,6 +39,8 @@ export function PlanCard({
   className,
   loading = false,
   disabled = false,
+  priceCaption = "charged-today",
+  ctaGoalSurface,
 }: Props) {
   const { primaryPrice, chargedToday } = computePlanPricing({
     plan,
@@ -98,9 +108,9 @@ export function PlanCard({
                     }
               }
             >
-              <StarIcon
+              <Icon
+                icon={StarIcon}
                 size={10}
-                weight="fill"
                 aria-hidden="true"
                 className="text-yellow-300"
               />
@@ -178,20 +188,26 @@ export function PlanCard({
             )}
           </div>
 
-          {chargedToday !== null && (
-            <div
-              aria-label={`Charged today: ${moneyFormatter.format(chargedToday)}`}
-              className="mb-1 flex items-baseline gap-1 text-xs font-medium text-zinc-700"
-            >
-              <span>Charged today:</span>
-              <NumberFlow
-                value={chargedToday}
-                format={moneyFormat}
-                locales="en-US"
-                willChange
-              />
-            </div>
-          )}
+          {priceCaption === "billing-period"
+            ? primaryPrice !== null && (
+                <div className="mb-1 text-xs font-medium text-zinc-400">
+                  {isYearly ? "billed annually" : "billed monthly"}
+                </div>
+              )
+            : chargedToday !== null && (
+                <div
+                  aria-label={`Charged today: ${moneyFormatter.format(chargedToday)}`}
+                  className="mb-1 flex items-baseline gap-1 text-xs font-medium text-zinc-700"
+                >
+                  <span>Charged today:</span>
+                  <NumberFlow
+                    value={chargedToday}
+                    format={moneyFormat}
+                    locales="en-US"
+                    willChange
+                  />
+                </div>
+              )}
 
           <p className="mb-3.5 min-h-[30px] text-sm leading-relaxed text-zinc-800">
             {plan.description}
@@ -209,9 +225,9 @@ export function PlanCard({
                     isTeam ? "bg-stone-100" : "bg-purple-50",
                   )}
                 >
-                  <CheckIcon
+                  <Icon
+                    icon={Tick02Icon}
                     size={10}
-                    weight="bold"
                     className={isTeam ? "text-stone-500" : "text-purple-500"}
                   />
                 </span>
@@ -244,6 +260,12 @@ export function PlanCard({
               className="w-full"
               loading={loading}
               disabled={disabled}
+              {...(ctaGoalSurface && {
+                "data-fast-goal": "plan_cta_click",
+                "data-fast-goal-plan": plan.key.toLowerCase(),
+                "data-fast-goal-cycle": isYearly ? "yearly" : "monthly",
+                "data-fast-goal-surface": ctaGoalSurface,
+              })}
             >
               {plan.cta}
             </Button>

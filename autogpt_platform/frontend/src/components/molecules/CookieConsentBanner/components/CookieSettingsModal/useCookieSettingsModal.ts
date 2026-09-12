@@ -12,16 +12,19 @@ export function useCookieSettingsModal({ onClose }: Props) {
 
   const [analytics, setAnalytics] = useState(consent.analytics);
   const [monitoring, setMonitoring] = useState(consent.monitoring);
+  const [advertising, setAdvertising] = useState(consent.advertising);
 
   useEffect(() => {
     setAnalytics(consent.analytics);
     setMonitoring(consent.monitoring);
-  }, [consent.analytics, consent.monitoring]);
+    setAdvertising(consent.advertising);
+  }, [consent.analytics, consent.monitoring, consent.advertising]);
 
   function handleSavePreferences() {
     handleUpdateConsent({
       analytics,
       monitoring,
+      advertising,
     });
     onClose();
   }
@@ -29,9 +32,11 @@ export function useCookieSettingsModal({ onClose }: Props) {
   function handleAcceptAll() {
     setAnalytics(true);
     setMonitoring(true);
+    setAdvertising(true);
     handleUpdateConsent({
       analytics: true,
       monitoring: true,
+      advertising: true,
     });
     onClose();
   }
@@ -39,9 +44,11 @@ export function useCookieSettingsModal({ onClose }: Props) {
   function handleRejectAll() {
     setAnalytics(false);
     setMonitoring(false);
+    setAdvertising(false);
     handleUpdateConsent({
       analytics: false,
       monitoring: false,
+      advertising: false,
     });
     onClose();
   }
@@ -51,6 +58,8 @@ export function useCookieSettingsModal({ onClose }: Props) {
     setAnalytics,
     monitoring,
     setMonitoring,
+    advertising,
+    setAdvertising,
     handleSavePreferences,
     handleAcceptAll,
     handleRejectAll,

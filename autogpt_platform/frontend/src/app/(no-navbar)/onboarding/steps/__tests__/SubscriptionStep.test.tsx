@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -9,8 +8,25 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
+import {
+  getSubscriptionPricingExperimentConfig,
+  getSubscriptionPricingExperimentPlans,
+} from "../SubscriptionStep/helpers";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+
+const postHog = vi.hoisted(() => ({
+  variant: undefined as string | boolean | undefined,
+}));
+
+vi.mock("@posthog/react", () => ({
+  useFeatureFlagVariantKey: () => postHog.variant,
+  usePostHog: () => undefined,
+}));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
   FadeIn: ({ children }: { children: React.ReactNode }) => (
@@ -22,14 +38,104 @@ vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
   AutoGPTLogo: () => <span>AutoGPTLogo</span>,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim, the location stub and NEXT_PUBLIC_GOOGLE_ADS_ID into every
+  // later test here.
+  restoreLocation();
+  removeGtagShim();
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
+  postHog.variant = undefined;
   useOnboardingWizardStore.getState().reset();
-  useOnboardingWizardStore.getState().goToStep(4);
+  // The paywall is the last interactive step (step 3), before Preparing.
+  useOnboardingWizardStore.getState().goToStep(3);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
+});
+
+const originalLocation = window.location;
+
+// The success path hands off to Stripe via window.location.href; jsdom tears
+// the environment down on a real navigation, so swap in a plain object.
+function stubLocation() {
+  const location = { origin: "http://localhost", href: "http://localhost/" };
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: location,
+  });
+  return location;
+}
+
+function restoreLocation() {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: originalLocation,
+  });
+}
+
+describe("subscription pricing experiment helpers", () => {
+  test("defaults to monthly billing with no highlighted plan (matches the paywall)", () => {
+    expect(getSubscriptionPricingExperimentConfig(undefined)).toMatchObject({
+      billing: "monthly",
+      highlightedPlan: null,
+      variant: "control",
+    });
+  });
+
+  test("highlights no plan when highlightedPlan is null", () => {
+    const plans = getSubscriptionPricingExperimentPlans(null);
+    const pro = plans.find((plan) => plan.key === "PRO");
+    const max = plans.find((plan) => plan.key === "MAX");
+
+    expect(pro).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+    expect(max).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+  });
+
+  test("maps PostHog variants to billing and highlighted plan config", () => {
+    expect(getSubscriptionPricingExperimentConfig("monthly-pro")).toMatchObject(
+      {
+        billing: "monthly",
+        highlightedPlan: "PRO",
+        variant: "monthly-pro",
+      },
+    );
+    expect(getSubscriptionPricingExperimentConfig("yearly-max")).toMatchObject({
+      billing: "yearly",
+      highlightedPlan: "MAX",
+      variant: "yearly-max",
+    });
+  });
+
+  test("moves the highlighted styling from Max to Pro", () => {
+    const plans = getSubscriptionPricingExperimentPlans("PRO");
+    const pro = plans.find((plan) => plan.key === "PRO");
+    const max = plans.find((plan) => plan.key === "MAX");
+
+    expect(pro).toMatchObject({
+      highlighted: true,
+      badge: "Best value",
+      buttonVariant: "primary",
+    });
+    expect(max).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+  });
 });
 
 describe("SubscriptionStep", () => {
@@ -40,46 +146,69 @@ describe("SubscriptionStep", () => {
     expect(screen.getByRole("heading", { name: /^Team$/ })).toBeDefined();
   });
 
-  test("defaults to yearly billing with the monthly-equivalent price and the annual charge", () => {
+  test("defaults to monthly billing with the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
-    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
-    expect(screen.getByLabelText("$42.50")).toBeDefined();
-    expect(screen.getByLabelText("$272.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
-    expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
+    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("switching to monthly shows the full monthly price and matching charged-today", () => {
+  test("highlights no plan by default — no 'Best value' badge", () => {
+    render(<SubscriptionStep />);
+    expect(screen.queryByText(/Best value/i)).toBeNull();
+  });
+
+  test("PostHog monthly Pro variant starts on monthly billing", async () => {
+    postHog.variant = "monthly-pro";
+
+    render(<SubscriptionStep />);
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "monthly",
+      );
+    });
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+  });
+
+  test("PostHog billing default does not override a user-selected cycle", async () => {
+    postHog.variant = "monthly-pro";
+    useOnboardingWizardStore.getState().setSelectedBilling("yearly");
+
+    render(<SubscriptionStep />);
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
+  });
+
+  test("switching to monthly shows the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
     fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
     expect(screen.getByLabelText("$50.00")).toBeDefined();
     expect(screen.getByLabelText("$320.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan, submits the profile, and redirects to Stripe Checkout", async () => {
-    useOnboardingWizardStore.getState().setName("Ada Lovelace");
-    useOnboardingWizardStore.getState().setRole("Engineer");
-    useOnboardingWizardStore.getState().togglePainPoint("Repetitive work");
-
+  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Role on success, paywall on cancel)", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
       cancel_url?: string;
     } | null = null;
-    let capturedProfileBody: {
-      user_name?: string;
-      user_role?: string;
-      pain_points?: string[];
-    } | null = null;
+    let profileCalled = false;
 
     server.use(
-      http.post("*/api/onboarding/profile", async ({ request }) => {
-        capturedProfileBody =
-          (await request.json()) as typeof capturedProfileBody;
+      http.post("*/api/onboarding/profile", () => {
+        profileCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
       http.post("*/api/credits/subscription", async ({ request }) => {
@@ -99,19 +228,70 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
+    // Success moves on to the step after the paywall (step 2) to begin
+    // onboarding; cancel returns to the paywall (step 1).
     expect(capturedTierBody!.success_url).toContain(
-      "/onboarding?step=5&subscription=success",
+      "/onboarding?step=2&subscription=success",
     );
     expect(capturedTierBody!.cancel_url).toContain(
-      "/onboarding?step=4&subscription=cancelled",
+      "/onboarding?step=1&subscription=cancelled",
     );
-    expect(capturedProfileBody).not.toBeNull();
-    expect(capturedProfileBody!.user_name).toBe("Ada Lovelace");
-    expect(capturedProfileBody!.user_role).toBe("Engineer");
-    expect(capturedProfileBody!.pain_points).toEqual(["Repetitive work"]);
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription value to Google Ads.
+    expect(capturedTierBody!.success_url).toContain(
+      "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
+    );
+    // Nothing is POSTed here — the profile is collected after payment and
+    // the Preparing step submits it.
+    expect(profileCalled).toBe(false);
   });
 
-  test("default yearly + selecting Pro forwards billing_cycle=yearly", async () => {
+  test("reports begin_checkout with the plan price to Google Ads before redirecting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: "https://checkout.stripe.com/pay/cs_test" }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+      ]);
+    });
+    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+  });
+
+  test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    // The backend modified the subscription in place — no Checkout ever
+    // started, so counting it would inflate the funnel.
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+  });
+
+  test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {
     let capturedTierBody: {
       tier?: string;
       billing_cycle?: string;
@@ -128,6 +308,7 @@ describe("SubscriptionStep", () => {
     );
 
     render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Yearly billing/i }));
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
@@ -195,7 +376,7 @@ describe("SubscriptionStep", () => {
       );
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedPlan).toBeNull();
-      expect(state.currentStep).toBe(4);
+      expect(state.currentStep).toBe(3);
     } finally {
       openSpy.mockRestore();
     }
@@ -223,15 +404,15 @@ describe("SubscriptionStep", () => {
     await waitFor(() => {
       expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     });
-    // Local short-circuit: no Stripe Checkout, no pre-redirect profile POST
-    // (the Preparing step handles submission via useOnboardingPage).
+    // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
+    // step handles submission via useOnboardingPage). Advances from the
+    // paywall (step 3) to Preparing (step 4).
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {
-    useOnboardingWizardStore.getState().setName("Ada");
     useOnboardingWizardStore.getState().setRole("Engineer");
 
     let resolveTier: (value: unknown) => void = () => undefined;

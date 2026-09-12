@@ -19,13 +19,15 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.execution import ExecutionContext
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
 )
-from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .integrations import integrations_router
 from .tools import tools_router
@@ -103,6 +105,10 @@ async def execute_graph_block(
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
+    user = await user_db.get_user_by_id(auth.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
     try:
         await charge_for_direct_block_execution(
             user_id=auth.user_id, block=obj, input_data=data, source="external"
@@ -112,8 +118,16 @@ async def execute_graph_block(
             status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
         ) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=auth.user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     output = defaultdict(list)
-    async for name, data in obj.execute(data):
+    async for name, data in obj.execute(data, execution_context=execution_context):
         output[name].append(data)
     return output
 
@@ -148,11 +162,27 @@ async def create_graph(
     graph_model.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
     graph_model.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph_model, user_id=auth.user_id)
-    await library_db.create_library_agent(graph_model, auth.user_id)
-    activated_graph = await on_graph_activate(graph_model, user_id=auth.user_id)
+    # Validate BEFORE persisting so a credential issue can't leave the graph
+    # and library agent half-saved.
+    graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
 
-    return activated_graph
+    # Dual-write org/team tenancy to BOTH the graph and the library entry,
+    # matching the internal create route. An org- or team-scoped API key must
+    # not leave the graph untenanted while its library row is org-tagged.
+    await graph_db.create_graph(
+        graph_model,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
+    )
+    await library_db.create_library_agent(
+        graph_model,
+        auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
+    )
+
+    return graph_model
 
 
 @v1_router.post(
@@ -171,12 +201,38 @@ async def execute_graph(
     # than fail-open via the deep gate inside add_graph_execution).
     # Consistent with the JWT-gated internal graph-execute route.
     await enforce_payment_paywall(auth.user_id)
+
+    # Attribute the execution to the API key's org when the key is org-scoped,
+    # so a key issued for org A doesn't get billed/attributed to the user's
+    # default (personal) org. A team-restricted key pins the execution to
+    # that team; otherwise team stays org-home (None). Only fall back to the
+    # user's default org/team when the key carries no org.
+    org_id: str | None
+    team_id: str | None
+    if auth.organization_id:
+        org_id, team_id = auth.organization_id, auth.team_id_restriction
+    else:
+        # Best-effort: a DB hiccup here must not collapse a subsequent
+        # UserPaywalledError into 400 via the broad except below.
+        from backend.api.features.orgs.db import get_user_default_team
+
+        try:
+            org_id, team_id = await get_user_default_team(auth.user_id)
+        except Exception:
+            logger.warning(
+                "get_user_default_team failed for external execute",
+                exc_info=True,
+            )
+            org_id, team_id = None, None
+
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=auth.user_id,
             inputs=node_input,
             graph_version=graph_version,
+            organization_id=org_id,
+            team_id=team_id,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:

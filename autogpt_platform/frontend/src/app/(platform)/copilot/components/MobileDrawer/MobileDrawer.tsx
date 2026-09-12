@@ -3,17 +3,9 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import {
-  MagnifyingGlass,
-  PlusIcon,
-  SpeakerHigh,
-  SpeakerSlash,
-  SpinnerGapIcon,
-  X,
-} from "@phosphor-icons/react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef } from "react";
 import { Drawer } from "vaul";
@@ -25,10 +17,19 @@ import { useSessionList } from "../../useSessionList";
 import { ChatSearchResults } from "../ChatSearchModal/ChatSearchResults";
 import { useChatSearch } from "../ChatSearchModal/useChatSearch";
 import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
+import { NotificationToggle } from "../ChatSidebar/components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
+import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
+import {
+  Cancel01Icon,
+  Loading03Icon,
+  PlusSignIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function MobileDrawer() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [currentSessionId, setSessionId] = useQueryState(
     "sessionId",
@@ -37,8 +38,6 @@ export function MobileDrawer() {
   const {
     completedSessionIDs,
     clearCompletedSession,
-    isSoundEnabled,
-    toggleSound,
     isDrawerOpen,
     setDrawerOpen,
     isSearchOpen,
@@ -107,21 +106,8 @@ export function MobileDrawer() {
                   Your chats
                 </Drawer.Title>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={toggleSound}
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:text-zinc-600"
-                    aria-label={
-                      isSoundEnabled
-                        ? "Disable notification sound"
-                        : "Enable notification sound"
-                    }
-                  >
-                    {isSoundEnabled ? (
-                      <SpeakerHigh className="h-4 w-4" />
-                    ) : (
-                      <SpeakerSlash className="h-4 w-4" />
-                    )}
-                  </button>
+                  <UsagePopover />
+                  <NotificationToggle />
                   {isChatSearchEnabled ? (
                     <ShadcnButton
                       type="button"
@@ -134,9 +120,9 @@ export function MobileDrawer() {
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
                       {isSearchOpen ? (
-                        <X className="h-4 w-4" />
+                        <Icon icon={Cancel01Icon} className="h-4 w-4" />
                       ) : (
-                        <MagnifyingGlass className="h-4 w-4" />
+                        <Icon icon={Search01Icon} className="h-4 w-4" />
                       )}
                     </ShadcnButton>
                   ) : null}
@@ -145,8 +131,9 @@ export function MobileDrawer() {
                     size="icon"
                     aria-label="Close sessions"
                     onClick={closeDrawer}
+                    className="ml-3"
                   >
-                    <X width="1rem" height="1rem" />
+                    <Icon icon={Cancel01Icon} width="1rem" height="1rem" />
                   </Button>
                 </div>
               </div>
@@ -157,7 +144,9 @@ export function MobileDrawer() {
                     size="small"
                     onClick={handleNewChat}
                     className="w-full"
-                    leftIcon={<PlusIcon width="1rem" height="1rem" />}
+                    leftIcon={
+                      <Icon icon={PlusSignIcon} width="1rem" height="1rem" />
+                    }
                   >
                     New Chat
                   </Button>
@@ -174,7 +163,10 @@ export function MobileDrawer() {
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="px-1 pb-3">
                     <div className="relative">
-                      <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                      <Icon
+                        icon={Search01Icon}
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                      />
                       <Input
                         ref={searchInputRef}
                         value={query}
@@ -215,7 +207,10 @@ export function MobileDrawer() {
                 </div>
               ) : isLoading ? (
                 <div className="flex items-center justify-center py-4">
-                  <SpinnerGapIcon className="h-5 w-5 animate-spin text-neutral-400" />
+                  <Icon
+                    icon={Loading03Icon}
+                    className="h-5 w-5 animate-spin text-neutral-400"
+                  />
                 </div>
               ) : sessions.length === 0 ? (
                 <p className="py-4 text-center text-sm text-neutral-500">

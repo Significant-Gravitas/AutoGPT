@@ -490,7 +490,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New task$/i });
+  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -810,7 +810,10 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
       "setup-task",
       page.getByRole("button", { name: /^Setup your task$/i }).first(),
     ],
-    ["new-task", page.getByRole("button", { name: /^New task$/i }).first()],
+    [
+      "new-task",
+      page.getByRole("button", { name: /^New agent task$/i }).first(),
+    ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
 

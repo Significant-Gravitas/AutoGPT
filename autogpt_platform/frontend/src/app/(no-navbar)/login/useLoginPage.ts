@@ -1,6 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +12,9 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
-  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
+  useCaptureMarketingPrompt();
+
+  const { user, isUserLoading, isLoggedIn } = useAuth();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -56,7 +59,7 @@ export function useLoginPage() {
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
-      const response = await fetch("/api/auth/provider", {
+      const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
@@ -128,7 +131,6 @@ export function useLoginPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),

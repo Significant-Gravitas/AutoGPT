@@ -7,7 +7,13 @@ import { GraphSearchMenu } from "./NewSearchGraph/GraphMenu/GraphMenu";
 import { UndoRedoButtons } from "./UndoRedoButtons";
 import { useGraphSearchShortcut } from "./useGraphSearchShortcut";
 
-export const NewControlPanel = memo(function NewControlPanel() {
+interface Props {
+  isReadOnly?: boolean;
+}
+
+export const NewControlPanel = memo(function NewControlPanel({
+  isReadOnly = false,
+}: Props) {
   useGraphSearchShortcut();
 
   return (
@@ -17,13 +23,19 @@ export const NewControlPanel = memo(function NewControlPanel() {
       )}
     >
       <div className="flex flex-col items-center justify-center rounded-[1rem] p-0">
-        <BlockMenu />
-        <Separator className="text-[#E1E1E1]" />
-        <GraphSearchMenu />
-        <Separator className="text-[#E1E1E1]" />
-        <NewSaveControl />
-        <Separator className="text-[#E1E1E1]" />
-        <UndoRedoButtons />
+        {isReadOnly ? (
+          <GraphSearchMenu />
+        ) : (
+          <>
+            <BlockMenu />
+            <Separator className="text-[#E1E1E1]" />
+            <GraphSearchMenu />
+            <Separator className="text-[#E1E1E1]" />
+            <NewSaveControl />
+            <Separator className="text-[#E1E1E1]" />
+            <UndoRedoButtons />
+          </>
+        )}
       </div>
     </section>
   );

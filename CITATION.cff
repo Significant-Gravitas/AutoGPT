@@ -1,6 +1,3 @@
-# This CITATION.cff file was generated with cffinit.
-# Visit https://bit.ly/cffinit to generate yours today!
-
 cff-version: 1.2.0
 title: AutoGPT
 message: >-
@@ -13,9 +10,9 @@ authors:
 repository-code: 'https://github.com/Significant-Gravitas/AutoGPT'
 url: 'https://agpt.co'
 abstract: >-
-  A collection of tools and experimental open-source attempts to make GPT-4 fully
-  autonomous.
+  AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters.
 keywords:
   - AI
   - Agent
-license: MIT
+  - LLM
+license-url: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE

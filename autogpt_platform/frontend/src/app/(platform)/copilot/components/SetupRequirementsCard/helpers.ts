@@ -1,4 +1,5 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
 
 const VALID_CREDENTIAL_TYPES = new Set([
@@ -300,6 +301,23 @@ export function checkAllInputsComplete(
   });
 }
 
+/**
+ * True while a credential the provider just refused is still the one selected.
+ *
+ * The row is kept on file, so the picker re-selects it on mount; without this
+ * the card would report ready and the chat would re-run into the same 401.
+ */
+export function isRejectedCredentialSelected(
+  rejection: CredentialRejection | null | undefined,
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): boolean {
+  const rejectedId = rejection?.credential_id;
+  if (!rejectedId) return false;
+  return Object.values(inputCredentials).some(
+    (credential) => credential?.id === rejectedId,
+  );
+}
+
 export function checkCanRun(
   needsCredentials: boolean,
   isAllCredentialsComplete: boolean,
@@ -342,4 +360,22 @@ export function buildPreviewRunMessage(needsCredentials: boolean): string {
   return needsCredentials
     ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
     : "Please proceed with running the agent.";
+}
+
+/**
+ * Message variant for "trigger" mode (setup_agent_webhook_trigger): the chosen
+ * credential IDs are carried back so the webhook is registered under the
+ * account the user explicitly picked, rather than auto-matched on resume.
+ */
+export function buildTriggerSetupMessage(
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): string {
+  const selected: Record<string, string> = {};
+  for (const [field, cred] of Object.entries(inputCredentials)) {
+    if (cred?.id) selected[field] = cred.id;
+  }
+  return (
+    "I've selected the credentials to use. Call setup_agent_webhook_trigger " +
+    `with credentials=${JSON.stringify(selected)} to finish setting up the trigger.`
+  );
 }

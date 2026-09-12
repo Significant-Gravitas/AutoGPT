@@ -68,6 +68,8 @@ class HITLReviewHelper:
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
+        organization_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -138,6 +140,8 @@ class HITLReviewHelper:
             input_data=input_data,
             message=block_name,  # Use block_name directly as the message
             editable=editable,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         if result is None:
@@ -171,6 +175,8 @@ class HITLReviewHelper:
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
+        organization_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -201,6 +207,8 @@ class HITLReviewHelper:
             block_name=block_name,
             editable=editable,
             is_graph_execution=is_graph_execution,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         if review_result is None:

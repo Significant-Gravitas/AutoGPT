@@ -325,7 +325,7 @@ class BlockWithAPIKeyAndOAuth(Block):
 
 The credentials will be automagically injected by the executor in the back end.
 
-The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/autogpt_libs/autogpt_libs/supabase_integration_credentials_store/types.py).
+The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/data/model.py).
 To use them in e.g. an API request, you can either access the token directly:
 
 ```python
@@ -661,7 +661,18 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager6"
 ```
+
+!!! info "Signature verification (`verify_signature`)"
+    If the upstream provider signs its deliveries (e.g. GitHub's
+    `X-Hub-Signature-256`, Airtable's `X-Airtable-Content-MAC`), override
+    `verify_signature` and use `hmac.compare_digest` for the comparison.
+    Raise `fastapi.HTTPException(403)` on missing/invalid signatures.
+
+    If the provider has no signing scheme (consumer wearables, simple
+    "POST to this URL" tools), leave the default in place. The webhook
+    URL's UUID is then the bearer secret — document that for users.
 
 And add a reference to your `WebhooksManager` class in `load_webhook_managers`:
 
@@ -877,7 +888,7 @@ Two patterns are supported:
 
 ```python title="backend/blocks/my_provider/my_block_test.py"
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.blocks.my_provider._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.my_provider.my_block import MyBlock
@@ -897,7 +908,7 @@ async def test_my_block_success():
         credentials=TEST_CREDENTIALS_INPUT,
         query="test query",
     )
-    mock_resp = AsyncMock()
+    mock_resp = MagicMock()
     mock_resp.json.return_value = {"result": "test data"}
 
     # Patch where the symbol is *used*. The block ecosystem uses
@@ -958,11 +969,13 @@ cd autogpt_platform/backend
 poetry run python scripts/generate_block_docs.py
 ```
 
-This generates markdown documentation for all blocks at:
+For provider packages, the generator writes one page per Python module:
 
 ```
-docs/integrations/block-integrations/{provider}/blocks.md
+docs/integrations/block-integrations/{provider}/{module}.md
 ```
+
+For example, `backend/blocks/zerobounce/validate_emails.py` generates `docs/integrations/block-integrations/zerobounce/validate_emails.md`. Top-level block modules are grouped into category pages such as `docs/integrations/block-integrations/basic.md`.
 
 ### CI Enforcement
 
@@ -975,9 +988,9 @@ If CI fails with a docs sync error, run the generator locally, commit the update
 The generated docs support manually-written content that is preserved across regeneration. Use these markers in the generated markdown files:
 
 ```markdown
-<!-- MANUAL: section_name -->
-Your custom documentation here. This will not be overwritten.
+<!-- MANUAL: use_case -->
+Your custom usage examples here. This will not be overwritten.
 <!-- END MANUAL -->
 ```
 
-This is useful for adding usage examples, caveats, or integration-specific notes that go beyond what can be auto-generated from block metadata.
+Use the generator-supported block sections `how_it_works`, `use_case`, and `extras`, or file-level `file_description` and `additional_content`. Keep the existing markers rather than inventing section names. These sections hold usage examples, caveats, and integration notes that cannot be generated from block metadata.

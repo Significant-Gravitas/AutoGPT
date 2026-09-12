@@ -9,9 +9,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LegoIcon } from "@phosphor-icons/react";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
+import { ToyBrickIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const BlockMenu = () => {
   const { blockMenuOpen, setBlockMenuOpen, forceOpenBlockMenu } =
@@ -34,7 +35,7 @@ export const BlockMenu = () => {
               selected={blockMenuOpen}
               className="rounded-none"
             >
-              <LegoIcon className="size-5" />
+              <Icon icon={ToyBrickIcon} className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>

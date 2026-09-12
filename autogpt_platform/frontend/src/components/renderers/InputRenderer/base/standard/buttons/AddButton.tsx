@@ -1,7 +1,8 @@
 import { IconButtonProps, TranslatableString } from "@rjsf/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function AddButton({
   registry,
@@ -19,7 +20,7 @@ export default function AddButton({
         variant="secondary"
         type="button"
       >
-        <PlusIcon size={16} weight="bold" />
+        <Icon icon={PlusSignIcon} size={16} />
         {translateString(TranslatableString.AddItemButton)}
       </Button>
     </div>

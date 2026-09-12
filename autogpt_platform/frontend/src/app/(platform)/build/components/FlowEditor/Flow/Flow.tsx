@@ -14,6 +14,7 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { DraftRecoveryPopup } from "../../DraftRecoveryDialog/DraftRecoveryPopup";
 import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 import NewControlPanel from "../../NewControlPanel/NewControlPanel";
+import { ReadOnlyBanner } from "../../ReadOnlyBanner/ReadOnlyBanner";
 import CustomEdge from "../edges/CustomEdge";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
@@ -21,6 +22,7 @@ import { CustomControls } from "./components/CustomControl";
 import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { RunningBackground } from "./components/RunningBackground";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 import { resolveCollisions } from "./helpers/resolve-collision";
 import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
@@ -42,6 +44,7 @@ export const Flow = () => {
       query: {
         select: okData,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );
@@ -81,13 +84,14 @@ export const Flow = () => {
     isInitialLoadComplete,
     isLocked,
     setIsLocked,
+    isReadOnly,
   } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
   // Copy/paste functionality
-  useCopyPaste();
+  useCopyPaste(isReadOnly);
 
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
@@ -120,12 +124,18 @@ export const Flow = () => {
           deleteKeyCode={["Backspace", "Delete"]}
         >
           <Background />
-          <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
-          <NewControlPanel />
-          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
+          <CustomControls
+            setIsLocked={setIsLocked}
+            isLocked={isLocked}
+            isReadOnly={isReadOnly}
+          />
+          <NewControlPanel isReadOnly={isReadOnly} />
+          {isReadOnly && <ReadOnlyBanner />}
+          {!isReadOnly &&
+            (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
-          {graph && (
+          {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
               className="right-2 top-32 p-2"

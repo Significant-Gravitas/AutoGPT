@@ -7,6 +7,8 @@ import pydantic
 
 from backend.util.models import Pagination
 
+from .categories import validate_canonical_categories
+
 if TYPE_CHECKING:
     import prisma.models
 
@@ -90,6 +92,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     graph_versions: list[str]
     last_updated: datetime.datetime
     recommended_schedule_cron: str | None = None
+    owning_org_id: str | None = None
 
     active_version_id: str
     has_approved_version: bool
@@ -118,6 +121,11 @@ class StoreAgentDetails(pydantic.BaseModel):
             graph_versions=agent.graph_versions,
             last_updated=agent.updated_at,
             recommended_schedule_cron=agent.recommended_schedule_cron,
+            owning_org_id=(
+                org_id
+                if isinstance((org_id := getattr(agent, "owning_org_id", None)), str)
+                else None
+            ),
             active_version_id=agent.listing_version_id,
             has_approved_version=True,  # StoreAgent view only has approved agents
         )
@@ -295,6 +303,12 @@ class StoreSubmissionsResponse(pydantic.BaseModel):
     stats: SubmissionStats
 
 
+class StoreCategoryInfo(pydantic.BaseModel):
+    value: str
+    label: str
+    description: str
+
+
 class StoreSubmissionRequest(pydantic.BaseModel):
     graph_id: str = pydantic.Field(
         ..., min_length=1, description="Graph ID cannot be empty"
@@ -310,9 +324,13 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None
-    categories: list[str] = []
+    categories: list[str]
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
@@ -323,9 +341,13 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None
-    categories: list[str] = []
+    categories: list[str]
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionAdminView(StoreSubmission):

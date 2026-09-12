@@ -1,32 +1,28 @@
 "use client";
-
-import { PlusIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 import { EASE_OUT } from "../../helpers";
-
-interface PublishState {
-  isOpen: boolean;
-  step: "select" | "info" | "review";
-  submissionData:
-    | import("@/app/api/__generated__/models/storeSubmission").StoreSubmission
-    | null;
-}
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   publishState: PublishState;
   onPublishStateChange: (state: PublishState) => void;
   onOpenSubmit: () => void;
+  onRequestEdit?: (submission: StoreSubmission) => void;
 }
 
 export function DashboardHeader({
   publishState,
   onPublishStateChange,
   onOpenSubmit,
+  onRequestEdit,
 }: Props) {
   const reduceMotion = useReducedMotion();
 
@@ -50,12 +46,13 @@ export function DashboardHeader({
       <PublishAgentModal
         targetState={publishState}
         onStateChange={onPublishStateChange}
+        onRequestEdit={onRequestEdit}
         trigger={
           <Button
             data-testid="submit-agent-button"
             size="large"
             onClick={onOpenSubmit}
-            leftIcon={<PlusIcon size={18} weight="bold" />}
+            leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >
             Submit agent
           </Button>

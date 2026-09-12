@@ -290,7 +290,7 @@ node generate-tokens.js --count=100 --timeout=60
 ## 🔗 Related Documentation
 
 - [k6 Documentation](https://k6.io/docs/)
-- [AutoGPT Platform API Documentation](https://docs.agpt.co/)
+- [AutoGPT Platform API Documentation](https://agpt.co/docs)
 - [k6 Cloud Dashboard](https://significantgravitas.grafana.net/a/k6-app/)
 
 For questions or issues, please refer to the [AutoGPT Platform issues](https://github.com/Significant-Gravitas/AutoGPT/issues).

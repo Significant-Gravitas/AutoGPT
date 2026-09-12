@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PlusIcon, StorefrontIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
+import { PlusSignIcon, Store01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
 
@@ -52,7 +53,7 @@ export function LibraryEmptyState() {
             href="/build"
             variant="primary"
             size="large"
-            leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+            leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
           >
             Build an agent
           </Button>
@@ -63,7 +64,7 @@ export function LibraryEmptyState() {
             href="/marketplace"
             variant="secondary"
             size="large"
-            leftIcon={<StorefrontIcon className="h-4 w-4" weight="bold" />}
+            leftIcon={<Icon icon={Store01Icon} className="h-4 w-4" />}
           >
             Browse marketplace
           </Button>

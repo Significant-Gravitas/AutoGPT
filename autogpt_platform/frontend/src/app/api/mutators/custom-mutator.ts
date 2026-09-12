@@ -6,20 +6,17 @@ import {
 import * as Sentry from "@sentry/nextjs";
 
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
-const FRONTEND_BASE_URL =
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
-const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
-
-const getBaseUrl = (): string => {
+function getBaseURL(): string {
   if (!environment.isServerSide()) {
-    return API_PROXY_BASE_URL;
+    return "/api/proxy";
   } else {
     return environment.getAGPTServerBaseUrl();
   }
-};
+}
 
 const getBody = async <T>(c: Response | Request): Promise<T> => {
   // 204 No Content responses (and 200s with Content-Length: 0) have no body.
@@ -72,6 +69,7 @@ export const customMutator = async <
       }
     }
     Object.assign(headers, getSystemHeaders());
+    Object.assign(headers, getDatafastAttribution());
   }
 
   const isFormData = data instanceof FormData;
@@ -88,7 +86,7 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBaseURL();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   // here url also contains encoded query params
@@ -133,8 +131,23 @@ export const customMutator = async <
       responseData = { error: "Failed to parse response" };
     }
 
+    const rawDetail = responseData?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail
+          .map((e: unknown) =>
+            e && typeof e === "object" && "msg" in e
+              ? String((e as { msg: unknown }).msg)
+              : JSON.stringify(e),
+          )
+          .join("; ")
+      : typeof rawDetail === "string"
+        ? rawDetail
+        : rawDetail != null
+          ? JSON.stringify(rawDetail)
+          : undefined;
+
     const errorMessage =
-      responseData?.detail ||
+      detail ||
       responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;

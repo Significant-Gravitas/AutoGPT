@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import {
   Popover,
   PopoverContent,
@@ -11,6 +10,8 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { useSettingsSidebar } from "../SettingsSidebar/useSettingsSidebar";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 export function SettingsMobileNav() {
   const { items } = useSettingsSidebar();
@@ -27,7 +28,7 @@ export function SettingsMobileNav() {
             aria-label={`Settings navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
-              <current.Icon size={16} weight="regular" className="text-black" />
+              <UIIcon icon={current.Icon} size={16} className="text-black" />
               <Text
                 variant="body"
                 as="span"
@@ -36,9 +37,9 @@ export function SettingsMobileNav() {
                 {current.label}
               </Text>
             </span>
-            <CaretDownIcon
+            <UIIcon
+              icon={ArrowDown01Icon}
               size={16}
-              weight="regular"
               className={cn(
                 "text-[#505057] transition-transform",
                 open && "rotate-180",
@@ -63,9 +64,9 @@ export function SettingsMobileNav() {
                   isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
                 )}
               >
-                <Icon
+                <UIIcon
+                  icon={Icon}
                   size={16}
-                  weight={isActive ? "regular" : "light"}
                   className={isActive ? "text-black" : "text-[#1F1F20]"}
                 />
                 <Text

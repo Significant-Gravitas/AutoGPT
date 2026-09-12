@@ -71,4 +71,4 @@ def test_no_member_returns_none():
 def test_intro_message_mentions_setup():
     msg = intro_message()
     assert "/setup" in msg
-    assert "AutoPilot" in msg
+    assert "AutoGPT" in msg

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
+vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
@@ -11,7 +11,7 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
 
 const BACKEND = "https://backend.test";
@@ -194,6 +194,27 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("baggage")).toBe("sentry-trace_id=abc123");
   });
 
+  it("forwards allowlisted DataFast attribution headers", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: {
+        "x-datafast-visitor-id": "visitor-123",
+        "x-datafast-session-id": "session-456",
+      },
+    });
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("x-datafast-visitor-id")).toBe("visitor-123");
+    expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
+  });
+
   it("omits Authorization header when no token is available", async () => {
     vi.mocked(getServerAuthToken).mockResolvedValueOnce(null);
     vi.mocked(fetch).mockResolvedValue(
@@ -260,5 +281,75 @@ describe("proxy route — handler pass-through", () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       `${BACKEND}/api/v1/items?page=2&size=20`,
     );
+  });
+
+  it("hardens a public shared-file response after proxying storage", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("<script>window.name = 'executed'</script>", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": 'inline; filename="payload.html"',
+        },
+      }),
+    );
+
+    const shareToken = "550e8400-e29b-41d4-a716-446655440000";
+    const fileID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+    const path = [
+      "api",
+      "public",
+      "shared",
+      shareToken,
+      "files",
+      fileID,
+      "download",
+    ];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="payload.html"',
+    );
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});
+
+describe("proxy route — response-start timeout", () => {
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.stubGlobal("fetch", vi.fn());
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns 504 when the backend never starts responding to a bodyless request", async () => {
+    vi.mocked(fetch).mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init!.signal!.addEventListener("abort", () =>
+            reject(init!.signal!.reason),
+          );
+        }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/slow");
+    const resPromise = GET(req, makeParams(["api", "v1", "slow"]));
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const res = await resPromise;
+    expect(res.status).toBe(504);
+    expect(await res.json()).toMatchObject({
+      error: "Proxy request timed out",
+    });
   });
 });

@@ -123,6 +123,7 @@ function makeMockProvider(
     isSystemProvider: false,
     oAuthCallback: noop as CredentialsProviderData["oAuthCallback"],
     mcpOAuthCallback: noop as CredentialsProviderData["mcpOAuthCallback"],
+    mcpStoreToken: noop as CredentialsProviderData["mcpStoreToken"],
     createAPIKeyCredentials:
       noop as CredentialsProviderData["createAPIKeyCredentials"],
     createUserPasswordCredentials:
@@ -762,9 +763,7 @@ export default function StyleguidePage() {
                       block_name: "Image Generator",
                       message: "Generated image successfully.",
                       outputs: {
-                        image: [
-                          "https://picsum.photos/seed/styleguide/600/400",
-                        ],
+                        image: ["/placeholder.png"],
                       },
                     },
                   }}
@@ -1426,9 +1425,7 @@ export default function StyleguidePage() {
                               ],
                             },
                           ],
-                          chart: [
-                            "https://picsum.photos/seed/chart-demo/500/300",
-                          ],
+                          chart: ["/placeholder.png"],
                         },
                       },
                     },

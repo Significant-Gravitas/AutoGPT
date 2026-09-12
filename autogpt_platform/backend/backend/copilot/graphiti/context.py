@@ -11,14 +11,16 @@ from ._format import (
     extract_fact,
     extract_temporal_validity,
 )
-from .client import derive_group_id, get_graphiti_client
+from .client import derive_memory_group_id, get_graphiti_client
 from .config import graphiti_config
 
 logger = logging.getLogger(__name__)
 
 
-async def fetch_warm_context(user_id: str, message: str) -> str | None:
-    """Fetch relevant temporal context for the current user and message.
+async def fetch_warm_context(
+    user_id: str, message: str, expert_id: str | None = None
+) -> str | None:
+    """Fetch relevant temporal context for the current memory owner and message.
 
     Called at the start of a session (first turn) to pre-load facts from
     prior conversations.  Returns a formatted ``<temporal_context>`` block
@@ -32,7 +34,7 @@ async def fetch_warm_context(user_id: str, message: str) -> str | None:
 
     try:
         return await asyncio.wait_for(
-            _fetch(user_id, message),
+            _fetch(user_id, message, expert_id),
             timeout=graphiti_config.context_timeout,
         )
     except asyncio.TimeoutError:
@@ -46,15 +48,34 @@ async def fetch_warm_context(user_id: str, message: str) -> str | None:
         return None
 
 
-async def _fetch(user_id: str, message: str) -> str | None:
-    group_id = derive_group_id(user_id)
+async def _fetch(
+    user_id: str, message: str, expert_id: str | None = None
+) -> str | None:
+    # Imported lazily so the module can be imported without graphiti-core
+    # installed (matches the pattern in client.py).
+    from graphiti_core.search.search_config_recipes import (
+        EDGE_HYBRID_SEARCH_CROSS_ENCODER,
+    )
+
+    group_id = derive_memory_group_id(user_id, expert_id)
     client = await get_graphiti_client(group_id)
 
-    edges, episodes = await asyncio.gather(
-        client.search(
+    # P-1.4: warm context is the single most-impactful retrieval per
+    # session — the one place where the cross-encoder rerank earns its
+    # ~10–15% precision lift (per the audit) at the cost of one extra
+    # batch of boolean-classifier prompts. The EDGE_HYBRID_SEARCH_CROSS_ENCODER
+    # recipe combines BM25 + cosine + BFS edge search with cross-encoder
+    # reranking. The recipe defaults ``limit=10``; we override to our
+    # configured ``context_max_facts`` so existing operator tuning still
+    # applies.
+    search_config = EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(
+        update={"limit": graphiti_config.context_max_facts}
+    )
+    edge_results, episodes = await asyncio.gather(
+        client.search_(
             query=message,
+            config=search_config,
             group_ids=[group_id],
-            num_results=graphiti_config.context_max_facts,
         ),
         client.retrieve_episodes(
             reference_time=datetime.now(timezone.utc),
@@ -62,11 +83,58 @@ async def _fetch(user_id: str, message: str) -> str | None:
             last_n=5,
         ),
     )
+    edges = edge_results.edges if edge_results is not None else []
+
+    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
+    # that's currently ``status='tentative'`` gets promoted to
+    # ``active`` inline, and every retrieved edge bumps its
+    # warm-context hit counter. Fire-and-forget so the chat turn
+    # never blocks on Redis or FalkorDB writes.
+    if edges:
+        _spawn_ratification_hits(user_id, expert_id, edges)
 
     if not edges and not episodes:
         return None
 
     return _format_context(edges, episodes)
+
+
+# Strong refs to in-flight hit tasks — the event loop holds only weak
+# references, so an unretained fire-and-forget task can be GC'd
+# mid-execution and silently drop the hit recording. Same pattern as
+# ``backend/data/user.py``'s ``_background_tasks``.
+_pending_hit_tasks: set[asyncio.Task] = set()
+
+
+def _on_hit_task_done(task: asyncio.Task) -> None:
+    _pending_hit_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("Ratification hit task %s failed", task.get_name(), exc_info=exc)
+
+
+def _spawn_ratification_hits(user_id: str, expert_id: str | None, edges) -> None:
+    """Fire-and-forget the ratification hit-hook for retrieved edges.
+
+    Imports lazily so the dream/ratification module isn't pulled into
+    every retrieval boot path; keeps the cold-start cost zero for
+    users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
+    combination.
+    """
+    edge_uuids = [uuid for uuid in (getattr(e, "uuid", None) for e in edges) if uuid]
+    if not edge_uuids:
+        return
+
+    from backend.copilot.dream.ratification import try_ratify_on_hit
+
+    task = asyncio.create_task(
+        try_ratify_on_hit(user_id, edge_uuids, expert_id=expert_id),
+        name=f"ratify-hits-{user_id[:12]}",
+    )
+    _pending_hit_tasks.add(task)
+    task.add_done_callback(_on_hit_task_done)
 
 
 def _format_context(edges, episodes) -> str | None:

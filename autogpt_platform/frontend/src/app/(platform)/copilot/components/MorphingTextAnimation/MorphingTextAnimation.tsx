@@ -1,54 +1,34 @@
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 interface Props {
   text: string;
   className?: string;
+  // Only fade in for live, actively-streaming tool calls. Historical lines
+  // (e.g. on page reload) render static so we don't replay an entrance for
+  // every past tool call at once.
+  animate?: boolean;
 }
 
-export function MorphingTextAnimation({ text, className }: Props) {
-  const letters = text.split("");
+export function MorphingTextAnimation({
+  text,
+  className,
+  animate = false,
+}: Props) {
+  const reduceMotion = useReducedMotion();
+  const shouldAnimate = animate && !reduceMotion;
 
   return (
-    <div className={cn(className)}>
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.div key={text} className="whitespace-nowrap">
-          <motion.span className="inline-flex overflow-hidden">
-            {letters.map((char, index) => (
-              <motion.span
-                key={`${text}-${index}`}
-                initial={{
-                  opacity: 0,
-                  y: 8,
-                  rotateX: "80deg",
-                  filter: "blur(6px)",
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  rotateX: "0deg",
-                  filter: "blur(0px)",
-                }}
-                exit={{
-                  opacity: 0,
-                  y: -8,
-                  rotateX: "-80deg",
-                  filter: "blur(6px)",
-                }}
-                style={{ willChange: "transform" }}
-                transition={{
-                  delay: 0.015 * index,
-                  type: "spring",
-                  bounce: 0.5,
-                }}
-                className="inline-block"
-              >
-                {char === " " ? "\u00A0" : char}
-              </motion.span>
-            ))}
-          </motion.span>
-        </motion.div>
-      </AnimatePresence>
-    </div>
+    // No key on `text`: the element stays mounted while the line streams in, so
+    // the fade plays once on appear instead of restarting on every token.
+    <motion.div
+      className={cn("min-w-0 truncate whitespace-nowrap", className)}
+      aria-label={text}
+      initial={shouldAnimate ? { opacity: 0 } : false}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
+      {text}
+    </motion.div>
   );
 }

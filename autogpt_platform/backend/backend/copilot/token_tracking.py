@@ -17,11 +17,14 @@ import threading
 
 from openai.types.completion_usage import PromptTokensDetails
 
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
+from .context import get_current_envelope
 from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
+from .tree import charge_turn
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +122,12 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
+    block_name_override: str | None = None,
+    extra_metadata: dict | None = None,
+    graph_exec_id_override: str | None = None,
+    credential_id_override: str | None = None,
+    skip_daily: bool = False,
+    execution_path: str = "sync",
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -215,21 +224,34 @@ async def persist_and_record_usage(
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
-    if user_id and cost_microdollars is not None and cost_microdollars > 0:
-        # record_cost_usage() owns its fail-open handling for Redis/network
-        # errors. Don't wrap with a broad except here — unexpected accounting
-        # bugs should surface instead of being silently logged as warnings.
-        await record_cost_usage(
-            user_id=user_id,
-            cost_microdollars=cost_microdollars,
-        )
+    if cost_microdollars is not None and cost_microdollars > 0:
+        if user_id:
+            # record_cost_usage() owns its fail-open handling for Redis/network
+            # errors. Don't wrap with a broad except here — unexpected accounting
+            # bugs should surface instead of being silently logged as warnings.
+            await record_cost_usage(
+                user_id=user_id,
+                cost_microdollars=cost_microdollars,
+                skip_daily=skip_daily,
+            )
+        # Same charge, second ledger: the tree this turn belongs to. A tree is
+        # identified by its root turn, not by a user, so this must not sit
+        # behind the user_id guard — an anonymous turn still spends its tree's
+        # budget.
+        envelope = get_current_envelope()
+        if envelope is not None:
+            await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
     if user_id and (total_tokens > 0 or cost_float is not None):
-        session_id = session.session_id if session else None
+        session_id = (
+            graph_exec_id_override
+            if graph_exec_id_override is not None
+            else (session.session_id if session else None)
+        )
 
         if cost_float is not None:
             tracking_type = "cost_usd"
@@ -238,14 +260,41 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
+        metadata: dict = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
+        }
+        if extra_metadata:
+            # Caller-supplied keys override base keys (dream pass uses this
+            # to mark source="dream_pass"); base keys it doesn't touch stay.
+            metadata.update(extra_metadata)
+
+        trial_context = get_trial_cost_context(user_id)
+        if trial_context is not None:
+            metadata["subscription_trial_id"] = trial_context.trial_id
+
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,
                 block_id=COPILOT_BLOCK_ID,
-                block_name=_copilot_block_name(log_prefix),
+                block_name=(
+                    block_name_override
+                    if block_name_override is not None
+                    else _copilot_block_name(log_prefix)
+                ),
                 provider=provider,
-                credential_id=COPILOT_CREDENTIAL_ID,
+                credential_id=credential_id_override or COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
@@ -254,13 +303,7 @@ async def persist_and_record_usage(
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+                metadata=metadata,
             )
         )
 

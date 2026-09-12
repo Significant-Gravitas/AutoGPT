@@ -2,7 +2,8 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   icon: React.ReactNode;
@@ -25,25 +26,19 @@ export function SelectableCard({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "relative flex h-[9rem] w-[10.375rem] shrink-0 flex-col items-center justify-center gap-3 rounded-xl border-2 bg-white px-6 py-5 transition-all hover:shadow-sm md:shrink lg:gap-2 lg:px-10 lg:py-8",
+        "relative flex h-24 w-[10.375rem] shrink-0 flex-col items-center justify-center gap-2 rounded-lg border bg-white p-4 transition-colors hover:bg-zinc-50 md:shrink",
         className,
-        selected
-          ? "border-purple-500 bg-purple-50 shadow-sm"
-          : "border-transparent",
+        selected ? "border-zinc-400 bg-zinc-50" : "border-zinc-100",
       )}
     >
       {selected && (
-        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
-          <Check size={12} weight="bold" className="text-white" />
+        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-zinc-900">
+          <Icon icon={Tick02Icon} size={10} className="text-white" />
         </span>
       )}
-      <Text
-        variant="lead"
-        as="span"
-        className={selected ? "text-neutral-900" : "text-purple-600"}
-      >
+      <span className="flex items-center justify-center text-zinc-500">
         {icon}
-      </Text>
+      </span>
       <Text variant="body-medium" as="span" className="whitespace-nowrap">
         {label}
       </Text>

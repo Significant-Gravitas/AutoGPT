@@ -32,17 +32,19 @@ import inspect
 import json
 import logging
 import math
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
+import jsonschema
 from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.util.clients import get_openai_client
+from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ logger = logging.getLogger(__name__)
 # Configurable via ``ChatConfig.simulation_model``
 # (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
 # constraints (1) and (2).
-_DEFAULT_SIMULATOR_MODEL = LlmModel.GEMINI_2_5_FLASH_LITE.value
+_DEFAULT_SIMULATOR_MODEL = LLMModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
@@ -82,9 +84,13 @@ _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 def _simulator_model() -> str:
     try:
-        from backend.copilot.config import ChatConfig  # noqa: PLC0415
+        # Reuse the module-level ChatConfig singleton from copilot.sdk.env
+        # rather than constructing a fresh one — the validator chain runs
+        # at import time, so a per-call ``ChatConfig()`` re-reads ``.env``
+        # and re-runs every model_validator on every dry-run turn.
+        from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
 
-        return ChatConfig().simulation_model or _DEFAULT_SIMULATOR_MODEL
+        return chat_cfg.simulation_model or _DEFAULT_SIMULATOR_MODEL
     except Exception:
         return _DEFAULT_SIMULATOR_MODEL
 
@@ -115,6 +121,17 @@ def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
     return {k: _truncate_value(v) for k, v in input_data.items()}
 
 
+_MAX_SCHEMA_JSON_CHARS = 6000
+
+
+def _truncate_schema_json(schema: dict[str, Any]) -> str:
+    """Compact-dump a JSON schema for the prompt, truncating oversized ones."""
+    dumped = json.dumps(schema)
+    if len(dumped) > _MAX_SCHEMA_JSON_CHARS:
+        return dumped[:_MAX_SCHEMA_JSON_CHARS] + "... [TRUNCATED]"
+    return dumped
+
+
 def _describe_schema_pins(schema: dict[str, Any]) -> str:
     """Format output pins as a bullet list for the prompt."""
     properties = schema.get("properties", {})
@@ -138,6 +155,7 @@ async def _call_llm_for_simulation(
     *,
     label: str = "simulate",
     user_id: str | None = None,
+    output_validator: Callable[[dict[str, Any]], list[str]] | None = None,
 ) -> dict[str, Any]:
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
@@ -147,30 +165,61 @@ async def _call_llm_for_simulation(
     recorded against the triggering ``user_id``'s rate-limit counter via
     ``persist_and_record_usage`` (same rails as every copilot turn).
 
+    When *output_validator* is provided, parsed outputs that fail it are fed
+    back to the LLM as a correction message and retried within the same
+    retry budget.  If retries run out, the last parsed output is returned
+    anyway (a structurally imperfect simulation beats failing the dry run).
+
     Raises:
         RuntimeError: If no LLM client is available.
-        ValueError: If all retry attempts are exhausted.
+        ValueError: If all retry attempts are exhausted without parseable JSON.
     """
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
         raise RuntimeError(
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
-            "(missing OpenAI/OpenRouter API key)."
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available. "
+            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
+            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
+            "docs/platform/copilot-local-llm.md."
         )
+
+    # ``_OPENROUTER_INCLUDE_USAGE_COST`` is OpenRouter-specific
+    # (``{"usage": {"include": True}}``). Cloud OpenAI ignores unknown
+    # body keys; stricter local OpenAI-compat backends (LiteLLM proxy
+    # with strict mode, some vLLM configs) reject them. Mirror the
+    # ``baseline/service.py`` policy: only send when actually routing
+    # through OpenRouter.
+    #
+    # Local backends govern their own context window at launch (e.g.
+    # OLLAMA_CONTEXT_LENGTH), so we send no per-request num_ctx hint —
+    # Ollama's OpenAI shim ignores ``options.num_ctx`` anyway.
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    if chat_cfg.transport.name == "local":
+        extra_body: dict[str, Any] = {}
+    else:
+        # Shallow-copy the constant rather than sharing the reference — see
+        # the matching pattern in ``baseline/service.py`` and
+        # ``activity_status_generator.py``. Defends against intermediate
+        # layers ever mutating ``extra_body`` and corrupting the shared
+        # module-level dict for every future call.
+        extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
 
     model = _simulator_model()
     last_error: Exception | None = None
+    last_parsed: dict[str, Any] | None = None
+    messages: list[ChatCompletionMessageParam] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
     for attempt in range(_MAX_JSON_RETRIES):
         try:
             response = await client.chat.completions.create(
                 model=model,
                 temperature=_TEMPERATURE,
                 response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
+                messages=messages,
+                extra_body=extra_body,
             )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
@@ -178,6 +227,31 @@ async def _call_llm_for_simulation(
             parsed = json.loads(raw)
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+
+            schema_problems = output_validator(parsed) if output_validator else []
+            if schema_problems:
+                last_parsed = parsed
+                last_error = ValueError(
+                    f"simulated output failed schema validation: {schema_problems}"
+                )
+                logger.warning(
+                    f"simulate({label}): schema mismatch on attempt "
+                    f"{attempt + 1}/{_MAX_JSON_RETRIES}: {schema_problems}"
+                )
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your simulated output does not conform to the "
+                            "block's output schema:\n- "
+                            + "\n- ".join(schema_problems)
+                            + "\nRespond again with a single corrected JSON "
+                            "object that conforms to the output schema."
+                        ),
+                    },
+                ]
+                continue
 
             usage = response.usage
             if usage is not None:
@@ -193,7 +267,16 @@ async def _call_llm_for_simulation(
                     "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
                 )
 
-            await _track_simulator_cost(usage=usage, user_id=user_id, model=model)
+            await _track_simulator_cost(
+                usage=usage,
+                user_id=user_id,
+                model=model,
+                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
+                # non-local call physically hits OpenRouter regardless of the chat
+                # transport identity — label it accordingly (not ``cost_log_provider``,
+                # which would mislabel subscription / direct_anthropic as ``anthropic``).
+                provider=openrouter_helper_cost_provider(),
+            )
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -209,6 +292,15 @@ async def _call_llm_for_simulation(
             last_error = e
             logger.error("simulate(%s): LLM call failed: %s", label, e, exc_info=True)
             break
+
+    if last_parsed is not None:
+        # Schema-conformance retries ran out but we do have parseable output:
+        # a structurally imperfect simulation beats failing the whole dry run.
+        logger.warning(
+            f"simulate({label}): returning schema-non-conformant output "
+            f"after {_MAX_JSON_RETRIES} attempts: {last_error}"
+        )
+        return last_parsed
 
     msg = (
         f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
@@ -256,6 +348,7 @@ async def _track_simulator_cost(
     usage: CompletionUsage | None,
     user_id: str | None,
     model: str,
+    provider: str,
 ) -> None:
     """Record platform cost for a single simulator LLM call.
 
@@ -277,7 +370,7 @@ async def _track_simulator_cost(
             log_prefix="[simulator]",
             cost_usd=cost_usd,
             model=model,
-            provider="open_router",
+            provider=provider,
         )
     except Exception as exc:
         logger.warning("[simulator] usage tracking failed: %s", exc)
@@ -333,6 +426,13 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
 
 ## Output Schema (what you must return)
 {output_pins}
+
+Full output JSON Schema — every pin value MUST conform to it, including
+nested keys (downstream nodes extract nested fields like `pin_#_subfield`,
+so getting the inner structure right matters as much as the top level):
+```json
+{_truncate_schema_json(output_schema)}
+```
 {implementation_section}
 Your task: given the current inputs, produce realistic simulated outputs for this block.
 {"Study the block's run() source code above to understand exactly how inputs are transformed to outputs." if run_source else "Use the block description and schemas to infer realistic outputs."}
@@ -422,12 +522,12 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         max_iters = min(original, 10) if original != 0 else 0
         # Resolve the configured simulator model (typically an OpenRouter
         # slug like "anthropic/claude-haiku-4-5") to its canonical
-        # ``LlmModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
+        # ``LLMModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
         # to do this BEFORE injecting into ``input["model"]`` because the
         # block runs through ``validate_data`` → ``jsonschema.validate``
         # before Pydantic gets the value, and the JSON Schema's ``enum``
-        # is the literal list of ``LlmModel.value``s — the
-        # ``_OPENROUTER_ALIASES`` map in ``LlmModel._missing_`` does NOT
+        # is the literal list of ``LLMModel.value``s — the
+        # ``_OPENROUTER_ALIASES`` map in ``LLMModel._missing_`` does NOT
         # surface in the generated schema, so the OR-slug is rejected
         # with ``"'<slug>' is not one of [...]"``.  After this
         # translation, the OrchestratorBlock receives a model identifier
@@ -439,19 +539,19 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # Fall back to the default if the configured override is malformed
         # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
         # shouldn't take out every dry-run.  The default is asserted as
-        # ``LlmModel``-parseable by ``TestDefaultSimulatorModel``, so the
-        # fallback ``LlmModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
+        # ``LLMModel``-parseable by ``TestDefaultSimulatorModel``, so the
+        # fallback ``LLMModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
         # unless someone breaks that pin too.
         configured_sim_model = _simulator_model()
         try:
-            sim_model = LlmModel(configured_sim_model).value
+            sim_model = LLMModel(configured_sim_model).value
         except ValueError:
             logger.warning(
                 "Dry-run: invalid simulation model %r; falling back to default %r",
                 configured_sim_model,
                 _DEFAULT_SIMULATOR_MODEL,
             )
-            sim_model = LlmModel(_DEFAULT_SIMULATOR_MODEL).value
+            sim_model = LLMModel(_DEFAULT_SIMULATOR_MODEL).value
 
         # Keep the original credentials dict in input_data so the block's
         # JSON schema validation passes (validate_data strips None values,
@@ -629,7 +729,11 @@ async def simulate_block(
 
     try:
         parsed = await _call_llm_for_simulation(
-            system_prompt, user_prompt, label=label, user_id=user_id
+            system_prompt,
+            user_prompt,
+            label=label,
+            user_id=user_id,
+            output_validator=_make_output_validator(output_schema),
         )
 
         # Track which pins were yielded so we can fill in missing required
@@ -665,6 +769,33 @@ async def simulate_block(
 
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)
+
+
+def _make_output_validator(
+    output_schema: dict[str, Any],
+) -> Callable[[dict[str, Any]], list[str]]:
+    """Build a validator that checks simulated outputs against *output_schema*.
+
+    ``required`` is dropped — the simulator legitimately omits pins with no
+    meaningful value, and ``simulate_block`` back-fills missing required pins
+    with defaults.  What this catches is *structurally wrong* fabrications:
+    e.g. a list where the schema declares an object, which silently breaks
+    ``pin_#_subfield`` links downstream.  Returns human-readable problems,
+    empty when the output conforms.
+    """
+    relaxed = {**output_schema, "required": []}
+    validator = jsonschema.Draft202012Validator(relaxed)
+
+    def _validate(parsed: dict[str, Any]) -> list[str]:
+        problems: list[str] = []
+        for err in validator.iter_errors(parsed):
+            path = "/".join(str(p) for p in err.absolute_path) or "(root)"
+            problems.append(f"{path}: {err.message[:200]}")
+            if len(problems) >= 5:
+                break
+        return problems
+
+    return _validate
 
 
 def _default_for_schema(pin_schema: dict[str, Any]) -> Any:

@@ -3,6 +3,7 @@ import ipaddress
 import re
 import socket
 import ssl
+from collections.abc import Iterable
 from io import BytesIO
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
@@ -43,6 +44,16 @@ DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravi
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
+
+# Statuses meaning the request was not authenticated or not authorised. Both
+# warrant asking the user to (re)connect, so they gate the setup-card paths.
+AUTH_STATUS_CODES: set[int] = {401, 403}
+
+# Only 401 unambiguously means "this credential was rejected". A bare 403 is
+# routinely a scope decision or a WAF blocking our egress IP, both with a
+# perfectly valid token — so anything destructive or blocking keys off this
+# narrower set, never AUTH_STATUS_CODES.
+CREDENTIAL_REJECTED_STATUS_CODES: set[int] = {401}
 
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [
@@ -88,19 +99,39 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+# Lower-cased: HTTP header names are case-insensitive, so a caller passing
+# ``{"authorization": ...}`` must be stripped just like ``{"Authorization": ...}``.
+SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
+def _drop_headers(headers: dict, names: Iterable[str]) -> None:
+    """Remove every key in *names* from *headers*, matching case-insensitively.
+
+    *names* is lower-cased here rather than by the caller: ``drop_headers`` is
+    public on :meth:`Requests.request`, so a caller passing ``{"Authorization"}``
+    would otherwise get a silent no-op and send the header anyway.
+    """
+    lowered = {n.lower() for n in names}
+    for key in [k for k in headers if k.lower() in lowered]:
+        headers.pop(key, None)
+
+
+def _is_cross_origin(old_url: URL, new_url: URL) -> bool:
+    """Whether a hop from *old_url* to *new_url* leaves the origin."""
+    return (
+        (old_url.scheme != new_url.scheme)
+        or (old_url.hostname != new_url.hostname)
+        or (old_url.port != new_url.port)
+    )
+
+
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
     """
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
     if the scheme/host/port of new_url differ from old_url.
     """
-    if (
-        (old_url.scheme != new_url.scheme)
-        or (old_url.hostname != new_url.hostname)
-        or (old_url.port != new_url.port)
-    ):
-        headers.pop("Authorization", None)
-        headers.pop("Proxy-Authorization", None)
-        headers.pop("Cookie", None)
+    if _is_cross_origin(old_url, new_url):
+        _drop_headers(headers, SENSITIVE_HEADERS)
     return headers
 
 
@@ -361,6 +392,25 @@ class Response:
     def ok(self) -> bool:
         return 200 <= self.status < 300
 
+    def raise_for_status(self) -> None:
+        """Raise the same error ``Requests(raise_for_status=True)`` would have.
+
+        For callers that need to inspect an error body before deciding what a
+        status means, and only then want the standard exception.
+        """
+        if self.status >= 400:
+            raise http_status_error(self.status, self.reason, self.content)
+
+
+def http_status_error(status: int, reason: str | None, body: bytes) -> Exception:
+    """Build the exception ``Requests`` raises for an HTTP error status."""
+    message = f"HTTP {status} Error: {reason}, Body: {body.decode(errors='replace')}"
+    if 400 <= status <= 499:
+        return HTTPClientError(message, status)
+    if 500 <= status <= 599:
+        return HTTPServerError(message, status)
+    return Exception(message)
+
 
 def _return_last_result(retry_state: RetryCallState) -> "Response":
     """
@@ -418,6 +468,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         retry_kwargs: dict[str, Any] = {
@@ -441,6 +492,7 @@ class Requests:
                 json=json,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
+                drop_headers=drop_headers,
                 **kwargs,
             )
 
@@ -457,6 +509,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -521,6 +574,11 @@ class Requests:
         if self.extra_headers is not None:
             req_headers.update(self.extra_headers)
 
+        # A cross-origin redirect already stripped these; the merge above would
+        # put them straight back, so a 302 to an attacker-controlled host would
+        # replay the caller's bearer token. Drop them again, for every hop.
+        _drop_headers(req_headers, drop_headers)
+
         # Set default User-Agent if not provided
         if "User-Agent" not in req_headers and "user-agent" not in req_headers:
             req_headers["User-Agent"] = DEFAULT_USER_AGENT
@@ -550,16 +608,9 @@ class Requests:
                         response.raise_for_status()
                     except ClientResponseError as e:
                         body = await response.read()
-                        error_message = f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
-
-                        # Raise specific exceptions based on status code range
-                        if 400 <= response.status <= 499:
-                            raise HTTPClientError(error_message, response.status) from e
-                        elif 500 <= response.status <= 599:
-                            raise HTTPServerError(error_message, response.status) from e
-                        else:
-                            # Generic fallback for other HTTP errors
-                            raise Exception(error_message) from e
+                        raise http_status_error(
+                            response.status, response.reason, body
+                        ) from e
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):
@@ -579,8 +630,22 @@ class Requests:
                     redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
-                        req_headers, parsed_url, redirect_url
+                        dict(req_headers), parsed_url, redirect_url
                     )
+
+                    # ``auth=`` and ``cookies=`` are not headers at this point
+                    # — aiohttp builds ``Authorization`` and ``Cookie`` from
+                    # them per request, downstream of the strip above — so the
+                    # header dance cannot see either, and both would be
+                    # regenerated for the new origin. Drop them with the
+                    # headers they stand in for. Same-origin hops keep them:
+                    # ``_remove_insecure_headers`` keeps the header spellings
+                    # there too, and an authenticated same-origin redirect is
+                    # a normal flow.
+                    redirect_kwargs = dict(kwargs)
+                    if _is_cross_origin(parsed_url, redirect_url):
+                        redirect_kwargs.pop("auth", None)
+                        redirect_kwargs.pop("cookies", None)
 
                     return await self.request(
                         method,
@@ -591,7 +656,9 @@ class Requests:
                         files=files,
                         data=data,
                         json=json,
-                        **kwargs,
+                        drop_headers=drop_headers
+                        | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        **redirect_kwargs,
                     )
 
                 # Reset response URL to original host for clarity

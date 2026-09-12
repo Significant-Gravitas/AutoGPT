@@ -7,6 +7,7 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   fireEvent,
   render,
@@ -15,6 +16,21 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import FollowupsPage from "../page";
+
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/library/followups",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -77,6 +93,7 @@ function defaultGraphSchedulesHandler() {
 describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
+    pushMock.mockClear();
   });
 
   afterEach(() => {
@@ -365,6 +382,55 @@ describe("FollowupsPage", () => {
     });
   });
 
+  test("header shows New scheduled task button in empty state and starts the guided flow", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+    await screen.findByTestId("followups-empty");
+
+    fireEvent.click(screen.getByTestId("schedule-new-button"));
+
+    await vi.waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(
+        expect.stringContaining("/copilot#prompt="),
+      );
+    });
+    const url = pushMock.mock.calls[0][0] as string;
+    expect(decodeURIComponent(url.split("#prompt=")[1])).toContain(
+      "I want to create a new scheduled task",
+    );
+  });
+
+  test("empty state shows the spec copy", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const empty = await screen.findByTestId("followups-empty");
+    expect(empty.textContent).toContain("Nothing scheduled yet");
+    expect(empty.textContent).toContain("schedule an agent from the builder");
+  });
+
+  test("copilot follow-up rows show a New chat badge when they fire into a new chat", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", session_id: null as unknown as string }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const badge = await screen.findByTestId("followup-kind-badge");
+    expect(badge.textContent).toBe("New chat");
+  });
+
   test("unified page sorts items by next_run_time ascending", async () => {
     const soon = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
     const later = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 h
@@ -393,5 +459,39 @@ describe("FollowupsPage", () => {
     // Sooner graph schedule comes first; later followup second.
     expect(within(items[0]).getByText("Sooner agent")).toBeDefined();
     expect(within(items[1]).getByText("Later followup")).toBeDefined();
+  });
+
+  test("one failed source keeps the other's schedules visible with a partial-error warning", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "Still visible followup" }),
+      ]),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText("Still visible followup")).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
+  });
+
+  test("shows the full error state only when both sources fail", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.error(),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText(/scheduled items/i)).toBeDefined();
+    expect(screen.queryByTestId("followups-list")).toBeNull();
+    expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
   });
 });
