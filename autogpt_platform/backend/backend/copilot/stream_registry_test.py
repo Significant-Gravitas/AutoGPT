@@ -1,6 +1,7 @@
 """Tests for disconnect_all_listeners in stream_registry."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,6 +10,18 @@ from redis.exceptions import RedisError
 from backend.copilot import stream_registry
 from backend.copilot.constants import STREAM_LOCK_PREFIX
 from backend.copilot.executor.utils import get_session_lock_key
+
+
+def test_tool_display_roundtrips_redis_and_sse():
+    payload = {
+        "type": "data-tool-display",
+        "id": "call-1",
+        "data": {"toolCallId": "call-1", "displayName": "Daily report"},
+    }
+    chunk = stream_registry._reconstruct_chunk(payload)
+    assert chunk is not None
+    assert json.loads(chunk.model_dump_json()) == payload
+    assert json.loads(chunk.to_sse().removeprefix("data: ")) == payload
 
 
 @pytest.fixture(autouse=True)

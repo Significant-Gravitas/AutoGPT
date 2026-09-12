@@ -11,14 +11,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { groupSessionsByDate } from "./helpers";
+import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { expertsById } = useExpertMap();
+  const { expertsById, activeExpertIds } = useExpertMap();
   const {
     sessions,
     isLoading,
@@ -112,10 +112,11 @@ export function RecentChats() {
                 // survives the session list's periodic refetch.
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
-                  label={
-                    group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
-                  }
+                  label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
                   avatarUrl={expert?.avatarUrl ?? null}
+                  color={expert?.color ?? null}
+                  newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
+                  isAutopilot={!group.expertId}
                   sessions={group.sessions}
                   renderItem={renderItem}
                 />

@@ -17,6 +17,7 @@ import {
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
 import { useExpertMap } from "../../useExpertMap";
+import { extractToolOutputsFromRaw } from "../../helpers/convertChatSessionToUiMessages";
 import type { ChainRow } from "./helpers";
 import { CARD, StatusPill } from "./ResultCards";
 import { asObject, str } from "./resultHelpers";
@@ -39,6 +40,8 @@ const POLL_CAP_MS = 5 * 60_000;
 interface LiveStep {
   name: string;
   input: unknown;
+  displayName?: unknown;
+  output?: unknown;
 }
 
 /** The delegate's work, live inside the parent chain: its recent tool calls
@@ -180,17 +183,26 @@ function collectCurrentTurn(session: SessionDetailResponse) {
   const messages =
     lastUserIndex === -1 ? allMessages : allMessages.slice(lastUserIndex + 1);
   const steps: LiveStep[] = [];
+  const outputs = extractToolOutputsFromRaw(messages);
   let latestText: string | null = null;
   for (const msg of messages) {
     const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
     for (const rawCall of toolCalls) {
       if (!rawCall || typeof rawCall !== "object") continue;
       const call = rawCall as {
+        id?: unknown;
+        display_name?: unknown;
         function?: { name?: unknown; arguments?: unknown };
       };
       const name = String(call.function?.name ?? "").trim();
       if (name)
-        steps.push({ name, input: parseArguments(call.function?.arguments) });
+        steps.push({
+          name,
+          input: parseArguments(call.function?.arguments),
+          displayName: call.display_name,
+          output:
+            typeof call.id === "string" ? outputs.get(call.id) : undefined,
+        });
     }
     if (
       msg.role === "assistant" &&
@@ -207,7 +219,10 @@ function collectCurrentTurn(session: SessionDetailResponse) {
  *  main chain's icons and labels instead of raw tool names. */
 function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
   const state = running ? "running" : "done";
-  const catalog = getCatalogLabel(step.name, step.input, state);
+  const catalog = getCatalogLabel(step.name, step.input, state, {
+    displayName: step.displayName,
+    output: step.output,
+  });
   const category = catalog?.category ?? getToolCategory(step.name);
   const text =
     catalog?.text ??
@@ -269,12 +284,13 @@ export function SubSessionPendingCard({
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar
-          name={expert?.name ?? "Sub-AutoPilot"}
+          name={expert?.name ?? "Sub-Otto"}
           avatarUrl={expert?.avatarUrl ?? null}
+          color={expert?.color}
           size={28}
         />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">
-          {expert?.name ?? "Sub-AutoPilot"}
+          {expert?.name ?? "Sub-Otto"}
           {expert?.role && (
             <span className="ml-1.5 font-normal text-zinc-400">
               {expert.role}

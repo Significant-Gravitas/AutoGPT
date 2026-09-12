@@ -1,8 +1,14 @@
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
+  Coins01Icon,
+  HeadsetIcon,
   Megaphone01Icon,
+  QuillWrite01Icon,
+  Search01Icon,
   Settings01Icon,
+  SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
@@ -67,6 +73,30 @@ const ROLE_ACCENTS: Array<[RegExp, string]> = [
   [/ops|operations|support/i, "sky"],
 ];
 
+/** A skill's category is its identity mark, the way an expert's role is:
+ *  the eight canonical categories fold onto the same four accents, so
+ *  "Outreach playbook · Sales" carries the amber a Sales expert already has.
+ *  An unknown or missing category keeps the neutral wash and shows no pill. */
+export function getCategoryAccent(category: string | undefined): {
+  accent: ExpertAccent;
+  icon: IconSvgElement | null;
+} {
+  const entry = category ? CATEGORY_ACCENTS[category.toLowerCase()] : undefined;
+  if (!entry) return { accent: ACCENTS.zinc, icon: null };
+  return { accent: ACCENTS[entry[0]], icon: entry[1] };
+}
+
+const CATEGORY_ACCENTS: Record<string, [string, IconSvgElement]> = {
+  marketing: ["violet", Megaphone01Icon],
+  content: ["violet", QuillWrite01Icon],
+  sales: ["amber", ChartIncreaseIcon],
+  finance: ["amber", Coins01Icon],
+  operations: ["sky", Settings01Icon],
+  support: ["sky", HeadsetIcon],
+  research: ["zinc", Search01Icon],
+  development: ["zinc", SourceCodeIcon],
+};
+
 export function getExpertAccent(role: string): ExpertAccent {
   for (const [pattern, key] of ROLE_ACCENTS) {
     if (pattern.test(role)) return ACCENTS[key];
@@ -93,4 +123,29 @@ export function getRaisedExpertAccent(
     pill: cn("border", option.bubbleClassName, option.textClassName),
     icon: option.textClassName,
   };
+}
+
+export function getExpertFirstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || "Expert";
+}
+
+/** The integrations an expert's workflows will ask this viewer to connect.
+ *
+ *  Reads `integration_providers`, never `chain`: the chain is a three-item
+ *  display summary, so a workflow with a fourth integration silently loses
+ *  one, picked by node counts rather than by whether anyone connects it.
+ *  Providers the platform already pays for are then subtracted — the roster
+ *  leans on Anthropic, OpenAI, Jina and a Webshare proxy, none of which a user
+ *  ever connects. Without the system list this returns nothing, because naming
+ *  a provider the platform supplies is worse than naming none. */
+export function getExpertAccessProviders(
+  workflows: ExpertWorkflowRef[],
+  systemProviders: string[] | undefined,
+): string[] {
+  if (!systemProviders) return [];
+  const supplied = new Set(systemProviders);
+  const providers = workflows
+    .flatMap((workflow) => workflow.integration_providers ?? [])
+    .filter((provider) => !supplied.has(provider));
+  return [...new Set(providers)];
 }

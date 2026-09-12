@@ -25,8 +25,10 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
+from .store_listing_versions import installable_store_version_where
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -183,8 +185,8 @@ async def _fallback_store_agent_search(
             where_clause["featured"] = featured
         if creators:
             where_clause["creator_username"] = {"in": creators}
-        if category:
-            where_clause["categories"] = {"has": category}
+        if category_values := category_filter_values(category):
+            where_clause["categories"] = {"has_some": category_values}
 
         order_by = []
         if sorted_by == StoreAgentsSortOptions.RATING:
@@ -216,9 +218,9 @@ async def _fallback_store_agent_search(
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
-    if category:
-        params.append(category)
-        filters.append(f"${param_idx} = ANY(sa.categories)")
+    if category_values := category_filter_values(category):
+        params.append(category_values)
+        filters.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_sql = " AND ".join(filters)
@@ -1401,9 +1403,16 @@ async def get_my_agents(
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
-    """Get agent using the version ID and store listing version ID."""
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    """Get the graph behind a store listing version, for public download.
+
+    Unauthenticated endpoint: the installable-listing check below *is* the
+    authorization, so `get_graph()` is told to skip its own (it would deny).
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            **installable_store_version_where(),
+        }
     )
 
     if not slv:
@@ -1416,6 +1425,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
         version=slv.agentGraphVersion,
         user_id=None,
         for_export=True,
+        skip_access_check=True,
     )
     if not graph:
         raise NotFoundError(

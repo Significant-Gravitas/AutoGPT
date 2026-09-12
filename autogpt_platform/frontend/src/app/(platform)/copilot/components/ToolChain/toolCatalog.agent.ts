@@ -1,4 +1,5 @@
-import { quoted, type ToolMeta } from "./toolCatalog.shared";
+import { quoted, quotedName, type ToolMeta } from "./toolCatalog.shared";
+import { getAgentDisplayName } from "../../helpers/toolDisplay";
 
 export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   add_understanding: {
@@ -123,9 +124,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "agent",
     running: "Running agent",
     done: "Ran agent",
-    subject: (input) =>
-      quoted(input, "username_agent_slug") ??
-      quoted(input, "library_agent_id", 20),
+    subject: (_input, context) =>
+      quotedName(getAgentDisplayName(context.displayName, context.output)),
   },
   view_agent_output: {
     category: "agent",
@@ -134,8 +134,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   run_sub_session: {
     category: "agent",
-    running: "Delegating to sub-AutoPilot:",
-    done: "Sub-AutoPilot handled:",
+    running: "Delegating to sub-Otto:",
+    done: "Sub-Otto handled:",
     subject: (input) => quoted(input, "prompt", 45),
   },
   get_sub_session_result: {

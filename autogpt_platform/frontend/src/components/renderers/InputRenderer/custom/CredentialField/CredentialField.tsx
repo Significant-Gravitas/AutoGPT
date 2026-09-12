@@ -80,7 +80,7 @@ export const CredentialsField = (props: FieldProps) => {
     : required;
 
   // Nothing to ask for: the selected discriminator value maps to no provider
-  // (AutoPilot's `platform` transport), so the row is not merely unavailable —
+  // (Otto's `platform` transport), so the row is not merely unavailable —
   // it does not apply at all.
   const notApplicable =
     !required &&
