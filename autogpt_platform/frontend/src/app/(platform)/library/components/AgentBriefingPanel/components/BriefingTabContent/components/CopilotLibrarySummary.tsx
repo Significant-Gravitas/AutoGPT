@@ -11,7 +11,7 @@ export function CopilotLibrarySummary() {
   // itself flag-gated.  No second flag here because the count-based
   // hide below already keeps the pill quiet for users who don't use
   // the feature.
-  const { data: skillsRes } = useListCopilotSkills({
+  const { data: skillsRes } = useListCopilotSkills(undefined, {
     query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({
@@ -23,7 +23,7 @@ export function CopilotLibrarySummary() {
   // Count only copilot follow-ups here — graph schedules (recurring
   // agent runs) are already surfaced by the briefing's own "Scheduled"
   // tab above, so folding them into this pill would double-count and
-  // confuse the "Autopilot library" framing.  The pill's link still
+  // confuse the "Otto library" framing.  The pill's link still
   // goes to the unified `/library/followups` page, where both kinds
   // are listed together.
   const followupCount =
@@ -48,7 +48,7 @@ export function CopilotLibrarySummary() {
       data-testid="copilot-library-summary"
     >
       <Text variant="small" className="!text-zinc-500">
-        Autopilot library
+        Otto library
       </Text>
       {showSkills ? (
         <Link
