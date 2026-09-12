@@ -35,9 +35,8 @@ export function McpConnectPanel({
     <div className="flex flex-col gap-4">
       {!lockServerURL && (
         <Text variant="body" className="text-zinc-600">
-          Enter the URL of your MCP server. We&apos;ll try OAuth first and fall
-          back to a manual API credential if the server doesn&apos;t support
-          OAuth.
+          Enter your MCP server URL, then sign in or supply an API credential
+          supported by the server.
         </Text>
       )}
       <Input
@@ -53,6 +52,10 @@ export function McpConnectPanel({
       />
       {state.phase === "manual-token" && (
         <>
+          <Text variant="small" className="text-zinc-600">
+            Use an API credential only if this server supports it. Follow the
+            server&apos;s documentation for the correct authentication type.
+          </Text>
           <MCPAuthSchemeField
             value={state.authScheme}
             onChange={state.selectScheme}
@@ -83,6 +86,16 @@ export function McpConnectPanel({
         </div>
       )}
       <div className="flex items-center justify-end gap-2">
+        {state.phase === "form" && (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={state.handleSwitchToToken}
+            disabled={!state.canSwitchToToken}
+          >
+            Use an API token instead
+          </Button>
+        )}
         {state.phase === "manual-token" && (
           <Button
             variant="secondary"

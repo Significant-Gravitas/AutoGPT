@@ -15,27 +15,25 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
+import { openOAuthPopup } from "@/lib/oauth-popup";
 
 import SettingsIntegrationsPage from "../page";
 
-type CatalogProvider = ProviderMetadata & {
-  display_name?: string;
-  mcp_server?: {
-    server_url: string | null;
-    documentation_url: string;
-    setup_instructions: string;
-    connection_mode: "hosted" | "custom" | "unavailable";
-    auth_mode: "oauth" | "token" | "none" | "unknown";
-    icon_id: string | null;
-  };
-};
+vi.mock("@/lib/oauth-popup", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/oauth-popup")>()),
+  openOAuthPopup: vi.fn(),
+}));
 
 function preset(
   slug: string,
   name: string,
   serverURL: string | null,
   authMode: "oauth" | "token" | "none" | "unknown" = "oauth",
-): CatalogProvider {
+  connectionMode: "hosted" | "custom" | "unavailable" = serverURL
+    ? "hosted"
+    : "unavailable",
+  iconID: string | null = null,
+): ProviderMetadata {
   return {
     name: `mcp_${slug}`,
     display_name: name,
@@ -46,15 +44,15 @@ function preset(
       documentation_url: `https://docs.example.com/${slug}`,
       setup_instructions: serverURL
         ? `Connect to ${name} with your existing account.`
-        : "Run this server locally and expose a supported remote endpoint.",
-      connection_mode: serverURL ? "hosted" : "unavailable",
+        : "Follow the official setup instructions for this server.",
+      connection_mode: connectionMode,
       auth_mode: authMode,
-      icon_id: null,
+      icon_id: iconID,
     },
   };
 }
 
-const providers: CatalogProvider[] = [
+const providers: ProviderMetadata[] = [
   {
     name: "github",
     description: "Issues and PRs",
@@ -66,19 +64,34 @@ const providers: CatalogProvider[] = [
     supported_auth_types: ["oauth2"],
   },
   preset("notion", "Notion", "https://mcp.notion.com/mcp"),
-  preset("superme", "SuperMe", "https://mcp.superme.ai", "token"),
-  preset("parallel", "Parallel", "https://search.parallel.ai/mcp", "none"),
+  preset("treg", "Treg", "https://treg.to/mcp/", "token"),
+  preset("parallel", "Parallel", "https://search.parallel.ai/mcp-oauth"),
+  preset(
+    "aws_knowledge",
+    "AWS Knowledge",
+    "https://knowledge-mcp.global.api.aws",
+    "none",
+  ),
+  preset("langfuse", "Langfuse", null, "token", "custom"),
   preset("shadcn_ui", "shadcn/ui", null, "unknown"),
+  preset(
+    "azure_cosmos_db",
+    "Azure Cosmos DB",
+    null,
+    "token",
+    "custom",
+    "microsoft",
+  ),
 ];
 
 const storedCredential: CredentialsMetaResponse = {
   id: "catalog-credential",
   provider: "mcp",
   type: "oauth2",
-  title: "SuperMe account",
+  title: "Treg account",
   scopes: null,
   username: null,
-  host: "https://mcp.superme.ai",
+  host: "https://treg.to/mcp/",
   is_managed: false,
 };
 const oauthRequest = vi.fn();
@@ -150,8 +163,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
       name: /notion.*official mcp/i,
     });
     expect(within(notion).getByText("MCP", { exact: true })).toBeDefined();
-    const local = screen.getByRole("button", { name: /shadcn\/ui/i });
-    expect(within(local).getByText(/setup required/i)).toBeDefined();
+    expect(screen.queryByRole("button", { name: /shadcn\/ui/i })).toBeNull();
     expect(screen.queryByText("Mcp Notion")).toBeNull();
   });
 
@@ -170,7 +182,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
       screen.getByRole("button", { name: /notion.*official mcp/i }),
     ).toBeDefined();
     expect(
-      screen.queryByRole("button", { name: /superme.*official mcp/i }),
+      screen.queryByRole("button", { name: /treg.*official mcp/i }),
     ).toBeNull();
   });
 
@@ -226,46 +238,40 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     ).toBe(true);
   });
 
-  test("unavailable presets explain setup and link documentation without attempting OAuth", async () => {
+  test("the service picker hides unavailable presets even if the API returns them", async () => {
     render(<SettingsIntegrationsPage />);
-    const dialog = await openPreset(/shadcn\/ui/i);
+    const dialog = await openPicker();
+    await within(dialog).findByRole("button", {
+      name: /notion.*official mcp/i,
+    });
     expect(
-      await within(dialog).findByText(/run this server locally/i),
-    ).toBeDefined();
-    expect(
-      within(dialog)
-        .getByRole("link", { name: /documentation/i })
-        .getAttribute("href"),
-    ).toBe("https://docs.example.com/shadcn_ui");
-    expect(
-      within(dialog).queryByRole("button", { name: /^connect$/i }),
+      within(dialog).queryByRole("button", { name: /shadcn\/ui/i }),
     ).toBeNull();
-    expect(within(dialog).queryByLabelText(/server url/i)).toBeNull();
     expect(oauthRequest).not.toHaveBeenCalled();
     expect(tokenRequest).not.toHaveBeenCalled();
   });
 
   test("token presets probe and save under generic MCP identity with the preset URL", async () => {
     render(<SettingsIntegrationsPage />);
-    const dialog = await openPreset(/superme.*official mcp/i);
+    const dialog = await openPreset(/treg.*official mcp/i);
     fireEvent.change(
       await within(dialog).findByPlaceholderText("Paste API token"),
-      { target: { value: "test-superme-token" } },
+      { target: { value: "test-treg-token" } },
     );
     fireEvent.click(
       within(dialog).getByRole("button", { name: /save token/i }),
     );
     await waitFor(() => {
       expect(tokenRequest).toHaveBeenCalledWith({
-        server_url: "https://mcp.superme.ai",
-        token: "Bearer test-superme-token",
+        server_url: "https://treg.to/mcp/",
+        token: "Bearer test-treg-token",
       });
     });
     expect(discoveryRequest).toHaveBeenCalledWith({
-      server_url: "https://mcp.superme.ai",
-      auth_token: "Bearer test-superme-token",
+      server_url: "https://treg.to/mcp/",
+      auth_token: "Bearer test-treg-token",
     });
-    expect(await screen.findByText("SuperMe account")).toBeDefined();
+    expect(await screen.findByText("Treg account")).toBeDefined();
     expect(oauthRequest).not.toHaveBeenCalled();
     expect(providerCredentialRequest).not.toHaveBeenCalled();
   });
@@ -277,7 +283,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
       ),
     );
     render(<SettingsIntegrationsPage />);
-    const dialog = await openPreset(/parallel.*official mcp/i);
+    const dialog = await openPreset(/aws knowledge.*official mcp/i);
     fireEvent.click(
       await within(dialog).findByRole("button", { name: /check connection/i }),
     );
@@ -293,17 +299,132 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
 
   test("public MCP discovery reports tools without storing a fabricated credential", async () => {
     render(<SettingsIntegrationsPage />);
-    const dialog = await openPreset(/parallel.*official mcp/i);
+    const dialog = await openPreset(/aws knowledge.*official mcp/i);
     fireEvent.click(
       await within(dialog).findByRole("button", { name: /check connection/i }),
     );
     expect(await within(dialog).findByText(/2 tools available/i)).toBeDefined();
+    expect(within(dialog).getByText(/no connection was saved/i)).toBeDefined();
+    expect(within(dialog).getByText(/use this server url/i)).toBeDefined();
+    expect(within(dialog).queryByText(/ready to use/i)).toBeNull();
     expect(discoveryRequest).toHaveBeenCalledWith({
-      server_url: "https://search.parallel.ai/mcp",
+      server_url: "https://knowledge-mcp.global.api.aws",
     });
     expect(tokenRequest).not.toHaveBeenCalled();
     expect(oauthRequest).not.toHaveBeenCalled();
     expect(providerCredentialRequest).not.toHaveBeenCalled();
     expect(credentials).toEqual([]);
+  });
+
+  test("OAuth presets offer a validated manual token after the vendor popup rejects sign-in", async () => {
+    server.use(
+      http.post("*/api/mcp/oauth/login", () =>
+        HttpResponse.json({
+          login_url: "https://vendor.example.com/authorize",
+          state_token: "test-state",
+        }),
+      ),
+    );
+    vi.mocked(openOAuthPopup).mockImplementation(() => ({
+      promise: Promise.reject(new Error("Vendor rejected this sign-in")),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    }));
+    render(<SettingsIntegrationsPage />);
+    const dialog = await openPreset(/parallel.*official mcp/i);
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /^connect$/i }),
+    );
+    expect(
+      await within(dialog).findByText("Vendor rejected this sign-in"),
+    ).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /use an api token instead/i }),
+    );
+    expect(within(dialog).getByText(/if this server supports/i)).toBeDefined();
+    fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
+      target: { value: "test-manual-token" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+    await waitFor(() =>
+      expect(tokenRequest).toHaveBeenCalledWith({
+        server_url: "https://search.parallel.ai/mcp-oauth",
+        token: "Bearer test-manual-token",
+      }),
+    );
+    expect(discoveryRequest).toHaveBeenCalledWith({
+      server_url: "https://search.parallel.ai/mcp-oauth",
+      auth_token: "Bearer test-manual-token",
+    });
+    expect(discoveryRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      tokenRequest.mock.invocationCallOrder[0],
+    );
+    expect(providerCredentialRequest).not.toHaveBeenCalled();
+  });
+
+  test("custom presets accept an editable URL and validate a Basic credential before saving", async () => {
+    render(<SettingsIntegrationsPage />);
+    const dialog = await openPreset(/langfuse.*official mcp/i);
+    const url =
+      await within(dialog).findByLabelText<HTMLInputElement>(/server url/i);
+    expect(url.value).toBe("");
+    expect(url.readOnly).toBe(false);
+    fireEvent.change(url, {
+      target: { value: "https://cloud.langfuse.com/api/public/mcp" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText(/paste base64/i), {
+      target: { value: "public:secret" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+    expect(
+      await within(dialog).findByText(/unencoded user:password/i),
+    ).toBeDefined();
+    expect(discoveryRequest).not.toHaveBeenCalled();
+    expect(tokenRequest).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByPlaceholderText(/paste base64/i), {
+      target: { value: "cHVibGljOnNlY3JldA==" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+    await waitFor(() =>
+      expect(tokenRequest).toHaveBeenCalledWith({
+        server_url: "https://cloud.langfuse.com/api/public/mcp",
+        token: "Basic cHVibGljOnNlY3JldA==",
+      }),
+    );
+    expect(discoveryRequest).toHaveBeenCalledWith({
+      server_url: "https://cloud.langfuse.com/api/public/mcp",
+      auth_token: "Basic cHVibGljOnNlY3JldA==",
+    });
+    expect(discoveryRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      tokenRequest.mock.invocationCallOrder[0],
+    );
+    expect(oauthRequest).not.toHaveBeenCalled();
+  });
+
+  test("Microsoft presets use the existing webp icon in the list and detail", async () => {
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", {
+      name: /azure cosmos db.*official mcp/i,
+    });
+    expect(row.querySelector("img")?.getAttribute("src")).toContain(
+      "microsoft.webp",
+    );
+    fireEvent.click(row);
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      (await within(dialog).findByAltText("Azure Cosmos DB logo")).getAttribute(
+        "src",
+      ),
+    ).toContain("microsoft.webp");
   });
 });

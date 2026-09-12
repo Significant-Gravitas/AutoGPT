@@ -586,5 +586,7 @@ def create_mcp_oauth_handler(
         redirect_uri="",  # Not needed for token refresh
         authorize_url="",  # Not needed for token refresh
         token_url=token_url,
+        revoke_url=meta.get("mcp_revoke_url"),
         resource_url=meta.get("mcp_resource_url"),
+        token_endpoint_auth_method=meta.get("mcp_token_endpoint_auth_method"),
     )

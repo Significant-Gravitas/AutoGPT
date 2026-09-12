@@ -15,13 +15,13 @@
   },
   {
     "name": "mcp_1password",
-    "display_name": "1Password",
-    "description": "Manage Developer Environments through the local 1Password desktop app.",
+    "display_name": "1Password Environments",
+    "description": "Manage 1Password Environments and variable names through the local desktop app.",
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://github.com/1Password/1password-codex-plugin",
-      "setup_instructions": "Requires the local desktop MCP and desktop authorization; this cloud connection dialog cannot run it.",
+      "documentation_url": "https://www.1password.dev/environments/mcp-server",
+      "setup_instructions": "The official server runs locally over stdio inside the 1Password desktop app, with desktop approval prompts. It manages Environments and variable names, never returns secret values, and does not support remote-only clients such as AutoGPT.",
       "connection_mode": "unavailable",
       "auth_mode": "unknown",
       "icon_id": "mcp"
@@ -76,7 +76,7 @@
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://help.aikido.dev/ide-plugins/aikido-mcp",
+      "documentation_url": "https://help.aikido.dev/ai-and-dev-tools/aikido-mcp",
       "setup_instructions": "Requires the local Aikido MCP process and a personal access token. Follow the vendor's coding-tool setup.",
       "connection_mode": "unavailable",
       "auth_mode": "token",
@@ -118,8 +118,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.sandbox.airwallex.com/developer",
-      "documentation_url": "https://github.com/airwallex/airwallex-marketplace",
-      "setup_instructions": "Connect an Airwallex sandbox account. This developer server is separate from the original skills-only plugin and production AgentOS.",
+      "documentation_url": "https://www.airwallex.com/docs/developer-tools/ai/developer-connector",
+      "setup_instructions": "Sign in with an Airwallex sandbox account. This server provides documentation and sandbox testing tools; production account operations use the separate AgentOS server.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -133,7 +133,7 @@
     "mcp_server": {
       "server_url": null,
       "documentation_url": "https://github.com/GetAleph/cursor-plugin/blob/trunk/mcp.json",
-      "setup_instructions": "The official endpoint is published, but its authentication requirements still need verification. Follow Aleph's setup documentation.",
+      "setup_instructions": "Aleph publishes an MCP endpoint in its official plugin, but does not publish a custom-client authentication and setup guide. This undocumented connection is not available in AutoGPT.",
       "connection_mode": "unavailable",
       "auth_mode": "unknown",
       "icon_id": "mcp"
@@ -156,14 +156,14 @@
   {
     "name": "mcp_amazon_location_service",
     "display_name": "Amazon Location Service",
-    "description": "Use the shared AWS connection for location-service guidance and permitted AWS actions.",
+    "description": "Access geocoding, place search, and route tools through the local Amazon Location MCP package.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://aws-mcp.us-east-1.api.aws/mcp",
-      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
-      "setup_instructions": "Sign in with an AWS identity that has the necessary permissions. The separate local geospatial MCP and plugin skills are not installed by this connection.",
-      "connection_mode": "hosted",
-      "auth_mode": "oauth",
+      "server_url": null,
+      "documentation_url": "https://awslabs.github.io/mcp/servers/aws-location-mcp-server",
+      "setup_instructions": "The official Amazon Location MCP package runs locally over stdio with an AWS credential profile. AutoGPT cannot launch this local process. The general AWS MCP server is a separate integration.",
+      "connection_mode": "unavailable",
+      "auth_mode": "unknown",
       "icon_id": "amazon"
     }
   },
@@ -296,14 +296,14 @@
   {
     "name": "mcp_astronomer",
     "display_name": "Astronomer",
-    "description": "Browse the public Astronomer Registry for Airflow integration resources.",
+    "description": "Read Astro Deployments, Workspaces, environment objects, and organization settings.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://api.astronomer.io/registryV2/v1alpha1/mcp",
+      "server_url": "https://api.astronomer.io/v1alpha1/astro/mcp",
       "documentation_url": "https://www.astronomer.io/docs/astro/astro-mcp-server",
-      "setup_instructions": "This public Registry connection does not access your Airflow deployment. Deployment tools require a separate endpoint and API token.",
+      "setup_instructions": "Ask your Astronomer account team to enable Astro MCP in Labs, then sign in with your Astro credentials. This connects the account control plane; it does not connect the experimental public Registry or an Airflow deployment plugin.",
       "connection_mode": "hosted",
-      "auth_mode": "none",
+      "auth_mode": "oauth",
       "icon_id": "mcp"
     }
   },
@@ -324,12 +324,12 @@
   {
     "name": "mcp_atlassian",
     "display_name": "Atlassian",
-    "description": "Search and act across supported Atlassian products through Rovo MCP.",
+    "description": "Search and work across Jira, Confluence, and Atlassian Teamwork Graph through Rovo MCP.",
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.atlassian.com/v2/mcp",
       "documentation_url": "https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/",
-      "setup_instructions": "Sign in to Atlassian and authorize the workspace. Available tools depend on your product access.",
+      "setup_instructions": "Your organization admin must allow your AutoGPT origin in the Rovo MCP domain allowlist before OAuth sign-in. If the admin enables API-token authentication, Basic authentication with your Atlassian email and API token is also supported. Product permissions and Rovo credit limits apply.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -350,98 +350,42 @@
     }
   },
   {
-    "name": "mcp_atlassian_teamwork_graph",
-    "display_name": "Atlassian Teamwork Graph",
-    "description": "Access related Teamwork Graph tools through the separate Rovo MCP connection.",
-    "official": true,
-    "mcp_server": {
-      "server_url": "https://mcp.atlassian.com/v2/mcp",
-      "documentation_url": "https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/",
-      "setup_instructions": "Sign in to Atlassian Rovo. This connects the related MCP service; it does not install the original Teamwork Graph CLI skills.",
-      "connection_mode": "hosted",
-      "auth_mode": "oauth",
-      "icon_id": "mcp"
-    }
-  },
-  {
-    "name": "mcp_aws_agents",
-    "display_name": "AWS Agents",
-    "description": "Search public AWS documentation for building AI agents.",
-    "official": true,
-    "mcp_server": {
-      "server_url": "https://knowledge-mcp.global.api.aws",
-      "documentation_url": "https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server",
-      "setup_instructions": "Documentation only. Agent deployment and runtime operations require a separate authenticated AWS connection.",
-      "connection_mode": "hosted",
-      "auth_mode": "none",
-      "icon_id": "amazon"
-    }
-  },
-  {
-    "name": "mcp_aws_amplify",
-    "display_name": "AWS Amplify",
-    "description": "Use shared AWS tools and guidance for Amplify application development.",
-    "official": true,
-    "mcp_server": {
-      "server_url": "https://aws-mcp.us-east-1.api.aws/mcp",
-      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
-      "setup_instructions": "Sign in with your AWS identity. This uses the shared AWS MCP; local Amplify skills and CLI setup remain separate.",
-      "connection_mode": "hosted",
-      "auth_mode": "oauth",
-      "icon_id": "amazon"
-    }
-  },
-  {
     "name": "mcp_aws_core",
     "display_name": "AWS Core",
-    "description": "Search AWS documentation and perform permitted AWS account operations.",
+    "description": "Use the general AWS MCP server for AWS service APIs and guidance within your IAM permissions.",
     "official": true,
     "mcp_server": {
       "server_url": "https://aws-mcp.us-east-1.api.aws/mcp",
-      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
-      "setup_instructions": "Sign in with an AWS identity authorized for the required services. Existing IAM policies still apply.",
+      "documentation_url": "https://docs.aws.amazon.com/signin/latest/userguide/aws-mcp-server.html",
+      "setup_instructions": "AWS permits browser OAuth only for approved clients. Use an AWS identity with signin:CreateOAuth2Token and obtain an access token with: aws signin create-oauth2-token-with-iam --grant-type client_credentials --resource aws-mcp.amazonaws.com --region us-east-1. Paste the returned access token as Bearer. It expires within one hour and must be replaced manually; AutoGPT does not renew it.",
       "connection_mode": "hosted",
-      "auth_mode": "oauth",
+      "auth_mode": "token",
       "icon_id": "amazon"
     }
   },
   {
     "name": "mcp_aws_data_analytics",
     "display_name": "AWS Data Analytics",
-    "description": "Use shared AWS tools for analytics services and data-processing workflows.",
+    "description": "Manage Glue, EMR, and Athena with the local AWS Data Processing MCP package.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://aws-mcp.us-east-1.api.aws/mcp",
-      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
-      "setup_instructions": "Sign in with an AWS identity authorized for your data services. This is the shared AWS MCP endpoint.",
-      "connection_mode": "hosted",
-      "auth_mode": "oauth",
+      "server_url": null,
+      "documentation_url": "https://awslabs.github.io/mcp/servers/aws-dataprocessing-mcp-server",
+      "setup_instructions": "The official Data Processing MCP package runs locally over stdio with AWS credentials. AutoGPT cannot launch this local process. It is separate from the general AWS MCP server.",
+      "connection_mode": "unavailable",
+      "auth_mode": "unknown",
       "icon_id": "amazon"
     }
   },
   {
     "name": "mcp_aws_databases",
-    "display_name": "AWS Databases",
-    "description": "Search public AWS database documentation and recommendations.",
+    "display_name": "AWS Knowledge",
+    "description": "Search AWS documentation and guidance for AWS Agents, AWS Databases, AWS Deployments, and AWS Amplify.",
     "official": true,
     "mcp_server": {
       "server_url": "https://knowledge-mcp.global.api.aws",
       "documentation_url": "https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server",
-      "setup_instructions": "Documentation only. Querying Aurora DSQL or other databases requires the separate database server, credentials, and permissions.",
-      "connection_mode": "hosted",
-      "auth_mode": "none",
-      "icon_id": "amazon"
-    }
-  },
-  {
-    "name": "mcp_aws_deployments",
-    "display_name": "AWS Deployments",
-    "description": "Search public AWS infrastructure and deployment documentation.",
-    "official": true,
-    "mcp_server": {
-      "server_url": "https://knowledge-mcp.global.api.aws",
-      "documentation_url": "https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server",
-      "setup_instructions": "Documentation only. The original plugin's local IaC and pricing servers require separate setup.",
+      "setup_instructions": "Public documentation and guidance only; no AWS account is required. This server cannot query your databases, deploy resources, or operate agents. Those tasks need separate authenticated services.",
       "connection_mode": "hosted",
       "auth_mode": "none",
       "icon_id": "amazon"
@@ -450,14 +394,14 @@
   {
     "name": "mcp_aws_sagemaker",
     "display_name": "AWS SageMaker",
-    "description": "Use shared AWS guidance and permitted operations for SageMaker workflows.",
+    "description": "Manage SageMaker HyperPod clusters through the local SageMaker AI MCP package.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://aws-mcp.us-east-1.api.aws/mcp",
-      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
-      "setup_instructions": "Sign in with appropriate AWS permissions. Local SageMaker skills, notebooks, and CLI workflows remain separate.",
-      "connection_mode": "hosted",
-      "auth_mode": "oauth",
+      "server_url": null,
+      "documentation_url": "https://awslabs.github.io/mcp/servers/sagemaker-ai-mcp-server",
+      "setup_instructions": "The official SageMaker AI MCP package runs locally with Python and an AWS credential profile. AutoGPT cannot launch this local process. It is separate from the general AWS MCP server.",
+      "connection_mode": "unavailable",
+      "auth_mode": "unknown",
       "icon_id": "amazon"
     }
   },
@@ -497,7 +441,7 @@
     "mcp_server": {
       "server_url": "https://mcp.brevo.com/v1/brevo/mcp",
       "documentation_url": "https://developers.brevo.com/docs/mcp-protocol",
-      "setup_instructions": "Create a Brevo MCP token and paste it as the access token.",
+      "setup_instructions": "In Brevo, open Account > SMTP & API > API Keys and create a key with the MCP option enabled. Paste that dedicated MCP token as the access token; a standard API key is not sufficient.",
       "connection_mode": "hosted",
       "auth_mode": "token",
       "icon_id": "mcp"
@@ -510,8 +454,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://api.brex.com/mcp",
-      "documentation_url": "https://www.brex.com/support/using-brex-in-ai-apps",
-      "setup_instructions": "Sign in to Brex. Existing roles and account permissions apply.",
+      "documentation_url": "https://developer.brex.com/docs/mcp",
+      "setup_instructions": "An account or card admin must enable Brex in AI assistants under Settings > Early access and accept the Developer API agreement under Settings > Developer. Then sign in with your Brex account; existing roles and permissions apply.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -567,7 +511,7 @@
     "mcp_server": {
       "server_url": "https://api.clay.com/v3/mcp",
       "documentation_url": "https://university.clay.com/docs/connect-to-clay-mcp",
-      "setup_instructions": "Sign in to Clay and authorize the workspace.",
+      "setup_instructions": "Your workspace admin must allow Unknown clients under MCP users > Allowed MCP clients for AutoGPT dynamic registration. Sign in as a workspace member; this policy also applies when tokens refresh.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -594,8 +538,8 @@
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://docs.composio.dev/reference/api-reference/mcp",
-      "setup_instructions": "Create a Composio session and configure its required session headers and connected accounts. The current dialog cannot supply arbitrary headers.",
+      "documentation_url": "https://docs.composio.dev/docs/sessions-via-mcp",
+      "setup_instructions": "Composio sessions require session configuration and authentication headers that AutoGPT cannot supply. Its separate single-toolkit MCP also requires user context and an x-api-key header by default.",
       "connection_mode": "unavailable",
       "auth_mode": "unknown",
       "icon_id": "mcp"
@@ -608,7 +552,7 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.context.dev/mcp",
-      "documentation_url": "https://www.context.dev/blog/best-web-search-apis-and-mcp-tools-for-ai-agents-in-2026",
+      "documentation_url": "https://docs.context.dev/install-mcp",
       "setup_instructions": "Sign in to Context.dev and authorize the connection.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
@@ -636,8 +580,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.craft.do/my/mcp",
-      "documentation_url": "https://www.craft.do/imagine/guide/mcp/codex_desktop",
-      "setup_instructions": "Sign in to Craft. For a scoped document link, follow the separate link-generation instructions.",
+      "documentation_url": "https://www.craft.do/imagine/guide/mcp",
+      "setup_instructions": "Sign in to Craft and select the space to authorize. Each connection accesses one space; scoped document connections use separately generated links.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -649,9 +593,9 @@
     "description": "Search and enrich people and companies, including jobs and social activity.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://mcp.crustdata.com/mcp",
-      "documentation_url": "https://docs.crustdata.com/general/mcp",
-      "setup_instructions": "Complete Crustdata's sign-in flow. If prompted for an API key, enter it on Crustdata's authorization page.",
+      "server_url": "https://install.crustdata.com/mcp",
+      "documentation_url": "https://docs.crustdata.com/for-agents/mcp",
+      "setup_instructions": "Sign in with your Crustdata account. A Crustdata API key as a Bearer token is also supported for programmatic access. Account credits apply.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -659,13 +603,27 @@
   },
   {
     "name": "mcp_customer_io",
-    "display_name": "Customer.io",
+    "display_name": "Customer.io (US)",
     "description": "Work with Customer.io workspace data and supported messaging workflows.",
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.customer.io/mcp",
-      "documentation_url": "https://docs.customer.io/ai/mcp/get-started/",
-      "setup_instructions": "Sign in and select a workspace and permissions. EU workspaces must use the EU endpoint from the documentation.",
+      "documentation_url": "https://docs.customer.io/ai/mcp-server/",
+      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Then sign in and select your US workspace and permissions. For EU workspaces, select Customer.io (EU).",
+      "connection_mode": "hosted",
+      "auth_mode": "oauth",
+      "icon_id": "mcp"
+    }
+  },
+  {
+    "name": "mcp_customer_io_eu",
+    "display_name": "Customer.io (EU)",
+    "description": "Work with Customer.io workspace data and supported messaging workflows.",
+    "official": true,
+    "mcp_server": {
+      "server_url": "https://mcp-eu.customer.io/mcp",
+      "documentation_url": "https://docs.customer.io/ai/mcp-server/",
+      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Then sign in and select your EU workspace and permissions. For US workspaces, select Customer.io (US).",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -692,7 +650,7 @@
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://www.docusign.com/blog/developers/claude-docusign-mcp-connector-guide",
+      "documentation_url": "https://developers.docusign.com/platform/mcp-server/",
       "setup_instructions": "Developer connections require a Docusign integration key and secret. The current dialog cannot configure those OAuth client credentials.",
       "connection_mode": "unavailable",
       "auth_mode": "oauth",
@@ -719,11 +677,11 @@
     "description": "Query telemetry and manage investigations and agent sessions.",
     "official": true,
     "mcp_server": {
-      "server_url": null,
-      "documentation_url": "https://github.com/firetiger-oss/cursor-plugin",
-      "setup_instructions": "The official server is published, but authentication requirements still need verification. Follow the vendor's setup guide.",
-      "connection_mode": "unavailable",
-      "auth_mode": "unknown",
+      "server_url": "https://api.cloud.firetiger.com/mcp/v1",
+      "documentation_url": "https://docs.firetiger.com/guides/mcp-server.html",
+      "setup_instructions": "Sign in with your Firetiger account. For API-key authentication, create a read-write key and paste the complete Basic authorization value from the reveal dialog; read-only keys cannot access this endpoint.",
+      "connection_mode": "hosted",
+      "auth_mode": "oauth",
       "icon_id": "mcp"
     }
   },
@@ -733,10 +691,10 @@
     "description": "Explore available lab results and supported health-data context.",
     "official": true,
     "mcp_server": {
-      "server_url": "https://services.functionhealth.com/ai-chat/mcp",
+      "server_url": null,
       "documentation_url": "https://services.functionhealth.com/auth0/acul/claude_connector_docs.html",
-      "setup_instructions": "Sign in with a Function Health account that has completed lab results.",
-      "connection_mode": "hosted",
+      "setup_instructions": "Use a Function-supported AI connector. The published endpoint does not provide a working custom-client authorization flow for AutoGPT.",
+      "connection_mode": "unavailable",
       "auth_mode": "oauth",
       "icon_id": "mcp"
     }
@@ -776,8 +734,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.gong.io/mcp",
-      "documentation_url": "https://help.gong.io/docs/about-gong-mcp-server",
-      "setup_instructions": "Sign in to Gong and authorize the available account data.",
+      "documentation_url": "https://help.gong.io/docs/create-an-integration-to-connect-to-the-mcp-server",
+      "setup_instructions": "A Gong Tech admin must create an MCP integration with Automatic registration and add the exact OAuth callback URL for your AutoGPT deployment. Then sign in with a paid Gong seat and available credits. Manual registration requires client credentials that AutoGPT cannot configure.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -939,13 +897,27 @@
   },
   {
     "name": "mcp_intercom",
-    "display_name": "Intercom",
+    "display_name": "Intercom (US)",
     "description": "Search support conversations and contacts, and work with Help Center articles.",
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.intercom.com/mcp",
       "documentation_url": "https://developers.intercom.com/docs/guides/mcp",
-      "setup_instructions": "Sign in to Intercom. The reviewed documentation limits this server to US-hosted workspaces.",
+      "setup_instructions": "Sign in to a US-hosted Intercom workspace. For EU-hosted workspaces, select Intercom (EU). Australian workspaces are not currently supported.",
+      "connection_mode": "hosted",
+      "auth_mode": "oauth",
+      "icon_id": "mcp"
+    }
+  },
+  {
+    "name": "mcp_intercom_eu",
+    "display_name": "Intercom (EU)",
+    "description": "Search support conversations and contacts, and work with Help Center articles.",
+    "official": true,
+    "mcp_server": {
+      "server_url": "https://mcp.eu.intercom.com/mcp",
+      "documentation_url": "https://developers.intercom.com/docs/guides/mcp",
+      "setup_instructions": "Sign in to an EU-hosted Intercom workspace. For US-hosted workspaces, select Intercom (US). Australian workspaces are not currently supported.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -987,7 +959,7 @@
     "mcp_server": {
       "server_url": "https://mcp.notion.com/mcp",
       "documentation_url": "https://developers.notion.com/guides/mcp/get-started-with-mcp",
-      "setup_instructions": "Sign in to Notion and authorize workspace access. The hosted server uses user OAuth rather than a personal API token.",
+      "setup_instructions": "Sign in to Notion and authorize workspace access. Enterprise workspaces may require an owner or admin to approve AutoGPT under the allowed AI apps policy. The hosted server uses user OAuth, not a personal API token.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "notion"
@@ -1013,11 +985,11 @@
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",
     "official": true,
     "mcp_server": {
-      "server_url": null,
-      "documentation_url": "https://opsera.ai/agents/",
-      "setup_instructions": "The official endpoint is published, but the required API-token header still needs verification. Follow Opsera's account setup guide.",
-      "connection_mode": "unavailable",
-      "auth_mode": "unknown",
+      "server_url": "https://agent.opsera.ai/mcp",
+      "documentation_url": "https://docs.agents.opsera.ai/terminal-setup/claude-desktop",
+      "setup_instructions": "Sign in with your Opsera account in the browser. Connected tools and organization policies determine available actions; local IDE scanning and plugin workflows require their separate development environment.",
+      "connection_mode": "hosted",
+      "auth_mode": "oauth",
       "icon_id": "mcp"
     }
   },
@@ -1070,8 +1042,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.plain.com/mcp",
-      "documentation_url": "https://www.plain.com/blog/mcp-server",
-      "setup_instructions": "Sign in to Plain. Your existing workspace permissions apply.",
+      "documentation_url": "https://www.plain.com/docs/agents/mcp-server",
+      "setup_instructions": "Sign in with your Plain account. OAuth must authorize openid and offline_access; your existing workspace permissions apply.",
       "connection_mode": "hosted",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -1084,8 +1056,8 @@
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://github.com/runlayer/plugins",
-      "setup_instructions": "Copy the tenant-specific HTTPS MCP URL from your Runlayer dashboard and follow your organization's authorization steps. Plugin governance hooks are separate.",
+      "documentation_url": "https://docs.runlayer.com/connecting-clients",
+      "setup_instructions": "Copy the HTTPS proxy URL from your Runlayer Plugin or connector page, then sign in through your organization OAuth/SSO. Your organization must permit the client and upstream tools. Local connectors that require the Runlayer CLI are not supported by AutoGPT.",
       "connection_mode": "custom",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -1127,7 +1099,7 @@
     "mcp_server": {
       "server_url": null,
       "documentation_url": "https://7.3.sourcegraph.com/api/mcp",
-      "setup_instructions": "Enter the MCP HTTPS URL for your Sourcegraph instance. Enterprise licensing and MCP permissions are required; choose the default or full-tool endpoint from its documentation.",
+      "setup_instructions": "Enter your Sourcegraph instance URL ending in /.api/mcp or /.api/mcp/all. The admin must keep mcp.enabled and auth.idpDynamicClientRegistrationEnabled enabled, and your role needs MCP#ACCESS. Use OAuth; Sourcegraph access tokens use Authorization: token, which AutoGPT does not support.",
       "connection_mode": "custom",
       "auth_mode": "oauth",
       "icon_id": "mcp"
@@ -1154,36 +1126,22 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://mcp.superme.ai",
-      "documentation_url": "https://github.com/superme-ai/superme-sdk",
-      "setup_instructions": "Paste your SuperMe API key as the access token.",
+      "documentation_url": "https://github.com/superme-ai/superme-plugins",
+      "setup_instructions": "Sign in with your SuperMe account through OAuth. SuperMe supports dynamic client registration and PKCE; there is no API key to paste.",
       "connection_mode": "hosted",
-      "auth_mode": "token",
+      "auth_mode": "oauth",
       "icon_id": "mcp"
     }
   },
   {
     "name": "mcp_tabnine",
     "display_name": "Tabnine",
-    "description": "Search enterprise repositories and retrieve code context.",
+    "description": "Search enterprise repositories with the Tabnine Context Engine MCP service.",
     "official": true,
     "mcp_server": {
       "server_url": null,
       "documentation_url": "https://github.com/tabnine/skills",
-      "setup_instructions": "Obtain the MCP HTTPS endpoint and personal access token for your Tabnine enterprise instance. Follow the instance-specific connection instructions.",
-      "connection_mode": "custom",
-      "auth_mode": "token",
-      "icon_id": "mcp"
-    }
-  },
-  {
-    "name": "mcp_tabnine_context_engine",
-    "display_name": "Tabnine Context Engine",
-    "description": "Use the related Tabnine MCP for repository and code-context access.",
-    "official": true,
-    "mcp_server": {
-      "server_url": null,
-      "documentation_url": "https://github.com/tabnine/skills",
-      "setup_instructions": "Use your enterprise Tabnine MCP endpoint and personal access token. This connects the related MCP service; the original Context Engine listing uses separate CLI skills.",
+      "setup_instructions": "Obtain the remote MCP HTTPS endpoint and personal access token for your Tabnine enterprise instance. The separate local Tabnine Context Engine CLI is not installed or run by this connection.",
       "connection_mode": "custom",
       "auth_mode": "token",
       "icon_id": "mcp"
@@ -1196,8 +1154,8 @@
     "official": true,
     "mcp_server": {
       "server_url": "https://treg.to/mcp/",
-      "documentation_url": "https://github.com/superdesigndev/treg/blob/main/docs/context/architecture/mcp-oauth.md",
-      "setup_instructions": "Paste your Treg dashboard API key as the access token. This connects the team gateway; the separate catalog-only connector has additional approval requirements.",
+      "documentation_url": "https://treg.to/llms.txt",
+      "setup_instructions": "Paste a Treg dashboard API key scoped to your team as the access token. A team-scoped key works as a Bearer token without additional headers. Usage is charged against your team balance where applicable.",
       "connection_mode": "hosted",
       "auth_mode": "token",
       "icon_id": "mcp"
@@ -1224,7 +1182,7 @@
     "official": true,
     "mcp_server": {
       "server_url": null,
-      "documentation_url": "https://github.com/zoom/skills/blob/main/skills/zoom-mcp/concepts/oauth-setup.md",
+      "documentation_url": "https://developers.zoom.us/docs/mcp/servers/",
       "setup_instructions": "Requires a Zoom Marketplace app with its own OAuth client ID and secret, plus token refresh handling. The current dialog cannot configure that OAuth client.",
       "connection_mode": "unavailable",
       "auth_mode": "oauth",

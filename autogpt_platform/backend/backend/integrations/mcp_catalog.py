@@ -54,9 +54,11 @@ class MCPServerMetadata(BaseModel):
 
     @model_validator(mode="after")
     def validate_connection(self) -> "MCPServerMetadata":
+        if self.connection_mode != "unavailable" and self.auth_mode == "unknown":
+            raise ValueError("Connectable entries require documented auth")
         if self.connection_mode == "hosted":
-            if not self.server_url or self.auth_mode == "unknown":
-                raise ValueError("Hosted entries require a URL and documented auth")
+            if not self.server_url:
+                raise ValueError("Hosted entries require a URL")
         elif self.server_url is not None:
             raise ValueError("Custom and unavailable entries cannot prefill a URL")
         return self
@@ -76,6 +78,14 @@ class MCPCatalogEntry(BaseModel):
 def get_mcp_catalog() -> tuple[MCPCatalogEntry, ...]:
     content = Path(__file__).with_suffix(".json").read_text(encoding="utf-8")
     return parse_mcp_catalog(content)
+
+
+def get_connectable_mcp_catalog() -> tuple[MCPCatalogEntry, ...]:
+    return tuple(
+        entry
+        for entry in get_mcp_catalog()
+        if entry.mcp_server.connection_mode != "unavailable"
+    )
 
 
 def parse_mcp_catalog(content: str) -> tuple[MCPCatalogEntry, ...]:

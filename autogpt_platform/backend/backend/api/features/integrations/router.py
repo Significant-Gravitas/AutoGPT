@@ -67,7 +67,7 @@ from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvi
 from backend.integrations.managed_providers.ayrshare import (
     settings_available as ayrshare_settings_available,
 )
-from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.mcp_catalog import get_connectable_mcp_catalog
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
@@ -1930,7 +1930,7 @@ async def list_providers(
             description=entry.description,
             mcp_server=entry.mcp_server,
         )
-        for entry in get_mcp_catalog()
+        for entry in get_connectable_mcp_catalog()
     ]
 
 

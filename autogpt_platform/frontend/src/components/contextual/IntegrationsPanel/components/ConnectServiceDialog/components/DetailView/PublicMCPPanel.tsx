@@ -28,7 +28,13 @@ export function PublicMCPPanel({ serverURL }: Props) {
         <Text variant="body" role="status">
           {toolCount === 0
             ? "Connected, but this server returned no tools."
-            : `${toolCount} tools available. This server is ready to use in your agents.`}
+            : `${toolCount} tools available.`}
+        </Text>
+      )}
+      {toolCount !== null && (
+        <Text variant="small" className="text-zinc-600">
+          No connection was saved. Use this server URL when adding MCP tools to
+          an agent.
         </Text>
       )}
       {error && (

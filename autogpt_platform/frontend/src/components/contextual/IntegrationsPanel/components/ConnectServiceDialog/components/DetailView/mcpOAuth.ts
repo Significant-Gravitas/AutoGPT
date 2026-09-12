@@ -7,7 +7,7 @@ import { openOAuthPopup } from "@/lib/oauth-popup";
 
 interface Args {
   serverURL: string;
-  onPopup: (abort: (reason?: string) => void) => void;
+  onPopup: (abort: ((reason?: string) => void) | null) => void;
 }
 
 export async function connectMCPOAuth({ serverURL, onPopup }: Args) {
@@ -28,7 +28,7 @@ export async function connectMCPOAuth({ serverURL, onPopup }: Args) {
     useCrossOriginListeners: true,
   });
   onPopup(cleanup.abort);
-  const result = await promise;
+  const result = await promise.finally(() => onPopup(null));
   const exchanged = await postV2ExchangeOauthCodeForMcpTokens({
     code: result.code,
     state_token,

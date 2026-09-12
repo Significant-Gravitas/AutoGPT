@@ -16,6 +16,7 @@ import {
 } from "@/lib/mcp-auth";
 import { getAPIResponseError, getErrorMessage } from "@/lib/mcp-errors";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
+import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { connectMCPOAuth } from "./mcpOAuth";
 
@@ -42,6 +43,7 @@ export function useMCPConnectPanel({
     initialAuthMode === "token" ? "manual-token" : "form",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
   useEffect(() => () => oauthAbortRef.current?.(), []);
@@ -77,6 +79,7 @@ export function useMCPConnectPanel({
         serverURL: trimmedURL,
         onPopup: (abort) => {
           oauthAbortRef.current = abort;
+          setIsWaitingForOAuth(abort !== null);
         },
       });
       if (!credential) {
@@ -90,6 +93,7 @@ export function useMCPConnectPanel({
       onSuccess(credential);
     } catch (error) {
       const message = getErrorMessage(error);
+      if (message === OAUTH_ERROR_FLOW_CANCELED) return;
       setError(
         message === "OAuth flow timed out"
           ? "OAuth sign-in timed out. Please try again."
@@ -97,6 +101,7 @@ export function useMCPConnectPanel({
       );
     } finally {
       setIsSubmitting(false);
+      setIsWaitingForOAuth(false);
       oauthAbortRef.current = null;
     }
   }
@@ -140,6 +145,13 @@ export function useMCPConnectPanel({
     setError(null);
   }
 
+  function handleSwitchToToken() {
+    if (isSubmitting && !oauthAbortRef.current) return;
+    oauthAbortRef.current?.();
+    setPhase("manual-token");
+    setError(null);
+  }
+
   function handleServerURLChange(nextURL: string) {
     const changed = mcpServerIdentity(serverURL) !== mcpServerIdentity(nextURL);
     setServerURL(nextURL);
@@ -165,9 +177,11 @@ export function useMCPConnectPanel({
     selectScheme,
     canConnect,
     canSubmitToken,
+    canSwitchToToken: !isSubmitting || isWaitingForOAuth,
     handleConnect,
     handleSubmitToken,
     handleSwitchToOAuth,
+    handleSwitchToToken,
     handleServerURLChange,
     handleTokenChange,
   };

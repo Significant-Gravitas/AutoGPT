@@ -19,6 +19,10 @@ from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
     to_meta_response,
 )
+from backend.api.features.mcp.oauth_registration import (
+    MCPClientRegistration,
+    select_client_auth_method,
+)
 from backend.blocks.mcp.client import (
     MCPClient,
     MCPClientError,
@@ -31,7 +35,7 @@ from backend.blocks.mcp.helpers import (
     normalize_mcp_url,
     server_host,
 )
-from backend.blocks.mcp.oauth import MCPOAuthHandler
+from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
@@ -281,19 +285,50 @@ async def mcp_oauth_login(
 
     client_id = ""
     client_secret = ""
+    token_endpoint_auth_method: MCPTokenEndpointAuthMethod = "none"
     if registration_endpoint:
+        try:
+            requested_auth_method = select_client_auth_method(metadata)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
         # Validate the registration endpoint from metadata to prevent SSRF.
         try:
             await validate_url_host(registration_endpoint)
         except ValueError:
-            pass  # Skip registration, fall back to default client_id
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail="Could not register an OAuth client because the MCP server's "
+                "registration URL is invalid. Use a manual auth credential if supported.",
+            )
         else:
             reg_result = await _register_mcp_client(
-                registration_endpoint, redirect_uri, server_url
+                registration_endpoint, redirect_uri, server_url, requested_auth_method
             )
-            if reg_result:
-                client_id = reg_result.get("client_id", "")
-                client_secret = reg_result.get("client_secret", "")
+            if not reg_result:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail="Could not register an OAuth client with this MCP server. "
+                    "Use a manual auth credential if supported.",
+                )
+            try:
+                registration = MCPClientRegistration.model_validate(
+                    {
+                        **reg_result,
+                        "token_endpoint_auth_method": reg_result.get(
+                            "token_endpoint_auth_method", requested_auth_method
+                        ),
+                    }
+                )
+            except ValueError:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail="The MCP server returned an invalid registered client, "
+                    "unsupported authentication method, or missing client secret. "
+                    "Use a manual auth credential if supported.",
+                )
+            client_id = registration.client_id
+            client_secret = registration.client_secret.get_secret_value()
+            token_endpoint_auth_method = registration.token_endpoint_auth_method
 
     if not client_id:
         client_id = "autogpt-platform"
@@ -322,6 +357,7 @@ async def mcp_oauth_login(
             "server_url": server_url,
             "client_id": client_id,
             "client_secret": client_secret,
+            "token_endpoint_auth_method": token_endpoint_auth_method,
             "issuer": issuer,
             "iss_required": iss_required,
         },
@@ -335,6 +371,7 @@ async def mcp_oauth_login(
         authorize_url=authorize_url,
         token_url=token_url,
         resource_url=resource_url,
+        token_endpoint_auth_method=token_endpoint_auth_method,
     )
     login_url = handler.get_login_url(
         scopes, state_token, code_challenge=code_challenge
@@ -421,6 +458,7 @@ async def mcp_oauth_callback(
         token_url=meta["token_url"],
         revoke_url=meta.get("revoke_url"),
         resource_url=meta.get("resource_url"),
+        token_endpoint_auth_method=meta.get("token_endpoint_auth_method"),
     )
 
     try:
@@ -438,8 +476,16 @@ async def mcp_oauth_callback(
         credentials.metadata = {}
     credentials.metadata["mcp_server_url"] = meta["server_url"]
     credentials.metadata["mcp_client_id"] = meta["client_id"]
-    credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
+    credentials.metadata["mcp_client_secret"] = (
+        ""
+        if meta.get("token_endpoint_auth_method") == "none"
+        else meta.get("client_secret", "")
+    )
+    credentials.metadata["mcp_token_endpoint_auth_method"] = meta.get(
+        "token_endpoint_auth_method"
+    ) or ("client_secret_post" if meta.get("client_secret") else "none")
     credentials.metadata["mcp_token_url"] = meta["token_url"]
+    credentials.metadata["mcp_revoke_url"] = meta.get("revoke_url")
     credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
     credentials.metadata["mcp_issuer"] = expected_issuer
 
@@ -736,6 +782,7 @@ async def _register_mcp_client(
     registration_endpoint: str,
     redirect_uri: str,
     server_url: str,
+    token_endpoint_auth_method: MCPTokenEndpointAuthMethod = "client_secret_post",
 ) -> dict[str, Any] | None:
     """Attempt Dynamic Client Registration (RFC 7591) with an MCP auth server."""
     try:
@@ -746,7 +793,7 @@ async def _register_mcp_client(
                 "redirect_uris": [redirect_uri],
                 "grant_types": ["authorization_code"],
                 "response_types": ["code"],
-                "token_endpoint_auth_method": "client_secret_post",
+                "token_endpoint_auth_method": token_endpoint_auth_method,
                 # Required by MCP 2026-07-28 so OIDC-backed authorization
                 # servers apply web-app redirect URI rules.
                 "application_type": "web",

@@ -24,16 +24,18 @@ def _mock_response(json_data: dict, status: int = 200) -> MagicMock:
 class TestMCPOAuthHandler:
     """Tests for the MCPOAuthHandler."""
 
-    def _make_handler(self, **overrides) -> MCPOAuthHandler:
-        defaults = {
-            "client_id": "test-client-id",
-            "client_secret": "test-client-secret",
-            "redirect_uri": "https://app.example.com/callback",
-            "authorize_url": "https://auth.example.com/authorize",
-            "token_url": "https://auth.example.com/token",
-        }
-        defaults.update(overrides)
-        return MCPOAuthHandler(**defaults)
+    def _make_handler(
+        self, *, revoke_url: str | None = None, resource_url: str | None = None
+    ) -> MCPOAuthHandler:
+        return MCPOAuthHandler(
+            client_id="test-client-id",
+            client_secret="<test-client-secret>",
+            redirect_uri="https://app.example.com/callback",
+            authorize_url="https://auth.example.com/authorize",
+            token_url="https://auth.example.com/token",
+            revoke_url=revoke_url,
+            resource_url=resource_url,
+        )
 
     def test_get_login_url_basic(self):
         handler = self._make_handler()

@@ -1,20 +1,24 @@
 from unittest.mock import patch
 
+import pytest
 from autogpt_libs.auth import get_optional_user_id
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api.features.integrations.models import ProviderNamesResponse
-from backend.api.features.integrations.router import router
+from backend.api.features.integrations.router import router, settings
 from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.util.settings import BehaveAs
 
 app = FastAPI()
 app.include_router(router)
 app.dependency_overrides[get_optional_user_id] = lambda: None
 
 
-def test_provider_endpoint_preserves_native_entries_and_adds_mcp_catalog():
+@pytest.mark.parametrize("behave_as", [BehaveAs.CLOUD, BehaveAs.LOCAL])
+def test_provider_endpoint_only_exposes_connectable_catalog(behave_as: BehaveAs):
     with (
+        patch.object(settings.config, "behave_as", behave_as),
         patch("backend.blocks.load_all_blocks"),
         patch(
             "backend.api.features.integrations.router.get_all_provider_names",
@@ -33,8 +37,15 @@ def test_provider_endpoint_preserves_native_entries_and_adds_mcp_catalog():
 
     assert response.status_code == 200
     providers = response.json()
-    assert len(providers) == 90
-    assert len({provider["name"] for provider in providers}) == 90
+    connectable = {
+        entry.name
+        for entry in get_mcp_catalog()
+        if entry.mcp_server.connection_mode != "unavailable"
+    }
+    assert {provider["name"] for provider in providers[2:]} == connectable
+    assert len({provider["name"] for provider in providers}) == len(providers)
+    assert "mcp_1password" not in {provider["name"] for provider in providers}
+    assert "mcp_langfuse" in {provider["name"] for provider in providers}
     assert [provider["name"] for provider in providers[:2]] == ["notion", "google"]
     assert all(provider["mcp_server"] is None for provider in providers[:2])
     notion = next(

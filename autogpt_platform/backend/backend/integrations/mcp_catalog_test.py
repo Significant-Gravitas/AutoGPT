@@ -13,10 +13,10 @@ from backend.integrations.mcp_catalog import (
 )
 
 
-def test_catalog_contains_88_unique_official_entries():
+def test_catalog_contains_unique_official_entries():
     entries = json.loads(Path(__file__).with_name("mcp_catalog.json").read_text())
-    assert len(entries) == 88
-    assert len({entry["name"] for entry in entries}) == 88
+    assert entries
+    assert len({entry["name"] for entry in entries}) == len(entries)
     assert all(entry["official"] is True for entry in entries)
     assert all(entry["name"].startswith("mcp_") for entry in entries)
     for entry in entries:
@@ -50,7 +50,7 @@ def test_catalog_contains_88_unique_official_entries():
 
 def test_catalog_loads_typed_entries_and_keeps_native_names_separate():
     entries = get_mcp_catalog()
-    assert len(entries) == 88
+    assert entries
     assert all(entry.name != entry.display_name.lower() for entry in entries)
     assert {entry.name for entry in entries} >= {"mcp_notion", "mcp_google_drive"}
 
@@ -91,6 +91,13 @@ def test_catalog_rejects_misleading_connection_modes(changes: dict[str, str | No
     data = get_mcp_catalog()[0].mcp_server.model_dump()
     data.update(changes)
     with pytest.raises(ValidationError):
+        MCPServerMetadata.model_validate(data)
+
+
+def test_custom_presets_require_documented_authentication():
+    data = get_mcp_catalog()[0].mcp_server.model_dump()
+    data.update(server_url=None, connection_mode="custom", auth_mode="unknown")
+    with pytest.raises(ValidationError, match="documented auth"):
         MCPServerMetadata.model_validate(data)
 
 

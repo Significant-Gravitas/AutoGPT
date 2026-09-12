@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { McpConnectPanel } from "../McpConnectPanel";
 
-vi.mock("@/lib/oauth-popup", () => ({
+vi.mock("@/lib/oauth-popup", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/oauth-popup")>()),
   openOAuthPopup: vi.fn(),
 }));
 
@@ -86,6 +87,72 @@ describe("McpConnectPanel", () => {
       target: { value: "https://mcp.example.com" },
     });
     expect((connectButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("allows manual authentication without first attempting OAuth", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    render(
+      <McpConnectPanel
+        onSuccess={() => {}}
+        initialServerURL="https://mcp.example.com"
+        initialAuthMode="oauth"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /use an api token instead/i }),
+    );
+    expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("can cancel a pending OAuth popup and use a manual token", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2ExchangeOauthCodeForMcpTokens,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { login_url: "https://login.example.com", state_token: "tok" },
+      headers: new Headers(),
+    } as never);
+    const controller = new AbortController();
+    const abort = vi.fn(() => controller.abort());
+    vi.mocked(openOAuthPopup).mockImplementation(() => ({
+      promise: new Promise((_resolve, reject) =>
+        controller.signal.addEventListener("abort", () =>
+          reject(new Error("OAuth flow was canceled")),
+        ),
+      ),
+      cleanup: { abort, signal: controller.signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    }));
+    render(
+      <McpConnectPanel
+        onSuccess={() => {}}
+        initialServerURL="https://mcp.example.com"
+        initialAuthMode="oauth"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => expect(openOAuthPopup).toHaveBeenCalled());
+    const manual = screen.getByRole<HTMLButtonElement>("button", {
+      name: /use an api token instead/i,
+    });
+    expect(manual.disabled).toBe(false);
+    fireEvent.click(manual);
+    await waitFor(() =>
+      expect(
+        screen.getByPlaceholderText<HTMLInputElement>(manualTokenPlaceholder)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(postV2ExchangeOauthCodeForMcpTokens).not.toHaveBeenCalled();
   });
 
   it("falls back to manual-token form when initiate returns 400", async () => {

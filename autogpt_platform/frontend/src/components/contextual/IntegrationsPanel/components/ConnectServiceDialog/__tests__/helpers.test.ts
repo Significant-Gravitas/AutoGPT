@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 
@@ -18,6 +18,45 @@ function makeMeta(overrides: Partial<ProviderMetadata> = {}): ProviderMetadata {
 }
 
 describe("toConnectableProviders", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each(["CLOUD", "LOCAL"])(
+    "hides unavailable MCP servers in %s deployments while retaining custom and native providers",
+    (mode) => {
+      vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode);
+      const server = {
+        server_url: null,
+        documentation_url: "https://docs.example.com/mcp",
+        setup_instructions: "Configure your server.",
+        auth_mode: "token" as const,
+      };
+      const result = toConnectableProviders([
+        makeMeta(),
+        makeMeta({
+          name: "mcp_local",
+          mcp_server: { ...server, connection_mode: "unavailable" },
+        }),
+        makeMeta({
+          name: "mcp_custom",
+          mcp_server: { ...server, connection_mode: "custom" },
+        }),
+        makeMeta({
+          name: "mcp_hosted",
+          mcp_server: {
+            ...server,
+            server_url: "https://mcp.example.com",
+            connection_mode: "hosted",
+          },
+        }),
+      ]);
+      expect(result.map((provider) => provider.id)).toEqual([
+        "github",
+        "mcp_custom",
+        "mcp_hosted",
+      ]);
+    },
+  );
+
   test("keeps official MCP presets separate from native auth providers", () => {
     const mcpServer = {
       server_url: "https://mcp.notion.com/mcp",

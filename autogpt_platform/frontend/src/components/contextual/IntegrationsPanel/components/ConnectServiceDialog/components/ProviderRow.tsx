@@ -6,6 +6,7 @@ import type { ConnectableProvider } from "../helpers";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
 interface Props {
   provider: ConnectableProvider;
@@ -13,9 +14,8 @@ interface Props {
 }
 
 export function ProviderRow({ provider, onSelect }: Props) {
-  const src = `/integrations/${provider.mcpServer?.icon_id ?? provider.id}.png`;
+  const src = integrationIconSrc(provider.mcpServer?.icon_id ?? provider.id);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-  const broken = brokenSrc === src;
 
   return (
     <button
@@ -23,7 +23,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
       onClick={() => onSelect(provider.id)}
       className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100"
     >
-      {broken ? (
+      {!src || brokenSrc === src ? (
         <div
           aria-hidden
           className="flex size-9 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[14px] font-semibold uppercase text-zinc-600"

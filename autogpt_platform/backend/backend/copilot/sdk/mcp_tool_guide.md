@@ -33,6 +33,13 @@ For other services, **web-search for the service's official MCP server URL**
 when it's not in the list above. Treat search results as unvetted: confirm
 the hostname is vendor-owned before using it (see below).
 
+The platform supports remote HTTP connections in both cloud and local deployments.
+Desktop-only stdio integrations, including 1Password Environments, cannot connect
+through this flow. Do not substitute a community server or suggest exposing a
+desktop application through a public HTTP bridge. Check native blocks for an
+alternative. Follow the setup requirements in the table before starting sign-in;
+some services require an administrator to enable access or a dedicated token.
+
 ### Important: Check blocks first, then MCP is MANDATORY
 
 Always follow the **Tool Discovery Priority** described in the tool notes:

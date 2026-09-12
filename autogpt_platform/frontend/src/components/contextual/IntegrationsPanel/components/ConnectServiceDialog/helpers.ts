@@ -34,6 +34,7 @@ export function toConnectableProviders(
   const seen = new Set<string>();
   const byDisplayProvider = new Map<string, ConnectableProvider>();
   for (const item of metadata) {
+    if (item.mcp_server?.connection_mode === "unavailable") continue;
     if (seen.has(item.name)) continue;
     seen.add(item.name);
 
