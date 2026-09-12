@@ -113,9 +113,10 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
-    # Chat-platform proactive output (post message / create thread)
+    # Chat-platform proactive output (post message / create thread / edit)
     CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
     CHAT_PLATFORM_POSTED = "chat_platform_posted"
+    CHAT_PLATFORM_EDITED = "chat_platform_edited"
 
     # Skills (self-distilled procedure registry)
     SKILL_STORED = "skill_stored"
@@ -1331,3 +1332,12 @@ class ChatPlatformPostedResponse(ToolResponseBase):
     channel_id: str
     ref_id: str | None = None
     url: str | None = None
+
+
+class ChatPlatformEditedResponse(ToolResponseBase):
+    """Response after the bot edits a message it previously posted."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_EDITED
+    platform: str
+    channel_id: str
+    ref_id: str

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from slack_sdk.errors import SlackApiError
 
-from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.adapters.base import EditOutcome, FileAttachment
 from backend.data.bot_installs import BotInstallCredentials
 
 from . import config
@@ -33,6 +33,7 @@ def _mock_client() -> MagicMock:
     client = MagicMock()
     client.token = "xoxb-test"
     client.chat_postMessage = AsyncMock(return_value={"ts": "111.222"})
+    client.chat_update = AsyncMock(return_value={"ok": True})
     client.chat_postEphemeral = AsyncMock()
     client.chat_getPermalink = AsyncMock(return_value={"permalink": "https://x/p"})
     client.files_upload_v2 = AsyncMock()
@@ -616,6 +617,56 @@ class TestOutbound:
     @pytest.mark.asyncio
     async def test_rename_thread_is_noop(self, adapter):
         assert await adapter.rename_thread("T1|C1|9.9", "x") is False
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_calls_chat_update(self, adapter):
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.OK
+        call = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert call["channel"] == "C1"
+        assert call["ts"] == "111.222"
+        assert call["text"] == "updated"
+        # chat.update keeps a message's existing blocks when `blocks` is
+        # omitted, so a block message would silently not change.
+        assert call["blocks"] == []
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self, adapter):
+        # Edit content is model-authored, so it must go through the same
+        # mrkdwn escaping as a send. Dropping `localize_markup` from the edit
+        # path has to fail here.
+        await adapter.edit_channel_message(
+            "T1|C1|", "111.222", "**bold** <!channel> & <https://x>"
+        )
+
+        call = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert call["text"] == adapter.localize_markup(
+            "**bold** <!channel> & <https://x>"
+        )
+        assert "**bold**" not in call["text"]
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found(self, adapter):
+        adapter._clients["T1"].chat_update = AsyncMock(
+            side_effect=SlackApiError("not found", {"error": "message_not_found"})
+        )
+
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_on_other_slack_error(self, adapter):
+        adapter._clients["T1"].chat_update = AsyncMock(
+            side_effect=SlackApiError(
+                "edit forbidden", {"error": "cant_update_message"}
+            )
+        )
+
+        outcome = await adapter.edit_channel_message("T1|C1|", "111.222", "updated")
+
+        assert outcome == EditOutcome.FAILED
 
 
 class TestChannelIdGrammar:

@@ -26,6 +26,7 @@ from fastapi.responses import PlainTextResponse
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -41,7 +42,7 @@ from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from . import commands, config
-from .api_client import TelegramClient
+from .api_client import TelegramAPIError, TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
@@ -498,6 +499,7 @@ class TelegramAdapter(WebhookAdapter):
         # caller's retry would repost the chunks already delivered (mirrors
         # Discord's ``_send_chunked``).
         posted = False
+        sent = 0
         for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 result = await self._client.call(
@@ -515,11 +517,12 @@ class TelegramAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Telegram chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_id is None:
                 first_id = str(result.get("message_id", ""))
         if first_id is None:
             return None
-        return PostedRef(id=first_id, url=None)
+        return PostedRef(id=first_id, url=None, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -529,7 +532,49 @@ class TelegramAdapter(WebhookAdapter):
         posted = await self.post_channel_message(channel_id, f"**{name}**\n\n{text}")
         if posted is None:
             return None
-        return PostedRef(id=channel_id, url=posted.url)
+        # `id` stays the posted message so it can be edited; `channel_id`
+        # carries the chat/topic target that keeps follow-up sends in place.
+        return PostedRef(
+            id=posted.id,
+            url=posted.url,
+            channel_id=channel_id,
+            chunk_count=posted.chunk_count,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        chat_id, _ = _decode_target(channel_id)
+        try:
+            message_id = int(ref_id)
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        try:
+            await self._client.call(
+                "editMessageText",
+                chat_id=chat_id,
+                message_id=message_id,
+                text=self.localize_markup(text),
+                parse_mode="HTML",
+            )
+        except TelegramAPIError as e:
+            detail = str(e).lower()
+            # Telegram answers "message is not modified" when the new text is
+            # byte-identical. The edit is already in the requested state, so
+            # reporting failure only makes the model retry forever.
+            if "not modified" in detail:
+                return EditOutcome.OK
+            # "message to edit not found" and "message can't be edited" (past
+            # the 48h window) are both NOT_FOUND's documented meaning: gone or
+            # too old to touch.
+            if "not found" in detail or "can't be edited" in detail:
+                return EditOutcome.NOT_FOUND
+            logger.warning("Telegram editMessageText rejected edit: %s", e)
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Telegram message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     # -- Helpers --
 
