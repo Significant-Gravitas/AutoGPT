@@ -45,6 +45,7 @@ describe("formatProviderName", () => {
     expect(formatProviderName("github")).toBe("GitHub");
     expect(formatProviderName("d_id")).toBe("D-ID");
     expect(formatProviderName("twitter")).toBe("X");
+    expect(formatProviderName("aiml_api")).toBe("aimlapi.com");
     // "MCP" is an acronym — without an override the title-caser would
     // emit the awkward "Mcp" we shipped before; keep the override.
     expect(formatProviderName("mcp")).toBe("MCP");

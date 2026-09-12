@@ -5,7 +5,7 @@ export function toDisplayName(provider: unknown): string {
 
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
-    aiml_api: "AI/ML",
+    aiml_api: "aimlapi.com",
     d_id: "D-ID",
     e2b: "E2B",
     llama_api: "Llama API",
