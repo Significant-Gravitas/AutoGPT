@@ -188,6 +188,7 @@ services:
       - "5672:5672"
 
   rest_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -226,6 +227,7 @@ services:
         max-file: "3"
 
   executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -263,6 +265,7 @@ services:
         max-file: "3"
 
   copilot_executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -303,6 +306,7 @@ services:
         max-file: "3"
 
   websocket_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -336,6 +340,7 @@ services:
         max-file: "3"
 
   database_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -367,6 +372,7 @@ services:
         max-file: "3"
 
   scheduler_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -402,6 +408,7 @@ services:
         max-file: "3"
 
   notification_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -434,6 +441,7 @@ services:
         max-size: "10m"
         max-file: "3"
   platform_linking_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     profiles: ["bot"]
     build:
       context: ../
