@@ -15,6 +15,7 @@ on:
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   merge_group:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha }}
@@ -24,6 +25,9 @@ defaults:
   run:
     shell: bash
     working-directory: autogpt_platform/frontend
+
+permissions:
+  contents: read
 
 jobs:
   setup:
