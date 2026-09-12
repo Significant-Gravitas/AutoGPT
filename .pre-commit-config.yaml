@@ -25,7 +25,9 @@ repos:
         description: Detects high entropy strings that are likely to be passwords.
         args: ["--baseline", ".secrets.baseline"]
         files: ^autogpt_platform/
-        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template))$
+        # The style eval's baseline is generated and holds sha256 content
+        # hashes of the assembled prompts, which read as high-entropy hex.
+        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template)|copilot/eval/style/baseline\.json)$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3

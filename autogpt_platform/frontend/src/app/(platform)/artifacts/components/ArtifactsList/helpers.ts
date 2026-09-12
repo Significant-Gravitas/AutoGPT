@@ -9,6 +9,12 @@ import {
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import {
+  getGetWorkspaceStorageUsageQueryKey,
+  getListWorkspaceFoldersQueryKey,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
+import type { QueryClient } from "@tanstack/react-query";
+import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }
@@ -413,4 +419,18 @@ export function getEmptyState(opts: {
     showUpload: true,
     chatHref: "/copilot",
   };
+}
+
+/**
+ * Refetches everything a file deletion touches: the listing, the folder rows
+ * (which show file counts) and the storage footer.
+ */
+export function invalidateWorkspaceFileQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ARTIFACTS_LIST_QUERY_KEY });
+  queryClient.invalidateQueries({
+    queryKey: getListWorkspaceFoldersQueryKey(),
+  });
+  queryClient.invalidateQueries({
+    queryKey: getGetWorkspaceStorageUsageQueryKey(),
+  });
 }

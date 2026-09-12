@@ -37,7 +37,7 @@ OAuth is ideal for:
 - "Sign in with AutoGPT" (SSO, Single Sign-On) functionality
 - Applications that need user-specific permissions
 
-See the [SSO Integration Guide](sso-guide.md) for complete OAuth implementation details.
+See the [OAuth Integration Guide](oauth-guide.md) for complete OAuth implementation details.
 
 ## Available Scopes
 
@@ -48,9 +48,11 @@ When using OAuth, request only the scopes your application needs:
 | `IDENTITY` | Read user ID, e-mail, and timezone |
 | `EXECUTE_GRAPH` | Run agents |
 | `READ_GRAPH` | Read agent run results |
+| `WRITE_GRAPH` | Create and update agent graphs |
 | `EXECUTE_BLOCK` | Run individual blocks |
 | `READ_BLOCK` | Read block definitions |
 | `READ_STORE` | Access the agent store |
+| `WRITE_LIBRARY` | Add agents to your library |
 | `USE_TOOLS` | Use platform tools |
 | `MANAGE_INTEGRATIONS` | Create and update user integrations |
 | `READ_INTEGRATIONS` | Read user integration status |
@@ -69,7 +71,7 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 ### Using OAuth
 
 1. Register an OAuth application (contact platform administrator)
-2. Implement the OAuth flow as described in the [SSO Guide](sso-guide.md)
+2. Implement the OAuth flow as described in the [OAuth Guide](oauth-guide.md)
 3. Use the obtained access token:
 
 ```bash

@@ -216,6 +216,26 @@ def test_gemini_3_8_flash_bills_at_authored_rates():
     assert flash_entry.context_window == 1048576
 
 
+def test_qwen3_8_max_0902_bills_at_authored_rates():
+    """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
+    1M) — flat tier and per-1M projections must match the authored catalog
+    entry."""
+    qwen_max = LLMModel("qwen/qwen3.8-max-0902")
+    assert MODEL_COST[qwen_max] == 5
+    assert TOKEN_COST[qwen_max].model_dump() == {
+        "input": 300.0,
+        "output": 900.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[qwen_max].max_output_tokens == 131072
+    qwen_max_entry = next(
+        m for m in CATALOG.models if m.slug == "qwen/qwen3.8-max-0902"
+    )
+    assert qwen_max_entry.price_tier == 2
+    assert qwen_max_entry.context_window == 262144
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
