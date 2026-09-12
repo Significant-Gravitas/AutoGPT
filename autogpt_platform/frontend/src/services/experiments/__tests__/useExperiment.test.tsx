@@ -26,7 +26,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: auth.user, isUserLoading: false }),
 }));
 
-function wrapper({ children }: { children: ReactNode }) {
+interface Props {
+  children: ReactNode;
+}
+
+function wrapper({ children }: Props) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { useFlags, useLDClient } from "launchdarkly-react-client-sdk";
 import posthog from "posthog-js";
@@ -25,6 +26,9 @@ const LD_READY_TIMEOUT_SECONDS = 5;
  * has initialised (or timed out) so a late arm is never recorded as control.
  */
 export function useLaunchDarklyExperiment(flagKey: string) {
+  const { user } = useAuth();
+  const userID = user?.id;
+  const postHogEnabled = Boolean(environment.isPostHogEnabled());
   const flags = useFlags<Record<string, unknown>>();
   const client = useLDClient();
   const [isClientReady, setIsClientReady] = useState(false);
@@ -56,8 +60,8 @@ export function useLaunchDarklyExperiment(flagKey: string) {
   });
 
   useEffect(() => {
-    if (!isResolved || !variant || !claimExposure(flagKey, variant)) return;
-    if (!environment.isPostHogEnabled()) return;
+    if (!isResolved || !variant || !userID || !postHogEnabled) return;
+    if (!claimExposure(userID, flagKey, variant)) return;
     try {
       posthog.capture("experiment_exposed", {
         experiment_key: flagKey,
@@ -68,15 +72,15 @@ export function useLaunchDarklyExperiment(flagKey: string) {
     } catch {
       // Analytics must never break the experience it measures.
     }
-  }, [isResolved, variant, flagKey]);
+  }, [isResolved, variant, flagKey, userID, postHogEnabled]);
 
   return { variant, isResolved };
 }
 
 const exposures = new Set<string>();
 
-function claimExposure(flagKey: string, variant: string) {
-  const key = `${flagKey}:${variant}`;
+function claimExposure(userID: string, flagKey: string, variant: string) {
+  const key = JSON.stringify([userID, flagKey, variant]);
   if (exposures.has(key)) return false;
   exposures.add(key);
   return true;
