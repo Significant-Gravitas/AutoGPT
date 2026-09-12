@@ -44,8 +44,12 @@ it.each([
     vi.stubEnv("NEXT_PUBLIC_AGPT_SERVER_URL", backend);
     const uploadedURL = url.replace("avatar.png", "uploaded.png");
     uploadSpy.mockResolvedValueOnce(uploadedURL);
+    let persistedProfile: unknown;
     server.use(
-      getPostV2UpdateUserProfileMockHandler200(() => profile(uploadedURL)),
+      getPostV2UpdateUserProfileMockHandler200(async ({ request }) => {
+        persistedProfile = await request.json();
+        return profile(uploadedURL);
+      }),
     );
     render(<ProfileInfoForm profile={profile(url)} />);
 
@@ -67,6 +71,7 @@ it.each([
       ).toBe(uploadedURL),
     );
     const uploaded = screen.getByRole("img", { name: "Profile" });
+    expect(persistedProfile).toEqual(profile(uploadedURL));
     expect(uploaded.hasAttribute("srcset")).toBe(false);
   },
 );

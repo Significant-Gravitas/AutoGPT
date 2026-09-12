@@ -1,79 +1,25 @@
 "use client";
 
-import { useState } from "react";
-
 import Image from "next/image";
-
-import { IconPersonFill } from "@/components/__legacy__/ui/icons";
-import { Separator } from "@/components/__legacy__/ui/separator";
-import { postV2UpdateUserProfile } from "@/app/api/__generated__/endpoints/store/store";
-import { resolveResponse } from "@/app/api/helpers";
+import { UserIcon } from "@phosphor-icons/react";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { Button } from "@/components/atoms/Button/Button";
+import { Separator } from "@/components/ui/separator";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
-import {
-  isFileTooLarge,
-  SUBMISSION_MEDIA_MAX_SIZE_MB,
-  uploadSubmissionMediaDirect,
-} from "@/lib/direct-upload";
-import { Button } from "./Button";
+import { useProfileInfoForm } from "./useProfileInfoForm";
 
-export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [profileData, setProfileData] = useState<ProfileDetails>(profile);
+interface Props {
+  profile: ProfileDetails;
+}
 
-  async function submitForm() {
-    try {
-      setIsSubmitting(true);
-
-      const updatedProfile = {
-        name: profileData.name,
-        username: profileData.username,
-        description: profileData.description,
-        links: profileData.links.filter((link) => link), // Filter out empty links
-        avatar_url: profileData.avatar_url,
-      };
-
-      if (!isSubmitting) {
-        const returnedProfile = await resolveResponse(
-          postV2UpdateUserProfile(updatedProfile),
-        );
-        if (returnedProfile) setProfileData(returnedProfile);
-      }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleImageUpload(file: File) {
-    if (
-      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
-    )
-      return;
-
-    try {
-      const mediaUrl = await uploadSubmissionMediaDirect(file);
-
-      const updatedProfile = {
-        ...profileData,
-        avatar_url: mediaUrl,
-      };
-
-      const returnedProfile = await resolveResponse(
-        postV2UpdateUserProfile(updatedProfile),
-      );
-      if (returnedProfile) setProfileData(returnedProfile);
-    } catch (error) {
-      toast({
-        title: "Failed to upload photo",
-        description: error instanceof Error ? error.message : undefined,
-        variant: "destructive",
-      });
-    }
-  }
+export function ProfileInfoForm({ profile }: Props) {
+  const {
+    profileData,
+    setProfileData,
+    isSubmitting,
+    submitForm,
+    handleImageUpload,
+  } = useProfileInfoForm(profile);
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
@@ -96,7 +42,11 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                 className="rounded-full"
               />
             ) : (
-              <IconPersonFill className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]" />
+              <UserIcon
+                weight="fill"
+                aria-label="Person Fill Icon"
+                className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]"
+              />
             )}
           </div>
           <label className="font-circular mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] bg-[#15171A] px-6 py-2 text-sm font-normal text-white transition-colors hover:bg-[#2D2F34] dark:bg-white dark:text-[#15171A] dark:hover:bg-[#E5E5E5]">
@@ -241,22 +191,11 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
           <Separator />
 
           <div className="flex h-[50px] items-center justify-end gap-3 py-8">
-            {/* FRONTEND-TODO: Need to fix it */}
-            {/* <Button
-              type="button"
-              variant="secondary"
-              className="font-circular h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
-              onClick={() => {
-                setProfileData(profile);
-              }}
-            >
-              Cancel
-            </Button> */}
             <Button
               type="submit"
               disabled={isSubmitting}
+              loading={isSubmitting}
               className="font-circular h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
-              onClick={submitForm}
             >
               {isSubmitting ? "Saving..." : "Save changes"}
             </Button>
