@@ -6,7 +6,7 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.api.features.v1 import get_credit_history, v1_router
+from backend.api.features.credits.routes import get_credit_history, router
 from backend.api.rest_api import handle_internal_http_error
 from backend.data.credit import UserCreditBase
 from backend.data.model import TransactionHistory
@@ -27,7 +27,7 @@ CONTEXT = RequestContext(
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(v1_router)
+    app.include_router(router)
     app.add_exception_handler(ValueError, handle_internal_http_error(400))
     app.dependency_overrides[requires_user] = lambda: None
     app.dependency_overrides[get_user_id] = lambda: "user"
@@ -51,7 +51,8 @@ def test_invalid_cursor_returns_400(client, monkeypatch):
         "Invalid credit history cursor"
     )
     monkeypatch.setattr(
-        "backend.api.features.v1.get_credit_model", AsyncMock(return_value=model)
+        "backend.api.features.credits.routes.get_credit_model",
+        AsyncMock(return_value=model),
     )
     response = client.get("/credits/transactions", params={"cursor": "invalid"})
     assert response.status_code == 400
@@ -66,7 +67,9 @@ async def test_history_route_forwards_cursor_and_org_context(monkeypatch):
         transactions=[], next_transaction_time=None
     )
     get_model = AsyncMock(return_value=model)
-    monkeypatch.setattr("backend.api.features.v1.get_credit_model", get_model)
+    monkeypatch.setattr(
+        "backend.api.features.credits.routes.get_credit_model", get_model
+    )
     result = await get_credit_history(
         user_id="user", ctx=CONTEXT, cursor="cursor", transaction_count_limit=50
     )
