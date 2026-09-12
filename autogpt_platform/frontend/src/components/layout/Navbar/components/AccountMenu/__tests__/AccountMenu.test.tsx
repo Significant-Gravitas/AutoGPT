@@ -1,6 +1,6 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
@@ -74,6 +74,9 @@ const baseGroups: MenuItemGroup[] = [
 ];
 
 describe("AccountMenu", () => {
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+  });
   test("renders user name and email when loaded", () => {
     render(
       <AccountMenu
@@ -158,6 +161,7 @@ describe("AccountMenu", () => {
   });
 
   test("new layout renders the organization switcher header trigger", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     render(
       <AccountMenu
         userName="Ada"
@@ -168,6 +172,25 @@ describe("AccountMenu", () => {
     );
 
     expect(screen.getByTestId("account-menu-org-trigger")).toBeDefined();
+  });
+
+  test("new layout keeps account details without an organization trigger when the flag is off", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByText("Ada")).toBeDefined();
+    expect(screen.getByTestId("account-menu-user-email").textContent).toBe(
+      "ada@example.com",
+    );
+    expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
+    expect(screen.queryByTestId("account-menu-org-popover")).toBeNull();
   });
 
   test("new layout renders the agent activity row trigger", () => {

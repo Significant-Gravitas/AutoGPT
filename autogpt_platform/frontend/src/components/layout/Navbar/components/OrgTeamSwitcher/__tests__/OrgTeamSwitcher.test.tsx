@@ -72,6 +72,18 @@ describe("OrgTeamSwitcher", () => {
     delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   });
 
+  it.each(["false", undefined])(
+    "hides the whole org/team switcher when the flag is %s",
+    (flag) => {
+      if (flag === undefined)
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
+      seedStore();
+      const { container } = render(<OrgTeamSwitcher />);
+      expect(container.innerHTML).toBe("");
+    },
+  );
+
   it("renders nothing before the org context has loaded", () => {
     seedStore({ isLoaded: false });
 

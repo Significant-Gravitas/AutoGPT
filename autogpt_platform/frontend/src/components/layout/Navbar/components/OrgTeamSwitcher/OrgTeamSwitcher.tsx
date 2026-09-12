@@ -33,7 +33,7 @@ export function OrgTeamSwitcher() {
     isLoaded,
   } = useOrgTeamSwitcher();
 
-  if (!isLoaded || orgs.length === 0) {
+  if (!canManageOrgs || !isLoaded || orgs.length === 0) {
     return null;
   }
 

@@ -45,8 +45,8 @@ export enum Flag {
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
-  // Gates the org/teams management UI (org settings page + the
-  // create-organization entry points on the switchers). Defaults false
+  // Gates all org/team collaboration UI and selects personal-only context
+  // when disabled; the backend also gates collaboration actions. Defaults false
   // below — fail-closed, so a LaunchDarkly outage or a missing flag key
   // never exposes the surface. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env
   // overrides to enable it for local-dev / Playwright runs.

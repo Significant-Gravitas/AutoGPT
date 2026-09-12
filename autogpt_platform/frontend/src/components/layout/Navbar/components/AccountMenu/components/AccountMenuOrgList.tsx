@@ -16,7 +16,7 @@ export function AccountMenuOrgList() {
   const canManageOrgs = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
 
-  if (!isLoaded) {
+  if (!canManageOrgs || !isLoaded) {
     return null;
   }
 

@@ -74,6 +74,22 @@ describe("AccountMenuOrgList", () => {
     expect(screen.queryByText("No organizations yet")).toBeNull();
   });
 
+  it.each(["false", undefined])(
+    "hides existing organizations and creation when the flag is %s",
+    (flagValue) => {
+      if (flagValue === undefined) {
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      } else {
+        process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flagValue;
+      }
+      seedStore();
+      const { container } = render(<AccountMenuOrgList />);
+
+      expect(container.textContent).toBe("");
+      expect(screen.queryByTestId("create-organization-button")).toBeNull();
+    },
+  );
+
   it("shows an empty state with a create button when there are no orgs", () => {
     seedStore({ orgs: [], teams: [] });
 
