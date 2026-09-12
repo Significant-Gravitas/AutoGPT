@@ -1082,7 +1082,7 @@ class TestActorParameter:
             parent_session_id="parent-1",
             elapsed=1.0,
         )
-        assert r.message is not None and r.message.startswith("Sub-Otto completed")
+        assert r.message is not None and r.message.startswith("Subtask completed")
 
     @pytest.mark.parametrize(
         "outcome,expected_prefix",
@@ -1105,25 +1105,30 @@ class TestActorParameter:
         )
         assert r.message is not None and r.message.startswith(expected_prefix)
 
-    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
-        """When the caller already passed the delegate's name as ``actor``,
-        apply_delegated_expert's message.replace("Sub-Otto", ...) must
-        find nothing to substitute — the message was already built correctly
-        by response_from_outcome, not patched up afterwards."""
+    @pytest.mark.parametrize(
+        "expert_name", ["Bea", "Subtask Reviewer", "Senior Subtask Analyst", "Subtask"]
+    )
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self, expert_name):
+        """Attaching metadata preserves the message even when the expert's
+        name contains the default actor label."""
         response = response_from_outcome(
             outcome="completed",
             result=SessionResult(),
             inner_session_id="inner-1",
             parent_session_id="parent-1",
             elapsed=1.0,
-            actor="Bea",
+            actor=expert_name,
         )
         expert = DelegatedExpertInfo(
-            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+            id="expert-b",
+            name=expert_name,
+            role="Ops lead",
+            avatar_url=None,
+            color="violet",
         )
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
-        assert "Sub-Otto" not in (result.message or "")
+        assert result.expert == expert
 
 
 class TestSpawnEnvelopeArguments:

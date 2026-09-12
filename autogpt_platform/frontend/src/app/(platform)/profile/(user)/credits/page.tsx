@@ -41,7 +41,7 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">Otto Usage & Storage</h3>
+      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
       <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
         {usage.daily && (
           <UsageBar
@@ -288,7 +288,7 @@ export default function CreditsPage() {
             )}
           </form>
 
-          {/* Otto Usage Limits */}
+          {/* Expert Usage Limits */}
           <CoPilotUsageSection />
         </div>
 

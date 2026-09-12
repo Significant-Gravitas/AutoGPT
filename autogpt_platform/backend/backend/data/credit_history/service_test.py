@@ -142,7 +142,7 @@ async def test_invalid_page_limit_is_rejected_before_query(limit):
     "execution_id,activity,description",
     [
         ("run-1", "agent_run", "Agent run"),
-        ("copilot-session-chat", "copilot_tools", "Otto tool use"),
+        ("copilot-session-chat", "copilot_tools", "Expert tool use"),
         (None, "block_usage", "Block usage"),
     ],
 )

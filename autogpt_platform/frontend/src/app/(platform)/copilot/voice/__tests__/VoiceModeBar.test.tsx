@@ -156,7 +156,9 @@ describe("VoiceModeButton", () => {
     const { rerender } = render(
       <VoiceModeButton isActive={false} onClick={vi.fn()} />,
     );
-    expect(screen.getByRole("button", { name: "Talk to Otto" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Start voice mode" }),
+    ).toBeDefined();
 
     rerender(<VoiceModeButton isActive onClick={vi.fn()} />);
     const active = screen.getByRole("button", { name: "Leave voice mode" });

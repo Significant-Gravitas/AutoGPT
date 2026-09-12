@@ -439,7 +439,7 @@ class TestDelegation:
         assert r.expert is not None
         assert r.expert.id == "expert-b"
         assert r.expert.name == "Bea"
-        assert "Sub-Otto" not in r.message
+        assert "Subtask" not in r.message
         assert "Bea" in r.message
 
     @pytest.mark.asyncio

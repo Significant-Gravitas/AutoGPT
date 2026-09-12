@@ -21,11 +21,11 @@ EXPERTS_ROOT = "/experts/"
 
 EXPERT_FILE_ACCESS_DENIED = (
     "This file is outside this expert's scope. Experts can only access files "
-    "from their own conversations and their own skills. Open personal Otto "
+    "from their own conversations and their own skills. Open a chat with Otto "
     "to work with other files."
 )
 EXPERT_SKILL_SCOPE_DENIED = (
-    "Experts can only use and manage their own skills. Open personal Otto "
+    "Experts can only use and manage their own skills. Open a chat with Otto "
     "to manage another expert's skills or the account's skills."
 )
 

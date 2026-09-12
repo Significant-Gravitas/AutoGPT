@@ -46,10 +46,10 @@ export async function transcribeUtterance(audio: Blob): Promise<string> {
  */
 function speechFailure(status: number): string {
   if (status === 429) {
-    return "You've reached your Otto usage limit — voice replies are paused until it resets.";
+    return "You've reached your usage limit — voice replies are paused until it resets.";
   }
   if (status === 402) {
-    return "Voice replies need an active Otto subscription.";
+    return "Voice replies need an active AutoGPT subscription.";
   }
   if (status === 503) {
     return "Voice replies are unavailable right now. Try again shortly.";

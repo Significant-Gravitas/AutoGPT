@@ -790,6 +790,10 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "paywalled"
+        assert denial.message == (
+            "Chatting with experts requires an active subscription. "
+            "Upgrade your plan to start chatting."
+        )
         assert denial.button_url == "https://app/settings/billing"
         assert denial.button_label == "Subscribe"
 
@@ -833,6 +837,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio
@@ -847,6 +854,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio

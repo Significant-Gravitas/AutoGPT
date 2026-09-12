@@ -98,7 +98,7 @@ describe("handleStreamError", () => {
       title: string;
       description: string;
     };
-    expect(arg.title).toBe("Otto stopped responding");
+    expect(arg.title).toBe("Your expert stopped responding");
     // Backend message takes priority over fallbackDescription.
     expect(arg.description).toBe("tool sleeping");
   });
@@ -111,7 +111,7 @@ describe("handleStreamError", () => {
       isUserStoppingRef: makeRef(false),
     });
     const arg = mockToast.mock.calls[0][0] as { title: string };
-    expect(arg.title).toBe("Otto ran into a problem");
+    expect(arg.title).toBe("Your expert ran into a problem");
   });
 
   it("uses fallbackDescription when the backend message is empty", () => {

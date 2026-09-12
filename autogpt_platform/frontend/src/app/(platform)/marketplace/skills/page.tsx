@@ -8,8 +8,9 @@ import { BROWSE_PAGE_SIZE } from "../components/SkillsSection/helpers";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Otto Skills - AutoGPT Marketplace",
-  description: "Playbooks your Otto follows. Install one and it knows how.",
+  title: "Skills - AutoGPT Marketplace",
+  description:
+    "Playbooks your experts follow. Add a playbook to your library, ready to assign to your experts.",
 };
 
 export default async function MarketplaceSkillsPage() {
