@@ -1985,7 +1985,9 @@ async def stream_chat_completion_baseline(
         # here MUST NOT block the turn; log and proceed with empty index.
         skills_ctx = ""
         try:
-            skills_ctx = await build_skills_context(user_id)
+            skills_ctx = await build_skills_context(
+                user_id, expert_id=session.expert_id
+            )
         except Exception:
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"

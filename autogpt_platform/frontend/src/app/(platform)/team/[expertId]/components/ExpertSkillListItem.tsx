@@ -20,7 +20,8 @@ export function ExpertSkillListItem({
   isSaving,
   onRemove,
 }: Props) {
-  const triggers = entry.library?.triggers ?? [];
+  const details = entry.skill ?? entry.library;
+  const triggers = details?.triggers ?? [];
   return (
     <div
       className="flex w-full flex-col gap-3 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
@@ -41,8 +42,7 @@ export function ExpertSkillListItem({
             {entry.name}
           </Text>
           <Text variant="small" tone="muted">
-            {entry.library?.description ??
-              "Marketplace skill. Not in your library yet."}
+            {details?.description ?? "Skill details unavailable."}
           </Text>
           {triggers.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
