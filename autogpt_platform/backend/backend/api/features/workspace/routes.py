@@ -81,6 +81,8 @@ def _create_streaming_response(
         media_type=file.mime_type,
         headers={
             "Content-Disposition": disposition,
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
             "Content-Length": str(len(content)),
         },
     )
@@ -160,7 +162,7 @@ class WorkspaceFileItem(BaseModel):
     origin: Literal["uploaded", "generated"]
     created_at: str
     # Hired expert whose conversation the file lives in; None for personal
-    # AutoPilot chats, Builder output and uploads outside a chat.
+    # Otto chats, Builder output and uploads outside a chat.
     expert_id: str | None = None
 
 

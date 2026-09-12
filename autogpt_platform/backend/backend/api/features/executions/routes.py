@@ -389,4 +389,4 @@ async def download_shared_file(
     if not file:
         raise HTTPException(status_code=404, detail="Not found")
 
-    return await create_file_download_response(file, inline=True)
+    return await create_file_download_response(file)

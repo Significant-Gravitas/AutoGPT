@@ -151,7 +151,7 @@ export function SitrepItem({ item }: Props) {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
         >
           <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
-          Ask AutoPilot
+          Ask Otto
         </button>
       </div>
     </div>

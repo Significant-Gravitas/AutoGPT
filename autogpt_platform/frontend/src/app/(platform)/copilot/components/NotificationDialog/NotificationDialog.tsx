@@ -78,9 +78,8 @@ export function NotificationDialog() {
             <Icon icon={BellRingIcon} className="h-6 w-6 text-violet-600" />
           </div>
           <Text variant="body" className="text-center text-neutral-600">
-            AutoPilot can notify you when a response is ready, even if you
-            switch tabs or close this page. Enable notifications so you never
-            miss one.
+            Otto can notify you when a response is ready, even if you switch
+            tabs or close this page. Enable notifications so you never miss one.
           </Text>
         </div>
         <Dialog.Footer className="justify-center">
