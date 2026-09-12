@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
 import { buildLDContext } from "./helpers";
 
@@ -18,7 +19,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   const context = useMemo(() => {
     if (isUserLoading) return;
-    return buildLDContext(user);
+    return buildLDContext(user, getAnonymousID());
   }, [user, isUserLoading]);
 
   if (!envEnabled) {
