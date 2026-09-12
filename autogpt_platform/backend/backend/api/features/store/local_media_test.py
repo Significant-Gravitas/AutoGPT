@@ -148,6 +148,39 @@ def test_public_download_rejects_symlink_escape(local_settings, client, tmp_path
     assert b"private" not in response.content
 
 
+@pytest.mark.parametrize(
+    "link_directory,private_relative_path",
+    [("users/user", "images/image.png"), ("users/user/images", "image.png")],
+)
+async def test_media_rejects_symlink_to_sibling_with_shared_root_prefix(
+    local_settings, client, link_directory, private_relative_path
+):
+    root = local_media.media_root()
+    outside = root.with_name(f"{root.name}-private")
+    private_file = outside / private_relative_path
+    private_file.parent.mkdir(parents=True)
+    private_file.write_bytes(b"private")
+    link = root / link_directory
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+
+    response = client.get("/api/store/media/user/images/image.png")
+    assert response.status_code == 404
+    assert b"private" not in response.content
+    with pytest.raises(ValueError, match="Invalid media path"):
+        await local_media.store_media("user", "images", "image.png", b"replacement")
+    assert private_file.read_bytes() == b"private"
+
+
+async def test_media_allows_symlink_to_file_within_root(local_settings, client):
+    await local_media.store_media("user", "images", "original.png", b"image")
+    original = local_media.get_media_path("user", "images", "original.png")
+    original.with_name("alias.png").symlink_to(original)
+    response = client.get("/api/store/media/user/images/alias.png")
+    assert response.status_code == 200
+    assert response.content == b"image"
+
+
 async def test_rejected_virus_scan_never_writes_media(local_settings, monkeypatch):
     monkeypatch.setattr(
         media, "scan_content_safe", AsyncMock(side_effect=RuntimeError("virus"))

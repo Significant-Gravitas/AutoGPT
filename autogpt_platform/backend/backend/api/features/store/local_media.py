@@ -42,17 +42,19 @@ def get_media_path(user_id: str, media_type: str, filename: str) -> Path:
     if media_type not in MEDIA_TYPES:
         raise ValueError("Invalid media type")
 
-    base_dir = media_root().resolve()
-    candidate = (
-        base_dir
-        / "users"
-        / _validate_path_component(user_id)
-        / media_type
-        / _validate_path_component(filename)
-    ).resolve()
-    if not candidate.is_relative_to(base_dir):
+    base_dir = os.path.realpath(media_root())
+    candidate = os.path.realpath(
+        os.path.join(
+            base_dir,
+            "users",
+            _validate_path_component(user_id),
+            media_type,
+            _validate_path_component(filename),
+        )
+    )
+    if not candidate.startswith(base_dir + os.sep):
         raise ValueError("Invalid media path")
-    return candidate
+    return Path(candidate)
 
 
 def content_type_for_filename(filename: str) -> str | None:
