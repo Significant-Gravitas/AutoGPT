@@ -29,6 +29,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store import skill_seed
 from backend.api.features.store.categories import StoreCategory
 from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
@@ -56,11 +57,6 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "personalized-morning-coffee-newsletter",
     "smart-meeting-brief",
 }
-EXPECTED_ROSTER_SCHEDULE = (
-    "Frankie",
-    "personalized-morning-coffee-newsletter",
-    "40 7 * * *",
-)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -209,10 +205,14 @@ async def _load_roster_store_assets() -> dict[str, str]:
     published under the official creator — the exact data ``load-store-agents``
     deploys. Idempotent: the loaders skip rows that already exist.
 
+    Also seeds the starter Skills Hub listings, which seed_roster resolves
+    every bundled_skills slug against before it mutates a template.
+
     Returns slug -> the CSV's StoreListingVersion id, the version a hire is
     expected to install. A ROSTER slug with no checked-in asset fails here
     instead of being silently substituted by a synthetic listing.
     """
+    await skill_seed.seed_starter_skills()
     await store_assets.create_user_and_profile(db_client)
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
@@ -2937,7 +2937,7 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 async def test_seed_roster_round_trip(server: SpinTestServer):
     await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
-    assert len(first_ids) == 3
+    assert len(first_ids) == len(seed.ROSTER)
 
     templates = await experts_db.list_templates()
     seeded = {t.name: t for t in templates if t.id in first_ids}
@@ -2953,7 +2953,7 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
 
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
-    assert len(seeded_after) == 3
+    assert len(seeded_after) == len(seed.ROSTER)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2972,30 +2972,38 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
-    """Launch invariant, checked without a DB: every persona ships 2-4
-    preloads, and exactly one scheduled cadence exists across the whole
-    roster (Frankie's daily ops digest), so schedule attribution has a
-    single unambiguous real case."""
+def test_roster_ships_workflows_or_skills_and_arms_no_cadence():
+    """Launch invariant, checked without a DB: every persona ships something
+    on hire — 2-4 preloaded workflows, or the skills it advertises — and no
+    preload is scheduled, so a hire arms nothing unattended (SECRT-2623)."""
     for entry in seed.ROSTER:
-        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+        assert entry["preloads"] or entry["bundled_skills"], entry["name"]
+        if entry["preloads"]:
+            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
     } == EXPECTED_ROSTER_PRELOAD_SLUGS
-    scheduled = [
-        (entry["name"], preload["slug"], preload["cron"])
+    assert [
+        (entry["name"], preload["slug"])
         for entry in seed.ROSTER
         for preload in entry["preloads"]
         if preload["cron"] is not None
-    ]
-    assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
+    ] == []
 
 
 def test_roster_bundled_skills_are_hub_slugs():
     for entry in seed.ROSTER:
         for slug in entry["bundled_skills"]:
             assert _NAME_RE.match(slug), (entry["name"], slug)
+
+
+def test_roster_bundled_skills_are_seeded_starter_skills():
+    """A slug the Hub seed does not ship fails only at seed time, in
+    _resolve_roster_skills, which no suite runs against the real roster."""
+    seeded = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
+    for entry in seed.ROSTER:
+        assert not set(entry["bundled_skills"]) - seeded, entry["name"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3097,13 +3105,38 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     hire_user = await _create_seed_user()
     results = await _hire_roster_and_assert_preloads(hire_user, templates, expected)
 
-    frankie_crons = [
-        w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
-    ]
-    assert frankie_crons == ["40 7 * * *"]
-    for name in ("Maria", "Max"):
-        assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    # SECRT-2623: a hire arms no schedule, for any persona.
+    for result in results.values():
+        assert all(w.schedule_cron is None for w in result.expert.workflows)
     assert all(result.expert.day_one == [] for result in results.values())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hiring_a_roster_expert_installs_the_skills_it_advertises(
+    server: SpinTestServer, skills_hub_on
+):
+    """The real roster end to end: seeding links each template to the Hub
+    listings the starter seed ships, and a hire installs exactly those."""
+    await _load_roster_store_assets()
+    template_ids = await seed.seed_roster()
+    templates = {
+        t.name: t for t in await experts_db.list_templates() if t.id in template_ids
+    }
+    bundling = [entry for entry in seed.ROSTER if entry["bundled_skills"]]
+    assert bundling, "no roster entry bundles skills; this test proves nothing"
+    hire_user = await _create_seed_user()
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        for entry in bundling:
+            hired = await experts_db.hire_expert(
+                hire_user.id, templates[entry["name"]].id, None
+            )
+            assert hired.expert.skills == entry["bundled_skills"], entry["name"]
+            for slug in entry["bundled_skills"]:
+                installed = await read_user_skill_with_body(
+                    hire_user.id, slug, expert_id=hired.expert.id
+                )
+                assert installed is not None, (entry["name"], slug)
 
 
 @pytest.mark.asyncio(loop_scope="session")
