@@ -1,4 +1,5 @@
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   beatTriggers,
@@ -10,6 +11,7 @@ import {
 import {
   assembledKit,
   clearDraft,
+  draftWithPrefilledRole,
   EMPTY_DRAFT,
   loadDraft,
   resolveVoicePreferences,
@@ -25,7 +27,12 @@ import { useFlowProgress } from "./useFlowProgress";
 import { useRaiseSubmission } from "./useRaiseSubmission";
 
 export function useRaisePage() {
-  const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
+  const searchParams = useSearchParams();
+  // Seeded in the initialiser rather than an effect: an effect would render
+  // the role question first and then snatch it away.
+  const [draft, setDraft] = useState<RaiseDraft>(() =>
+    draftWithPrefilledRole(loadDraft(), searchParams.get("role")),
+  );
   const progress = useFlowProgress(beatTriggers(draft));
   const { finish: submitRaise, isSubmitting } = useRaiseSubmission();
 

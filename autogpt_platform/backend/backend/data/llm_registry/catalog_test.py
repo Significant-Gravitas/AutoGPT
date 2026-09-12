@@ -151,6 +151,91 @@ def test_claude_sonnet_5_bills_at_authored_rates():
     assert MODEL_METADATA[s5].max_output_tokens == 128000
 
 
+def test_claude_opus_5_bills_at_authored_rates():
+    opus = LLMModel("claude-opus-5")
+    assert MODEL_COST[opus] == 14
+    assert TOKEN_COST[opus].model_dump() == {
+        "input": 750.0,
+        "output": 3750.0,
+        "cache_read": 75.0,
+        "cache_creation": 938.0,
+    }
+    assert MODEL_METADATA[opus].max_output_tokens == 128000
+
+
+def test_gpt6_astra_bills_at_authored_rates():
+    """GPT-6 Astra (OpenAI list price $10/$50 per 1M) — flat tier and
+    per-1M projections must match the authored catalog entry."""
+    astra = LLMModel("gpt-6-astra")
+    assert MODEL_COST[astra] == 20
+    assert TOKEN_COST[astra].model_dump() == {
+        "input": 1500.0,
+        "output": 7500.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[astra].max_output_tokens == 128000
+    astra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-astra")
+    assert astra_entry.price_tier == 3
+    assert astra_entry.context_window == 1050000
+
+
+def test_claude_fable_5_1_bills_at_authored_rates():
+    """Claude Fable 5.1 (Anthropic list price $10/$50 per 1M, cache reads cut
+    75% to $0.25/1M) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    fable = LLMModel("claude-fable-5-1")
+    assert MODEL_COST[fable] == 20
+    assert TOKEN_COST[fable].model_dump() == {
+        "input": 1500.0,
+        "output": 7500.0,
+        "cache_read": 37.5,
+        "cache_creation": 1875.0,
+    }
+    assert MODEL_METADATA[fable].max_output_tokens == 128000
+    fable_entry = next(m for m in CATALOG.models if m.slug == "claude-fable-5-1")
+    assert fable_entry.price_tier == 3
+    assert fable_entry.context_window == 200000
+
+
+def test_gemini_3_8_flash_bills_at_authored_rates():
+    """Gemini 3.8 Flash (OpenRouter, Google intro list price $0.75/$3.75
+    per 1M through 2026-12-31) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    flash = LLMModel("google/gemini-3.8-flash")
+    assert MODEL_COST[flash] == 3
+    assert TOKEN_COST[flash].model_dump() == {
+        "input": 112.5,
+        "output": 562.5,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[flash].max_output_tokens == 65536
+    flash_entry = next(m for m in CATALOG.models if m.slug == "google/gemini-3.8-flash")
+    assert flash_entry.price_tier == 1
+    assert flash_entry.context_window == 1048576
+
+
+def test_qwen3_8_max_0902_bills_at_authored_rates():
+    """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
+    1M) — flat tier and per-1M projections must match the authored catalog
+    entry."""
+    qwen_max = LLMModel("qwen/qwen3.8-max-0902")
+    assert MODEL_COST[qwen_max] == 5
+    assert TOKEN_COST[qwen_max].model_dump() == {
+        "input": 300.0,
+        "output": 900.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[qwen_max].max_output_tokens == 131072
+    qwen_max_entry = next(
+        m for m in CATALOG.models if m.slug == "qwen/qwen3.8-max-0902"
+    )
+    assert qwen_max_entry.price_tier == 2
+    assert qwen_max_entry.context_window == 262144
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

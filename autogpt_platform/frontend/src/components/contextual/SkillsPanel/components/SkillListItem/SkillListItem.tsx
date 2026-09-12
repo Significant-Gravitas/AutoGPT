@@ -3,6 +3,8 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { PublishSkillButton } from "../PublishSkillButton/PublishSkillButton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -39,6 +41,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     detail,
     detailErrorMessage,
   } = useSkillListItem({ skill });
+  const isSkillsHubEnabled = useGetFlag(Flag.SKILLS_HUB);
 
   return (
     <div
@@ -104,6 +107,9 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         >
           <Icon icon={Download04Icon} className="h-4 w-4" />
         </Button>
+        {isSkillsHubEnabled ? (
+          <PublishSkillButton skillName={skill.name} />
+        ) : null}
         <Button
           variant="icon"
           size="icon"
@@ -189,8 +195,8 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete the skill <strong>{skill.name}</strong>? Your AutoPilot
-              will forget this procedure and can re-distill it later if needed.
+              Delete the skill <strong>{skill.name}</strong>? Your Otto will
+              forget this procedure and can re-distill it later if needed.
             </Text>
             <Dialog.Footer>
               <Button

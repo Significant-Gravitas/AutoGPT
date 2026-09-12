@@ -1,6 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,6 +19,7 @@ from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
+from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleV1,
     CodexAuthTokensV1,
@@ -410,7 +412,7 @@ def test_stream_chat_rejects_an_archived_expert_session(
 def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Plain Autopilot turns must not pay for the write-gate's extra query."""
+    """Plain Otto turns must not pay for the write-gate's extra query."""
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = None
 
@@ -716,6 +718,84 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockerFixture):
     call_kwargs = mock_prisma.find_many.call_args[1]
     assert call_kwargs["where"]["workspaceId"] == "my-workspace-id"
     assert call_kwargs["where"]["isDeleted"] is False
+
+
+# ─── Expert sessions: attachments stay inside the expert's scope ────────
+
+ATTACHED_FILE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def _workspace_file(path: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=ATTACHED_FILE_ID,
+        name=path.rsplit("/", 1)[-1],
+        path=path,
+        mimeType="text/plain",
+        sizeBytes=1024,
+    )
+
+
+def _mock_attached_files(mocker: pytest_mock.MockerFixture, path: str) -> AsyncMock:
+    mocker.patch(
+        "backend.data.workspace.resolve_workspace_files",
+        new=AsyncMock(return_value=[_workspace_file(path)]),
+    )
+    return mocker.patch(
+        "backend.data.workspace.resolve_expert_workspace_scope",
+        new=AsyncMock(
+            return_value=WorkspaceScope(expert_id="expert-a", session_ids=["older"])
+        ),
+    )
+
+
+def test_expert_session_rejects_files_outside_its_scope(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-a"
+    _mock_attached_files(mocker, "/sessions/other-expert/secret.txt")
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "file_ids": [ATTACHED_FILE_ID]},
+    )
+
+    assert response.status_code == 400
+    assert "secret.txt" in response.json()["detail"]
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_expert_session_accepts_files_from_its_own_conversations(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-a"
+    scope_mock = _mock_attached_files(mocker, "/sessions/sess-1/notes.txt")
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "file_ids": [ATTACHED_FILE_ID]},
+    )
+
+    assert response.status_code == 200
+    scope_mock.assert_awaited_once_with(TEST_USER_ID, "expert-a")
+    assert mocks.enqueue.await_args.kwargs["file_ids"] == [ATTACHED_FILE_ID]
+
+
+def test_personal_session_attaches_any_workspace_file(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_stream_internals(mocker)
+    scope_mock = _mock_attached_files(mocker, "/sessions/expert-b-session/report.txt")
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "file_ids": [ATTACHED_FILE_ID]},
+    )
+
+    assert response.status_code == 200
+    scope_mock.assert_not_awaited()
+    assert mocks.enqueue.await_args.kwargs["file_ids"] == [ATTACHED_FILE_ID]
 
 
 # ─── Rate limit → 429 ─────────────────────────────────────────────────

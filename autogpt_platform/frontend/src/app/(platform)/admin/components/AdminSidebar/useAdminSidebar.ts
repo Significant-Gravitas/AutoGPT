@@ -1,11 +1,11 @@
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
-import { adminNavItems } from "./helpers";
+import { getAdminNavItems } from "./helpers";
 
 export function useAdminSidebar() {
   const pathname = usePathname();
 
-  const items = adminNavItems.map((item) => ({
+  const items = getAdminNavItems().map((item) => ({
     ...item,
     isActive: matchesRoute(pathname, item.href),
   }));

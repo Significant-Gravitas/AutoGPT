@@ -38,6 +38,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -45,6 +46,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
+from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -78,7 +80,9 @@ from backend.copilot.pending_messages import (
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     get_delegation_supplement,
+    get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
@@ -95,10 +99,12 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
+    ToolDisplayData,
 )
 from backend.copilot.service import (
     _build_system_prompt,
@@ -114,11 +120,13 @@ from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
     persist_and_record_usage,
 )
+from backend.copilot.tool_display import tool_calls_for_provider, tool_display_context
 from backend.copilot.tools import (
     ToolGroup,
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
@@ -155,6 +163,7 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -487,6 +496,9 @@ class _BaselineStreamState:
     # deltas stream in.  Reassigning (``state.session_messages = [...]``)
     # would silently detach the emitter from the new list.
     session_messages: list[ChatMessage] = field(default_factory=list)
+    tool_persistence: BaselineToolPersistence = field(
+        default_factory=BaselineToolPersistence
+    )
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
     # block only appends the *new* assistant text (avoiding duplication of
@@ -835,7 +847,7 @@ async def _baseline_llm_caller(
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
             # Local backends govern their own context window at launch (e.g.
-            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
             # compaction (see local_context_probe). Send no extra_body — skip
             # the OpenRouter ``usage.include`` extension and reasoning params,
             # which stricter local backends reject outright.
@@ -1029,13 +1041,16 @@ async def _baseline_llm_caller(
         for tc in tool_calls_by_index.values()
     ]
 
-    return LLMLoopResponse(
+    response = LLMLoopResponse(
         response_text=round_text or None,
         tool_calls=llm_tool_calls,
         raw_response=None,  # Not needed for baseline conversation updater
         prompt_tokens=0,  # Tracked via state accumulators
         completion_tokens=0,
     )
+    if response.tool_calls:
+        _begin_baseline_tool_round(state, response)
+    return response
 
 
 async def _baseline_tool_executor(
@@ -1046,14 +1061,15 @@ async def _baseline_tool_executor(
     user_id: str | None,
     session: ChatSession,
     disabled_groups: Sequence[ToolGroup],
+    disabled_tools: frozenset[str],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
 
-    ``disabled_groups`` is the same list used to build the turn's schema
-    list; passing it here makes the capability gate an enforcement boundary
-    rather than a presentation filter.
+    ``disabled_groups`` and ``disabled_tools`` are the same values used to
+    build the turn's schema list; passing them here makes the capability and
+    kickoff gates an enforcement boundary rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1073,11 +1089,13 @@ async def _baseline_tool_executor(
                 success=False,
             ),
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=parse_error,
-            is_error=True,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=parse_error,
+                is_error=True,
+            )
         )
 
     _emit(
@@ -1103,26 +1121,40 @@ async def _baseline_tool_executor(
     # the guide having been called.  The announce-set is cleared at turn
     # end; we deliberately don't touch ``session.messages`` here to avoid
     # duplicating the assistant row that ``_baseline_conversation_updater``
-    # will append at round end.
+    # persists at turn end.
     session.announce_inflight_tool_call(tool_name, tool_args)
 
-    try:
-        result: StreamToolOutputAvailable = await execute_tool(
-            tool_name=tool_name,
-            parameters=tool_args,
-            user_id=user_id,
-            session=session,
-            tool_call_id=tool_call_id,
-            disabled_groups=disabled_groups,
+    def on_display_name(name: str) -> None:
+        state.tool_persistence.set_display_name(tool_call_id, name)
+        _emit(
+            state,
+            StreamToolDisplayAvailable(
+                id=tool_call_id,
+                data=ToolDisplayData(toolCallId=tool_call_id, displayName=name),
+            ),
         )
+
+    try:
+        with tool_display_context(on_display_name):
+            result: StreamToolOutputAvailable = await execute_tool(
+                tool_name=tool_name,
+                parameters=tool_args,
+                user_id=user_id,
+                session=session,
+                tool_call_id=tool_call_id,
+                disabled_groups=disabled_groups,
+                disabled_tools=disabled_tools,
+            )
         _emit(state, result)
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=tool_output,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=tool_output,
+            )
         )
     except Exception as e:
         error_output = f"Tool execution error: {e}"
@@ -1141,11 +1173,13 @@ async def _baseline_tool_executor(
                 success=False,
             ),
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=error_output,
-            is_error=True,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=error_output,
+                is_error=True,
+            )
         )
 
 
@@ -1254,9 +1288,7 @@ def _baseline_conversation_updater(
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
-    Also records structured ChatMessage entries in ``state.session_messages``
-    so the full tool-call history is persisted to the session (not just the
-    concatenated assistant text).
+    Also finishes the pending tool round for session persistence.
     """
     _mutate_openai_messages(messages, response, tool_results)
     _record_turn_to_transcript(
@@ -1265,10 +1297,15 @@ def _baseline_conversation_updater(
         transcript_builder=transcript_builder,
         model=model,
     )
-    # Record structured messages for session persistence so tool calls
-    # and tool results survive across turns and mode switches.
     if state is not None and tool_results:
-        assistant_msg = ChatMessage(
+        state.tool_persistence.finish(state.session_messages)
+
+
+def _begin_baseline_tool_round(
+    state: _BaselineStreamState, response: LLMLoopResponse
+) -> None:
+    state.tool_persistence.begin(
+        ChatMessage(
             role="assistant",
             model=state.model,
             routing_source=state.routing_source,
@@ -1283,16 +1320,9 @@ def _baseline_conversation_updater(
                 }
                 for tc in response.tool_calls
             ],
-        )
-        state.session_messages.append(assistant_msg)
-        for tr in tool_results:
-            state.session_messages.append(
-                ChatMessage(
-                    role="tool",
-                    content=tr.content,
-                    tool_call_id=tr.tool_call_id,
-                )
-            )
+        ),
+        state.session_messages,
+    )
 
 
 async def _compress_session_messages(
@@ -1311,7 +1341,7 @@ async def _compress_session_messages(
         if msg.content:
             msg_dict["content"] = msg.content
         if msg.tool_calls:
-            msg_dict["tool_calls"] = msg.tool_calls
+            msg_dict["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
         if msg.tool_call_id:
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
@@ -1624,6 +1654,7 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
@@ -1853,6 +1884,12 @@ async def stream_chat_completion_baseline(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    oversight_supplement = get_expert_oversight_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    team_building_supplement = get_team_building_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1863,6 +1900,8 @@ async def stream_chat_completion_baseline(
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -1901,7 +1940,7 @@ async def stream_chat_completion_baseline(
             if msg.content:
                 entry["content"] = msg.content
             if msg.tool_calls:
-                entry["tool_calls"] = msg.tool_calls
+                entry["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
             if msg.content or msg.tool_calls:
                 openai_messages.append(entry)
         elif msg.role == "tool" and msg.tool_call_id:
@@ -2056,12 +2095,26 @@ async def stream_chat_completion_baseline(
     if message and is_user_message:
         transcript_builder.append_user(content=user_message_for_transcript or message)
 
-    # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
-    attachment_hint = ""
-    image_blocks: list[dict[str, Any]] = []
     if file_ids and user_id:
         working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+
+    # Propagate execution context so tool handlers can read session-level
+    # flags. This must precede attachment resolution: the workspace manager
+    # derives the expert's file scope from the session set here.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+        envelope=envelope,
+    )
+
+    # --- File attachments (feature parity with SDK path) ---
+    attachment_hint = ""
+    image_blocks: list[dict[str, Any]] = []
+    if file_ids and user_id and working_dir:
         attachment_hint, image_blocks = await _prepare_baseline_attachments(
             file_ids, user_id, session_id, working_dir
         )
@@ -2116,7 +2169,16 @@ async def stream_chat_completion_baseline(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
     )
-    tools = get_available_tools(disabled_groups=disabled_tool_groups)
+    # A hire's kickoff turn is a server-sent control message, so nothing on
+    # it was asked for: narrow it to the onboarding card and nothing else.
+    disabled_tools = (
+        kickoff_turn_disabled_tools()
+        if is_expert_kickoff_turn(session)
+        else frozenset()
+    )
+    tools = get_available_tools(
+        disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
+    )
 
     # --- Permission filtering ---
     if permissions is not None:
@@ -2134,15 +2196,6 @@ async def stream_chat_completion_baseline(
         tools = cast(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
-
-    # Propagate execution context so tool handlers can read session-level flags.
-    set_execution_context(
-        user_id,
-        session,
-        sandbox=e2b_sandbox,
-        sdk_cwd=working_dir,
-        permissions=permissions,
-    )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
@@ -2195,6 +2248,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session=_session_holder[0],
             disabled_groups=disabled_tool_groups,
+            disabled_tools=disabled_tools,
         )
 
     _bound_conversation_updater = partial(
@@ -2514,6 +2568,7 @@ async def stream_chat_completion_baseline(
         # observe a phantom in-flight call and skip its gate, so this must
         # run unconditionally.
         session.clear_inflight_tool_calls()
+        state.tool_persistence.finish(state.session_messages)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.

@@ -304,7 +304,7 @@ export function useCopilotStream({
           // budget is refused at admission and arrives with no envelope; an
           // upstream 429 always carries one. Reading the connection instead
           // meant a self-host -- where the route is "platform" because the
-          // deployment holds the key -- was told "Daily AutoPilot limit
+          // deployment holds the key -- was told "Daily Otto limit
           // reached, upgrade your plan" when its own OpenRouter or local
           // gateway had rate-limited it. That is a claim about an account we
           // do not bill, offering a plan that would not help.
@@ -835,6 +835,7 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,

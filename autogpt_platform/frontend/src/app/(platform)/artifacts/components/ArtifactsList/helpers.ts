@@ -9,6 +9,12 @@ import {
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import {
+  getGetWorkspaceStorageUsageQueryKey,
+  getListWorkspaceFoldersQueryKey,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
+import type { QueryClient } from "@tanstack/react-query";
+import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }
@@ -291,4 +297,140 @@ export function getPreviewKind(
     return "text";
   }
   return "none";
+}
+
+export function formatDayLabel(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfDay = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+  const dayDiff = Math.round((startOfToday - startOfDay) / 86_400_000);
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+export function formatFullDate(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+// image / pdf / office all get a WebP thumbnail from the preview endpoint.
+export function hasImageThumbnail(kind: PreviewKind): boolean {
+  return kind === "image" || kind === "pdf" || kind === "office";
+}
+
+export function getEmptyMessage(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  hasFolders: boolean;
+  hasExpertFilter?: boolean;
+}): string {
+  if (opts.hasSearchTerm) return "No files match your search";
+  if (opts.hasExpertFilter) return "No files from this expert yet";
+  if (opts.isInFolder) return "This folder is empty";
+  if (opts.hasFolders) return "No files at the root yet";
+  return "No files yet";
+}
+
+export interface EmptyStateContent {
+  title: string;
+  description: string;
+  showUpload: boolean;
+  uploadFolderId: string | null;
+  chatHref: string | null;
+  chatLabel: string;
+}
+
+export function getEmptyState(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  hasFolders: boolean;
+  folderId: string | null;
+  expert: { id: string; name: string | null } | null;
+}): EmptyStateContent {
+  const title = getEmptyMessage({
+    hasSearchTerm: opts.hasSearchTerm,
+    isInFolder: opts.isInFolder,
+    hasFolders: opts.hasFolders,
+    hasExpertFilter: opts.expert !== null,
+  });
+  const base: EmptyStateContent = {
+    title,
+    description: "",
+    showUpload: false,
+    uploadFolderId: opts.folderId,
+    chatHref: null,
+    chatLabel: "Start a task",
+  };
+  if (opts.hasSearchTerm) {
+    return {
+      ...base,
+      description: "Try another name, or clear the search to see everything.",
+    };
+  }
+  if (opts.expert) {
+    const name = opts.expert.name;
+    return {
+      ...base,
+      description: `Files ${name ?? "this expert"} creates while working on a task will show up here.`,
+      chatHref: name
+        ? `/copilot?expertId=${encodeURIComponent(opts.expert.id)}`
+        : null,
+      chatLabel: name ? `Chat with ${name}` : base.chatLabel,
+    };
+  }
+  if (opts.isInFolder) {
+    return {
+      ...base,
+      description: "Upload a file here, or drag one in from the list.",
+      showUpload: true,
+    };
+  }
+  if (opts.hasFolders) {
+    return {
+      ...base,
+      description: "Your files live inside the folders above.",
+    };
+  }
+  return {
+    ...base,
+    description:
+      "Files your team generates and files you upload will show up here.",
+    showUpload: true,
+    chatHref: "/copilot",
+  };
+}
+
+/**
+ * Refetches everything a file deletion touches: the listing, the folder rows
+ * (which show file counts) and the storage footer.
+ */
+export function invalidateWorkspaceFileQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ARTIFACTS_LIST_QUERY_KEY });
+  queryClient.invalidateQueries({
+    queryKey: getListWorkspaceFoldersQueryKey(),
+  });
+  queryClient.invalidateQueries({
+    queryKey: getGetWorkspaceStorageUsageQueryKey(),
+  });
 }

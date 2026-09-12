@@ -6,6 +6,7 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 import type { ConnectionTier } from "@/app/api/__generated__/models/connectionTier";
 import { server } from "@/mocks/mock-server";
 import {
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -238,6 +239,30 @@ describe("ConnectionPicker", () => {
       });
       expect(document.activeElement).toBe(linked);
     });
+  });
+
+  it("ignores arrow keys an IME is composing", async () => {
+    // Both radiogroups pass `event.key` straight into nextRovingValue, so the
+    // composition guard sits on the handler rather than on a key comparison.
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectionPicker />);
+
+    await userEvent.click(await openPicker());
+    const connections = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    within(connections)
+      .getByRole("radio", { name: /AutoGPT Platform/ })
+      .focus();
+
+    fireEvent.keyDown(connections, { key: "ArrowDown", isComposing: true });
+
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+
+    const tiers = await screen.findByRole("radiogroup", { name: "Model tier" });
+    fireEvent.keyDown(tiers, { key: "ArrowRight", isComposing: true });
+
+    expect(useCopilotUIStore.getState().copilotLlmModel).not.toBe("advanced");
   });
 
   it("is one tab stop, and the arrow keys move and select within it", async () => {

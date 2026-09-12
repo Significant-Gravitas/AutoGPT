@@ -77,7 +77,7 @@ async def test_list_triggers_exposes_webhook_url(tool, session):
 @pytest.mark.asyncio
 async def test_list_triggers_scopes_presets_to_session_expert(tool, session_expert_id):
     """The preset listing must carry the session's memory scope: an expert
-    session sees only its expert's presets, an AutoPilot session only
+    session sees only its expert's presets, an Otto session only
     unattributed ones — otherwise cross-scope webhook ingress URLs leak into
     the chat context."""
     session = make_session(_USER, expert_id=session_expert_id)

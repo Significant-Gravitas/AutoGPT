@@ -22,20 +22,24 @@ interface Props {
   mcp: McpConnectorRequest[];
   inputs: InputsRequest[];
   questions: QuestionRequest[];
+  /** A card opted out of auto-sending, so the stack needs a Proceed even with
+   *  no inputs of its own. */
+  manualProceed: boolean;
   isReady: boolean;
   onProceed: () => void;
 }
 
 /** Everything the chain still needs from the user, stacked below it as one
  *  card per kind of ask — connectors, run inputs, questions. The questions
- *  card carries its own Skip/Add footer (Add drafts the combined reply into
- *  the chat input); an inputs-only stack falls back to a lone Proceed, and
+ *  card carries its own Skip/Send footer (Send posts the combined reply as
+ *  one message); an inputs-only stack falls back to a lone Proceed, and
  *  a connectors-only card has no button: connecting is the whole ask. */
 export function ChainActionCard({
   connectors,
   mcp,
   inputs,
   questions,
+  manualProceed,
   isReady,
   onProceed,
 }: Props) {
@@ -53,6 +57,12 @@ export function ChainActionCard({
     (request, i) =>
       mcp.findIndex((other) => other.serverUrl === request.serverUrl) === i,
   );
+  // Everything the chain is still waiting on, so a half-connected card says
+  // what is left instead of looking stalled.
+  const remaining = [
+    ...rows.filter((row) => !row.selected).map((row) => row.displayName),
+    ...mcpRows.filter((request) => !request.connected).map((r) => r.service),
+  ];
   const hasInputs = inputs.some(
     (request) => request.schema !== null || request.hasAdvanced,
   );
@@ -87,6 +97,13 @@ export function ChainActionCard({
           {mcpRows.map((request) => (
             <McpConnectorRow key={request.id} request={request} />
           ))}
+          {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
+            <div className="border-t border-zinc-100 px-4 py-2.5">
+              <span className="text-sm text-zinc-500">
+                Still to connect: {remaining.join(", ")}
+              </span>
+            </div>
+          )}
           <div className="border-t border-zinc-100 px-4 py-3">
             <span className="text-sm text-zinc-500">
               Looking for something else?{" "}
@@ -114,7 +131,7 @@ export function ChainActionCard({
         </div>
       )}
 
-      {hasInputs && !hasQuestions && (
+      {(hasInputs || manualProceed) && !hasQuestions && (
         <Button
           variant="primary"
           size="small"
