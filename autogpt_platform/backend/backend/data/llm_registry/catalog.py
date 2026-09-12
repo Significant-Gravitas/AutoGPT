@@ -879,7 +879,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="open_router",
                 creator="qwen",
                 context_window=262144,
-                max_output_tokens=262144,
+                max_output_tokens=131072,
                 price_tier=2,
                 cost=CatalogModelCost(
                     run_credits=5,

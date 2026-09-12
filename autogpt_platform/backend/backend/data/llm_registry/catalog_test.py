@@ -228,7 +228,7 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
-    assert MODEL_METADATA[qwen_max].max_output_tokens == 262144
+    assert MODEL_METADATA[qwen_max].max_output_tokens == 131072
     qwen_max_entry = next(
         m for m in CATALOG.models if m.slug == "qwen/qwen3.8-max-0902"
     )
