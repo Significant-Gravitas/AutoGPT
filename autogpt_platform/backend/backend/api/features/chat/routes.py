@@ -1773,6 +1773,8 @@ async def stream_chat_post(
             message_metadata=message_metadata,
             message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
+            expert_id=session.expert_id,
+            session_origin=session.metadata.origin,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,
