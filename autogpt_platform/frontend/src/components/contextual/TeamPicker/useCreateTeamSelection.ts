@@ -1,4 +1,5 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useState } from "react";
 import {
   getLastUsedTeam,
@@ -10,6 +11,7 @@ import {
 // last-used team (org-home if never used), persists on change, and exposes the
 // Orval request options that stamp X-Team-Id on the create call.
 export function useCreateTeamSelection(surfaceKey: string) {
+  const enabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const teams = useOrgTeamStore((s) => s.teams);
   const isLoaded = useOrgTeamStore((s) => s.isLoaded);
   const [teamId, setTeamIdState] = useState<string | null>(() =>
@@ -30,14 +32,15 @@ export function useCreateTeamSelection(surfaceKey: string) {
   }, [isLoaded, teams, teamId, surfaceKey]);
 
   function setTeamId(next: string | null) {
+    if (!enabled) return;
     setTeamIdState(next);
     setLastUsedTeam(surfaceKey, next);
   }
 
   return {
-    teamId,
+    teamId: enabled ? teamId : null,
     setTeamId,
-    hasTeams: teams.length > 0,
-    teamRequestInit: getTeamRequestInit(teamId),
+    hasTeams: enabled && teams.length > 0,
+    teamRequestInit: getTeamRequestInit(enabled ? teamId : null),
   };
 }

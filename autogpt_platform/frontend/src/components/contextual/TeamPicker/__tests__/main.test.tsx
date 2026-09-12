@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CreateSurface } from "../helpers";
 import { TeamPicker } from "../TeamPicker";
@@ -55,6 +55,7 @@ function currentValue() {
 }
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
   window.localStorage.clear();
   useOrgTeamStore.setState({
     activeOrgID: null,
@@ -66,6 +67,22 @@ beforeEach(() => {
 });
 
 describe("TeamPicker", () => {
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+  });
+
+  it.each(["false", undefined])(
+    "hides team selection when the flag is %s",
+    (flag) => {
+      if (flag === undefined)
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
+      seedTeams([TEAM_A, TEAM_B]);
+      render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(currentValue()).toBe("org-home");
+    },
+  );
   it("renders nothing when the user has no teams", () => {
     seedTeams([]);
     render(<Harness surfaceKey={CreateSurface.BuilderSave} />);

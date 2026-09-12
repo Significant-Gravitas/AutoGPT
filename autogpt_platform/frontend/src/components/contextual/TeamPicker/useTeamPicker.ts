@@ -1,5 +1,6 @@
 import type { SelectOption } from "@/components/atoms/Select/Select";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ORG_HOME_OPTION_VALUE } from "./helpers";
 
 interface Params {
@@ -8,8 +9,9 @@ interface Params {
 }
 
 export function useTeamPicker({ value, onChange }: Params) {
+  const enabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const teams = useOrgTeamStore((s) => s.teams);
-  const hasTeams = teams.length > 0;
+  const hasTeams = enabled && teams.length > 0;
 
   const options: SelectOption[] = [
     { value: ORG_HOME_OPTION_VALUE, label: "Organization" },
