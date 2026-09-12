@@ -12,7 +12,7 @@ type MCPServer = NonNullable<ProviderMetadata["mcp_server"]>;
 function preset(
   name: string,
   slug: string,
-  metadata: Partial<MCPServer>,
+  metadata: Partial<MCPServer> & Pick<MCPServer, "auth_methods">,
 ): ProviderMetadata {
   return {
     name: `mcp_${slug}`,
@@ -24,7 +24,6 @@ function preset(
       documentation_url: `https://docs.example.com/${slug}`,
       setup_instructions: `Choose the permitted access for ${name}.`,
       connection_mode: "hosted",
-      auth_mode: "oauth",
       ...metadata,
     },
   };
@@ -33,13 +32,11 @@ function preset(
 export const authProviders: ProviderMetadata[] = [
   preset("AgentMail", "agentmail", { auth_methods: ["oauth"] }),
   preset("Intercom", "intercom", {
-    auth_mode: "token",
     auth_methods: ["bearer"],
   }),
   preset("Langfuse", "langfuse", {
     server_url: null,
     connection_mode: "custom",
-    auth_mode: "token",
     auth_methods: ["basic"],
     server_url_options: [
       { label: "EU", url: "https://cloud.langfuse.com/api/public/mcp" },
@@ -49,7 +46,6 @@ export const authProviders: ProviderMetadata[] = [
   preset("Parallel", "parallel", {
     server_url: "https://search.parallel.ai/mcp",
     oauth_server_url: "https://search.parallel.ai/mcp-oauth",
-    auth_mode: "none",
     auth_methods: ["none", "oauth", "bearer"],
   }),
   preset("Customer.io", "customer_io", {

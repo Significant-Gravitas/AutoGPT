@@ -11,6 +11,5 @@ export function integrationIconSrc(provider: string): string | null {
     .toLowerCase()
     .replace(/[\s-]+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
-  if (!slug) return null;
-  return `/integrations/${slug}.${slug === "microsoft" ? "webp" : "png"}`;
+  return slug ? `/integrations/${slug}.png` : null;
 }

@@ -36,17 +36,12 @@ const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
 };
 
 interface Props {
-  query?: string;
-  onQueryChange?: (query: string) => void;
+  query: string;
+  onQueryChange: (query: string) => void;
 }
 
-export function IntegrationsList({
-  query: searchQuery,
-  onQueryChange,
-}: Props = {}) {
+export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
   const {
-    query,
-    setQuery,
     providers,
     isLoading,
     isError,
@@ -58,7 +53,7 @@ export function IntegrationsList({
     isDeleting,
     isDeletingId,
     buildTargets,
-  } = useIntegrationsList({ query: searchQuery, onQueryChange });
+  } = useIntegrationsList(query);
   const reduceMotion = useReducedMotion();
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [pendingForceIds, setPendingForceIds] = useState<string[]>([]);

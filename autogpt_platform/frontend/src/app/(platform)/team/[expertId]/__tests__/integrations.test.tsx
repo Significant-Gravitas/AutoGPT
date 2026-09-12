@@ -486,7 +486,7 @@ describe("managing an expert's integrations", () => {
               documentation_url: "https://support.airtable.com",
               setup_instructions: "Sign in to Airtable.",
               connection_mode: "hosted",
-              auth_mode: "oauth",
+              auth_methods: ["oauth"],
             },
           },
         ]),

@@ -14,7 +14,9 @@ interface Props {
 }
 
 export function ProviderRow({ provider, onSelect }: Props) {
-  const src = integrationIconSrc(provider.mcpServer?.icon_id ?? provider.id);
+  const src = integrationIconSrc(
+    provider.mcpServer?.icon_id ?? (provider.mcpServer ? "mcp" : provider.id),
+  );
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 
   return (

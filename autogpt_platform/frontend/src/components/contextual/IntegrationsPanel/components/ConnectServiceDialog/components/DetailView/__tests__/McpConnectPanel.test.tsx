@@ -97,7 +97,6 @@ describe("McpConnectPanel", () => {
       <McpConnectPanel
         onSuccess={() => {}}
         initialServerURL="https://mcp.example.com"
-        initialAuthMode="oauth"
       />,
     );
     fireEvent.click(
@@ -134,7 +133,6 @@ describe("McpConnectPanel", () => {
       <McpConnectPanel
         onSuccess={() => {}}
         initialServerURL="https://mcp.example.com"
-        initialAuthMode="oauth"
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));

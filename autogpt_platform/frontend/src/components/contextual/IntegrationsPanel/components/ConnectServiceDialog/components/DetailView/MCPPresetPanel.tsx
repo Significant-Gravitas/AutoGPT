@@ -12,11 +12,17 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { McpConnectPanel } from "./McpConnectPanel";
 import { PublicMCPPanel } from "./PublicMCPPanel";
-import {
-  getMCPPresetAuthMethods,
-  mcpPresetMethodLabel,
-  type MCPPresetAuthMethod,
-} from "./mcpPresetHelpers";
+
+type AuthMethod = NonNullable<
+  ProviderMetadata["mcp_server"]
+>["auth_methods"][number];
+
+const METHOD_LABELS: Record<AuthMethod, string> = {
+  none: "No sign-in",
+  oauth: "Sign in",
+  bearer: "API token",
+  basic: "Basic authentication",
+};
 
 interface Props {
   server: NonNullable<ProviderMetadata["mcp_server"]>;
@@ -24,7 +30,7 @@ interface Props {
 }
 
 export function MCPPresetPanel({ server, onSuccess }: Props) {
-  const methods = getMCPPresetAuthMethods(server);
+  const methods = server.auth_methods;
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-zinc-600">
@@ -33,8 +39,7 @@ export function MCPPresetPanel({ server, onSuccess }: Props) {
       <Link href={server.documentation_url} isExternal variant="secondary">
         Official documentation
       </Link>
-      {server.connection_mode === "unavailable" ? null : methods.length ===
-        1 ? (
+      {methods.length === 1 ? (
         <PresetMethod
           server={server}
           onSuccess={onSuccess}
@@ -45,7 +50,7 @@ export function MCPPresetPanel({ server, onSuccess }: Props) {
           <TabsLineList aria-label="Connection method">
             {methods.map((method) => (
               <TabsLineTrigger key={method} value={method}>
-                {mcpPresetMethodLabel(method)}
+                {METHOD_LABELS[method]}
               </TabsLineTrigger>
             ))}
           </TabsLineList>
@@ -68,7 +73,7 @@ function PresetMethod({
   server,
   onSuccess,
   method,
-}: Props & { method: MCPPresetAuthMethod }) {
+}: Props & { method: AuthMethod }) {
   if (method === "none") {
     return server.server_url ? (
       <PublicMCPPanel serverURL={server.server_url} />
@@ -83,7 +88,6 @@ function PresetMethod({
         ""
       }
       lockServerURL={server.connection_mode === "hosted"}
-      initialAuthMode={method === "oauth" ? "oauth" : "token"}
       allowedAuthMethods={[method]}
       oauthScopes={server.oauth_scopes}
       oauthWriteScopes={server.oauth_write_scopes}

@@ -7,10 +7,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.features.integrations.models import ProviderNamesResponse
 from backend.api.features.integrations.router import router, settings
-from backend.integrations.mcp_catalog import (
-    get_connectable_mcp_catalog,
-    get_mcp_catalog,
-)
+from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.util.settings import BehaveAs
 
 app = FastAPI()
@@ -40,13 +37,9 @@ def test_provider_endpoint_only_exposes_connectable_catalog(behave_as: BehaveAs)
 
     assert response.status_code == 200
     providers = response.json()
-    connectable = {
-        entry.name
-        for entry in get_connectable_mcp_catalog(settings.config.frontend_base_url)
-    }
+    connectable = {entry.name for entry in get_mcp_catalog()}
     assert {provider["name"] for provider in providers[2:]} == connectable
     assert len({provider["name"] for provider in providers}) == len(providers)
-    assert "mcp_1password" not in {provider["name"] for provider in providers}
     assert "mcp_langfuse" in {provider["name"] for provider in providers}
     assert [provider["name"] for provider in providers[:2]] == ["notion", "google"]
     assert all(provider["mcp_server"] is None for provider in providers[:2])
@@ -68,6 +61,7 @@ def test_catalog_entries_do_not_register_credential_providers():
 def test_provider_openapi_exposes_typed_mcp_metadata():
     schemas = app.openapi()["components"]["schemas"]
     metadata = schemas["MCPServerMetadata"]["properties"]
-    assert metadata["connection_mode"]["enum"] == ["hosted", "custom", "unavailable"]
-    assert metadata["auth_mode"]["enum"] == ["oauth", "token", "none", "unknown"]
+    assert metadata["connection_mode"]["enum"] == ["hosted", "custom"]
+    assert metadata["auth_methods"]["minItems"] == 1
+    assert "auth_methods" in schemas["MCPServerMetadata"]["required"]
     assert "mcp_server" in schemas["ProviderMetadata"]["properties"]

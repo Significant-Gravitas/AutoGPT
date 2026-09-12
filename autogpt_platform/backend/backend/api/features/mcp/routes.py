@@ -38,10 +38,7 @@ from backend.blocks.mcp.helpers import (
 from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.mcp_catalog import (
-    get_connectable_mcp_catalog,
-    get_mcp_catalog_entry_for_url,
-)
+from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
     AUTH_STATUS_CODES,
@@ -253,22 +250,14 @@ async def mcp_oauth_login(
     catalog_entry = get_mcp_catalog_entry_for_url(server_url)
     catalog_scopes: list[str] | None = None
     if catalog_entry:
-        runtime_entry = next(
-            (
-                entry
-                for entry in get_connectable_mcp_catalog(frontend_base_url)
-                if entry.name == catalog_entry.name
-            ),
-            None,
-        )
-        if not runtime_entry or "oauth" not in runtime_entry.mcp_server.auth_methods:
+        if "oauth" not in catalog_entry.mcp_server.auth_methods:
             raise fastapi.HTTPException(
                 status_code=400,
-                detail=f"Browser sign-in is unavailable for {catalog_entry.display_name} "
-                "in this AutoGPT environment. "
+                detail=f"{catalog_entry.display_name} uses "
+                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} authentication. "
                 f"{catalog_entry.mcp_server.setup_instructions}",
             )
-        catalog_scopes = runtime_entry.mcp_server.oauth_scopes
+        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)

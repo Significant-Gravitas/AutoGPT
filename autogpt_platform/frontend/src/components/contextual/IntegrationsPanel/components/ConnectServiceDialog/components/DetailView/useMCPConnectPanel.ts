@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
@@ -9,15 +9,12 @@ import { mcpServerIdentity } from "@/lib/mcp-url";
 import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { connectMCPOAuth } from "./mcpOAuth";
-import { mcpOAuthScopes } from "./mcpPresetHelpers";
 import { storeMCPToken } from "./storeMCPToken";
 import { useMCPManualAuth } from "./useMCPManualAuth";
-import { useMCPRequest } from "./useMCPRequest";
 
 interface Args {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
   initialServerURL: string;
-  initialAuthMode: string;
   allowedAuthMethods?: ("oauth" | MCPAuthScheme)[];
   oauthScopes?: string[] | null;
   oauthWriteScopes?: string[];
@@ -26,19 +23,20 @@ interface Args {
 export function useMCPConnectPanel({
   onSuccess,
   initialServerURL,
-  initialAuthMode,
   allowedAuthMethods = ["oauth", "bearer", "basic"],
   oauthScopes,
   oauthWriteScopes = [],
 }: Args) {
   const queryClient = useQueryClient();
   const [serverURL, setServerURL] = useState(initialServerURL);
-  const initialPhase = initialAuthMode === "token" ? "manual-token" : "form";
+  const initialPhase =
+    allowedAuthMethods[0] === "oauth" ? "form" : "manual-token";
   const [phase, setPhase] = useState(initialPhase);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allowChanges, setAllowChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const request = useMCPRequest();
+  const activeRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => activeRequest.current?.abort(), []);
 
   const manualSchemes = allowedAuthMethods.filter(
     (method): method is MCPAuthScheme => method !== "oauth",
@@ -58,11 +56,19 @@ export function useMCPConnectPanel({
     if (!canConnect) return;
     setError(null);
     setIsSubmitting(true);
-    const signal = request.start();
+    const signal = startRequest();
     try {
       const credential = await connectMCPOAuth({
         serverURL: trimmedURL,
-        scopes: mcpOAuthScopes(oauthScopes, oauthWriteScopes, allowChanges),
+        scopes:
+          oauthScopes == null
+            ? undefined
+            : [
+                ...new Set([
+                  ...oauthScopes,
+                  ...(allowChanges ? oauthWriteScopes : []),
+                ]),
+              ],
         signal,
       });
       signal.throwIfAborted();
@@ -101,7 +107,7 @@ export function useMCPConnectPanel({
     }
     setError(null);
     setIsSubmitting(true);
-    const signal = request.start();
+    const signal = startRequest();
     try {
       const credential = await storeMCPToken(
         trimmedURL,
@@ -123,7 +129,7 @@ export function useMCPConnectPanel({
 
   function handleSwitchToOAuth() {
     if (!canUseOAuth) return;
-    request.cancel();
+    activeRequest.current?.abort();
     setIsSubmitting(false);
     setPhase("form");
     manual.reset();
@@ -132,7 +138,7 @@ export function useMCPConnectPanel({
 
   function handleSwitchToToken() {
     if (!manualSchemes.length) return;
-    request.cancel();
+    activeRequest.current?.abort();
     setIsSubmitting(false);
     setPhase("manual-token");
     setError(null);
@@ -142,12 +148,19 @@ export function useMCPConnectPanel({
     const changed = mcpServerIdentity(serverURL) !== mcpServerIdentity(nextURL);
     setServerURL(nextURL);
     if (!changed) return;
-    request.cancel();
+    activeRequest.current?.abort();
     setIsSubmitting(false);
     manual.reset();
     setAllowChanges(false);
     setPhase(initialPhase);
     setError(null);
+  }
+
+  function startRequest() {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    return controller.signal;
   }
 
   return {
@@ -164,7 +177,6 @@ export function useMCPConnectPanel({
     canUseOAuth,
     canConnect,
     canSubmitToken,
-    canSwitchToToken: manualSchemes.length > 0,
     handleConnect,
     handleSubmitToken,
     handleSwitchToOAuth,

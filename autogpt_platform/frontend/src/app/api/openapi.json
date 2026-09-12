@@ -23901,13 +23901,8 @@
           },
           "connection_mode": {
             "type": "string",
-            "enum": ["hosted", "custom", "unavailable"],
+            "enum": ["hosted", "custom"],
             "title": "Connection Mode"
-          },
-          "auth_mode": {
-            "type": "string",
-            "enum": ["oauth", "token", "none", "unknown"],
-            "title": "Auth Mode"
           },
           "auth_methods": {
             "items": {
@@ -23915,6 +23910,7 @@
               "enum": ["oauth", "bearer", "basic", "none"]
             },
             "type": "array",
+            "minItems": 1,
             "title": "Auth Methods"
           },
           "server_url_options": {
@@ -23938,12 +23934,6 @@
             "type": "array",
             "title": "Oauth Write Scopes"
           },
-          "oauth_callback_mode": {
-            "type": "string",
-            "enum": ["any", "loopback"],
-            "title": "Oauth Callback Mode",
-            "default": "any"
-          },
           "icon_id": {
             "anyOf": [
               { "type": "string", "pattern": "^[a-z0-9_-]+$" },
@@ -23958,7 +23948,7 @@
           "documentation_url",
           "setup_instructions",
           "connection_mode",
-          "auth_mode"
+          "auth_methods"
         ],
         "title": "MCPServerMetadata"
       },

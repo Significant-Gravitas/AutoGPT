@@ -68,7 +68,10 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
           <Icon icon={ArrowLeft02Icon} size={18} />
         </Button>
         <ProviderAvatar
-          id={provider.mcpServer?.icon_id ?? provider.id}
+          id={
+            provider.mcpServer?.icon_id ??
+            (provider.mcpServer ? "mcp" : provider.id)
+          }
           name={provider.name}
         />
         <div className="flex min-w-0 flex-col gap-1">

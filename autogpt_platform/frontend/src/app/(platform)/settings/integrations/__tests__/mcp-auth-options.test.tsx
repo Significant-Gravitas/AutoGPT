@@ -88,6 +88,21 @@ describe("MCP preset access options", () => {
   });
 
   test("Parallel defaults public, offers OAuth on its distinct URL, and saves tokens on the base URL", async () => {
+    server.use(
+      http.post("*/api/mcp/oauth/login", async ({ request }) => {
+        oauthRequest(await request.json());
+        return HttpResponse.json({
+          login_url: "https://vendor.example.com/authorize",
+          state_token: "state",
+        });
+      }),
+    );
+    vi.mocked(openOAuthPopup).mockImplementation(() => ({
+      promise: Promise.reject(new Error("Vendor rejected this sign-in")),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    }));
     const dialog = await openPreset("Parallel");
     fireEvent.click(
       within(dialog).getByRole("button", { name: /check connection/i }),
@@ -112,6 +127,9 @@ describe("MCP preset access options", () => {
       expect(oauthRequest).toHaveBeenCalledWith({
         server_url: "https://search.parallel.ai/mcp-oauth",
       }),
+    );
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Vendor rejected this sign-in",
     );
     fireEvent.mouseDown(
       within(dialog).getByRole("tab", { name: /^api token$/i }),

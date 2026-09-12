@@ -1079,7 +1079,7 @@ describe("TeamPage - setup needed card", () => {
             documentation_url: "https://developers.notion.com/guides/mcp",
             setup_instructions: "Sign in to Notion.",
             connection_mode: "hosted",
-            auth_mode: "oauth",
+            auth_methods: ["oauth"],
           },
         },
       ]),

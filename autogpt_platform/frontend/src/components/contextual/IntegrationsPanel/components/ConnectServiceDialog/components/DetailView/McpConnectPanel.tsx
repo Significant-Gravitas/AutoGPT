@@ -13,13 +13,12 @@ import {
 import { useMCPConnectPanel } from "./useMCPConnectPanel";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 import { MCPServerURLField } from "./MCPServerURLField";
-import { MCPWriteAccessField } from "./MCPWriteAccessField";
+import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
 interface Props {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
   initialServerURL?: string;
   lockServerURL?: boolean;
-  initialAuthMode?: "oauth" | "token" | "none" | "unknown";
   allowedAuthMethods?: ("oauth" | MCPAuthScheme)[];
   oauthScopes?: string[] | null;
   oauthWriteScopes?: string[];
@@ -30,7 +29,6 @@ export function McpConnectPanel({
   onSuccess,
   initialServerURL = "",
   lockServerURL = false,
-  initialAuthMode = "unknown",
   allowedAuthMethods,
   oauthScopes,
   oauthWriteScopes = [],
@@ -39,7 +37,6 @@ export function McpConnectPanel({
   const state = useMCPConnectPanel({
     onSuccess,
     initialServerURL,
-    initialAuthMode,
     allowedAuthMethods,
     oauthScopes,
     oauthWriteScopes,
@@ -60,10 +57,16 @@ export function McpConnectPanel({
         options={serverURLOptions}
       />
       {state.phase === "form" && oauthWriteScopes.length > 0 && (
-        <MCPWriteAccessField
-          checked={state.allowChanges}
-          onChange={state.setAllowChanges}
-          disabled={state.isSubmitting}
+        <MultiToggle
+          items={[
+            {
+              value: "write",
+              label: "Allow changes",
+              disabled: state.isSubmitting,
+            },
+          ]}
+          selectedValues={state.allowChanges ? ["write"] : []}
+          onChange={(values) => state.setAllowChanges(values.includes("write"))}
         />
       )}
       {state.phase === "manual-token" && (
@@ -110,7 +113,6 @@ export function McpConnectPanel({
             variant="secondary"
             size="small"
             onClick={state.handleSwitchToToken}
-            disabled={!state.canSwitchToToken}
           >
             Use an API token instead
           </Button>

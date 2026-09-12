@@ -402,12 +402,10 @@ async def test_catalog_defaults_apply_to_generic_oauth_login(
 
 @pytest.mark.parametrize(
     "provider_name",
-    ["mcp_antimetal", "mcp_brevo", "mcp_intercom", "mcp_aws_core"],
+    ["mcp_antimetal", "mcp_brevo", "mcp_intercom"],
 )
 @pytest.mark.asyncio(loop_scope="session")
-async def test_known_unsupported_oauth_stops_before_discovery(
-    client, oauth_mocks, provider_name
-):
+async def test_token_connections_do_not_start_oauth(client, oauth_mocks, provider_name):
     from backend.integrations.mcp_catalog import get_mcp_catalog
 
     entry = next(entry for entry in get_mcp_catalog() if entry.name == provider_name)
@@ -419,22 +417,7 @@ async def test_known_unsupported_oauth_stops_before_discovery(
 
     assert response.status_code == 400
     assert entry.display_name in response.json()["detail"]
-    assert "sign-in" in response.json()["detail"]
+    assert "authentication" in response.json()["detail"]
     mcp_client.assert_not_called()
     post.assert_not_awaited()
     manager.store.store_state_token.assert_not_awaited()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_known_loopback_oauth_remains_available_locally(client, oauth_mocks):
-    _, _, post, _ = oauth_mocks
-    with patch("backend.api.features.mcp.routes.settings") as settings:
-        settings.config.frontend_base_url = "http://127.0.0.1:3000"
-        response = await client.post(
-            "/oauth/login", json={"server_url": "https://mcp.brevo.com/v1/brevo/mcp"}
-        )
-
-    assert response.status_code == 200
-    assert post.call_args.kwargs["json"]["redirect_uris"] == [
-        "http://127.0.0.1:3000/auth/integrations/mcp_callback"
-    ]
