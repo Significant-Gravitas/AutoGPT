@@ -9,7 +9,10 @@ import {
   Activity01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
+import Image from "next/image";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
@@ -42,6 +45,7 @@ export function ExpertWorkflowListItem({
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
+  const [hasImageError, setHasImageError] = useState(false);
   const meta = [
     workflow.schedule_cron
       ? safeHumanizeCronExpression(workflow.schedule_cron)
@@ -54,7 +58,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex items-center gap-4 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:bg-zinc-50"
+      className="group relative flex items-center gap-4 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink
@@ -64,14 +68,28 @@ export function ExpertWorkflowListItem({
         />
       ) : null}
 
-      <div
-        className={cn(
-          accentClassName,
-          "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
-        )}
-      >
-        <Icon icon={WorkflowSquare01Icon} size={18} aria-hidden="true" />
-      </div>
+      {/* A square as tall as the text column, title through meta line. */}
+      {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
+        <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
+          <Image
+            src={libraryAgent.image_url}
+            alt=""
+            fill
+            sizes="96px"
+            onError={() => setHasImageError(true)}
+            className="object-cover"
+          />
+        </div>
+      ) : (
+        <div
+          className={cn(
+            accentClassName,
+            "pointer-events-none flex aspect-square shrink-0 items-center justify-center self-stretch rounded-lg border-0",
+          )}
+        >
+          <Icon icon={WorkflowSquare01Icon} size={20} aria-hidden="true" />
+        </div>
+      )}
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">

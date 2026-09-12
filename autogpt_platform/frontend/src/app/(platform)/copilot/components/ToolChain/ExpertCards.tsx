@@ -12,15 +12,18 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { ToolUIPart } from "ai";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useContext, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
+import { describeSendFailure } from "../ChatInput/helpers";
+import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -37,7 +40,8 @@ interface Props {
   onDecide?: (decision: Decision) => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
-  /** Footer control the group adds once every proposal is decided. */
+  /** Footer control the group adds once every proposal is decided, or
+   *  the sent note after. */
   action?: ReactNode;
   /** Which way the pager just moved — the identity block slides in from
    *  that side while the shell (Details, pager, decision) stays put. */
@@ -222,6 +226,7 @@ export function ExpertChangeCard({
           <ExpertAvatar
             name={name}
             avatarUrl={str(expert, "avatar_url")}
+            color={str(expert, "color")}
             size={32}
           />
           <div className="min-w-0 flex-1">
@@ -402,8 +407,9 @@ interface GroupProps {
 /** One hire/raise per call, so a new team lands as several cards in a
  *  row. They page like the clarifying questions do, one expert at a time:
  *  each Approve/Decline moves to the next, and once every proposal has an
- *  answer a single send drafts all of them into the composer — the user
- *  still reads and sends the message themselves. */
+ *  answer a single send posts all of them as one message — the user no
+ *  longer reviews it in the composer. A decision can be taken back up to
+ *  that point. */
 export function ExpertChangeGroup({
   parts,
   isCurrentlyStreaming = false,
@@ -412,8 +418,8 @@ export function ExpertChangeGroup({
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
-  const [drafted, setDrafted] = useState(false);
-  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const [sent, setSent] = useState(false);
+  const actions = useContext(CopilotChatActionsContext);
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
@@ -445,20 +451,26 @@ export function ExpertChangeGroup({
     if (!currentProposal) return;
     const { [currentProposal.toolCallId]: _, ...rest } = decisions;
     setDecisions(rest);
-    // The draft in the composer no longer matches — offer the send again
-    // once every proposal has an answer.
-    setDrafted(false);
   }
 
-  function draft() {
-    setInitialPrompt(
-      proposals
-        .map((proposal) =>
-          decisionLine(proposal, decisions[proposal.toolCallId]),
-        )
-        .join("\n"),
+  function send() {
+    if (!actions) return;
+    const message = proposals
+      .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
+      .join("\n");
+    // The card stays marked sent because the message is already in the
+    // thread for Retry — the failure only needs saying.
+    void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(
+          error,
+          "it is still in the thread, use Retry to send it again",
+        ),
+        variant: "destructive",
+      }),
     );
-    setDrafted(true);
+    setSent(true);
   }
 
   const pager = visible.length > 1 && (
@@ -510,25 +522,25 @@ export function ExpertChangeGroup({
     </div>
   );
 
-  const action =
-    !readOnly &&
-    allDecided &&
-    (drafted ? (
-      <span className="flex items-center gap-1 text-xs text-zinc-400">
-        <Icon icon={Tick02Icon} size={14} />
-        Added to message
-      </span>
-    ) : (
-      <Button
-        variant="primary"
-        size="icon"
-        aria-label="Add decisions to message"
-        onClick={draft}
-        className="size-8 p-0"
-      >
-        <Icon icon={SentIcon} size={15} />
-      </Button>
-    ));
+  // While the turn is still streaming another proposal part can land in
+  // this group, so the send waits for the stream to settle.
+  const canSend = !readOnly && !!actions && allDecided && !isCurrentlyStreaming;
+  const action = sent ? (
+    <span className="flex items-center gap-1 text-xs text-zinc-400">
+      <Icon icon={Tick02Icon} size={14} />
+      Sent
+    </span>
+  ) : canSend ? (
+    <Button
+      variant="primary"
+      size="icon"
+      aria-label="Send decisions"
+      onClick={send}
+      className="size-8 p-0"
+    >
+      <Icon icon={SentIcon} size={15} />
+    </Button>
+  ) : null;
 
   // The shell (Details, pager, decision buttons) is the same from one
   // expert to the next, so it stays mounted; only the identity block
@@ -540,8 +552,8 @@ export function ExpertChangeGroup({
         isCurrentlyStreaming={isCurrentlyStreaming}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
-        onDecide={currentProposal ? decide : undefined}
-        onUndo={currentProposal ? undo : undefined}
+        onDecide={currentProposal && !sent ? decide : undefined}
+        onUndo={currentProposal && !sent ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
       />

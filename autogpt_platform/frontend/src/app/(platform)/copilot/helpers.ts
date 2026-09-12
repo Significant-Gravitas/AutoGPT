@@ -46,7 +46,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
  */
 export function formatNotificationTitle(count: number): string {
   return count > 0
-    ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
+    ? `(${count}) Otto is ready - ${ORIGINAL_TITLE}`
     : ORIGINAL_TITLE;
 }
 
