@@ -7,6 +7,11 @@ or its graph cleanup hook.
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def org_collaboration_rollout_enabled(monkeypatch):
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
+
+
 @pytest.fixture(scope="session")
 def server():
     """No-op — org tests don't need the full backend server."""

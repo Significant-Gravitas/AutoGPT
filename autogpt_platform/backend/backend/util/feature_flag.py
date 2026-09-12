@@ -48,6 +48,8 @@ class Flag(str, Enum):
     # feature that won't take.  Existing public viewer routes stay on
     # regardless so previously-shared URLs remain valid mid-flight.
     CHAT_SHARING = "chat-sharing"
+    # Existing LaunchDarkly key: keep the literal upper-snake spelling.
+    SHOW_ORG_SETTINGS = "SHOW_ORG_SETTINGS"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # Self-distilled skills registry (store_skill / read_skill /
@@ -379,7 +381,8 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
     ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for a single
     flag in local dev or tests.  Returns ``None`` when no override
-    is configured so the caller falls through to LaunchDarkly.
+    is configured so the caller falls through to LaunchDarkly. Empty or
+    whitespace-only values are treated as unset, including image defaults.
 
     The ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` prefix is also accepted so a
     single shared env var can toggle a flag across backend and
@@ -392,7 +395,7 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     suffix = flag_key.value.upper().replace("-", "_")
     for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
         raw = os.environ.get(prefix + suffix)
-        if raw is not None:
+        if raw is not None and raw.strip():
             return raw.strip().lower() in ("1", "true", "yes", "on")
     return None
 

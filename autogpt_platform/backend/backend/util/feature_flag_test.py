@@ -123,6 +123,33 @@ async def test_is_feature_enabled_with_flag_enum(mocker):
 
 
 class TestEnvFlagOverride:
+    @pytest.mark.parametrize("raw", ["", "  \t  "])
+    def test_blank_org_overrides_are_unset(self, monkeypatch, raw):
+        monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", raw)
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", raw)
+        assert _env_flag_override(Flag.SHOW_ORG_SETTINGS) is None
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_blank_backend_override_allows_explicit_public_override(
+        self, monkeypatch, enabled
+    ):
+        monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "")
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", str(enabled))
+        assert _env_flag_override(Flag.SHOW_ORG_SETTINGS) is enabled
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("enabled", [True, False])
+    async def test_blank_org_override_uses_literal_launchdarkly_flag(
+        self, monkeypatch, ld_client, enabled
+    ):
+        monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "")
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "")
+        ld_client.variation.return_value = enabled
+
+        assert await is_feature_enabled(Flag.SHOW_ORG_SETTINGS, "user123") is enabled
+        ld_client.variation.assert_called_once()
+        assert ld_client.variation.call_args.args[0] == "SHOW_ORG_SETTINGS"
+
     def test_force_flag_true(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
         assert _env_flag_override(Flag.CHAT) is True

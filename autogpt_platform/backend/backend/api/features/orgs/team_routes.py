@@ -11,7 +11,9 @@ from fastapi import APIRouter, HTTPException, Security
 
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
+from . import db as org_db
 from . import team_db as team_db
+from .rollout import org_collaboration_enabled, require_org_collaboration
 from .team_model import (
     AddTeamMemberRequest,
     CreateTeamRequest,
@@ -89,6 +91,7 @@ async def create_team(
         Security(requires_org_permission(OrgAction.CREATE_WORKSPACES)),
     ],
 ) -> TeamResponse:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.create_team(
@@ -111,6 +114,16 @@ async def list_teams(
 ) -> list[TeamResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
+    if not await org_collaboration_enabled(ctx.user_id):
+        personal_org_id, default_team_id = await org_db.get_user_default_team(
+            ctx.user_id
+        )
+        if org_id != personal_org_id:
+            raise HTTPException(
+                403, detail="Organization collaboration is not enabled for this account"
+            )
+        teams = await team_db.list_teams(org_id, ctx.user_id)
+        return [team for team in teams if team.id == default_team_id]
     return await team_db.list_teams(
         org_id,
         ctx.user_id,
@@ -128,6 +141,7 @@ async def get_team(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.get_team_for_viewer(
@@ -150,6 +164,7 @@ async def update_team(
     request: UpdateTeamRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
+    await require_org_collaboration(ctx.user_id)
     await _authorize_team_management(ctx, org_id, ws_id)
     return await team_db.update_team(
         ws_id,
@@ -201,6 +216,7 @@ async def join_team(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.join_team(ws_id, ctx.user_id, org_id)
@@ -236,6 +252,7 @@ async def list_members(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[TeamMemberResponse]:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     # Mirror list/details visibility: a private workspace's roster is part of
@@ -266,6 +283,8 @@ async def add_member(
     request: AddTeamMemberRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamMemberResponse:
+    await require_org_collaboration(ctx.user_id)
+    await require_org_collaboration(request.user_id)
     await _authorize_team_management(ctx, org_id, ws_id)
     return await team_db.add_team_member(
         ws_id=ws_id,
@@ -289,6 +308,7 @@ async def update_member(
     request: UpdateTeamMemberRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamMemberResponse:
+    await require_org_collaboration(ctx.user_id)
     await _authorize_team_management(ctx, org_id, ws_id)
     return await team_db.update_team_member(
         ws_id=ws_id,

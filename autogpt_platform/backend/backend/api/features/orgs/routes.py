@@ -25,6 +25,7 @@ from .model import (
     UpdateOrgData,
     UpdateOrgRequest,
 )
+from .rollout import org_collaboration_enabled, require_org_collaboration
 
 router = APIRouter()
 
@@ -49,6 +50,7 @@ async def create_org(
     request: CreateOrgRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OrgResponse:
+    await require_org_collaboration(user_id)
     return await org_db.create_org(
         name=request.name,
         slug=request.slug,
@@ -66,7 +68,24 @@ async def create_org(
 async def list_orgs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[OrgResponse]:
+    if not await org_collaboration_enabled(user_id):
+        return [await get_default_org(user_id)]
     return await org_db.list_user_orgs(user_id)
+
+
+@router.get(
+    "/default",
+    summary="Get personal organization context",
+    tags=["orgs"],
+    dependencies=[Security(requires_user)],
+)
+async def get_default_org(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> OrgResponse:
+    org_id, _ = await org_db.get_user_default_team(user_id)
+    if org_id is None:
+        raise HTTPException(503, detail="Personal workspace is temporarily unavailable")
+    return await org_db.get_org(org_id)
 
 
 @router.get(
@@ -78,6 +97,7 @@ async def get_org(
     org_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> OrgResponse:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await org_db.get_org(org_id)
@@ -96,6 +116,7 @@ async def update_org(
         Security(requires_org_permission(OrgAction.RENAME_ORG)),
     ],
 ) -> OrgResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await org_db.update_org(
         org_id,
@@ -137,6 +158,7 @@ async def convert_org(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> OrgResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await org_db.convert_personal_org(org_id, ctx.user_id)
 
@@ -153,6 +175,7 @@ async def list_members(
     org_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[OrgMemberResponse]:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await org_db.list_org_members(org_id)
@@ -171,6 +194,8 @@ async def add_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    await require_org_collaboration(ctx.user_id)
+    await require_org_collaboration(request.user_id)
     _verify_org_path(ctx, org_id)
     return await org_db.add_org_member(
         org_id=org_id,
@@ -195,6 +220,7 @@ async def update_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await org_db.update_org_member(
         org_id=org_id,
@@ -235,6 +261,7 @@ async def transfer_ownership(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> None:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     await org_db.transfer_ownership(org_id, ctx.user_id, request.new_owner_id)
 
@@ -251,6 +278,7 @@ async def list_aliases(
     org_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[OrgAliasResponse]:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await org_db.list_org_aliases(org_id)
@@ -269,5 +297,6 @@ async def create_alias(
         Security(requires_org_permission(OrgAction.RENAME_ORG)),
     ],
 ) -> OrgAliasResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     return await org_db.create_org_alias(org_id, request.alias_slug, ctx.user_id)
