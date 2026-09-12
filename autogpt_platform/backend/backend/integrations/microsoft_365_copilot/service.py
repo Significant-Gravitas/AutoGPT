@@ -221,9 +221,14 @@ async def stream_chat_completion_microsoft_365(
                     web_enabled=web_enabled,
                     file_uris=file_uris,
                 ):
+                    received_response = True
                     response_text = update.text
                     if update.delta:
                         yield StreamTextDelta(id=text_id, delta=update.delta)
+            if not received_response:
+                raise Microsoft365CopilotError(
+                    "Microsoft 365 Copilot returned no answer"
+                )
     except Microsoft365CopilotError as error:
         if stream_started:
             yield StreamTextEnd(id=text_id)

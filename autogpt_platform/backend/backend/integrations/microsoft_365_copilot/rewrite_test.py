@@ -16,17 +16,18 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "snapshots,fail_after_rewrite",
+    "snapshots,fail_after_rewrite,replace_conversation",
     [
-        (["Hello world", "Hello [1] world"], False),
-        (["Hello world", "Goodbye"], False),
-        (["Hello world", ""], False),
-        (["Hello world", ""], True),
-        (["Hello world", "Hello [1] world", "Hello [1] world!"], False),
+        (["Hello world", "Hello [1] world"], False, False),
+        (["Hello world", "Goodbye"], False, False),
+        (["Hello world", ""], False, False),
+        (["Hello world", ""], False, True),
+        (["Hello world", ""], True, False),
+        (["Hello world", "Hello [1] world", "Hello [1] world!"], False, False),
     ],
 )
 async def test_final_graph_snapshot_is_persisted_without_corrupting_preview(
-    mocker, snapshots: list[str], fail_after_rewrite: bool
+    mocker, snapshots: list[str], fail_after_rewrite: bool, replace_conversation: bool
 ) -> None:
     async def chunks():
         for text in snapshots:
@@ -41,7 +42,18 @@ async def test_final_graph_snapshot_is_persisted_without_corrupting_preview(
     request.__aenter__ = AsyncMock(return_value=response)
     request.__aexit__ = AsyncMock(return_value=None)
     http_session = MagicMock()
-    http_session.post.return_value = request
+    requests = [request]
+    if replace_conversation:
+        expired = MagicMock()
+        expired.__aenter__.return_value = MagicMock(
+            status=410, json=AsyncMock(return_value={"error": {"code": "expired"}})
+        )
+        create = MagicMock()
+        create.__aenter__.return_value = MagicMock(
+            status=201, json=AsyncMock(return_value={"id": "replacement"})
+        )
+        requests = [expired, create, request]
+    http_session.post.side_effect = requests
     http_session.close = AsyncMock()
     mocker.patch(
         "backend.integrations.microsoft_365_copilot.client.aiohttp.ClientSession",
