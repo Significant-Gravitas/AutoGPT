@@ -199,7 +199,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        (dry-run simulator, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
-       OpenAI-compatible endpoint AutoPilot uses, with the same generous
+       OpenAI-compatible endpoint Otto uses, with the same generous
        request timeout — those helpers fire under the same hardware
        constraints (CPU-only Ollama is slow). ``prefer_openrouter`` is
        intentionally ignored here: the local client is the only sane

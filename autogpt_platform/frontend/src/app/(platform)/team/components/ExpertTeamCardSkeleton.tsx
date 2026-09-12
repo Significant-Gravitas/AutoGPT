@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 // real cards land. A single flat block would settle at the wrong height.
 export function ExpertTeamCardSkeleton() {
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
+    <div className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
       <div className="flex flex-col items-start p-2 pb-4">
         <div className="h-28 w-full rounded-lg bg-zinc-100" />
         <div className="flex w-full items-start gap-3 px-2">
