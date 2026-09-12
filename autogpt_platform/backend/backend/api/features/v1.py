@@ -61,6 +61,7 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.api.org_rollout import require_personal_scope_without_collaboration
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
@@ -1912,6 +1913,9 @@ async def _resolve_write_team_id(
                 "you are an active member of."
             ),
         )
+    await require_personal_scope_without_collaboration(
+        user_id, organization_id, team_id
+    )
     return team_id
 
 
