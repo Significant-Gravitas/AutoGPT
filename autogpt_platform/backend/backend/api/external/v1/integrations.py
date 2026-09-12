@@ -1,7 +1,7 @@
 """
 External API endpoints for integrations and credentials.
 
-This module provides endpoints for external applications (like Autopilot) to:
+This module provides endpoints for external applications (like Otto) to:
 - Initiate OAuth flows with custom callback URLs
 - Complete OAuth flows by exchanging authorization codes
 - Create API key, user/password, and host-scoped credentials

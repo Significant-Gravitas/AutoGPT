@@ -7,7 +7,7 @@ import { StopIcon, VoiceIcon } from "@hugeicons/core-free-icons";
 
 interface Props {
   isActive: boolean;
-  /** AutoPilot is talking: the same click cuts it off, so say so. */
+  /** Otto is talking: the same click cuts it off, so say so. */
   speaking?: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -27,7 +27,7 @@ export function VoiceModeButton({
       variant="icon"
       size="icon"
       aria-label={
-        speaking ? "Stop" : isActive ? "Leave voice mode" : "Talk to AutoPilot"
+        speaking ? "Stop" : isActive ? "Leave voice mode" : "Talk to Otto"
       }
       aria-pressed={isActive}
       disabled={disabled}

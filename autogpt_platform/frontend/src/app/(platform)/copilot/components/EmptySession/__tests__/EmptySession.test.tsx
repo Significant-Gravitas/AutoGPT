@@ -107,7 +107,7 @@ describe("EmptySession — recipient-aware intro", () => {
     ).toBeDefined();
   });
 
-  it("keeps the Autopilot intro without a selected expert", async () => {
+  it("keeps the Otto intro without a selected expert", async () => {
     const { container } = renderEmptySession("");
 
     await waitFor(() =>
