@@ -8,6 +8,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { cn } from "@/lib/utils";
 import { FilterHorizontalIcon } from "@hugeicons/core-free-icons";
 
 interface Props<T extends string> {
@@ -29,17 +30,19 @@ export function FilterIconMenu<T extends string>({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* Sized and bordered like the small SearchInput it sits beside,
+            with no fill until a filter is active. */}
         <Button
           type="button"
-          variant="icon"
-          size="icon-xs"
+          variant="outline"
+          size="icon-sm"
           aria-label={label}
           leadingIcon={FilterHorizontalIcon}
-          className={
-            isActive
-              ? "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 hover:text-white"
-              : undefined
-          }
+          className={cn(
+            "size-9 rounded-xl border-input bg-transparent text-zinc-600 shadow-none hover:border-input hover:bg-zinc-50",
+            isActive &&
+              "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 hover:text-white",
+          )}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[11rem]">

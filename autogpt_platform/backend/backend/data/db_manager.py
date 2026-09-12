@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -93,6 +94,7 @@ from backend.data.credit import (
     get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
+    sync_subscription_from_stripe,
 )
 from backend.data.execution import (
     create_graph_execution,
@@ -148,6 +150,10 @@ from backend.data.push_subscription import (
     increment_fail_count,
 )
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
+from backend.data.subscription_trial import (
+    get_subscription_trial,
+    record_subscription_trial_cost,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -338,6 +344,9 @@ class DatabaseManager(AppService):
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_subscription_trial = _(get_subscription_trial)
+    sync_subscription_from_stripe = _(sync_subscription_from_stripe)
+    record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -523,6 +532,12 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    spend_approval_required = _(experts_spend_approval.spend_approval_required)
+    park_execution_for_spend_approval = _(
+        experts_spend_approval.park_execution_for_spend_approval
+    )
+    parked_spend_decision = _(experts_spend_approval.parked_spend_decision)
+    open_chat_spend_review = _(experts_spend_approval.open_chat_spend_review)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
@@ -719,6 +734,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_subscription_trial = d.get_subscription_trial
+    sync_subscription_from_stripe = d.sync_subscription_from_stripe
+    record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -905,6 +923,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    spend_approval_required = d.spend_approval_required
+    park_execution_for_spend_approval = d.park_execution_for_spend_approval
+    parked_spend_decision = d.parked_spend_decision
+    open_chat_spend_review = d.open_chat_spend_review
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current

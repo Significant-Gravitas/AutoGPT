@@ -3049,9 +3049,9 @@ class TestPR18Cutover:
         # After cutover, the route should ALWAYS set org (not conditionally)
         import inspect
 
-        from backend.api.features import v1 as api_v1
+        from backend.api.features.api_keys import routes as api_key_routes
 
-        route_src = inspect.getsource(api_v1.create_api_key)
+        route_src = inspect.getsource(api_key_routes.create_api_key)
         assert (
             "if ctx.org_id" not in route_src
         ), "Route should always set organizationId, not conditionally"

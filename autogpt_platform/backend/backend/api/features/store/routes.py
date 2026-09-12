@@ -16,6 +16,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
+from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
 from . import media as store_media
@@ -181,6 +182,23 @@ async def get_agents(
         page_size=page_size,
     )
     return agents
+
+
+@router.get(
+    "/categories",
+    summary="List store categories",
+    tags=["store", "public"],
+)
+async def get_categories() -> list[store_model.StoreCategoryInfo]:
+    """The canonical categories a listing can be filed under."""
+    return [
+        store_model.StoreCategoryInfo(
+            value=category.value,
+            label=store_categories.CATEGORY_LABELS[category],
+            description=store_categories.CATEGORY_DESCRIPTIONS[category],
+        )
+        for category in store_categories.StoreCategory
+    ]
 
 
 @router.get(

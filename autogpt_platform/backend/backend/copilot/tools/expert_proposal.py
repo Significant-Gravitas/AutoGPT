@@ -3,7 +3,7 @@
 Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
 ``raise_expert``, ``update_expert``) write nothing and park the exact proposal
 in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
-loads it bound to the same Autopilot session, consumes it single-use, and
+loads it bound to the same Otto session, consumes it single-use, and
 applies it.
 """
 
@@ -180,7 +180,7 @@ async def store_proposal(
 def autopilot_session_guard(
     user_id: str | None, session: ChatSession
 ) -> ErrorResponse | None:
-    """Team changes belong to the user, typing in their own Autopilot chat.
+    """Team changes belong to the user, typing in their own Otto chat.
 
     Two things have to hold, and "no ``expert_id``" only proves the first:
     an expert must not staff its own team, AND the conversation has to be one
@@ -205,7 +205,7 @@ def autopilot_session_guard(
         return ErrorResponse(
             message=(
                 "Only the user can change the team, and only from the "
-                "Autopilot chat. Tell them what you'd add and let them do it "
+                "Otto chat. Tell them what you'd add and let them do it "
                 "there."
             ),
             session_id=session.session_id,
@@ -221,7 +221,7 @@ def autopilot_session_guard(
                 "This session was started by an automation, or predates the "
                 "check that tells them apart, so it cannot hire, raise, or "
                 "edit a teammate. Report what the team would need and let the "
-                "user make the change in a new Autopilot chat."
+                "user make the change in a new Otto chat."
             ),
             session_id=session.session_id,
         )
@@ -380,6 +380,7 @@ async def _apply_raise(
             preview.name,
             preview.role or None,
             preview.voice_preferences or None,
+            avatar_url=preview.avatar_url,
             color=preview.color or None,
             tagline=preview.tagline or None,
             about=preview.about or None,

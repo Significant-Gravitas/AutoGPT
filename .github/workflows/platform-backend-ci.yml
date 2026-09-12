@@ -465,6 +465,7 @@ jobs:
           # ``docker restart <shard>`` mid-stream. Off locally so a
           # contributor's ``poetry run test`` doesn't pay the ~15s cost.
           E2E_RESTART_ISOLATED: "1"
+          TRIAL_TEST_DATABASE: "1"
 
       - name: Upload coverage reports to Codecov
         if: ${{ !cancelled() }}

@@ -68,7 +68,7 @@ describe("getIntroLine", () => {
     );
   });
 
-  test("falls back to the Autopilot line without an expert", () => {
+  test("falls back to the Otto line without an expert", () => {
     expect(getIntroLine(null)).toBe(
       "Tell me about your work — I'll find what to automate.",
     );

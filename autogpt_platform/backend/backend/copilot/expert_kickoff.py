@@ -2,7 +2,10 @@
 
 import uuid
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 EXPERT_KICKOFF_KIND = "expert_kickoff"
 
@@ -54,3 +57,20 @@ def expert_kickoff_metadata(expert_id: str) -> dict[str, Any]:
 def is_hidden_chat_message(metadata: Mapping[str, Any] | None) -> bool:
     """Whether message metadata marks a row as hidden from user surfaces."""
     return metadata is not None and metadata.get("hidden") is True
+
+
+def is_expert_kickoff_turn(session: "ChatSession") -> bool:
+    """Whether the turn being served answers the hire's kickoff message.
+
+    ``expert_kickoff_metadata`` is the only writer of this ``kind`` and the
+    chat route never copies request fields into message metadata, so a true
+    here means the server wrote the last user message itself. Nobody has
+    asked for anything yet, which is what makes it safe for callers to
+    narrow the turn down to the onboarding card.
+    """
+    for message in reversed(session.messages):
+        if message.role != "user":
+            continue
+        metadata = message.metadata
+        return metadata is not None and metadata.get("kind") == EXPERT_KICKOFF_KIND
+    return False

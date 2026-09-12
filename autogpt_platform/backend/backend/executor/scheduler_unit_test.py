@@ -8,6 +8,7 @@ backend test job (and counted by codecov), not just the integration suite.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,6 +44,17 @@ from backend.util.exceptions import (
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +467,7 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     """The scope pre-check can race an archive/delete, after which
     ``create_chat_session`` drops the attribution and hands back a plain
     session. Dispatching there would write an expert's follow-up into
-    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    Otto memory scope, so the turn is skipped — but the schedule is
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
@@ -599,7 +611,7 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     """A follow-up fired into a chat the user already owns must not persist as
     role="user".
 
-    ``origin`` is a property of the session, so an interactive Autopilot chat
+    ``origin`` is a property of the session, so an interactive Otto chat
     stays interactive when a schedule fires into it — the confirm gate in
     ``expert_proposal`` falls back to the newest user-message sequence to prove
     a human answered the preview. A machine-authored turn landing as role="user"
@@ -1486,14 +1498,23 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 # ---------------------------------------------------------------------------
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+class _StartupRun(NamedTuple):
+    add_job_calls: list
+    embedding_backfill: MagicMock
+    backfill_calls_at_readiness: int
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
-    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    a mock APScheduler, recording what it registered and what it ran before
+    handing over to ``AppService.run_service``."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
     mock_scheduler = MagicMock()
+    embedding_backfill = MagicMock(return_value=None)
+    at_readiness = []
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
@@ -1506,12 +1527,17 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", embedding_backfill),
         # super().run_service() blocks forever keeping the service alive; no-op it.
-        patch("backend.util.service.AppService.run_service", return_value=None),
+        patch(
+            "backend.util.service.AppService.run_service",
+            side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
+        ),
     ):
         Scheduler(register_system_tasks=True).run_service()
-    return mock_scheduler.add_job.call_args_list
+    return _StartupRun(
+        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+    )
 
 
 def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
@@ -1519,7 +1545,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 ):
     """The sweep must be registered as an interval job keyed off the configured
     interval setting and capped to a single concurrent instance."""
-    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
     matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
     assert len(matches) == 1
@@ -1533,9 +1559,38 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
-    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
+    """``AppService.run_service`` starts the event loop uvicorn is scheduled
+    onto, so anything run before it keeps the RPC port closed. The backfill
+    takes minutes on a fresh stack; it must not sit on that path."""
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    assert run.backfill_calls_at_readiness == 0
+
+
+def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
+    """Dropping the startup call must not delay coverage: the six-hourly job
+    is due now, and cannot be skipped as a misfire however late it starts."""
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.args[0] is run.embedding_backfill
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
 
 
 class TestScheduleOrgVisibility:
