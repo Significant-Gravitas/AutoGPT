@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Calendar03Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
+import { useImageFallback } from "@/hooks/useImageFallback";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { getCadenceLabel } from "./helpers";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
@@ -19,12 +20,13 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
   const { imageUrl, isLoadingImage } = useExpertWorkflowCard(
     workflow.store_listing_version_id,
   );
+  const { showImage, handleImageError } = useImageFallback(imageUrl);
   const name = workflow.name ?? "Unnamed workflow";
 
   return (
     <li className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="relative aspect-[2.17/1] w-full bg-zinc-50">
-        {imageUrl ? (
+        {showImage && imageUrl ? (
           <Image
             src={imageUrl}
             unoptimized={isLocalStoreMediaUrl(imageUrl)}
@@ -32,6 +34,7 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
             fill
             sizes="(min-width: 640px) 360px, 100vw"
             className="object-cover"
+            onError={handleImageError}
           />
         ) : isLoadingImage ? (
           <Skeleton className="absolute inset-0 rounded-none" />

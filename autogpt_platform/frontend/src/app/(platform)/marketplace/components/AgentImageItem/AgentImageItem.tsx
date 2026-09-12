@@ -9,8 +9,9 @@ import {
   isValidVideoUrl,
 } from "./helpers";
 import { useAgentImageItem } from "./useAgentImageItem";
-import { PlayIcon } from "@hugeicons/core-free-icons";
+import { ImageNotFound01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface AgentImageItemProps {
   image: string;
@@ -30,6 +31,7 @@ export function AgentImageItem({
   const { videoRef } = useAgentImageItem({ playingVideoIndex, index });
   const isVideoFile = isValidVideoFile(image);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const { showImage, handleImageError } = useImageFallback(image);
 
   useEffect(() => {
     setImageLoaded(false);
@@ -69,19 +71,30 @@ export function AgentImageItem({
           )
         ) : (
           <div className="relative h-full w-full">
-            {!imageLoaded && (
-              <Skeleton className="absolute inset-0 rounded-xl" />
+            {showImage ? (
+              <>
+                {!imageLoaded && (
+                  <Skeleton className="absolute inset-0 rounded-xl" />
+                )}
+                <Image
+                  src={image}
+                  unoptimized={isLocalStoreMediaUrl(image)}
+                  alt="Image"
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  className="rounded-xl object-cover"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={handleImageError}
+                />
+              </>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-zinc-100">
+                <Icon
+                  icon={ImageNotFound01Icon}
+                  className="h-10 w-10 text-zinc-400"
+                />
+              </div>
             )}
-            <Image
-              src={image}
-              unoptimized={isLocalStoreMediaUrl(image)}
-              alt="Image"
-              fill
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              className="rounded-xl object-cover"
-              onLoad={() => setImageLoaded(true)}
-              onError={() => setImageLoaded(true)}
-            />
           </div>
         )}
       </div>

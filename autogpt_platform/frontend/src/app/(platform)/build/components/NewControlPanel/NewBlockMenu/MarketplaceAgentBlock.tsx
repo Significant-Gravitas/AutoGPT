@@ -12,6 +12,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -38,6 +39,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   slug,
   ...rest
 }) => {
+  const { showImage, handleImageError } = useImageFallback(image_url);
+
   return (
     <Button
       className={cn(
@@ -48,7 +51,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       {...rest}
     >
       <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
-        {image_url && (
+        {showImage && image_url && (
           <Image
             src={image_url}
             unoptimized={isLocalStoreMediaUrl(image_url)}
@@ -56,6 +59,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             fill
             sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
+            onError={handleImageError}
           />
         )}
       </div>
