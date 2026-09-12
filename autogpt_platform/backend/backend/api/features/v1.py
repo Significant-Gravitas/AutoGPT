@@ -43,7 +43,6 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
 )
-from backend.api.features.experts import experts_db
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateGraph,
@@ -117,7 +116,6 @@ from backend.data.subscription_trial_billing import (
     sync_trials_for_billing_event,
 )
 from backend.data.tally import extract_business_understanding
-from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
@@ -133,7 +131,6 @@ from backend.data.user import (
     verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
-from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
@@ -147,7 +144,6 @@ from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
-from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import (
     GraphValidationError,
@@ -157,10 +153,7 @@ from backend.util.exceptions import (
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.json import dumps
 from backend.util.settings import Settings
-from backend.util.timezone_utils import (
-    convert_utc_time_to_user_timezone,
-    get_user_timezone_or_utc,
-)
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
@@ -2534,183 +2527,3 @@ async def download_shared_file(
         raise HTTPException(status_code=404, detail="Not found")
 
     return await create_file_download_response(file)
-
-
-########################################################
-##################### Schedules ########################
-########################################################
-
-
-class ScheduleCreationRequest(pydantic.BaseModel):
-    graph_version: Optional[int] = None
-    name: str
-    cron: str
-    inputs: dict[str, Any]
-    credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
-    timezone: Optional[str] = pydantic.Field(
-        default=None,
-        description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
-    )
-    expert_id: Optional[str] = pydantic.Field(
-        default=None,
-        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
-    )
-
-
-@v1_router.post(
-    path="/graphs/{graph_id}/schedules",
-    summary="Create execution schedule",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def create_graph_execution_schedule(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    graph_id: str = Path(..., description="ID of the graph to schedule"),
-    schedule_params: ScheduleCreationRequest = Body(),
-) -> scheduler.GraphExecutionJobInfo:
-    graph = await graph_db.get_graph(
-        graph_id=graph_id,
-        version=schedule_params.graph_version,
-        user_id=user_id,
-    )
-    if not graph:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
-        )
-
-    # Use timezone from request if provided, otherwise fetch from user profile
-    if schedule_params.timezone:
-        user_timezone = schedule_params.timezone
-    else:
-        user = await get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
-
-    # Expert attribution: explicit expert_id must be an active expert owned
-    # by the caller; when omitted, a unique (user, graph) → expert match
-    # keeps attribution for schedules created through the generic UI.
-    expert_id = schedule_params.expert_id
-    if expert_id is not None:
-        expert = await experts_db.get_expert(
-            user_id, expert_id, include_workflows=False
-        )
-        if expert is None or expert.is_archived:
-            raise HTTPException(
-                status_code=404, detail=f"Expert #{expert_id} not found."
-            )
-    else:
-        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
-
-    result = await get_scheduler_client().add_execution_schedule(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        name=schedule_params.name,
-        cron=schedule_params.cron,
-        input_data=schedule_params.inputs,
-        input_credentials=schedule_params.credentials,
-        user_timezone=user_timezone,
-        organization_id=ctx.org_id,
-        team_id=ctx.team_id,
-        expert_id=expert_id,
-    )
-
-    # Convert the next_run_time back to user timezone for display
-    if result.next_run_time:
-        result.next_run_time = convert_utc_time_to_user_timezone(
-            result.next_run_time, user_timezone
-        )
-
-    await complete_onboarding_step(user_id, OnboardingStep.SCHEDULE_AGENT)
-
-    return result
-
-
-@v1_router.get(
-    path="/graphs/{graph_id}/schedules",
-    summary="List execution schedules for a graph",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_graph_execution_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    graph_id: str = Path(),
-) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        graph_id=graph_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-    )
-
-
-@v1_router.get(
-    path="/schedules",
-    summary="List execution schedules for a user",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_all_graphs_execution_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-    )
-
-
-@v1_router.get(
-    path="/schedules/followups",
-    summary="List copilot follow-up schedules for a user",
-    operation_id="listCopilotFollowupSchedules",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_copilot_turn_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> list[scheduler.CopilotTurnJobInfo]:
-    """Return only copilot-turn schedules for the current user.
-
-    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
-    keeps the generated frontend client typed to a single concrete return type
-    instead of a discriminated union.
-    """
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="copilot_turn"
-    )
-    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
-    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
-    # for the ``kind`` filter, but we narrow the polymorphic
-    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
-    # subset before returning so the generated frontend client gets a single
-    # concrete schema. If a row ever slips through the discriminator (e.g.
-    # legacy untyped row, scheduler-side bug), we drop it rather than fail
-    # the response with a Pydantic validation error.
-    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
-
-
-@v1_router.delete(
-    path="/schedules/{schedule_id}",
-    summary="Delete execution schedule",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_graph_execution_schedule(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    schedule_id: str = Path(..., description="ID of the schedule to delete"),
-) -> dict[str, Any]:
-    try:
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Schedule #{schedule_id} not found",
-        )
-    return {"id": schedule_id}
