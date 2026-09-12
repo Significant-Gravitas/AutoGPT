@@ -35,6 +35,7 @@ class ProviderName(str, Enum):
     MCP = "mcp"
     MEDIUM = "medium"
     MEM0 = "mem0"
+    MICROSOFT_365_COPILOT = "microsoft_365_copilot"
     NOTION = "notion"
     NVIDIA = "nvidia"
     OLLAMA = "ollama"

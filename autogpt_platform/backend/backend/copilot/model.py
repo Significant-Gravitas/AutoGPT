@@ -105,6 +105,7 @@ class ChatSessionMetadata(BaseModel):
     dry_run: bool = False
     llm_auth_provider: CopilotLlmAuthProvider = "platform"
     llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
