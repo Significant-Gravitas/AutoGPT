@@ -51,6 +51,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
     provider_family: "autogpt",
+    auth_provider: "platform",
     display_name: "Self-hosted chat",
     auth_method: "deployment",
     credential_id: null,
@@ -64,7 +65,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
     lock_reason: null,
     unlock_href: null,
     ...over,
-  } as AIConnectionOffer;
+  };
 }
 
 function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
