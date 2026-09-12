@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
-from backend.data.execution import ExecutionStatus
+from backend.copilot.context import set_execution_context
+from backend.copilot.tree import root_envelope
+from backend.data.execution import ExecutionStatus, ExecutionTrigger
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
@@ -1380,6 +1382,7 @@ async def test_run_preset_not_found():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_executes_with_merged_inputs():
     tool = RunAgentTool()
+    envelope = root_envelope("preset-turn")
     session = make_session(user_id="preset-user")
     session.organization_id = "personal-org"
     session.team_id = "personal-team"
@@ -1430,14 +1433,23 @@ async def test_run_preset_executes_with_merged_inputs():
         ),
         patch("backend.copilot.tools.run_agent.track_agent_run_success"),
     ):
-        result = await tool._handle_preset_run(
-            "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
-        )
+        set_execution_context("preset-user", session, envelope=envelope)
+        try:
+            result = await tool._handle_preset_run(
+                "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
+            )
+        finally:
+            set_execution_context(None, None, envelope=None)
 
     assert isinstance(result, ExecutionStartedResponse)
     kwargs = add_exec.await_args.kwargs
     assert kwargs["preset_id"] == "p1"
     assert kwargs["inputs"] == {"a": 1, "b": 99}
+    # The only assertion on this call site's trigger and tree kwargs: drop
+    # either one resolving a conflict here and every other suite stays green.
+    assert kwargs["trigger"] is ExecutionTrigger.COPILOT
+    assert kwargs["trigger_ref"] == session.session_id
+    assert kwargs["copilot_tree"] is envelope
 
 
 @pytest.mark.asyncio(loop_scope="session")
