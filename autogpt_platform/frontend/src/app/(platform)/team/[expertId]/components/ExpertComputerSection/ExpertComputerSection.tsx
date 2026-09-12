@@ -106,8 +106,10 @@ export function ExpertComputerSection({
           <Text variant="large-medium">{`${expertName}'s computer`}</Text>
           <Text variant="small" className="mt-1 max-w-prose text-zinc-500">
             A persistent cloud machine only {expertName} uses. It is suspended
-            when idle and costs nothing while suspended; installed tools, logins
-            and files stay put between chats.
+            when idle and costs nothing while suspended; installed tools and
+            files stay put between chats. {expertName} has full access to it, so
+            anything signed in on its desktop is visible to the AI. Do not sign
+            into personal accounts there.
           </Text>
         </div>
         <Button

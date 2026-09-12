@@ -6035,6 +6035,37 @@
         }
       }
     },
+    "/api/desktop-preview": {
+      "get": {
+        "tags": ["v1"],
+        "summary": "Open Desktop Preview",
+        "description": "Redirect the desktop's owner to its live stream.\n\nThe stream URL carries the desktop's password, so it is only ever\ndisclosed here, to the user the token was issued to, and marked\n``no-store`` so no cache or referrer keeps a copy.",
+        "operationId": "getV1OpenDesktopPreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 8192, "title": "Token" }
+          }
+        ],
+        "responses": {
+          "307": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/email/": {
       "post": {
         "tags": ["v1", "email"],

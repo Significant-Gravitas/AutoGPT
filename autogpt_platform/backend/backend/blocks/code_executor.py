@@ -27,7 +27,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
-from backend.util.sandbox_metadata import SandboxMetadata
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -146,10 +146,18 @@ class BaseE2BExecutorMixin:
         files: list[SandboxFileOutput] = []
         try:
             if sandbox_id:
-                # Connect to existing sandbox (ExecuteCodeStepBlock case)
-                sandbox = await AsyncSandbox.connect(
+                # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
+                # id is caller-supplied and any id connects under our key, so
+                # the box must be stamped with this user before it is used.
+                candidate = await AsyncSandbox.connect(
                     sandbox_id=sandbox_id, api_key=api_key
                 )
+                user_id = execution_context.user_id if execution_context else None
+                if not owned_by_user((await candidate.get_info()).metadata, user_id):
+                    raise PermissionError(
+                        f"Sandbox {sandbox_id} does not belong to this user"
+                    )
+                sandbox = candidate
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(

@@ -13,8 +13,10 @@ A sandbox belongs to a :class:`SandboxOwner`:
 * ``session`` — scratch for one chat; killed when the chat is deleted.
 * ``expert`` — the hired expert's own computer.  Every session that runs as
   that expert (chats, ``delegate_to_expert`` sub-sessions, scheduled
-  kickoffs) reconnects to the same box, so tools it installs, logins it keeps
-  in its browser and files it writes are still there next time.  Deleting a
+  kickoffs) reconnects to the same box, so tools it installs, files it writes
+  and anything left signed in in its browser are still there next time.  The
+  model has a root shell in that same VM, so nothing on the box, browser
+  sessions included, is private from it.  Deleting a
   chat never touches it; archiving the expert does
   (``kill_expert_sandboxes``).  The box mounts the expert's own durable volume
   at ``~/workspace`` and the owning user's volume at ``~/shared`` (see
@@ -166,7 +168,7 @@ class SandboxOwner(BaseModel):
     ``session`` sandboxes are scratch for one chat.  ``expert`` sandboxes are
     a hired expert's own persistent computer, shared by every session that
     runs as that expert — one box per expert, not one per account, so two
-    experts never see each other's logins or files.
+    experts never see each other's files or browser sessions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -224,6 +226,43 @@ class SandboxOwner(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.id[:12]}"
+
+
+class SandboxNotOwnedError(Exception):
+    """A sandbox id resolved to a box that is not the owner's."""
+
+
+async def connect_owned(
+    sandbox_id: str,
+    owner: SandboxOwner,
+    sandbox_kind: SandboxKind,
+    api_key: str,
+    *,
+    timeout: int | None = None,
+) -> AsyncSandbox:
+    """Connect to *sandbox_id* only if E2B says it belongs to *owner*.
+
+    Under the platform's E2B key any sandbox id connects, so the id alone
+    (from Redis, a message, or a caller) must never be trusted: the box's
+    stamped ``autogpt_owner`` / ``autogpt_kind`` metadata is the record of
+    who it belongs to.  Raises :class:`SandboxNotOwnedError` otherwise.
+    *timeout* re-arms the box's running-time limit on connect (a resumed
+    desktop would otherwise get the SDK's 300 s default).
+    """
+    if timeout is None:
+        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+    else:
+        sandbox = await AsyncSandbox.connect(
+            sandbox_id, api_key=api_key, timeout=timeout
+        )
+    info = await sandbox.get_info()
+    expected = owner.metadata(sandbox_kind)
+    stamped = info.metadata or {}
+    if any(stamped.get(key) != value for key, value in expected.items()):
+        raise SandboxNotOwnedError(
+            f"Sandbox {sandbox_id[:12]} is not {owner}'s {sandbox_kind} box"
+        )
+    return sandbox
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
@@ -335,11 +374,13 @@ async def _try_reconnect(
     """Try to reconnect to an existing sandbox. Returns None on failure."""
     owner = _as_owner(owner)
     try:
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+        sandbox = await connect_owned(sandbox_id, owner, "shell", api_key)
         if await sandbox.is_running():
             # Refresh TTL so an active owner cannot lose its sandbox_id at expiry.
             await _set_stored_sandbox_id(owner, sandbox_id)
             return sandbox
+    except SandboxNotOwnedError as exc:
+        logger.warning("[E2B] Refusing reconnect: %s", exc)
     except Exception as exc:
         logger.warning("[E2B] Reconnect to %.12s failed: %s", sandbox_id, exc)
 
@@ -665,7 +706,7 @@ async def _act_on_sandbox(
         return False
 
     async def _run() -> None:
-        await fn(await AsyncSandbox.connect(sandbox_id, api_key=api_key))
+        await fn(await connect_owned(sandbox_id, owner, sandbox_kind, api_key))
 
     try:
         await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)

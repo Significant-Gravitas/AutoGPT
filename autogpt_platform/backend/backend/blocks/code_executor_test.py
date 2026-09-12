@@ -263,3 +263,64 @@ class TestExecuteCodeBlockRun:
 
         assert any(name == "error" for name, _ in outputs)
         mock.assert_not_called()
+
+
+class TestConnectToExistingSandbox:
+    """A sandbox id is caller input; under the platform key any id connects,
+    so the box's stamped user decides whether it may be used."""
+
+    def _sandbox(self, stamped: dict) -> AsyncMock:
+        sandbox = AsyncMock()
+        sandbox.get_info = AsyncMock(return_value=AsyncMock(metadata=stamped))
+        return sandbox
+
+    async def test_another_users_sandbox_is_refused_and_left_alone(self):
+        block = ExecuteCodeBlock()
+        context = ExecutionContext(user_id="user-b", graph_exec_id="gexec-1")
+        theirs = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            cls.connect = AsyncMock(return_value=theirs)
+            with pytest.raises(PermissionError, match="does not belong"):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    dispose_sandbox=True,
+                    execution_context=context,
+                )
+        theirs.run_code.assert_not_awaited()
+        # Not ours to kill either, even with dispose_sandbox set.
+        theirs.kill.assert_not_awaited()
+
+    async def test_without_a_user_no_existing_sandbox_can_be_used(self):
+        block = ExecuteCodeBlock()
+        box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            cls.connect = AsyncMock(return_value=box)
+            with pytest.raises(PermissionError):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    execution_context=None,
+                )

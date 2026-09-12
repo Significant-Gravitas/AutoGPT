@@ -31,8 +31,10 @@ from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
     SandboxLookupError,
+    SandboxNotOwnedError,
     SandboxOwner,
     _try_reconnect,
+    connect_owned,
     count_expert_turn,
     find_owned_sandbox_id,
     get_or_create_sandbox,
@@ -48,12 +50,28 @@ _SANDBOX_ID = "sb-abc"
 _TIMEOUT = 300
 
 
-def _mock_sandbox(sandbox_id: str = _SANDBOX_ID, running: bool = True) -> MagicMock:
+def _mock_sandbox(
+    sandbox_id: str = _SANDBOX_ID,
+    running: bool = True,
+    *,
+    owner: SandboxOwner | None = None,
+    kind: str = "shell",
+) -> MagicMock:
+    """A connected box stamped as *owner*'s (the session's shell box by default).
+
+    ``connect_owned`` reads the stamp back through ``get_info``; a box with
+    the wrong stamp is refused, so every test that reconnects says whose box
+    it is.
+    """
     sb = MagicMock()
     sb.sandbox_id = sandbox_id
     sb.is_running = AsyncMock(return_value=running)
     sb.pause = AsyncMock()
     sb.kill = AsyncMock()
+    stamped = (owner or SandboxOwner(kind="session", id=_SESSION_ID)).metadata(
+        kind  # type: ignore[arg-type]
+    )
+    sb.get_info = AsyncMock(return_value=MagicMock(metadata=stamped))
     return sb
 
 
@@ -93,6 +111,21 @@ def _patch_redis(redis: AsyncMock):
 
 
 class TestTryReconnect:
+    def test_reconnect_refuses_a_box_stamped_for_someone_else(self):
+        """A cached id that resolves to another owner's box is dropped, not used."""
+        sb = _mock_sandbox(owner=SandboxOwner(kind="session", id="other-session"))
+        redis = _mock_redis()
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(_try_reconnect(_SANDBOX_ID, _SESSION_ID, _API_KEY))
+
+        assert result is None
+        sb.kill.assert_not_awaited()
+        redis.delete.assert_awaited_once()
+
     def test_reconnect_success(self):
         """Returns the sandbox when it connects and is running; refreshes Redis TTL."""
         sb = _mock_sandbox()
@@ -726,6 +759,36 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     return r
 
 
+class TestConnectOwned:
+    def test_returns_the_box_when_the_stamp_matches(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        sb = _mock_sandbox("sb-expert", owner=owner, kind="desktop")
+        with patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls:
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(connect_owned("sb-expert", owner, "desktop", _API_KEY))
+        assert result is sb
+        mock_cls.connect.assert_awaited_once_with("sb-expert", api_key=_API_KEY)
+
+    @pytest.mark.parametrize(
+        "stamp",
+        [
+            {"autogpt_owner": "expert:someone-else", "autogpt_kind": "shell"},
+            {"autogpt_owner": f"expert:{_EXPERT_ID}", "autogpt_kind": "desktop"},
+            {},
+        ],
+        ids=["another owner", "wrong kind", "unstamped"],
+    )
+    def test_refuses_a_box_that_is_not_the_owners(self, stamp):
+        """Any id connects under the platform key; the stamp is the only record."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        sb = _mock_sandbox("sb-x", owner=owner)
+        sb.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+        with patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls:
+            mock_cls.connect = AsyncMock(return_value=sb)
+            with pytest.raises(SandboxNotOwnedError):
+                asyncio.run(connect_owned("sb-x", owner, "shell", _API_KEY))
+
+
 class TestSandboxOwner:
     def test_expert_session_is_owned_by_the_expert(self):
         owner = SandboxOwner.for_session(_SESSION_ID, _EXPERT_ID)
@@ -814,7 +877,9 @@ class TestFindOwnedSandboxId:
 class TestExpertShellBox:
     def test_recovers_expert_box_from_e2b_when_redis_is_empty(self):
         """Redis is only a cache for an expert's box; E2B metadata is the record."""
-        sb = _mock_sandbox("sb-expert")
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
         redis = _keyed_redis({})
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
@@ -858,7 +923,9 @@ class TestExpertShellBox:
 
     def test_listed_expert_box_gets_a_second_reconnect_before_being_forked(self):
         """One transient connect failure must not leave the durable box behind."""
-        sb = _mock_sandbox("sb-expert")
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
         redis = _keyed_redis({})
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
@@ -878,7 +945,9 @@ class TestExpertShellBox:
         mock_cls.create.assert_not_awaited()
 
     def test_count_turn_false_defers_the_turn_count(self):
-        sb = _mock_sandbox("sb-expert")
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
         redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
@@ -901,7 +970,7 @@ class TestExpertShellBox:
     def test_a_turn_that_cannot_be_counted_does_not_get_the_box(self):
         """An uncounted turn's release would decrement someone else's count
         and could pause the box under them, so the count failure surfaces."""
-        sb = _mock_sandbox("sb-expert")
+        sb = _mock_sandbox("sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID))
         redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
         redis.incr = AsyncMock(side_effect=ConnectionError("redis down"))
         with (
@@ -1057,7 +1126,9 @@ class TestExpertKill:
         mock_cls.connect.assert_not_awaited()
 
     def test_archive_kills_shell_and_desktop_and_clears_cache(self):
-        shell, desktop = _mock_sandbox("sb-shell"), _mock_sandbox("sb-desktop")
+        expert = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        shell = _mock_sandbox("sb-shell", owner=expert)
+        desktop = _mock_sandbox("sb-desktop", owner=expert, kind="desktop")
         redis = _keyed_redis(
             {_EXPERT_SHELL_KEY: "sb-shell", _EXPERT_DESKTOP_KEY: "sb-desktop"}
         )
@@ -1081,7 +1152,9 @@ class TestExpertKill:
         mock_cls.list.assert_not_called()
 
     def test_archive_falls_back_to_e2b_metadata_for_forgotten_boxes(self):
-        shell = _mock_sandbox("sb-shell")
+        shell = _mock_sandbox(
+            "sb-shell", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
         redis = _keyed_redis({})
         lists = {
             "shell": [_info("sb-shell", SandboxState.PAUSED)],
@@ -1125,7 +1198,9 @@ class TestKillSandboxDesktop:
     def test_deleting_a_chat_kills_its_desktop_too(self):
         """start_desktop's box is never paused at turn end, so the session
         delete is the only thing that ever stops it."""
-        shell, desktop = _mock_sandbox("sb-shell"), _mock_sandbox("sb-desk")
+        shell, desktop = _mock_sandbox("sb-shell"), _mock_sandbox(
+            "sb-desk", kind="desktop"
+        )
         redis = _keyed_redis(
             {
                 f"copilot:e2b:sandbox:{_SESSION_ID}": "sb-shell",
@@ -1153,7 +1228,7 @@ class TestKillSandboxDesktop:
         }
 
     def test_desktop_only_session_still_reports_a_kill(self):
-        desktop = _mock_sandbox("sb-desk")
+        desktop = _mock_sandbox("sb-desk", kind="desktop")
         redis = _keyed_redis({f"copilot:e2b:desktop:{_SESSION_ID}": "sb-desk"})
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
