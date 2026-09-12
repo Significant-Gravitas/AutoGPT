@@ -16,7 +16,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel
 
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.data.credit_history.markers import copilot_session_id
 from backend.data.model import CreditHistoryRelatedExecution, CreditTransactionItem
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 
@@ -63,7 +63,7 @@ async def _load_executions(
             item.usage_execution_id
             for item in items
             if item.usage_execution_id
-            and not item.usage_execution_id.startswith(COPILOT_SESSION_PREFIX)
+            and copilot_session_id(item.usage_execution_id) is None
         }
     )
     if not ids:
@@ -124,10 +124,10 @@ async def _load_sessions(
 ) -> dict[str, ChatSession]:
     ids = sorted(
         {
-            item.usage_execution_id.removeprefix(COPILOT_SESSION_PREFIX)
+            session_id
             for item in items
             if item.usage_execution_id
-            and item.usage_execution_id.startswith(COPILOT_SESSION_PREFIX)
+            and (session_id := copilot_session_id(item.usage_execution_id)) is not None
         }
     )
     if not ids:
@@ -160,7 +160,7 @@ async def _load_agent_refs(
             item.usage_graph_id
             for item in items
             if item.usage_graph_id
-            and not (item.usage_execution_id or "").startswith(COPILOT_SESSION_PREFIX)
+            and copilot_session_id(item.usage_execution_id or "") is None
         }
     )
     if not graph_ids:
@@ -277,8 +277,8 @@ def _enrich_item(
 ) -> CreditTransactionItem:
     item = original.model_copy(deep=True)
     execution_id = item.usage_execution_id or ""
-    if execution_id.startswith(COPILOT_SESSION_PREFIX):
-        session = sessions.get(execution_id.removeprefix(COPILOT_SESSION_PREFIX))
+    if (session_id := copilot_session_id(execution_id)) is not None:
+        session = sessions.get(session_id)
         item.conversation_id = session.id if session else None
         item.conversation_title = session.title if session else None
         return item

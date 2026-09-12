@@ -12,6 +12,7 @@ from backend.data.credit_history.cursor import (
     encode_cursor,
 )
 from backend.data.credit_history.enrichment import enrich_credit_history
+from backend.data.credit_history.markers import copilot_session_id
 from backend.data.credit_history.queries import credit_history_query
 from backend.data.db import query_raw_with_schema
 from backend.data.model import (
@@ -113,8 +114,8 @@ def _to_item(row: _HistoryRow, user_id: str) -> CreditTransactionItem:
     )
     description = _TRANSACTION_DESCRIPTIONS[row.transaction_type]
     if row.transaction_type == CreditTransactionType.USAGE:
-        if row.usage_execution_id and row.usage_execution_id.startswith(
-            "copilot-session-"
+        if row.usage_execution_id and (
+            copilot_session_id(row.usage_execution_id) is not None
         ):
             activity_type, description = "copilot_tools", "Otto tool use"
         elif row.usage_execution_id:
