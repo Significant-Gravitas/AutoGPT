@@ -11,6 +11,7 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from . import grant_db
 from .grant_model import CreateGrantRequest, GrantResponse, ReceivedGrantResponse
+from .rollout import require_org_collaboration
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ async def create_grant(
         Security(requires_org_permission(OrgAction.SHARE_RESOURCES)),
     ],
 ) -> GrantResponse:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     try:
@@ -65,6 +67,7 @@ async def list_grants(
         Security(requires_org_permission(OrgAction.SHARE_RESOURCES)),
     ],
 ) -> list[GrantResponse]:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await grant_db.list_grants_for_graph(org_id, graph_id)
@@ -112,6 +115,7 @@ async def list_received_grants(
     org_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[ReceivedGrantResponse]:
+    await require_org_collaboration(ctx.user_id)
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await grant_db.list_received_grants(org_id, ctx.user_id)
