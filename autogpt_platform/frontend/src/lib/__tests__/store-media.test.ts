@@ -7,6 +7,8 @@ const defaultImageURLs = [
   `http://localhost:8006/api${mediaPath}`,
   `http://localhost:8006/api${mediaPath}?version=2#preview`,
   "http://localhost:8006/api/store/media/user.name_1-2/images/preview.v2_1-thumb.webp",
+  `/api${mediaPath}`,
+  `http://localhost:3000/api${mediaPath}`,
   `/api/proxy/api${mediaPath}`,
   `http://localhost:3000/api/proxy/api${mediaPath}`,
 ];
@@ -37,7 +39,6 @@ describe("configured local store media", () => {
     `http://localhost:8007/api${mediaPath}`,
     `http://localhost:8006/wrong/api${mediaPath}`,
     `http://internal-backend:8006/api${mediaPath}`,
-    `/api${mediaPath}`,
     `https://unknown.example/api/proxy/api${mediaPath}`,
     `http://localhost:8006/api/proxy/api${mediaPath}`,
     `/unrelated/api/proxy/api${mediaPath}`,
@@ -88,7 +89,7 @@ describe("configured local store media", () => {
     expect(
       isLocalStoreMediaUrl(`https://wrong.example/_agpt/api${mediaPath}`),
     ).toBe(false);
-    expect(isLocalStoreMediaUrl(`/api${mediaPath}`)).toBe(false);
+    expect(isLocalStoreMediaUrl(`/api${mediaPath}`)).toBe(true);
     expect(
       isLocalStoreMediaUrl(
         `https://appliance.example/api/proxy/api${mediaPath}`,
@@ -113,7 +114,7 @@ describe("configured local store media", () => {
       expect(
         isLocalStoreMediaUrl(`https://wrong.example/_agpt/api${mediaPath}`),
       ).toBe(false);
-      expect(isLocalStoreMediaUrl(`/api${mediaPath}`)).toBe(false);
+      expect(isLocalStoreMediaUrl(`/api${mediaPath}`)).toBe(true);
       expect(isLocalStoreMediaUrl(`/api/proxy/api${mediaPath}`)).toBe(true);
       expect(
         isLocalStoreMediaUrl(

@@ -23,7 +23,10 @@ export function isLocalStoreMediaUrl(src: string | null | undefined): boolean {
       0,
       url.pathname.lastIndexOf("/store/media/"),
     );
-    if (url.origin === frontendURL.origin && apiPath === "/api/proxy/api") {
+    if (
+      url.origin === frontendURL.origin &&
+      (apiPath === "/api" || apiPath === "/api/proxy/api")
+    ) {
       return true;
     }
 
