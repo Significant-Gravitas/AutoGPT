@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.2.1"
+  version: "2.3.0"
 ---
 
 # Manual E2E Test
@@ -23,6 +23,10 @@ verification (JWKS does **not** rotate on a frontend restart; the local
 Postgres port is `5432`, not `54322`) and hardens the auth setup (explicit
 password-length/allowlist/rate-limit failure modes, fail-fast on an empty
 token, password kept out of process args).
+**2.3.0** — screenshots are posted as GitHub comment attachments
+(`gh pr comment --attach`, needs gh >= 2.99.0) instead of being pushed to a
+`test-screenshots/*` branch, which accumulated one branch per tested PR and
+made every old report's images depend on that branch surviving.
 
 ## Critical Requirements
 
@@ -35,10 +39,10 @@ These are NON-NEGOTIABLE. Every test run MUST satisfy ALL the following:
 - If a screenshot is missing for a scenario, the test is INCOMPLETE — go back and take it
 
 ### 2. Screenshots MUST Be Posted to PR
-- Push ALL screenshots to a temp branch `test-screenshots/pr-{N}`
-- Post a PR comment with ALL screenshots embedded inline using GitHub raw URLs
+- Attach ALL screenshots to the PR comment with `gh pr comment --attach` (see Step 7). **Never push image files to a repo branch** — attachments live in GitHub's own asset store and leave nothing behind in the repo
+- Post a PR comment with ALL screenshots embedded inline, each with its explanation
 - This is NOT optional — every test run MUST end with a PR comment containing screenshots
-- If screenshot upload fails, retry. If it still fails, list failed files and require manual drag-and-drop/paste attachment in the PR comment
+- If the upload fails, retry. If it still fails, list failed files and require manual drag-and-drop/paste attachment in the PR comment, and mark the run INCOMPLETE
 
 ### 3. State Verification with Before/After Evidence
 - For EVERY state-changing operation (API call, user action), capture the state BEFORE and AFTER
@@ -976,104 +980,65 @@ TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-logi
 
 ## Step 7: Post test report as PR comment with screenshots
 
-Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
+Post the report with `gh pr comment --attach`. Each attached file is uploaded to GitHub's own asset store, and any image the body already references by that path is rewritten to point at the uploaded asset. Screenshots never touch a repo branch.
 
-**This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
+**This step is MANDATORY. Every test run MUST post a PR comment — with the screenshots attached, or an image-free INCOMPLETE report when attachment is unavailable (see the fallback below). Never nothing.**
 
-**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+**Attachments are permanent.** A `user-attachments` asset stays reachable by anyone holding its URL regardless of repo visibility, and deleting the comment does not reliably revoke it — there is no undo. Look at every screenshot for credentials, tokens, or customer data before this step runs.
 
-**CRITICAL — NEVER paste absolute local paths into the PR comment.** Strings like `/Users/…`, `/home/…`, `C:\…` are useless to every reviewer except you. Before posting, grep the final body for `/Users/`, `/home/`, `/tmp/`, `/private/`, `C:\`, `~/` and either drop those lines entirely or rewrite them as repo-relative paths (`autogpt_platform/backend/…`). The PR comment is an artifact reviewers on GitHub read — it must be self-contained on github.com. Keep local paths in `$RESULTS_DIR/test-report.md` for yourself; only copy the *content* they reference (excerpts, test names, log lines) into the PR comment, not the path.
-
-**Pre-post sanity check** (paste after building the comment body, before `gh api ... comments`):
+**Requires `gh` >= 2.99.0** — `--attach` landed there. Distro packages lag (Fedora's rpm tops out at 2.97.0), so check the version you are actually running before building the body:
 
 ```bash
-# Reject any local-looking absolute path or home-dir shortcut in the body
-if grep -nE '(^|[^A-Za-z])(/Users/|/home/|/tmp/|/private/|C:\\|~/)[A-Za-z0-9]' "$COMMENT_FILE" ; then
-  echo "ABORT: local filesystem paths detected in PR comment body."
-  echo "Remove or rewrite as repo-relative (autogpt_platform/...) before posting."
-  exit 1
+# Too-old gh is not fatal here: the report still gets posted, just without
+# images, through the same fallback path a failed upload takes (below).
+GH_VERSION=$(gh version 2>/dev/null | head -1 | awk '{print $3}')
+# Numeric compare, not `sort -V`: BSD sort on macOS may lack -V, and an empty
+# substitution would silently read as "too old" on a perfectly good gh.
+GH_MAJOR=${GH_VERSION%%.*}; GH_REST=${GH_VERSION#*.}; GH_MINOR=${GH_REST%%.*}
+ATTACH_OK=0
+ATTACH_SKIP_REASON=""
+if [ "${GH_MAJOR:-0}" -gt 2 ] 2>/dev/null || { [ "${GH_MAJOR:-0}" -eq 2 ] && [ "${GH_MINOR:-0}" -ge 99 ]; } 2>/dev/null; then
+  ATTACH_OK=1
+else
+  ATTACH_SKIP_REASON="gh ${GH_VERSION:-not found} is below 2.99.0 — upgrade gh"
+  echo "WARN: ${ATTACH_SKIP_REASON}; posting the report without images."
 fi
 ```
 
-```bash
-# Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
-REPO="Significant-Gravitas/AutoGPT"
-SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
-SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
+**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below counts the rewritten asset URLs against the number of screenshots and exits 1 on any shortfall — the test run is incomplete until this passes.
 
-# Step 1: Create blobs for each screenshot and build tree JSON
-# Retry each blob upload up to 3 times. If still failing, list them at end of report.
+**CRITICAL — NEVER paste absolute local paths or credentials into the PR comment.** Strings like `/Users/…`, `/home/…`, `C:\…` are useless to every reviewer except you, and a bearer token or JWT copied from the live stack's evidence is a real leak in a public comment. The build block below runs an egress check on the exact bytes about to be posted and aborts on either. The `./01-shot.png` references the attachments use are relative, not local paths, and are rewritten on upload — they are fine. Keep local paths in `$RESULTS_DIR/test-report.md` for yourself; only copy the *content* they reference (excerpts, test names, log lines) into the PR comment, not the path.
+
+Build the body with **relative image references**, then attach the same paths:
+
+```bash
+REPO="Significant-Gravitas/AutoGPT"
+MAX_ATTACHMENTS=50   # per gh pr comment invocation
+
+# Fail closed: an empty RESULTS_DIR would glob the PR worktree's PNGs into a public comment.
+# gh matches --attach to the body by exact path, so the cd is required; undone at the end.
+[ -n "$RESULTS_DIR" ] && [ -d "$RESULTS_DIR" ] || { echo "ERROR: RESULTS_DIR is unset or not a directory: '$RESULTS_DIR'"; exit 1; }
+STEP7_ORIG_DIR=$PWD
+cd "$RESULTS_DIR" || exit 1
+NULLGLOB_WAS=$(shopt -p nullglob)   # restore the caller's setting, don't force it off
 shopt -s nullglob
-SCREENSHOT_FILES=("$RESULTS_DIR"/*.png)
+SCREENSHOT_FILES=(*.png)
+$NULLGLOB_WAS
 if [ ${#SCREENSHOT_FILES[@]} -eq 0 ]; then
   echo "ERROR: No screenshots found in $RESULTS_DIR. Test run is incomplete."
   exit 1
 fi
-TREE_JSON='['
-FIRST=true
-FAILED_UPLOADS=()
-for img in "${SCREENSHOT_FILES[@]}"; do
-  BASENAME=$(basename "$img")
-  B64=$(base64 < "$img")
-  BLOB_SHA=""
-  for attempt in 1 2 3; do
-    BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha' 2>/dev/null || true)
-    [ -n "$BLOB_SHA" ] && break
-    sleep 1
-  done
-  if [ -z "$BLOB_SHA" ]; then
-    FAILED_UPLOADS+=("$img")
-    continue
-  fi
-  if [ "$FIRST" = true ]; then FIRST=false; else TREE_JSON+=','; fi
-  TREE_JSON+="{\"path\":\"${SCREENSHOTS_DIR}/${BASENAME}\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"${BLOB_SHA}\"}"
-done
-TREE_JSON+=']'
-
-# Step 2: Create tree, commit, and branch ref
-TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
-
-# Resolve parent commit so screenshots are chained, not orphan root commits
-PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || echo "")
-if [ -n "$PARENT_SHA" ]; then
-  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-    -f tree="$TREE_SHA" \
-    -f "parents[]=$PARENT_SHA" \
-    --jq '.sha')
-else
-  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-    -f tree="$TREE_SHA" \
-    --jq '.sha')
+# Over the cap, post the report without images rather than nothing at all.
+if [ ${#SCREENSHOT_FILES[@]} -gt "$MAX_ATTACHMENTS" ]; then
+  ATTACH_SKIP_REASON="${#SCREENSHOT_FILES[@]} screenshots exceed the ${MAX_ATTACHMENTS}-attachment limit per comment"
+  echo "WARN: ${ATTACH_SKIP_REASON}; posting the report without images."
+  ATTACH_OK=0
 fi
 
-gh api "repos/${REPO}/git/refs" \
-  -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
-  -f sha="$COMMIT_SHA" 2>/dev/null \
-  || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
-    -X PATCH -f sha="$COMMIT_SHA" -F force=true
-```
-
-Then post the comment with **inline images AND explanations for each screenshot**:
-
-```bash
-REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
-
-# Build image markdown using uploaded image URLs; skip FAILED_UPLOADS (listed separately)
-
 IMAGE_MARKDOWN=""
-for img in "${SCREENSHOT_FILES[@]}"; do
-  BASENAME=$(basename "$img")
+ATTACH_ARGS=()
+for BASENAME in "${SCREENSHOT_FILES[@]}"; do
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
-  # Skip images that failed to upload — they will be listed at the end
-  IS_FAILED=false
-  for failed in "${FAILED_UPLOADS[@]}"; do
-    [ "$(basename "$failed")" = "$BASENAME" ] && IS_FAILED=true && break
-  done
-  if [ "$IS_FAILED" = true ]; then
-    continue
-  fi
   EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
   if [ -z "$EXPLANATION" ]; then
     echo "ERROR: Missing screenshot explanation for $BASENAME. Add it to SCREENSHOT_EXPLANATIONS in Step 6."
@@ -1081,60 +1046,137 @@ for img in "${SCREENSHOT_FILES[@]}"; do
   fi
   IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
-![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
+![${TITLE}](./${BASENAME})
 ${EXPLANATION}
 "
+  # Alt text after '#' is the fallback; the body reference above wins when both exist.
+  ATTACH_ARGS+=(--attach "./${BASENAME}#${TITLE}")
 done
 
-# Write comment body to file to avoid shell interpretation issues with special characters
-COMMENT_FILE=$(mktemp)
-# If any uploads failed, append a section listing them with instructions
-FAILED_SECTION=""
-if [ ${#FAILED_UPLOADS[@]} -gt 0 ]; then
-  FAILED_SECTION="
-## ⚠️ Failed Screenshot Uploads
-The following screenshots could not be uploaded via the GitHub API after 3 retries.
-**To add them:** drag-and-drop or paste these files into a PR comment manually:
-"
-  for failed in "${FAILED_UPLOADS[@]}"; do
-    FAILED_SECTION="${FAILED_SECTION}
-- \`$(basename "$failed")\` (local path: \`$failed\`)"
-  done
-  FAILED_SECTION="${FAILED_SECTION}
-
-**Run status:** INCOMPLETE until the files above are manually attached and visible inline in the PR."
-fi
-
-cat > "$COMMENT_FILE" <<INNEREOF
+# Keep the report and the image section separate: the no-image fallback below
+# must not carry "![](./file.png)" references it has no attachments for.
+RUN_MARKER="<!-- pr-test-report:${PR_NUMBER}:$(date -u +%Y%m%dT%H%M%SZ) -->"
+REPORT_BODY="${RUN_MARKER}
 ## E2E Test Report
 
 | # | Scenario | Result | API Evidence | Screenshot Evidence |
 |---|----------|--------|-------------|-------------------|
 ${TEST_RESULTS_TABLE}
+"
 
-${IMAGE_MARKDOWN}
-${FAILED_SECTION}
-INNEREOF
+COMMENT_FILE=$(mktemp)
+printf '%s\n%s\n' "$REPORT_BODY" "$IMAGE_MARKDOWN" > "$COMMENT_FILE"
 
-gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
-rm -f "$COMMENT_FILE"
-
-# Verify the posted comment contains inline images — exit 1 if none found
-# Use separate --paginate + jq pipe: --jq applies per-page, not to the full list
-LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -r '.[-1].body // ""')
-if ! echo "$LAST_COMMENT" | grep -q '!\['; then
-  echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
+# Egress check on the exact bytes about to be posted. Fails closed: a missing
+# body is an abort, not a pass.
+LEAK_RE='(^|[^A-Za-z])(/Users/|/home/|/tmp/|/private/|C:\\|~/)[A-Za-z0-9]|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|(sk|ghp|gho|github_pat)_[A-Za-z0-9_]{16,}|[Bb]earer [A-Za-z0-9._-]{20,}'
+[ -s "$COMMENT_FILE" ] || { echo "ABORT: comment body missing or empty."; exit 1; }
+if grep -nE "$LEAK_RE" "$COMMENT_FILE"; then
+  echo "ABORT: local paths or credential-shaped strings in the PR comment body. Rewrite them before posting."
   exit 1
 fi
-echo "✓ Inline images verified in posted comment"
+
+# A blind retry duplicates a post GitHub accepted but gh reported failed; the marker
+# makes "did it land?" checkable first. Real jq (gh's --jq has no --arg); --paginate
+# because the per-issue endpoint ignores sort/direction.
+URL_RE='https://[^[:space:]]+#issuecomment-[0-9]+'
+POSTED=""
+if [ "$ATTACH_OK" = 1 ]; then
+  for attempt in 1 2 3; do
+    # The marker was minted seconds ago, so attempt 1 cannot already be posted.
+    # A lookup that errors is "unknown", not "not found": posting on unknown is
+    # how the duplicate the marker exists to prevent would get made.
+    if [ "$attempt" -gt 1 ]; then
+      if ! FOUND=$(set -o pipefail; gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          | jq -r --arg m "$RUN_MARKER" 'first(.[] | select(.body | contains($m)) | .html_url) // empty'); then
+        echo "Attempt $attempt: marker lookup failed; not posting until it can be confirmed"
+        sleep $((attempt * attempt * 2)); continue
+      fi
+      POSTED=${FOUND%%$'\n'*}
+      [ -n "$POSTED" ] && break
+    fi
+    # Take the URL by shape, not position: gh prints its update notice on stderr at
+    # exit, and a trailing one would otherwise ride into COMMENT_ID below.
+    OUT=$(gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$COMMENT_FILE" "${ATTACH_ARGS[@]}" 2>&1)
+    POSTED=$(printf '%s' "$OUT" | grep -oE "$URL_RE" | tail -1)
+    [ -n "$POSTED" ] && break
+    echo "Attempt $attempt failed: $OUT"
+    [ "$attempt" -lt 3 ] && sleep $((attempt * attempt * 2))   # 2s, 8s — secondary rate limits need room
+  done
+fi
+```
+
+If `gh` is too old, the run is over the cap, or all three attempts failed, post the report **without** images and say so, so the run is visibly incomplete rather than silently missing its evidence. The run continues into Step 8 — an image-free report is not approvable, and that is Step 8's job to say:
+
+```bash
+LOOKUP_UNKNOWN=0
+if [ -z "$POSTED" ] && [ "$ATTACH_OK" = 1 ]; then
+  # One last marker check — a final attempt may have landed despite reporting failure.
+  if FOUND=$(set -o pipefail; gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+      | jq -r --arg m "$RUN_MARKER" 'first(.[] | select(.body | contains($m)) | .html_url) // empty'); then
+    POSTED=${FOUND%%$'\n'*}
+  else
+    LOOKUP_UNKNOWN=1
+  fi
+fi
+RUN_INCOMPLETE=0
+if [ -z "$POSTED" ] && [ "$LOOKUP_UNKNOWN" = 1 ]; then
+  # Can't tell whether the report landed; a fallback post here risks a duplicate.
+  RUN_INCOMPLETE=1
+  echo "ERROR: could not confirm whether the report was posted (GitHub API errors). Check the PR for marker ${RUN_MARKER} before re-running Step 7."
+elif [ -z "$POSTED" ]; then
+  RUN_INCOMPLETE=1
+  [ "$ATTACH_OK" = 1 ] && ATTACH_SKIP_REASON="the upload failed 3 times"
+  FALLBACK_FILE=$(mktemp)
+  {
+    printf '%s\n' "$REPORT_BODY"
+    printf '## ⚠️ Screenshots not attached\n\n'
+    printf '%s. Filenames, for manual drag-and-drop into a reply:\n\n' "$ATTACH_SKIP_REASON"
+    printf -- '- `%s`\n' "${SCREENSHOT_FILES[@]}"
+    printf '\n**Run status:** INCOMPLETE until the files are attached and visible inline in the PR.\n'
+  } > "$FALLBACK_FILE"
+  # The degraded path gets the same egress check as the full body.
+  if grep -nE "$LEAK_RE" "$FALLBACK_FILE"; then
+    echo "ABORT: local paths or credential-shaped strings in the fallback body."
+    exit 1
+  fi
+  OUT=$(gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$FALLBACK_FILE" 2>&1)
+  POSTED=$(printf '%s' "$OUT" | grep -oE "$URL_RE" | tail -1)
+  rm -f "$FALLBACK_FILE"
+  echo "Posted without images (RUN_INCOMPLETE=1): ${POSTED:-FAILED — $OUT}"
+fi
+rm -f "$COMMENT_FILE"
+cd "$STEP7_ORIG_DIR"
+```
+
+Verify the rendered comment actually carries every screenshot as an uploaded asset (skipped for an image-free fallback, which Step 8 already treats as not approvable):
+
+```bash
+if [ "$RUN_INCOMPLETE" = 0 ]; then
+  COMMENT_ID="${POSTED##*issuecomment-}"
+  BODY=$(gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" --jq '.body')
+  EXPECTED=${#SCREENSHOT_FILES[@]}
+  # Count, don't just detect: a partial rewrite leaves broken "](./x.png)"
+  # links behind while the body still contains *some* asset URLs.
+  UPLOADED=$(printf '%s' "$BODY" | grep -o 'github.com/user-attachments/' | wc -l | tr -d ' ')
+  LEFTOVER=$(printf '%s' "$BODY" | grep -o '](\./' | wc -l | tr -d ' ')
+  RAW_IMGS=$(printf '%s' "$BODY" | grep -oE '!\[[^]]*\]\(https://raw\.githubusercontent\.com' | wc -l | tr -d ' ')
+  if [ "$RAW_IMGS" -gt 0 ]; then
+    echo "ERROR: $RAW_IMGS image(s) still point at raw repo URLs. Screenshots must be attachments, not files in the repo." >&2
+    exit 1
+  fi
+  if [ "$LEFTOVER" -gt 0 ] || [ "$UPLOADED" -ne "$EXPECTED" ]; then
+    echo "ERROR: expected $EXPECTED uploaded attachments, found $UPLOADED, with $LEFTOVER unrewritten ./ reference(s) — partial upload." >&2
+    exit 1
+  fi
+  echo "✓ $EXPECTED screenshots verified as GitHub attachments"
+fi
 ```
 
 **The PR comment MUST include:**
 1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
-2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
+2. Every screenshot rendered inline as an uploaded attachment; any failure listed with manual attachment instructions and the run marked INCOMPLETE
 3. A 1-2 sentence explanation below each screenshot describing what it proves
-
-This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
 ## Step 8: Evaluate and post a formal PR review
 
@@ -1164,6 +1206,7 @@ Score the run against each criterion:
 ALL criteria pass                            → APPROVE
 Any scenario FAIL or missing PR feature      → REQUEST_CHANGES (list gaps)
 Evidence weak (no before/after, vague shots) → REQUEST_CHANGES (list what's missing)
+Screenshots not attached (RUN_INCOMPLETE=1)  → REQUEST_CHANGES (the evidence is not on the PR)
 ```
 
 ### Post the review
@@ -1179,6 +1222,8 @@ TOTAL=$(( PASS_COUNT + FAIL_COUNT ))
 # List any coverage gaps found during evaluation (populate this array as you assess)
 # e.g. COVERAGE_GAPS=("PR claims to add X but no test covers it")
 COVERAGE_GAPS=()
+# Step 7 posts an image-free report instead of aborting; that run is not approvable.
+[ "${RUN_INCOMPLETE:-0}" = 1 ] && COVERAGE_GAPS+=("Screenshots were not attached to the test report — attach them and re-run verification")
 ```
 
 **If APPROVING** — all criteria met, zero failures, full coverage:
@@ -1231,6 +1276,7 @@ rm -f "$REVIEW_FILE"
 **Rules:**
 - In `--fix` mode, fix all failures before posting the review — the review reflects the final state after fixes
 - Never approve if any scenario failed, even if it seems like a flake — rerun that scenario first
+- Never approve a run with `RUN_INCOMPLETE=1` — the evidence is not on the PR
 - Never request changes for issues already fixed in this run
 
 ## Fix mode (--fix flag)

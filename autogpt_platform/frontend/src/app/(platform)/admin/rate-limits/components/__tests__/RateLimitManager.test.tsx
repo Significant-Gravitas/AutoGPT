@@ -17,6 +17,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { RateLimitManager } from "../RateLimitManager";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
+import { isKey } from "@/lib/keyboard";
 
 const toastSpy = vi.hoisted(() => vi.fn());
 
@@ -41,7 +42,7 @@ vi.mock("../../../components/AdminUserSearch", () => ({
         placeholder={placeholder}
         disabled={isLoading}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSearch((e.target as HTMLInputElement).value);
+          if (isKey(e, "Enter")) onSearch((e.target as HTMLInputElement).value);
         }}
       />
     </div>

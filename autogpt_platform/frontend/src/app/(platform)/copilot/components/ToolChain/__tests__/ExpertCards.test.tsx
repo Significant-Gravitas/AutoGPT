@@ -1,7 +1,39 @@
-import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, it } from "vitest";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import type { ToolUIPart } from "ai";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { useCopilotUIStore } from "../../../store";
+import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import {
+  ExpertChangeCard,
+  ExpertChangeGroup,
+  ExpertChangePart,
+} from "../ExpertCards";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
+
+vi.mock("../../../tools/GenericTool/GenericTool", () => ({
+  GenericTool: () => <div data-testid="generic-tool" />,
+}));
+
+const onSend = vi.fn();
+
+const artifactsFlag = { enabled: false };
+vi.mock("@/services/feature-flags/use-get-flag", () => ({
+  Flag: { ARTIFACTS: "artifacts" },
+  useGetFlag: () => artifactsFlag.enabled,
+}));
 
 function row(tool: string, output: unknown): ChainRow {
   return {
@@ -15,10 +47,15 @@ function row(tool: string, output: unknown): ChainRow {
 }
 
 describe("expert change cards", () => {
-  it("shows the proposed charter and that nothing happened yet", () => {
+  afterEach(() => {
+    artifactsFlag.enabled = false;
+    useCopilotUIStore.getState().resetArtifactPanel();
+  });
+
+  it("shows who the proposed expert is and nothing else", () => {
     render(
-      <ToolResult
-        row={row("raise_expert", {
+      <ExpertChangeCard
+        output={{
           type: "expert_change_proposed",
           message: "Nothing created yet.",
           applied: false,
@@ -27,29 +64,166 @@ describe("expert change cards", () => {
             kind: "raise",
             name: "Otto",
             role: "Inbox triage",
+            tagline: "Sorts your morning inbox.",
             about: "You group the morning inbox.",
             boundaries: "You never send a reply yourself.",
             weekly_budget: 2000,
           },
-        })}
+        }}
       />,
     );
 
+    expect(screen.getByText("Raise an expert")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
-    expect(screen.getByText("Needs your OK")).toBeDefined();
+    expect(screen.getByText("Sorts your morning inbox.")).toBeDefined();
+    // The card is an introduction, not a charter — no status, budget or limits.
+    expect(screen.queryByText("You group the morning inbox.")).toBeNull();
+    expect(screen.queryByText("Needs your OK")).toBeNull();
+    expect(screen.queryByText(/Stops at:/)).toBeNull();
+    expect(screen.queryByText(/Weekly budget/)).toBeNull();
+  });
+
+  it("opens the full charter in the side panel from Show more", async () => {
+    artifactsFlag.enabled = true;
+    const user = userEvent.setup();
+    render(
+      <ExpertChangeCard
+        artifactId="call-raise"
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: {
+            kind: "raise",
+            name: "Otto",
+            role: "Inbox triage",
+            tagline: "Sorts your morning inbox.",
+            about: "You group the morning inbox.",
+            boundaries: "You never send a reply yourself.",
+            weekly_budget: 2000,
+          },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Details" }));
+
+    const { activeArtifact, isOpen } =
+      useCopilotUIStore.getState().artifactPanel;
+    expect(isOpen).toBe(true);
+    expect(activeArtifact?.id).toBe("expert:call-raise");
+    expect(activeArtifact?.expert).toMatchObject({
+      kind: "raise",
+      name: "Otto",
+      role: "Inbox triage",
+      about: "You group the morning inbox.",
+      boundaries: "You never send a reply yourself.",
+      weeklyBudget: 2000,
+      applied: false,
+    });
+    expect(screen.queryByText("You group the morning inbox.")).toBeNull();
+  });
+
+  it("keeps the charter under Show more when the panel is unavailable", async () => {
+    const user = userEvent.setup();
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: {
+            kind: "raise",
+            name: "Otto",
+            tagline: "Sorts your morning inbox.",
+            about: "You group the morning inbox.",
+            boundaries: "You never send a reply yourself.",
+          },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Details" }));
+
+    expect(screen.getByText("You group the morning inbox.")).toBeDefined();
     expect(
       screen.getByText("Stops at: You never send a reply yourself."),
     ).toBeDefined();
-    expect(screen.getByText("Weekly budget: 2000 credits")).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Edit/ })).toBeNull();
-    expect(screen.queryByRole("link", { name: /Chat/ })).toBeNull();
   });
 
-  it("offers Edit and Chat once the expert exists", () => {
+  it("falls back to the charter when an expert has no tagline", () => {
     render(
-      <ToolResult
-        row={row("confirm_expert_change", {
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: { kind: "raise", name: "Otto", about: "You triage." },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("You triage.")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  });
+
+  it("always offers Details when the panel is available", () => {
+    artifactsFlag.enabled = true;
+    render(
+      <ExpertChangeCard
+        artifactId="call-1"
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: { kind: "raise", name: "Otto", about: "You triage." },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Details" })).toBeDefined();
+  });
+
+  it("hides Details when the tagline is the whole card", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: {
+            kind: "raise",
+            name: "Otto",
+            tagline: "Sorts your morning inbox.",
+            voice_preferences: "Short sentences.",
+            weekly_budget: 2000,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  });
+
+  it("still offers Details without a tagline when there is more to read", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: {
+            kind: "raise",
+            name: "Otto",
+            about: "You triage.",
+            boundaries: "You never reply.",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Details" })).toBeDefined();
+  });
+
+  it("reads the same once the expert exists", () => {
+    render(
+      <ExpertChangeCard
+        output={{
           type: "expert_change_applied",
           message: "Otto is on the team.",
           applied: true,
@@ -61,57 +235,17 @@ describe("expert change cards", () => {
             avatar_url: null,
             color: "violet",
           },
-        })}
+          failed_workflows: ["Inbox sweep"],
+        }}
       />,
     );
 
+    expect(screen.getByText("Expert raised")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
-    expect(screen.queryByText("Needs your OK")).toBeNull();
-    // The applied state must be readable, not colour-and-glyph only.
-    expect(screen.getByText("Raised")).toBeDefined();
-    expect(
-      screen.getByRole("link", { name: /Edit/ }).getAttribute("href"),
-    ).toBe("/team/exp-otto");
-    expect(
-      screen.getByRole("link", { name: /Chat/ }).getAttribute("href"),
-    ).toBe("/copilot?expertId=exp-otto");
-  });
-
-  it("names the workflows that failed to install on a partial hire", () => {
-    render(
-      <ToolResult
-        row={row("confirm_expert_change", {
-          type: "expert_change_applied",
-          message: "Otto is on the team.",
-          applied: true,
-          kind: "hire",
-          expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
-          failed_workflows: ["Inbox sweep", "Weekly digest"],
-        })}
-      />,
-    );
-
-    expect(screen.getByText("Hired")).toBeDefined();
-    expect(
-      screen.getByText(/Couldn't set up: Inbox sweep, Weekly digest/),
-    ).toBeDefined();
-  });
-
-  it("stays quiet when every workflow installed", () => {
-    render(
-      <ToolResult
-        row={row("confirm_expert_change", {
-          type: "expert_change_applied",
-          message: "Otto is on the team.",
-          applied: true,
-          kind: "hire",
-          expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
-          failed_workflows: [],
-        })}
-      />,
-    );
-
+    expect(screen.getByText("Inbox triage")).toBeDefined();
+    expect(screen.queryByText("Raised")).toBeNull();
     expect(screen.queryByText(/Couldn't set up/)).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("renders a handoff as the receiving teammate's sub-session", () => {
@@ -136,5 +270,322 @@ describe("expert change cards", () => {
     expect(screen.getByLabelText("Open sub-session").getAttribute("href")).toBe(
       "/copilot?sessionId=sub-1",
     );
+  });
+});
+
+function expertPart(
+  state: string,
+  output?: unknown,
+  id = "call-raise",
+): ToolUIPart {
+  return {
+    type: "tool-raise_expert",
+    state,
+    toolCallId: id,
+    input: {},
+    output,
+  } as ToolUIPart;
+}
+
+function proposal(name: string, id: string): ToolUIPart {
+  return expertPart(
+    "output-available",
+    {
+      type: "expert_change_proposed",
+      applied: false,
+      confirmation_id: `c-${id}`,
+      preview: { kind: "raise", name, role: "Engineer" },
+    },
+    id,
+  );
+}
+
+describe("ExpertChangePart", () => {
+  it("renders the proposal card once the output lands", () => {
+    render(
+      <ExpertChangePart
+        part={proposal("Otto", "a")}
+        isCurrentlyStreaming={false}
+      />,
+    );
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByText("Engineer")).toBeDefined();
+  });
+
+  it("holds the card's shape while the expert is still being written", () => {
+    const { container } = render(
+      <ExpertChangePart
+        part={expertPart("input-available")}
+        isCurrentlyStreaming
+      />,
+    );
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBe(5);
+  });
+
+  it("renders nothing for an empty row once the stream is over", () => {
+    const { container } = render(
+      <ExpertChangePart
+        part={expertPart("input-available")}
+        isCurrentlyStreaming={false}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("falls back to the generic tool row when the call errored", () => {
+    render(
+      <ExpertChangePart
+        part={
+          { ...expertPart("output-error"), errorText: "boom" } as ToolUIPart
+        }
+        isCurrentlyStreaming={false}
+      />,
+    );
+
+    expect(screen.getByTestId("generic-tool")).toBeDefined();
+  });
+});
+
+describe("ExpertChangeGroup", () => {
+  it("shows a single expert without a pager", () => {
+    render(<ExpertChangeGroup parts={[proposal("Fiona", "a")]} />);
+
+    expect(screen.getByText("Fiona")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Next expert" })).toBeNull();
+  });
+
+  it("pages through two or more experts one at a time", async () => {
+    const user = userEvent.setup();
+    render(
+      <ExpertChangeGroup
+        parts={[
+          proposal("Fiona", "a"),
+          proposal("Bhaskar", "b"),
+          proposal("Otto", "c"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Fiona")).toBeDefined();
+    expect(screen.queryByText("Bhaskar")).toBeNull();
+    expect(screen.getByText("1 of 3")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Previous expert" }),
+    ).toHaveProperty("disabled", true);
+
+    await user.click(screen.getByRole("button", { name: "Next expert" }));
+    expect(screen.getByText("Bhaskar")).toBeDefined();
+    expect(screen.getByText("2 of 3")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Go to expert 3" }));
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Next expert" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Previous expert" }));
+    expect(screen.getByText("Bhaskar")).toBeDefined();
+  });
+
+  it("leaves empty rows out of the pager once the stream is over", () => {
+    const { container } = render(
+      <ExpertChangeGroup
+        parts={[expertPart("input-available"), expertPart("input-available")]}
+        isCurrentlyStreaming={false}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("expert approval", () => {
+  beforeEach(() => {
+    onSend.mockClear();
+    vi.mocked(toast).mockClear();
+  });
+
+  function renderGroup(
+    parts: ToolUIPart[],
+    props?: { isCurrentlyStreaming?: boolean; readOnly?: boolean },
+  ) {
+    return render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup parts={parts} {...props} />
+      </CopilotChatActionsProvider>,
+    );
+  }
+
+  it("moves to the next expert on each decision, then sends all of them", async () => {
+    const user = userEvent.setup();
+    renderGroup([proposal("Fiona", "a"), proposal("Bhaskar", "b")]);
+
+    expect(screen.getByText("Fiona")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(screen.getByText("Bhaskar")).toBeDefined();
+    expect(screen.getByText("2 of 2")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Go to expert 1" }).className,
+    ).toContain("emerald");
+
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    expect(screen.getByRole("button", { name: "Undo decline" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Go to expert 2" }).className,
+    ).toContain("red");
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Fiona (confirmation_id: c-a).\n" +
+        "Not approved: do not create Bhaskar, discard that proposal (confirmation_id: c-b).",
+    );
+    expect(screen.getByText("Sent")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Undo decline" })).toBeNull();
+  });
+
+  it("holds the send until the stream has settled", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderGroup([proposal("Otto", "a")], {
+      isCurrentlyStreaming: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+
+    rerender(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup
+          parts={[proposal("Otto", "a")]}
+          isCurrentlyStreaming={false}
+        />
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Send decisions" }),
+    ).toBeDefined();
+  });
+
+  it("offers no send without a chat actions provider", async () => {
+    const user = userEvent.setup();
+    render(<ExpertChangeGroup parts={[proposal("Otto", "a")]} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+  });
+
+  it("remembers a decision when paging back", async () => {
+    const user = userEvent.setup();
+    renderGroup([proposal("Fiona", "a"), proposal("Bhaskar", "b")]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Previous expert" }));
+
+    expect(screen.getByText("Fiona")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Unapprove" }));
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Go to expert 1" }).className,
+    ).not.toContain("emerald");
+  });
+
+  it("sends a single expert straight after its decision", async () => {
+    const user = userEvent.setup();
+    renderGroup([proposal("Otto", "a")]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: c-a).",
+    );
+  });
+
+  it("reports a rejected send and keeps the card marked sent", async () => {
+    const user = userEvent.setup();
+    onSend.mockRejectedValueOnce(new Error("boom"));
+    renderGroup([proposal("Otto", "a")]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't send message",
+          description:
+            "boom — it is still in the thread, use Retry to send it again.",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect(screen.getByText("Sent")).toBeDefined();
+  });
+
+  it("sends the verb the proposal actually asks for", async () => {
+    const user = userEvent.setup();
+    renderGroup([
+      expertPart(
+        "output-available",
+        {
+          type: "expert_change_proposed",
+          applied: false,
+          confirmation_id: "c-u",
+          preview: { kind: "update", name: "Otto", role: "Engineer" },
+        },
+        "u",
+      ),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: update Otto (confirmation_id: c-u).",
+    );
+  });
+
+  it("offers no decision once applied or on a read-only transcript", () => {
+    render(
+      <ExpertChangeGroup
+        parts={[
+          expertPart("output-available", {
+            type: "expert_change_applied",
+            applied: true,
+            kind: "raise",
+            expert: { id: "exp-1", name: "Otto", role: "Inbox triage" },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    cleanup();
+
+    render(<ExpertChangeGroup parts={[proposal("Otto", "a")]} readOnly />);
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+
+  it("keeps the pager inside the card, beside the decision", () => {
+    render(
+      <ExpertChangeGroup
+        parts={[proposal("Fiona", "a"), proposal("Bhaskar", "b")]}
+      />,
+    );
+
+    const card = screen.getByText("Fiona").closest(".rounded-3xl");
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain("1 of 2");
+    expect(card?.textContent).toContain("Approve");
   });
 });

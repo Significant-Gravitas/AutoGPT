@@ -269,3 +269,51 @@ describe("customMutator — empty body handling", () => {
     expect(result.data).toEqual({ ok: true });
   });
 });
+
+describe("customMutator validation errors", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+  });
+
+  it.each([
+    [
+      {
+        detail: [
+          { msg: "Field required", loc: ["body", "name"] },
+          { msg: "Invalid value" },
+        ],
+      },
+      "Field required; Invalid value",
+    ],
+    [{ detail: "Not allowed" }, "Not allowed"],
+    [{ detail: { reason: "Invalid input" } }, '{"reason":"Invalid input"}'],
+    [
+      { detail: [{ reason: "Invalid input" }, null] },
+      '{"reason":"Invalid input"}; null',
+    ],
+    [{ detail: null, message: "Fallback message" }, "Fallback message"],
+    [{ detail: [], message: "Fallback message" }, "Fallback message"],
+    [{ message: "Missing detail" }, "Missing detail"],
+  ])("formats response %j as a readable message", async (body, message) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Entity",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => body,
+      }),
+    );
+
+    await expect(
+      customMutator("/test", { method: "POST" }),
+    ).rejects.toMatchObject({
+      message,
+      status: 422,
+    });
+  });
+});

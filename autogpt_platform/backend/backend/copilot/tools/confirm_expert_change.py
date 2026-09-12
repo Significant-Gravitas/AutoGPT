@@ -2,7 +2,7 @@
 
 Step 2 of the confirm-gated team-change flow. One confirm tool serves both
 kinds: it takes nothing but the id, so the applied change is exactly what the
-user saw. The id is single-use and bound to the Autopilot session that
+user saw. The id is single-use and bound to the Otto session that
 produced it.
 """
 
@@ -23,6 +23,7 @@ _PROPOSAL_FIELDS = (
     "template_id",
     "name",
     "role",
+    "tagline",
     "about",
     "boundaries",
     "voice_preferences",

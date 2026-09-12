@@ -143,6 +143,11 @@ class LibraryAgentRef(pydantic.BaseModel):
     id: str
     graph_id: str
     name: str
+    # The agent's own picture, so a surface listing runs can show the agent
+    # instead of a generic glyph.
+    image_url: str | None = None
+    # A removed agent still names its past runs; it just cannot be linked.
+    is_deleted: bool = False
 
 
 class RecentExecution(pydantic.BaseModel):
