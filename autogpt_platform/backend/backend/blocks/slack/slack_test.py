@@ -13,7 +13,14 @@ from backend.blocks.slack._api import (
     call_slack_api,
     post_message,
 )
-from backend.blocks.slack._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.slack._config import TEST_CREDENTIALS_API_KEY as TEST_CREDENTIALS
+from backend.blocks.slack._config import (
+    TEST_CREDENTIALS_INPUT_API_KEY as TEST_CREDENTIALS_INPUT,
+)
+from backend.blocks.slack._config import (
+    TEST_CREDENTIALS_INPUT_OAUTH,
+    TEST_CREDENTIALS_OAUTH,
+)
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 
 # ---------------------------------------------------------------------------
@@ -113,6 +120,25 @@ class TestCallSlackApi:
             assert "slack.com/api/chat.postMessage" in call_args.args[0]
             assert call_args.kwargs["headers"]["Authorization"] == (
                 "Bearer mock-slack-bot-token"
+            )
+
+    @pytest.mark.asyncio
+    async def test_success_with_oauth_credentials(self):
+        mock_resp = _mock_http_response(_ok_response())
+        with patch(
+            "backend.blocks.slack._api.Requests.post",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ) as mock_post:
+            result = await call_slack_api(
+                TEST_CREDENTIALS_OAUTH,
+                "chat.postMessage",
+                {"channel": "C1", "text": "hi"},
+            )
+            assert result["ok"] is True
+            call_args = mock_post.call_args
+            assert call_args.kwargs["headers"]["Authorization"] == (
+                "Bearer mock-slack-oauth-access-token"
             )
 
     @pytest.mark.asyncio
@@ -283,6 +309,35 @@ class TestSendSlackMessageBlock:
             )
             assert outputs["ts"] == "9999.8888"
             assert outputs["channel"] == "C1234567890"
+
+    @pytest.mark.asyncio
+    async def test_run_with_oauth_credentials(self):
+        input_data = SendSlackMessageBlock.Input(
+            credentials=TEST_CREDENTIALS_INPUT_OAUTH,
+            channel="C1234567890",
+            text="Hello via OAuth!",
+        )
+        mock_result = SlackMessageResult(ts="9999.8888", channel="C1234567890")
+        with patch.object(
+            self.block,
+            "_post_message",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_pm:
+            outputs = await _collect_outputs(
+                self.block, input_data, credentials=TEST_CREDENTIALS_OAUTH
+            )
+            assert outputs["ts"] == "9999.8888"
+            mock_pm.assert_called_once_with(
+                credentials=TEST_CREDENTIALS_OAUTH,
+                channel="C1234567890",
+                text="Hello via OAuth!",
+                thread_ts=None,
+                username=None,
+                icon_emoji=None,
+                unfurl_links=True,
+                mrkdwn=True,
+            )
 
     @pytest.mark.asyncio
     async def test_run_passes_all_optional_params(self):
