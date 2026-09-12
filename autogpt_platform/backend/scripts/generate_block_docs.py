@@ -733,7 +733,7 @@ def write_block_docs(
         # Load existing content for manual section preservation
         existing_content = ""
         if full_path.exists():
-            existing_content = full_path.read_text()
+            existing_content = full_path.read_text(encoding="utf-8")
 
         # Always generate title from file path (with fixes applied)
         file_title = file_path_to_title(file_path)
@@ -784,7 +784,7 @@ def write_block_docs(
         if verbose:
             print(f"  Writing {file_path} ({len(file_blocks)} blocks)")
 
-        full_path.write_text(full_content)
+        full_path.write_text(full_content, encoding="utf-8")
 
     # Generate overview file at the parent directory (docs/integrations/)
     # with links prefixed to point into block-integrations/
@@ -795,7 +795,7 @@ def write_block_docs(
     overview_content = generate_overview_table(blocks, block_dir_prefix)
     overview_path = root_dir / "README.md"
     generated_files["README.md"] = overview_content
-    overview_path.write_text(overview_content)
+    overview_path.write_text(overview_content, encoding="utf-8")
 
     if verbose:
         print("  Writing README.md (overview) to parent directory")
@@ -804,7 +804,7 @@ def write_block_docs(
     summary_content = generate_summary_md(blocks, root_dir, block_dir_prefix)
     summary_path = root_dir / "SUMMARY.md"
     generated_files["SUMMARY.md"] = summary_content
-    summary_path.write_text(summary_content)
+    summary_path.write_text(summary_content, encoding="utf-8")
 
     if verbose:
         print("  Writing SUMMARY.md (navigation) to parent directory")
@@ -840,7 +840,7 @@ def check_docs_in_sync(
             all_match = False
             continue
 
-        existing_content = full_path.read_text()
+        existing_content = full_path.read_text(encoding="utf-8")
 
         # Always generate title from file path (with fixes applied)
         file_title = file_path_to_title(file_path)
@@ -916,7 +916,7 @@ def check_docs_in_sync(
 
     overview_path = root_dir / "README.md"
     if overview_path.exists():
-        existing_overview = overview_path.read_text()
+        existing_overview = overview_path.read_text(encoding="utf-8")
         expected_overview = generate_overview_table(blocks, block_dir_prefix)
         if existing_overview.strip() != expected_overview.strip():
             print("OUT OF SYNC: README.md (overview)")
@@ -931,7 +931,7 @@ def check_docs_in_sync(
     # Check SUMMARY.md at the parent directory
     summary_path = root_dir / "SUMMARY.md"
     if summary_path.exists():
-        existing_summary = summary_path.read_text()
+        existing_summary = summary_path.read_text(encoding="utf-8")
         expected_summary = generate_summary_md(blocks, root_dir, block_dir_prefix)
         if existing_summary.strip() != expected_summary.strip():
             print("OUT OF SYNC: SUMMARY.md (navigation)")
@@ -949,7 +949,7 @@ def check_docs_in_sync(
     for file_path in file_mapping.keys():
         full_path = output_dir / file_path
         if full_path.exists():
-            content = full_path.read_text()
+            content = full_path.read_text(encoding="utf-8")
             unfilled_count = sum(1 for p in PLACEHOLDER_TEXTS if p in content)
             if unfilled_count > 0:
                 files_with_unfilled.append((file_path, unfilled_count))
@@ -1096,7 +1096,9 @@ def collect_orphaned_manual_sections(
         if not full_path.exists():
             continue
         file_orphans = find_orphaned_manual_sections(
-            full_path.read_text(), [b.name for b in file_blocks], rename_map
+            full_path.read_text(encoding="utf-8"),
+            [b.name for b in file_blocks],
+            rename_map,
         )
         if file_orphans:
             orphans[str(file_path)] = file_orphans
