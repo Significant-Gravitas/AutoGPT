@@ -367,7 +367,7 @@ describe("SkillsPage", () => {
     );
   });
 
-  test("empty state shows the spec copy", async () => {
+  test("empty state describes skills for experts", async () => {
     server.use(getListCopilotSkillsMockHandler([]));
 
     render(<SkillsPage />);
@@ -375,7 +375,7 @@ describe("SkillsPage", () => {
     const empty = await screen.findByTestId("skills-empty");
     expect(empty.textContent).toContain("No skills yet");
     expect(empty.textContent).toContain(
-      "then it'll reach for it automatically",
+      "Give your experts a repeatable process to follow.",
     );
   });
 

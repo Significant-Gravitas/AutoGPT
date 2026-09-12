@@ -130,7 +130,7 @@ async def install_marketplace_skill(
     slug: str = Path(..., description="Slug of the skill listing"),
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> skill_model.InstalledSkill:
-    """Copy the listing's skill into the caller's Otto skill library."""
+    """Copy the listing's skill into the caller's skill library."""
     try:
         return await skill_db.install_marketplace_skill(user_id, slug)
     except SkillLimitError as exc:

@@ -174,7 +174,7 @@ class TestPlatformInfoTool:
                 user_id="u1", session=mock_session, topic="subscription"
             )
         assert "AutoGPT" in result.message
-        assert "Otto" in result.message
+        assert "You are running on the AutoGPT platform." in result.message
 
     # -- Feature flag: billing disabled (self-hosted / beta) --
 
@@ -190,7 +190,7 @@ class TestPlatformInfoTool:
         assert result.tier == "OPEN_ACCESS"
         assert result.billing_url is None
         assert "open access" in result.message.lower()
-        assert "Otto" in result.message
+        assert "You are running on the AutoGPT platform." in result.message
 
     @pytest.mark.asyncio
     async def test_billing_disabled_skips_tier_lookup(self, tool, mock_session):

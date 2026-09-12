@@ -70,7 +70,7 @@ class GetSubSessionResultTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Poll / wait / cancel a sub-Otto from run_sub_session. "
+            "Poll / wait / cancel a child session from run_sub_session. "
             f"Waits up to wait_if_running sec (max {MAX_SUB_SESSION_WAIT_SECONDS}); "
             "cancel=true aborts; include_progress=true returns recent messages "
             "from the still-running sub. Works across turns."
@@ -154,6 +154,7 @@ class GetSubSessionResultTool(BaseTool):
 
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
+        actor = delegate.name if delegate is not None else "Subtask"
         borrowed = _is_borrowed_thread(sub, session)
 
         if cancel:
@@ -175,7 +176,7 @@ class GetSubSessionResultTool(BaseTool):
             await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
-                    message="Sub-Otto cancel requested.",
+                    message=f"{actor} cancellation requested.",
                     session_id=session.session_id,
                     status="cancelled",
                     sub_session_id=inner_session_id,
@@ -223,7 +224,7 @@ class GetSubSessionResultTool(BaseTool):
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=(
-                        f"Sub-Otto still running after {elapsed:.0f}s."
+                        f"{actor} still running after {elapsed:.0f}s."
                         f"{f' Watch live at {link}.' if link else ''} "
                         "Call again to keep waiting, or cancel=true to abort."
                     ),
@@ -255,6 +256,7 @@ class GetSubSessionResultTool(BaseTool):
                 parent_session_id=session.session_id,
                 elapsed=elapsed,
                 workspace_files=workspace_files,
+                actor=actor,
             ),
             delegate,
         )

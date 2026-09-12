@@ -41,13 +41,13 @@ export function SkillActions({
           size="small"
           className="w-full sm:w-auto"
         >
-          Add to Otto
+          Install skill
         </Button>
       ) : isAdded ? (
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="success" className={STATUS_CLASS}>
             <Icon icon={CheckmarkCircle02Icon} size={16} aria-hidden />
-            Added to Otto
+            Installed
           </Badge>
           <Button
             as="NextLink"
@@ -68,7 +68,7 @@ export function SkillActions({
           className="w-full sm:w-auto"
           data-testid="skill-install-button"
         >
-          Add to Otto
+          Install skill
         </Button>
       )}
     </div>

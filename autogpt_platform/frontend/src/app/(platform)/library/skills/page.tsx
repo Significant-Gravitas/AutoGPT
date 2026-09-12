@@ -11,7 +11,7 @@ export default function SkillsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    document.title = "Otto skills – AutoGPT Platform";
+    document.title = "Skills – AutoGPT Platform";
   }, []);
 
   function handleGuidedPrompt(prompt: string) {

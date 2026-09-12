@@ -147,7 +147,7 @@ export const PLAN_METADATA: Record<
       "For teams and heavy workloads that need expanded capacity and controls.",
     features: [
       "Includes everything in Max",
-      "Highest Otto capacity",
+      "Highest expert capacity",
       "Priority support and onboarding",
       "Advanced security & compliance options",
       "Dedicated account contact",

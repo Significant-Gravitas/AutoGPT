@@ -32,7 +32,7 @@ const TOAST_BY_BACKEND_CODE: Record<
   { title: string; fallbackDescription: string }
 > = {
   idle_timeout: {
-    title: "Otto stopped responding",
+    title: "Your expert stopped responding",
     fallbackDescription:
       "A tool call got stuck and the session timed out. Press Try Again to resume.",
   },
@@ -47,7 +47,7 @@ const TOAST_BY_BACKEND_CODE: Record<
       "We hit a temporary error talking to the model. Press Try Again to continue.",
   },
   circuit_breaker_empty_tool_calls: {
-    title: "Otto paused",
+    title: "Your expert paused",
     fallbackDescription:
       "The assistant made too many empty tool calls in a row and was paused. Press Try Again to continue.",
   },
@@ -57,12 +57,12 @@ const TOAST_BY_BACKEND_CODE: Record<
       "We couldn't fit this chat's history into the model after several attempts. Start a new chat or clear some history.",
   },
   sdk_stream_error: {
-    title: "Otto ran into an error",
+    title: "Your expert ran into an error",
     fallbackDescription:
       "Something went wrong while the assistant was responding. Press Try Again to retry.",
   },
   sdk_error: {
-    title: "Otto ran into an error",
+    title: "Your expert ran into an error",
     fallbackDescription:
       "The assistant couldn't complete this turn. Press Try Again to retry.",
   },
@@ -70,7 +70,7 @@ const TOAST_BY_BACKEND_CODE: Record<
 
 /** Fallback toast shown for any `[code:X]` we don't have specific copy for. */
 const GENERIC_BACKEND_TOAST = {
-  title: "Otto ran into a problem",
+  title: "Your expert ran into a problem",
   fallbackDescription:
     "The assistant stopped unexpectedly. Press Try Again to retry.",
 };

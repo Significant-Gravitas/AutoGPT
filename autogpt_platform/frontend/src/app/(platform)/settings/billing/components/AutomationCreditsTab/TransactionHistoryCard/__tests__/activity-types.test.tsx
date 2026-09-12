@@ -68,7 +68,7 @@ describe("Transaction history activity and states", () => {
     ).toBeDefined();
   });
 
-  it("uses the conversation destination for Otto tool use, never a library route", async () => {
+  it("uses the conversation destination for Expert tool use, never a library route", async () => {
     server.use(
       http.get("*/api/credits/transactions", () =>
         HttpResponse.json({
@@ -88,10 +88,10 @@ describe("Transaction history activity and states", () => {
       ),
     );
     render(<TransactionHistoryCard />);
-    await screen.findByText("Otto tool use");
+    await screen.findByText("Expert tool use");
     expect(screen.getByText("Market landscape")).toBeDefined();
     fireEvent.click(
-      screen.getByRole("button", { name: /details for Otto tool use/i }),
+      screen.getByRole("button", { name: /details for Expert tool use/i }),
     );
     expect(
       screen

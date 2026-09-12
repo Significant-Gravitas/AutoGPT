@@ -120,7 +120,7 @@ function Body({
   if (files.length === 0) {
     return (
       <p className="py-2 text-[13px] text-zinc-400">
-        No files yet. Upload one or ask Otto to create something.
+        No files yet. Upload one or ask an expert to create something.
       </p>
     );
   }

@@ -549,7 +549,7 @@ async def execute_block(
                         f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and "
                         "was cancelled. Long-running work should go through "
                         "run_agent (graph executions) or run_sub_session "
-                        "(sub-Otto tasks) — those use async start+poll "
+                        "(child sessions) — those use async start+poll "
                         "so nothing blocks the chat stream."
                     ),
                     session_id=session_id,
