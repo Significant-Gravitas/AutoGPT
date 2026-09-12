@@ -109,7 +109,7 @@ test("shows error when submission fails", async () => {
 ```tsx
 // Example: Test component renders correctly
 render(<AgentCard title="My Agent" />);
-expect(screen.getByText("My Agent")).toBeInTheDocument();
+expect(screen.getByText("My Agent")).toBeDefined();
 ```
 
 ### ✅ Storybook Tests (Visual)
