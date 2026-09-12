@@ -2058,7 +2058,8 @@ class TestOllamaCredentials:
         assert ("response", "local response") in outputs
         mock_llm_call.assert_awaited_once()
         assert mock_llm_call.await_args is not None
-        structured_input, credentials = mock_llm_call.await_args.args
+        structured_input, credentials, execution_context = mock_llm_call.await_args.args
         assert credentials is None
+        assert execution_context is None
         assert structured_input.credentials is None
         assert structured_input.model == llm.LLMModel.OLLAMA_LLAMA3_3
