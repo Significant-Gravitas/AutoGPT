@@ -545,10 +545,11 @@ async def get_remaining_usd_budget(
     default); when both windows are uncapped the result is ``inf``.
 
     Failure modes:
-        * Redis brown-out → ``floor_usd`` (so callers using the value
-          as a soft hint don't pretend the user has full budget; the
-          pre-turn gate has already failed closed at 503 in this case,
-          so we only land here from observability paths).
+        * Redis brown-out → ``floor_usd``, on every tier (so callers using
+          the value as a soft hint don't pretend the user has full budget;
+          the pre-turn gate has already failed closed at 503 in this case,
+          so we only land here from observability paths).  A caller that
+          must tell "unknown" from "$0.00 left" passes a negative floor.
 
     Args:
         user_id: The user's ID.
@@ -577,7 +578,7 @@ async def get_remaining_usd_budget(
         weekly_used = int(weekly_raw or 0)
     except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
         logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
-        return 0.0 if trial else floor_usd
+        return floor_usd
 
     # ``>= 0`` (not ``> 0``): a limit of 0 is "no spend allowed", so the
     # remaining is 0 on that window. Mirrors check_rate_limit's semantics:

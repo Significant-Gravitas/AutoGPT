@@ -245,6 +245,23 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_propagates_dry_run_to_sub(self, mock_queue, mock_waiter, mock_model):
         """Fresh sub-session must inherit the parent's dry_run flag."""
         parent = _session("alice")
