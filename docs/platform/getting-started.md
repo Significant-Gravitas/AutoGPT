@@ -80,13 +80,23 @@ To run the platform, follow these steps:
    cd AutoGPT/autogpt_platform
   ```
 
-- Copy the `.env.default` file to `.env` in `autogpt_platform`:
+- Create the `.env` files and generate your local secrets:
 
   ```
-   cp .env.default .env
+   make init-env
   ```
 
-  This command will copy the `.env.default` file to `.env` in the `autogpt_platform` directory. You can modify the `.env` file to add your own environment variables.
+  This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
+  and `frontend`) and fills in the secrets that `.env.default` deliberately
+  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and
+  `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
+  are public, so shipping working values in them would mean every install in
+  the world shared one publicly-readable key. It is safe to re-run: it never
+  overwrites an existing `.env` or a value you set yourself. You can then edit
+  the `.env` files to add your own environment variables.
+
+  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, so run this
+  before bringing the stack up.
 
 - Run the platform services:
   ```
@@ -106,7 +116,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) |
+| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) and generate the secrets they leave blank |
 | `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
@@ -162,6 +172,15 @@ three things changed:
    `.env` against its `.env.default` and copy the new keys across yourself.
    The `SUPABASE_*` URL/key variables are gone; the frontend now uses
    `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+
+   **Rotate your secrets.** `backend/.env.default` used to ship working values
+   for `ENCRYPTION_KEY` and `UNSUBSCRIBE_SECRET_KEY`, and
+   `frontend/.env.default` one for `BETTER_AUTH_SECRET`. Those values are
+   public. If your `.env` files still carry them, replace each with a freshly
+   generated secret — the backend now refuses to start on the published
+   `ENCRYPTION_KEY`. Note that rotating `ENCRYPTION_KEY` makes stored
+   integration credentials unreadable, so reconnect those integrations
+   afterwards.
 2. **Database location**: the database now lives in a plain Postgres
    container (`pgvector/pgvector:pg15`) with its data in
    `autogpt_platform/data/db/data`. Your old data is untouched at
@@ -279,9 +298,10 @@ A fresh install (empty database) needs none of this.
 
 ### Additional Notes
 
-You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
-
-To generate a new encryption key, run the following command in python:
+`make init-env` already generates a unique `ENCRYPTION_KEY` for your install, so
+there is normally nothing to change here. To rotate it — for example if you
+carried a key over from an older checkout, back when `.env.default` shipped a
+working (and therefore public) one — generate a new key in python:
 
 ```python
 from cryptography.fernet import Fernet;Fernet.generate_key().decode()
@@ -293,7 +313,11 @@ Or run the following command in the `autogpt_platform/backend` directory:
 poetry run cli gen-encrypt-key
 ```
 
-Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
+Then replace the value in `autogpt_platform/backend/.env`. **Rotating the key
+makes previously stored integration credentials unreadable**, so you will need
+to reconnect those integrations afterwards. The backend refuses to start on any
+value that was once published in `.env.default`: those must be treated as
+compromised.
 
 #### Auth transport security (JWKS over untrusted networks)
 

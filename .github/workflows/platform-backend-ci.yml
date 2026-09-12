@@ -437,6 +437,13 @@ jobs:
             exit 1
           }
 
+      - name: Generate ephemeral secrets
+        # Never hardcode a working key in a public file: a committed value is a
+        # published value. These live only for the duration of this job.
+        run: |
+          echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+          echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+
       - name: Run Database Migrations
         run: poetry run prisma migrate deploy
         env:
@@ -459,7 +466,6 @@ jobs:
           JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters" # DO NOT USE IN PRODUCTION!!
           REDIS_HOST: "localhost"
           REDIS_PORT: "17000"
-          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
           # Opt-in: lets backend/data/e2e_redis_restart_test.py spin up its
           # own isolated 3-shard cluster (ports 27110–27112) and exercise
           # ``docker restart <shard>`` mid-stream. Off locally so a
