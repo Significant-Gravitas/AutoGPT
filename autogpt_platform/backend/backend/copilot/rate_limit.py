@@ -692,6 +692,8 @@ async def check_rate_limit(
             raise RateLimitExceeded("trial", now)
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
             raise RateLimitExceeded("trial", trial.ends_at or now)
+    if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
+        return
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
