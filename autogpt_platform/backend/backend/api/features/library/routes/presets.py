@@ -178,6 +178,7 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             trigger_config=params.trigger_config,
+            constant_inputs=params.constant_inputs,
             agent_credentials=params.agent_credentials,
             # Graph-match attribution is resolved by the caller (mirroring
             # create_preset above): setup_triggered_preset itself never

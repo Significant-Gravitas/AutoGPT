@@ -175,6 +175,17 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
+    # Bounded because this one loops: the first boot after the data migration
+    # walks whatever it could not reach, a graph load and a transaction each.
+    # Presets commit individually, so a timeout defers the rest to the next boot.
+    try:
+        await asyncio.wait_for(
+            backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+            timeout=30,
+        )
+    except Exception:
+        logger.error("Triggered-preset input backfill failed", exc_info=True)
+
     # Guarded, unlike its neighbours above: this backfill only corrects what
     # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
