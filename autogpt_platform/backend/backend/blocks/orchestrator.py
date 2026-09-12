@@ -405,6 +405,23 @@ def _select_final_answer_parts(
     return current
 
 
+def sdk_disallowed_tools() -> list[str]:
+    """Disable ALL known SDK built-in tools — only graph MCP tools available.
+
+    This blocklist is the ONLY thing that removes a built-in: per the SDK,
+    ``allowed_tools`` merely auto-approves without prompting, and the base set
+    is controlled by ``tools`` (unset here, so every Claude Code default stays
+    in the model's context).  A built-in missing from this list is therefore
+    callable, not blocked — which is why it is derived from the copilot's own
+    inventory rather than kept in sync by hand.
+    """
+    # Local import: tool_adapter pulls in the whole copilot tool registry,
+    # which every block load should not have to pay for.
+    from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
+
+    return [*get_sdk_builtin_tools(), "NotebookEdit"]
+
+
 class OrchestratorBlock(Block):
     """A block that uses a language model to orchestrate tool calls.
 
@@ -1674,28 +1691,7 @@ class OrchestratorBlock(Block):
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
 
-        # Disable ALL known SDK built-in tools — only graph MCP tools available.
-        # `allowed_tools` (above) is the primary restriction: the SDK only
-        # enables tools explicitly listed there.  This blocklist is a
-        # defense-in-depth measure in case the SDK's allowlist logic changes.
-        # IMPORTANT: Keep this list in sync with the Claude Agent SDK.
-        # If a new built-in tool is added in a future SDK version, it will
-        # still be blocked by `allowed_tools` (only MCP-prefixed names are
-        # allowed), but adding it here provides an extra safety layer.
-        disallowed_tools = [
-            "Bash",
-            "WebFetch",
-            "AskUserQuestion",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "Task",
-            "WebSearch",
-            "TodoWrite",
-            "NotebookEdit",
-        ]
+        disallowed_tools = sdk_disallowed_tools()
 
         # Build SDK env — provider-aware credential routing.
         # Extended thinking does not support subscription-mode (platform-managed credits).
