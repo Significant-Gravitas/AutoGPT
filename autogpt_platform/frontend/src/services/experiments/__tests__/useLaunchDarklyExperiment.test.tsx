@@ -187,8 +187,10 @@ describe("useLaunchDarklyExperiment", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
-  it("resolves immediately when feature flags are disabled", () => {
+  it("ignores retained string variants when feature flags are disabled", async () => {
+    const bodies = captureAssignments();
     vi.spyOn(environment, "areFeatureFlagsEnabled").mockReturnValue(false);
+    ld.flags = { "onboarding-copy": "b" };
     ld.client = null;
 
     const { result } = renderHook(
@@ -196,6 +198,9 @@ describe("useLaunchDarklyExperiment", () => {
       { wrapper },
     );
 
-    expect(result.current).toEqual({ variant: null, isResolved: true });
+    expect.soft(result.current).toEqual({ variant: null, isResolved: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect.soft(bodies).toHaveLength(0);
+    expect(capture).not.toHaveBeenCalled();
   });
 });
