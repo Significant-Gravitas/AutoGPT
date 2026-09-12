@@ -43,7 +43,7 @@ export function SkillsSection({ category }: Props) {
         titleIcon={<Icon icon={BookOpen01Icon} size={30} aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
-        subtitle="Playbooks your experts follow — from brand voice to cold outreach. Add a playbook to your library, ready to assign to your experts."
+        subtitle="Playbooks your experts follow — from brand voice to cold outreach. Teach them your way of working."
         action={sectionAction({ isLoggedIn, total })}
       />
       {isLoggedIn ? (
@@ -52,7 +52,7 @@ export function SkillsSection({ category }: Props) {
             href="/library/skills"
             className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
           >
-            …or create a skill of your own
+            …or teach them a skill of your own
           </Link>
         </div>
       ) : null}
@@ -135,8 +135,8 @@ function EmptyShelf() {
         Nothing published yet
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-600">
-        Skills from the community will show up here. In the meantime, create a
-        skill of your own.
+        Skills from the community will show up here. In the meantime, teach your
+        experts a skill of your own.
       </Text>
       <Link
         href="/library/skills"

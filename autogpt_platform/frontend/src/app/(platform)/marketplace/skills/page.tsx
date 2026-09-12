@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Skills - AutoGPT Marketplace",
-  description:
-    "Playbooks your experts follow. Add a playbook to your library, ready to assign to your experts.",
+  description: "Playbooks your experts follow. Teach them your way of working.",
 };
 
 export default async function MarketplaceSkillsPage() {

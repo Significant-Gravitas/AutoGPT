@@ -55,8 +55,7 @@ export function SkillsBrowsePage() {
             Skills
           </h1>
           <p className="mt-2 text-base text-zinc-500">
-            Playbooks your experts follow. Add a playbook to your library, ready
-            to assign to your experts.
+            Playbooks your experts follow. Teach them your way of working.
           </p>
         </div>
         <SearchBar
