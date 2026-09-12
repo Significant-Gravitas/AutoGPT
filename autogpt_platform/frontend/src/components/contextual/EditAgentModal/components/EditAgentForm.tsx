@@ -190,11 +190,12 @@ export function EditAgentForm({
                       <Input
                         id={field.name}
                         labelVariant="body"
-                        label="Subheader"
-                        labelTooltip="One-sentence tagline displayed under the title."
+                        label="Tagline"
+                        labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
                         type="text"
-                        placeholder="A concise tagline for your agent"
+                        placeholder="Find decision-makers at any company in seconds"
                         error={form.formState.errors.subheader?.message}
+                        required
                         {...field}
                       />
                     )}

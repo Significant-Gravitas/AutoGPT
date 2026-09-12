@@ -1275,6 +1275,7 @@ class TestRegressionStore:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                 )
 
         # The initial graph lookup must include userId
@@ -1304,6 +1305,7 @@ class TestRegressionStore:
                 user_id=USER_ID,
                 store_listing_version_id=STORE_LISTING_VERSION_ID,
                 name="Updated",
+                sub_heading="Find test agents fast",
             )
 
     @pytest.mark.asyncio
@@ -2184,6 +2186,7 @@ class TestPR15MarketplaceOrg:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                     organization_id="org-1",
                 )
 
