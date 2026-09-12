@@ -15,6 +15,8 @@ from backend.copilot.bot.adapters.discord.adapter import (
     _mention_queries,
     _resolve_mentions,
 )
+from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
+from backend.copilot.bot.turn_stream import _clarification_message
 
 
 def _bare_adapter(bot_id: int | None = 1000) -> tuple[DiscordAdapter, MagicMock]:
@@ -354,6 +356,69 @@ class TestSendMethods:
         assert kwargs["tts"] is False
         # Default empty mentionable_users → AllowedMentions.none()
         assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
+
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self):
+        """SECRT-2604: an ask_question payload must reach Discord as a plain
+        text message with the numbered options intact, unmangled by the
+        adapter's real send path (channel.send)."""
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await adapter.send_message("123", text)
+
+        sent = channel.send.await_args.args[0]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_sends_one_button_per_option(self):
+        adapter, client = _bare_adapter()
+        adapter._on_message_callback = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        sent = await adapter.send_choice_buttons(
+            "123", "❓ Which region?", ["US", "EU"], "tok"
+        )
+
+        assert sent is True
+        assert adapter.supports_choice_buttons is True
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("❓ Which region?",)
+        view = kwargs["view"]
+        # Each child is a DynamicItem wrapping the Button, so the label lives
+        # on `.item`; `custom_id` proxies through.
+        buttons = [cast(_ChoiceButton, child) for child in view.children]
+        assert [b.item.label for b in buttons] == ["US", "EU"]
+        # Stateless, like the other three adapters: everything needed to
+        # resolve a click rides in the custom_id, so a button posted before a
+        # deploy still works after it. A random discord.py-generated id plus
+        # an in-memory view would go dead on restart and on View.timeout,
+        # giving "This interaction failed" while the token stays live.
+        assert [b.custom_id for b in buttons] == ["qans:tok:0", "qans:tok:1"]
+        assert view.timeout is None
+
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_returns_false_without_message_callback(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        sent = await adapter.send_choice_buttons("123", "❓ Q?", ["US"], "tok")
+
+        assert sent is False
+        channel.send.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_send_message_silently_drops_when_channel_missing(self):

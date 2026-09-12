@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.web.async_client import AsyncWebClient
 
-from backend.copilot.bot import threads
+from backend.copilot.bot import choices, threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
@@ -49,13 +49,18 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import commands, config, history, oauth, signing
+from . import choice_ui, commands, config, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/api/copilot-webhooks/slack/events"
 COMMANDS_PATH = "/api/copilot-webhooks/slack/commands"
+INTERACTIVE_PATH = "/api/copilot-webhooks/slack/interactive"
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Slack lifecycle events that end a workspace's install — revoke its token.
 _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
@@ -137,6 +142,9 @@ class SlackAdapter(WebhookAdapter):
     def register_routes(self, app: FastAPI) -> None:
         app.add_api_route(EVENTS_PATH, self._handle_event_request, methods=["POST"])
         app.add_api_route(COMMANDS_PATH, self._handle_command_request, methods=["POST"])
+        app.add_api_route(
+            INTERACTIVE_PATH, self._handle_interactive_request, methods=["POST"]
+        )
         # Multi-workspace "Add to Slack" install + OAuth callback (no-op unless
         # the app's client id/secret are configured). A (re)install replaces the
         # workspace's token, so it must drop this replica's cached client.
@@ -224,6 +232,97 @@ class SlackAdapter(WebhookAdapter):
             k: v for k, v in form_data.items() if isinstance(v, str)
         }
         return await commands.handle(self._api, form)
+
+    async def _handle_interactive_request(self, request: Request) -> Response:
+        # Same body-then-form sequence as _handle_command_request: Slack's
+        # interactivity payload is also form-encoded (a JSON `payload` field).
+        if await read_verified_webhook_body(request, _verify_signature) is None:
+            return unauthorized_webhook_response()
+        form_data = await request.form()
+        raw_payload = form_data.get("payload")
+        if not isinstance(raw_payload, str):
+            return PlainTextResponse("ok")
+        payload = json.loads(raw_payload)
+        if payload.get("type") == "block_actions":
+            # Fire-and-forget so we ACK within Slack's 3s window.
+            task = asyncio.create_task(self._dispatch_block_action(payload))
+            self._event_tasks.add(task)
+            task.add_done_callback(self._event_tasks.discard)
+        return PlainTextResponse("ok")
+
+    async def _dispatch_block_action(self, payload: dict[str, Any]) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply."""
+        actions = payload.get("actions") or []
+        if not actions:
+            return
+        parsed = choice_ui.parse_action_id(actions[0].get("action_id") or "")
+        if parsed is None:
+            return
+        token, index = parsed
+        team_id = (payload.get("team") or {}).get("id") or ""
+        channel_id = (payload.get("channel") or {}).get("id")
+        client = await self._client_for(team_id)
+        clicker_id = (payload.get("user") or {}).get("id", "")
+        resolved = await choices.resolve_choice("slack", token, index, clicker_id)
+        if resolved.text is None:
+            if client and channel_id:
+                await client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=clicker_id,
+                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
+                )
+            return
+        option = resolved.text
+        message_ts = (payload.get("container") or {}).get("message_ts")
+        if client and channel_id and message_ts:
+            # `resolve_choice` already consumed the token, so the answer now
+            # exists only in this call. The ack is cosmetic and the turn is
+            # not: a `message_not_found`/`ratelimited` here must not abort
+            # the dispatch and lose the answer with nothing logged.
+            try:
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    # The option text is model-authored, so it goes through
+                    # the same escaper as every other Slack send — otherwise
+                    # an option containing `<!channel>` pings the workspace,
+                    # bypassing the mentionable_users allowlist.
+                    text=self.localize_markup(f"✅ You answered: {option}"),
+                    blocks=[],
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to acknowledge Slack choice click; continuing the turn"
+                )
+        if self._on_message_callback is None:
+            return
+        ctx = await self._context_from_block_action(payload, option)
+        if ctx is not None:
+            await self._on_message_callback(ctx, self)
+
+    async def _context_from_block_action(
+        self, payload: dict[str, Any], option: str
+    ) -> Optional[MessageContext]:
+        channel = (payload.get("channel") or {}).get("id")
+        team = (payload.get("team") or {}).get("id")
+        user = (payload.get("user") or {}).get("id")
+        ts = (payload.get("container") or {}).get("message_ts")
+        if not (channel and team and user and ts):
+            return None
+        event = {
+            "channel": channel,
+            "ts": ts,
+            "user": user,
+            "text": option,
+            "team": team,
+            "thread_ts": (payload.get("message") or {}).get("thread_ts"),
+        }
+        # Slack channel IDs are prefixed by kind; "D" is a 1:1 DM.
+        return await self._build_context(
+            event, team, bot_mentioned=True, is_dm=channel.startswith("D")
+        )
 
     async def _dispatch_event(
         self, event: dict[str, Any], team_id: Optional[str] = None
@@ -512,6 +611,35 @@ class SlackAdapter(WebhookAdapter):
             thread_ts=thread_ts,
             blocks=_link_blocks(rendered, link_label, link_url),
         )
+
+    @property
+    def max_choice_label_length(self) -> int:
+        return 75
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return False
+        rendered = self.localize_markup(text)
+        await client.chat_postMessage(
+            channel=channel,
+            text=rendered,
+            thread_ts=thread_ts,
+            blocks=choice_ui.choice_blocks(rendered, token, options),
+        )
+        return True
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         team, channel, thread_ts = _decode_target(channel_id)

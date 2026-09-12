@@ -201,6 +201,61 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    @property
+    def max_choice_label_length(self) -> int:
+        """Longest option label this platform's native widget shows in full.
+
+        Past it the widget silently clips, so two options sharing a prefix
+        render identically while still dispatching their own full text — the
+        user cannot tell which button they are pressing. A question with any
+        option over this goes as numbered text instead, which shows all of
+        it. Discord buttons 80, Slack 75, Telegram 64, Teams 60.
+        """
+        return 80
+
+    @property
+    def max_choice_options(self) -> int:
+        """How many options this platform's native widget renders legibly.
+
+        `base` documents that an adapter decides whether `options` fits its
+        native widget, so the number belongs here rather than as one
+        platform-blind constant in the caller: Teams' Adaptive Cards render
+        roughly six actions and silently drop the tail, while Discord rows,
+        Slack action blocks and Telegram keyboards take the full ten.
+        """
+        return 10
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        """Whether `send_choice_buttons` can render native option buttons.
+
+        Default False — only platforms overriding `send_choice_buttons`
+        below flip this. Checked before spending a `bot.choices` token on a
+        question, so unsupported adapters never pay that cost.
+        """
+        return False
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        """Send `text` with native clickable option buttons/select where the
+        platform supports it, returning True once sent.
+
+        A click carries `token` and the clicked option's index (not the
+        option text -- Telegram's callback_data caps at 64 bytes); the
+        adapter resolves it via `bot.choices.resolve_choice` and feeds the
+        resolved text through its own `on_message` callback, exactly as if
+        the user had typed it. Returns False when the platform doesn't
+        implement this (or `options` doesn't fit its native widget), telling
+        the caller to fall back to plain numbered text. Default: unsupported.
+        """
+        return False
+
     @abstractmethod
     async def send_reply(
         self,

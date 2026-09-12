@@ -23,7 +23,7 @@ from backend.platform_linking.models import TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
-from . import sessions
+from . import choices, sessions
 from .adapters.base import (
     FileAttachment,
     MessageContext,
@@ -33,7 +33,7 @@ from .adapters.base import (
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .prompt import clamp_thread_name
-from .text import format_batch, split_at_boundary
+from .text import format_batch, iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +165,7 @@ class TurnStreamer:
         buffer = ""
         sent_any_content = False
         setup_prompt_sent = False
+        clarification_prompt_sent = False
 
         async def _on_setup_required(
             session_id: str,
@@ -229,6 +230,27 @@ class TurnStreamer:
                 mentionable_users=ctx.mentionable_users,
             )
 
+        async def _on_clarification_needed(
+            session_id: str,
+            clarification_output: dict[str, Any],
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal active_session_id, buffer, sent_any_content, clarification_prompt_sent
+            if clarification_prompt_sent:
+                return
+            clarification_prompt_sent = True
+            active_session_id = session_id
+            # Drain any pending text first so the question doesn't render
+            # ahead of the message it belongs to.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            await _send_clarification(adapter, target_id, ctx, clarification_output)
+
         started_at = time.monotonic()
         reply_chars = 0
         draft = DraftStreamer(adapter, target_id)
@@ -244,6 +266,7 @@ class TurnStreamer:
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
+                on_clarification_needed=_on_clarification_needed,
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
@@ -548,3 +571,172 @@ def _setup_required_message(setup_output: dict[str, Any]) -> str:
         "Click the button below to open your AutoGPT chat and finish setup "
         "there. Reply here when you're done."
     )
+
+
+async def _send_clarification(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    clarification_output: dict[str, Any],
+) -> None:
+    """Send the questions as native choice buttons/select, or as the existing
+    numbered-text rendering chunked to the adapter's message cap.
+
+    All-or-nothing per payload. Native sends happen one question at a time
+    while text questions are batched into a single numbered message, so
+    mixing the two in one payload would deliver them out of order (Q1, Q3,
+    then Q2) and the user would answer against the wrong numbering. If any
+    question can't go native, the whole payload goes as text — which is
+    ordered, and is the rendering that already worked.
+    """
+    questions = list(clarification_output.get("questions") or [])
+    if questions and all(_fits_native(adapter, q) for q in questions):
+        if await _send_native_choices(adapter, target_id, ctx, questions):
+            return
+        # A native send failed part-way; fall through and render the whole
+        # payload as text so no question is silently lost.
+
+    if not questions:
+        return
+    message = _clarification_message(clarification_output)
+    for chunk in iter_chunks(message, adapter.chunk_flush_at):
+        await adapter.send_message(
+            target_id, chunk, mentionable_users=ctx.mentionable_users
+        )
+
+
+def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
+    """Whether ``question`` can be rendered as this adapter's native widget."""
+    if not isinstance(question, dict):
+        return False
+    text = str(question.get("question") or "").strip()
+    options = _question_options(question)
+    if not adapter.supports_choice_buttons or not text or not options:
+        return False
+    if len(options) > adapter.max_choice_options:
+        return False
+    # A clipped label is worse than no button: two options sharing a prefix
+    # render identically while each still dispatches its own full text.
+    if any(len(option) > adapter.max_choice_label_length for option in options):
+        return False
+    # Nothing else chunks the question text, and every adapter's send raises
+    # past its cap — which, before this check, surfaced as a generic turn
+    # error instead of the numbered text that would have fitted. Measure what
+    # actually goes on the wire: each adapter localizes first, and HTML or
+    # mrkdwn escaping can push a question that fitted over the cap.
+    rendered = adapter.localize_markup(_native_question_text(text))
+    return len(rendered) <= adapter.max_message_length
+
+
+def _native_question_text(text: str) -> str:
+    return f"❓ {text}"
+
+
+async def _send_native_choices(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    questions: list[Any],
+) -> bool:
+    """Send every question as native choice buttons; False if any didn't land.
+
+    An adapter may either return False or raise (Telegram and Teams have no
+    non-raising failure path at all), and Redis can fail under either
+    ``store_choice`` or ``clear_choice``. Every one of those must mean "fall
+    back to text": an exception escaping here reaches the caller's generic
+    handler, which reports "AutoGPT ran into an error", abandons the
+    half-consumed turn, and leaves any token alive for its full TTL — with
+    the question delivered in no form at all, not even as numbered text.
+
+    Each token is bound to ``ctx.user_id`` — the person who asked — so a
+    bystander in a shared channel cannot consume the question by clicking.
+
+    On failure every token minted for this payload is cleared, not just the
+    one that failed. A question already sent natively is about to be
+    re-rendered as text, and a live button beside that text would answer the
+    turn a second time; a cleared token makes the stale button report that
+    it has expired, which is exactly right next to the text version.
+    """
+    minted: list[str] = []
+    try:
+        for question in questions:
+            options = _question_options(question)
+            text = str(question.get("question") or "").strip()
+            token = await choices.store_choice(
+                adapter.platform_name, options, ctx.user_id
+            )
+            minted.append(token)
+            if not await adapter.send_choice_buttons(
+                target_id,
+                _native_question_text(text),
+                options,
+                token,
+                mentionable_users=ctx.mentionable_users,
+            ):
+                break
+        else:
+            return True
+    except Exception:
+        logger.exception(
+            "Native choice delivery failed on %s; falling back to text",
+            adapter.platform_name,
+        )
+    await _discard_choice_tokens(adapter.platform_name, minted)
+    return False
+
+
+async def _discard_choice_tokens(platform: str, tokens: list[str]) -> None:
+    """Invalidate tokens whose questions are about to be re-sent as text.
+
+    Never raises: this runs on the failure path, and letting Redis take the
+    text fallback down with it is the failure this whole path exists to
+    prevent. A token that outlives its clear expires on its own TTL.
+    """
+    for token in tokens:
+        try:
+            await choices.clear_choice(platform, token)
+        except Exception:
+            logger.exception("Could not clear choice token on %s", platform)
+
+
+def _question_options(question: dict[str, Any]) -> list[str]:
+    # `options` is model-shaped: a non-list value here would be iterated
+    # character by character (a string) or raise (an int), so anything that
+    # isn't a list means "no options" and the question renders as free text.
+    options = question.get("options")
+    if not isinstance(options, list):
+        return []
+    return [str(option).strip() for option in options if str(option).strip()]
+
+
+def _clarification_message(clarification_output: dict[str, Any]) -> str:
+    """Render an ask_question payload as plain text with numbered options.
+
+    Used for questions ``_send_clarification`` couldn't render as native
+    choice buttons/select (free-text questions, too many options, or an
+    adapter without native support) -- every adapter already supports
+    ``send_message``, and a typed reply (a number or free text) flows into
+    the session exactly like a normal chat message, so this is always a
+    working fallback.
+    """
+    blocks: list[str] = []
+    for question in clarification_output.get("questions") or []:
+        if not isinstance(question, dict):
+            continue
+        text = str(question.get("question") or "").strip()
+        if not text:
+            continue
+        options = _question_options(question)
+        block = f"❓ {text}"
+        if options:
+            numbered = "\n".join(f"{i}. {o}" for i, o in enumerate(options, 1))
+            block = f"{block}\n{numbered}"
+        blocks.append(block)
+
+    if not blocks:
+        fallback = str(clarification_output.get("message") or "").strip()
+        return fallback or "AutoGPT has a question before it can continue."
+
+    body = "\n\n".join(blocks)
+    footer = "Reply with a number, or just type your answer."
+    return f"{body}\n\n{footer}"

@@ -15,6 +15,8 @@ from backend.copilot.bot.adapters.teams.adapter import (
     _inbound_files,
 )
 from backend.copilot.bot.adapters.teams.text import mention_entities, to_teams_markdown
+from backend.copilot.bot.choices import ResolvedChoice
+from backend.copilot.bot.turn_stream import _clarification_message
 from backend.util.settings import AppEnvironment
 
 _APP_ID = "11111111-2222-3333-4444-555555555555"
@@ -385,6 +387,160 @@ async def test_create_thread_rules(app_id, conversation_id, expected):
 
 
 # ── Sending ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_send_message_delivers_clarification_question(app_id):
+    """SECRT-2604: an ask_question payload must reach Teams as a plain text
+    activity with the numbered options intact, unmangled by the adapter's
+    real send path (send_activity + Teams markdown downgrade)."""
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    text = _clarification_message(
+        {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+    )
+    await adapter.send_message("a:chat", text)
+    activity = adapter._client.send_activity.await_args.args[2]
+    assert "Which region?" in activity["text"]
+    assert "1. US" in activity["text"]
+    assert "2. EU" in activity["text"]
+    assert "Reply with a number" in activity["text"]
+
+
+@pytest.mark.asyncio
+async def test_send_choice_buttons_posts_adaptive_card(app_id):
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+
+    sent = await adapter.send_choice_buttons(
+        "a:chat", "Which region?", ["US", "EU"], "abcdef012345"
+    )
+
+    assert sent is True
+    assert adapter.supports_choice_buttons is True
+    activity = adapter._client.send_activity.await_args.args[2]
+    card = activity["attachments"][0]["content"]
+    assert [a["title"] for a in card["actions"]] == ["US", "EU"]
+    assert card["actions"][0]["data"] == {
+        "qans_token": "abcdef012345",
+        "qans_index": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_choice_click_resolves_posts_confirmation_and_dispatches(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(
+        text="",
+        value={"qans_token": "abcdef012345", "qans_index": 1},
+    )
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    posted = [c.args[2] for c in adapter._client.send_activity.await_args_list]
+    assert any("You answered: EU" in a.get("text", "") for a in posted)
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, dispatched_adapter = adapter._on_message_callback.await_args.args
+    assert dispatched_adapter is adapter
+    assert ctx.text == "EU"
+    assert ctx.platform == "teams"
+
+
+@pytest.mark.asyncio
+async def test_choice_click_in_a_channel_is_dispatched_as_mentioned(app_id):
+    """An Action.Submit carries no mention entities, so deriving
+    `bot_mentioned` from the activity yields False — and in a *channel* the
+    handler's `if not ctx.bot_mentioned: return` then silently drops the
+    turn, after the ack has already told the user their answer was accepted.
+    Every other adapter forces it True on a click.
+    """
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(
+        text="",
+        value={"qans_token": "abcdef012345", "qans_index": 1},
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        channelData={"team": {"id": "19:team@thread.tacv2", "name": "Eng"}},
+    )
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, _ = adapter._on_message_callback.await_args.args
+    assert ctx.bot_mentioned is True
+    assert ctx.text == "EU"
+
+
+@pytest.mark.asyncio
+async def test_choice_click_dispatches_even_if_the_ack_post_fails(app_id):
+    # The token is consumed before the ack, so a Connector error here would
+    # otherwise lose the answer entirely.
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(side_effect=RuntimeError("connector"))
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="", value={"qans_token": "abcdef012345", "qans_index": 1})
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_teams_caps_choice_options_below_the_shared_default(app_id):
+    # An Adaptive Card renders ~6 actions; the rest silently vanish.
+    adapter = TeamsAdapter(MagicMock())
+    assert adapter.max_choice_options == 6
+
+
+@pytest.mark.asyncio
+async def test_choice_click_expired_token_posts_notice_and_does_not_dispatch(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="", value={"qans_token": "abcdef012345", "qans_index": 0})
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value=ResolvedChoice(text=None)),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    posted = [c.args[2] for c in adapter._client.send_activity.await_args_list]
+    assert any("expired" in a.get("text", "") for a in posted)
+    adapter._on_message_callback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_activity_without_choice_value_is_not_treated_as_a_click(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="hello")  # no "value" field at all
+
+    await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, _ = adapter._on_message_callback.await_args.args
+    assert ctx.text == "hello"
 
 
 @pytest.mark.asyncio
