@@ -752,6 +752,15 @@ class DiscordAdapter(SocketAdapter):
                     continue
                 add(member.display_name, str(member.id))
                 add(member.name, str(member.id))
+                # Also allow the text the author actually typed. Discord
+                # matches `query` as a *prefix*, so "@Bently" finds the member
+                # whose display name is "Bently [SOMN]" — but listing only the
+                # full names means the written "@Bently" matches neither and
+                # is left as plain text, which is a mention that never pings.
+                # Still allowlisted: the guild really does have this member
+                # under that prefix, and `resolve_mentions` drops a name that
+                # two different members share.
+                add(query, str(member.id))
         return tuple(pairs)
 
     async def _thread_history(
