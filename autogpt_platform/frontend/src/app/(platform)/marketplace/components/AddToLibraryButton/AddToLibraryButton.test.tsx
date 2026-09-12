@@ -16,7 +16,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AddToLibraryButton } from "./AddToLibraryButton";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
@@ -85,6 +85,7 @@ function captureAddHeader() {
 }
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
   window.localStorage.clear();
   useOrgTeamStore.setState({
     activeOrgID: null,
@@ -96,6 +97,30 @@ beforeEach(() => {
 });
 
 describe("AddToLibraryButton", () => {
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+  });
+
+  it.each(["false", undefined])(
+    "hides team targets and ignores saved selection when the flag is %s",
+    async (flag) => {
+      if (flag === undefined)
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
+      seedTeams([TEAM_A, TEAM_B]);
+      setLastUsedTeam(CreateSurface.MarketplaceAdd, TEAM_A.id);
+      const request = captureAddHeader();
+      renderButton();
+      expect(
+        screen.queryByRole("button", { name: /Choose where to add/i }),
+      ).toBeNull();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Add Test Agent to library" }),
+      );
+      await waitFor(() => expect(request.called).toBe(1));
+      expect(request.teamHeader).toBeNull();
+    },
+  );
   it("renders the plain Add button with no caret for solo users", () => {
     seedTeams([]);
     renderButton();

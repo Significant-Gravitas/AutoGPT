@@ -24,6 +24,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { analytics } from "@/services/analytics";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -91,6 +92,7 @@ export function AddToLibraryButton({
   className,
   isInLibrary,
 }: Props) {
+  const collaborationEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -144,11 +146,14 @@ export function AddToLibraryButton({
     e?.preventDefault();
 
     try {
-      const data = await addToLibrary({ teamId });
+      const data = await addToLibrary({
+        teamId: collaborationEnabled ? teamId : null,
+      });
       // Only remember this target once the add actually succeeds, so a failed
       // request can't leave the split button defaulting to a team/Organization
       // that never received the agent.
-      setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
+      if (collaborationEnabled)
+        setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
       setJustAdded(true);
 
       await queryClient.invalidateQueries({
@@ -208,7 +213,7 @@ export function AddToLibraryButton({
   // While the org/team store is still loading we render the same control but
   // disable it, so a team member can't click the solo button during the async
   // load window and accidentally add to org context instead of a team.
-  if (!isLoaded || teams.length === 0) {
+  if (!collaborationEnabled || !isLoaded || teams.length === 0) {
     return (
       <Button
         variant="ghost"
