@@ -1,8 +1,16 @@
+import itertools
 import logging
+import math
 import re
+from collections import OrderedDict
+from copy import deepcopy
+from enum import Enum
+from threading import Lock
 from typing import Any, Type, TypeVar, overload
 
 import jsonschema
+import jsonschema.exceptions
+import jsonschema.validators
 import orjson
 from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
@@ -130,6 +138,123 @@ def loads(
     return parsed
 
 
+_SchemaTypeFingerprint = tuple[tuple[int, type[Any]], ...]
+_SchemaCacheKey = tuple[bytes, _SchemaTypeFingerprint]
+
+_VALIDATOR_CACHE: OrderedDict[_SchemaCacheKey, Any] = OrderedDict()
+# The 565 built-in Block classes can each contribute a normal and dry-run
+# schema; 2,048 covers that working set while leaving room for user schemas.
+_VALIDATOR_CACHE_MAX_ENTRIES = 2048
+_VALIDATOR_CACHE_MAX_KEY_BYTES = 32 * 1024
+_VALIDATOR_CACHE_LOCK = Lock()
+
+
+def _compiled_validator(schema: dict[str, Any]):
+    """Return a validator for `schema`, compiled once per distinct schema.
+
+    `jsonschema.validate()` re-resolves the validator class and re-validates the
+    schema against its meta-schema on every single call; both depend only on the
+    schema, so both are cached here.
+
+    The key is the schema's serialized content, not its identity: a graph's
+    input schema is rebuilt as a fresh dict on every node execution, so identity
+    keying would never hit and would pin every schema object the process has
+    ever seen. Key order is deliberately *not* normalised -- the error strings
+    this function returns embed a repr of the failing sub-schema, so reordering
+    keys would change them.
+
+    """
+    key = _schema_cache_key(schema)
+    if key is None:
+        return _new_validator(schema)
+
+    with _VALIDATOR_CACHE_LOCK:
+        cached = _VALIDATOR_CACHE.get(key)
+        if cached is not None:
+            _VALIDATOR_CACHE.move_to_end(key)
+            return cached
+
+    return _remember(key, _new_validator(schema))
+
+
+def _schema_cache_key(schema: dict[str, Any]) -> _SchemaCacheKey | None:
+    """Return an injective, size-bounded key for safely cacheable schemas."""
+    try:
+        key = orjson.dumps(schema)
+    except TypeError:
+        return None
+    if len(key) > _VALIDATOR_CACHE_MAX_KEY_BYTES:
+        return None
+    type_fingerprint = _schema_type_fingerprint(schema)
+    if type_fingerprint is None:
+        return None
+    return key, type_fingerprint
+
+
+def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
+    """Describe string subclasses while rejecting unsafe serialization."""
+    pending = [value]
+    seen_containers: set[int] = set()
+    string_subclasses: list[tuple[int, type[Any]]] = []
+    string_position = 0
+    while pending:
+        current = pending.pop()
+        current_type = type(current)
+        if current is None or current_type in (int, bool):
+            continue
+        if issubclass(current_type, str):
+            if current_type is not str:
+                if not issubclass(current_type, Enum):
+                    return None
+                string_subclasses.append((string_position, current_type))
+            string_position += 1
+            continue
+        if current_type is float:
+            if not math.isfinite(current):
+                return None
+            continue
+        if current_type not in (list, dict):
+            return None
+        identity = id(current)
+        if identity in seen_containers:
+            return None
+        seen_containers.add(identity)
+        if current_type is dict:
+            # orjson.dumps rejects non-exact-string keys before this walk.
+            pending.extend(reversed(tuple(current.values())))
+        else:
+            pending.extend(reversed(current))
+    return tuple(string_subclasses)
+
+
+def _new_validator(schema: dict[str, Any]):
+    # Compile against a private copy: a jsonschema validator memoises the
+    # sub-schemas it walks, so a retained one must not alias a dict the caller
+    # still holds and could mutate afterwards. deepcopy also preserves key
+    # order, which the error messages depend on.
+    schema_copy = deepcopy(schema)
+    validator_cls = jsonschema.validators.validator_for(schema_copy)
+    validator_cls.check_schema(schema_copy)
+    return validator_cls(schema_copy)
+
+
+def _remember(key: _SchemaCacheKey, value: Any) -> Any:
+    """Publish and return one value, evicting the least-recently used entry.
+
+    The keys are caller-supplied schemas, which on this platform come from
+    user-authored graphs, so the cache has to be bounded.
+    """
+    with _VALIDATOR_CACHE_LOCK:
+        cached = _VALIDATOR_CACHE.get(key)
+        if cached is not None:
+            _VALIDATOR_CACHE.move_to_end(key)
+            return cached
+        if len(_VALIDATOR_CACHE) >= _VALIDATOR_CACHE_MAX_ENTRIES:
+            _VALIDATOR_CACHE.popitem(last=False)
+        _VALIDATOR_CACHE[key] = value
+        return value
+
+
 def validate_with_jsonschema(
     schema: dict[str, Any], data: dict[str, Any]
 ) -> str | None:
@@ -137,11 +262,19 @@ def validate_with_jsonschema(
     Validate the data against the schema.
     Returns the validation error message if the data does not match the schema.
     """
-    try:
-        jsonschema.validate(data, schema)
+    errors = _compiled_validator(schema).iter_errors(data)
+
+    # Valid data is the common case, and it does not need best_match at all.
+    first_error = next(errors, None)
+    if first_error is None:
         return None
-    except jsonschema.ValidationError as e:
-        return str(e)
+
+    # `jsonschema.validate()` raises best_match(iter_errors(...)), which is not
+    # the same error Validator.validate() raises, so match it exactly. chain the
+    # already-consumed first error back in rather than re-running iter_errors.
+    return str(
+        jsonschema.exceptions.best_match(itertools.chain((first_error,), errors))
+    )
 
 
 def sanitize_string(value: str) -> str:
