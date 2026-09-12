@@ -93,7 +93,7 @@ def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
 
 def expert_tools(expert: Expert | None) -> list[ChatCompletionToolParam]:
     """Production's tool surface for the session (hire-experts on, memory on):
-    an expert loses the staffing tools, plain AutoPilot the expert-only ones."""
+    an expert loses the staffing tools, plain Otto the expert-only ones."""
     disabled = expert_tool_disabled_groups(
         experts_enabled=DELEGATION_ENABLED, expert_id=expert.id if expert else None
     )

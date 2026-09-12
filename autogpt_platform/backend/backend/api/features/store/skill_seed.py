@@ -45,6 +45,36 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["sales"],
         "required_providers": ["google"],
     },
+    {
+        "slug": "pr-testability-review",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "issue-triage",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "daily-repo-brief",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "compose-review",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "backup-restore-check",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "weekly-homelab-sweep",
+        "categories": ["development"],
+        "required_providers": [],
+    },
 ]
 
 

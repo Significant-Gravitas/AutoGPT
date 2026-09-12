@@ -351,3 +351,7 @@ class ExpertRunPausedError(ValueError):
 
     def __str__(self):
         return self.message
+
+
+class ConflictError(Exception):
+    """The request lost to a concurrent change of the same resource; retrying may succeed."""

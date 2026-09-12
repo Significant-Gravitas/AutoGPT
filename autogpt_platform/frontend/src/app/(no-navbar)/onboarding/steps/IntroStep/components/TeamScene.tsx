@@ -23,7 +23,7 @@ const CORNER = 10;
 
 const TEAM: Member[] = [
   {
-    name: "AutoPilot",
+    name: "Otto",
     config: AUTOPILOT_AVATAR,
     status: "idle",
     size: 104,
@@ -37,7 +37,7 @@ const TEAM: Member[] = [
     size: 84,
     x: 105,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Research",
@@ -46,7 +46,7 @@ const TEAM: Member[] = [
     size: 84,
     x: 210,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Marketing",
@@ -55,7 +55,7 @@ const TEAM: Member[] = [
     size: 84,
     x: 315,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Finance",
@@ -135,7 +135,7 @@ export function TeamScene() {
     <div className="flex h-full items-center justify-center">
       <svg
         role="img"
-        aria-label="AutoPilot and your team of AI experts"
+        aria-label="Otto and your team of AI experts"
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-auto w-full max-w-[420px]"
       >
@@ -180,7 +180,7 @@ export function TeamScene() {
                 status={member.status}
                 size={member.size}
                 poseOffset={facing(yawToward(member))}
-                trackPointer={member.name === "AutoPilot"}
+                trackPointer={member.name === "Otto"}
                 showBadge={false}
               />
             </motion.div>

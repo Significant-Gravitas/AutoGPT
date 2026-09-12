@@ -167,6 +167,45 @@ class TestGetOrCreateSandbox:
         # sandbox_id should be saved to Redis
         redis.set.assert_awaited()
 
+    def test_create_ensures_our_template_exists_first(self):
+        """The managed image is built on the team before the first create."""
+        order: list[str] = []
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+
+        async def fake_ensure(template: str, api_key: str) -> None:
+            order.append(f"ensure:{template}:{api_key}")
+
+        async def fake_create(**kwargs):
+            order.append("create")
+            return new_sb
+
+        async def fake_set(key, value, **kwargs):
+            if value == _CREATING_SENTINEL:
+                order.append("claim")
+            return True
+
+        redis.set = AsyncMock(side_effect=fake_set)
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.ensure_template",
+                side_effect=fake_ensure,
+            ),
+            _patch_redis(redis),
+        ):
+            mock_cls.create = AsyncMock(side_effect=fake_create)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, template="agpt-desktop-1x2"
+                )
+            )
+
+        # The build can take longer than the creation slot's TTL, so it must
+        # finish before the slot is claimed.
+        assert order == [f"ensure:agpt-desktop-1x2:{_API_KEY}", "claim", "create"]
+
     def test_create_with_on_timeout_kill(self):
         """on_timeout='kill' disables auto_resume automatically."""
         new_sb = _mock_sandbox("sb-new")
@@ -196,12 +235,17 @@ class TestGetOrCreateSandbox:
             _patch_redis(redis),
         ):
             mock_cls.create = AsyncMock(side_effect=RuntimeError("quota"))
-            with pytest.raises(RuntimeError, match="quota"):
+            with (
+                pytest.raises(RuntimeError, match="quota"),
+                patch("backend.copilot.tools.e2b_sandbox.forget_template") as forget,
+            ):
                 asyncio.run(
                     get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
                 )
 
         redis.delete.assert_awaited_once()
+        # The template is re-checked next time in case it went away.
+        forget.assert_called_once_with("base", _API_KEY)
 
     def test_redis_save_failure_kills_sandbox_and_releases_slot(self):
         """If Redis save fails after creation, sandbox is killed and slot released."""

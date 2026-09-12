@@ -29,6 +29,7 @@ function tier(
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",
@@ -50,6 +51,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
 const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
   offer({
     offer_id: "codex:cred-1",
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
@@ -67,6 +69,7 @@ const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
 const locked = (over: Partial<AIConnectionOffer> = {}) =>
   offer({
     offer_id: "codex:locked",
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
@@ -81,6 +84,23 @@ const locked = (over: Partial<AIConnectionOffer> = {}) =>
       "Run chats on a ChatGPT plan you already pay for, spending no AutoGPT credits.",
     lock_reason: "A Max plan or higher is required to use ChatGPT.",
     unlock_href: "/settings/billing",
+    ...over,
+  });
+
+const microsoft = (over: Partial<AIConnectionOffer> = {}) =>
+  offer({
+    offer_id: "microsoft_365_copilot:cred-msft",
+    auth_provider: "microsoft_365_copilot",
+    provider_family: "microsoft",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "device_code",
+    credential_id: "cred-msft",
+    backed_by_label: "Your Microsoft 365 Copilot plan",
+    is_default: false,
+    tiers: [],
+    limitations: [
+      "Microsoft 365 Copilot returns text and does not run AutoGPT tools.",
+    ],
     ...over,
   });
 
@@ -239,6 +259,23 @@ describe("ConnectionPicker", () => {
       });
       expect(document.activeElement).toBe(linked);
     });
+  });
+
+  it("preserves a Microsoft 365 Copilot credential selection", async () => {
+    mockOffers([offer(), microsoft()]);
+    render(<ConnectionPicker />);
+
+    await userEvent.click(await openPicker());
+    await userEvent.click(
+      await screen.findByRole("radio", { name: /Microsoft 365 Copilot/ }),
+    );
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "microsoft_365_copilot",
+        credentialId: "cred-msft",
+      }),
+    );
   });
 
   it("ignores arrow keys an IME is composing", async () => {
@@ -723,7 +760,7 @@ describe("ConnectionPicker", () => {
 
     render(<ConnectionPicker />);
 
-    const trigger = await screen.findByRole("button", { name: /Runs on/ });
+    const trigger = await openPicker();
     expect(trigger.getAttribute("aria-label")).not.toMatch(/your plan/);
   });
 

@@ -2,6 +2,31 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 import type { SetDefaultTransportRequest } from "@/app/api/__generated__/models/setDefaultTransportRequest";
 import type { SetDefaultTransportRequestAuthProvider } from "@/app/api/__generated__/models/setDefaultTransportRequestAuthProvider";
 
+const MICROSOFT_SCOPE_LABELS: Record<string, string> = {
+  "User.Read": "Basic account profile",
+  "Sites.Read.All": "SharePoint and OneDrive files",
+  "Mail.Read": "Outlook mail",
+  "People.Read.All": "People in your organization",
+  "OnlineMeetingTranscript.Read.All": "Teams meeting transcripts",
+  "Chat.Read": "Teams chats",
+  "ChannelMessage.Read.All": "Teams channel messages",
+  "ExternalItem.Read.All": "External Microsoft Search items",
+  offline_access: "Stay connected",
+  openid: "Sign-in identity",
+  profile: "Basic account profile",
+  email: "Email address",
+};
+
+export function microsoftAccessLabels(
+  scopes: string[] | null | undefined,
+): string[] {
+  return Array.from(
+    new Set(
+      (scopes ?? []).map((scope) => MICROSOFT_SCOPE_LABELS[scope] ?? scope),
+    ),
+  );
+}
+
 /**
  * The route to send when making a connection the default.
  *
