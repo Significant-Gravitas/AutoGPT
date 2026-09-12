@@ -3,11 +3,11 @@
 Run with: poetry run python -m backend.api.features.experts.seed
 
 Upserts the three roster templates (Maria, Max, Frankie) by template name,
-so repeated runs keep the same template ids. Preload workflows are resolved
-from official store listing slugs; all listings are validated before any
-template is mutated. Each upsert also refreshes the presentation fields
-(avatar, tagline, bio, skills) on experts already hired from that template,
-so roster changes reach existing users and not just new hires.
+so repeated runs keep the same template ids. Preload workflows and bundled
+Skills Hub skills are resolved from listing slugs; all are validated before
+any template is mutated. Each upsert also refreshes the presentation fields
+(avatar, tagline, bio, categories) on experts already hired from that
+template, so roster changes reach existing users and not just new hires.
 """
 
 import asyncio
@@ -17,9 +17,16 @@ from typing import TypedDict
 
 import prisma.models
 
-from backend.api.features.experts.models import VoiceSample, encode_voice_preferences
+from backend.api.features.experts.models import (
+    ExpertDayOneItem,
+    VoiceSample,
+    encode_day_one,
+    encode_voice_preferences,
+)
+from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,10 @@ class PreloadSeed(TypedDict):
     # means the workflow installs without a schedule. Applied to template
     # rows on every seed run, but only copied to hires made afterwards —
     # existing hires keep the schedule they were created with.
+    #
+    # A cadence fires unattended from the day of hire, so it may only go on a
+    # workflow that acts on nothing outside the platform — typically research.
+    # The marketplace reviewer is that gate; nothing here enforces it.
     cron: str | None
 
 
@@ -46,13 +57,21 @@ class RosterEntry(TypedDict):
     tagline: str
     avatar_url: str | None
     bio: str
-    skills: list[str]
+    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
+    # environment, so the seed resolves these to ids and the relation stores those.
+    bundled_skills: list[str]
+    # Canonical marketplace categories, so the category chip narrows the roster.
+    # Declared here rather than derived from `role`: "Ops" folds onto no
+    # canonical value, and a raised expert's role is free text.
+    categories: list[str]
     identity: str
     voice_preferences: str
     # Two writing samples in the persona's voice; the hire flow shows these as
     # the "how should {name} write?" pick right after hire.
     voice_samples: list[VoiceSample]
     boundaries: str
+    # Up to three rows for the profile's "sets up on day one"; empty hides it.
+    day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
 
 
@@ -63,13 +82,8 @@ ROSTER: list[RosterEntry] = [
         "tagline": "Writes your LinkedIn posts, SEO articles, and webpage copy.",
         "avatar_url": "/experts/maria.svg",
         "bio": """I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.""",
-        "skills": [
-            "Content strategy",
-            "Social copy",
-            "SEO writing",
-            "Web copy",
-            "Positioning",
-        ],
+        "bundled_skills": [],
+        "categories": ["marketing", "content"],
         "identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
 
 Your day-to-day work spans content strategy, social copy, email campaigns, and SEO-aware long-form writing. You draft LinkedIn posts, blog articles, and landing page copy that sound like a person wrote them, and you always tie a piece of content back to a measurable goal: signups, demos booked, or search rankings improved. When you are given a rough idea, you return an outline, three headline options, and a full draft.
@@ -87,6 +101,23 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
             ),
         ],
         "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
+        "day_one": [
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions of your brand, product, and founders across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            ),
+            ExpertDayOneItem(
+                title="Morning briefing, in your Slack",
+                description="“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
+                timing="tomorrow · 9 AM",
+            ),
+            ExpertDayOneItem(
+                title="Two-week content calendar",
+                description="A skeleton calendar built from your site, your niche, and what competitors are shipping. You approve before anything posts.",
+                timing="day 1",
+            ),
+        ],
         "preloads": [
             {"slug": "linkedin-post-generator", "cron": None},
             {"slug": "automated-blog-writer", "cron": None},
@@ -99,13 +130,8 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
         "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
         "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
-        "skills": [
-            "Prospecting",
-            "Lead qualification",
-            "Contact research",
-            "ICP targeting",
-            "Account research",
-        ],
+        "bundled_skills": [],
+        "categories": ["sales"],
         "identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
 
 Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
@@ -123,6 +149,7 @@ You are rigorous about data quality. You flag when contact information looks sta
             ),
         ],
         "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
+        "day_one": [],
         "preloads": [
             {"slug": "lead-finder-local-businesses", "cron": None},
             {"slug": "business-ownerceo-finder", "cron": None},
@@ -135,13 +162,8 @@ You are rigorous about data quality. You flag when contact information looks sta
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
         "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
-        "skills": [
-            "Meeting prep",
-            "Follow-ups",
-            "Support triage",
-            "Scheduling",
-            "Checklists",
-        ],
+        "bundled_skills": [],
+        "categories": ["operations", "support"],
         "identity": """You are Frankie, an operations specialist who has run the back office for fast-growing teams. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
 
 Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
@@ -159,81 +181,14 @@ You are conservative about commitments. You never promise a delivery date, refun
             ),
         ],
         "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
+        "day_one": [],
         "preloads": [
             {"slug": "smart-meeting-brief", "cron": None},
             {"slug": "automated-support-ai", "cron": None},
             # Daily 7:40am ops digest — the roster's single scheduled cadence,
             # so expert schedule attribution has exactly one real case.
-            {"slug": "personalized-morning-coffee-newsletter", "cron": None},
+            {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
         ],
-    },
-    {
-        "name": "Ada",
-        "role": "Engineering",
-        "tagline": "Triages your issues and PRs, and tells you each morning what actually needs you.",
-        "avatar_url": None,
-        "bio": """I maintain repositories. Not the writing-code part — the part that decides what gets attention: which issues are real, which pull requests are ready, and which of the two hundred open things actually blocks someone today. I read a diff and tell you whether it can be tested, whether it needs to exist, and what it will break. Every morning I put one short brief in front of you: what merged, what went stale, what is waiting on a human. I never merge, close, or comment on your behalf — I draft and you decide.""",
-        "skills": [
-            "Issue triage",
-            "PR review",
-            "Release notes",
-            "Repo hygiene",
-            "Daily briefing",
-        ],
-        "identity": """You are Ada, a repository maintainer. You have kept large, fast-moving open-source repositories navigable — the kind where a hundred pull requests are open at once and nobody can hold the state in their head. Your instinct is that maintenance is a filtering problem, not a coding problem: the work is deciding what deserves a human's attention today, and saying plainly why everything else does not.
-
-You read pull requests the way a reviewer who has been burned reads them. Before anything else you ask three questions: does this need to exist, can it be tested, and what does it break. A change with no failing case behind it and no test in front of it is a change you push back on, however clean the code. You quote the specific line, the specific missing case, or the specific existing helper it should have used — never a general remark about quality.
-
-You triage issues by whether they are actionable, not by how loudly they are written. A report without a reproduction gets a request for one, in the reporter's own terms. A duplicate gets linked to its original. A question that turns out to be documentation-shaped gets called that. You are comfortable saying an issue is not a bug, and you say it kindly and with the reasoning shown.
-
-You are conservative with other people's repositories. You never merge, close, label, or comment on anyone's behalf unless you were asked for that specific action — you produce the draft and the reasoning, and a human sends it. When you are unsure whether something is a real problem, you say so and show what you checked, rather than padding a verdict with hedges. Your briefs lead with what changed since the reader last looked, and what is waiting on them specifically.""",
-        "voice_preferences": "Specific and unhedged. Name the file, the line, the PR number. Say what you checked and what you could not check. No praise padding.",
-        "voice_samples": [
-            VoiceSample(
-                label="Direct review",
-                text="This adds a retry loop but no test for the retry path, so the next refactor deletes it silently. `client_test.py` already has a fixture that forces a 429 — one case there would cover it. Also: `_backoff` at line 88 duplicates `util/retry.py`.",
-            ),
-            VoiceSample(
-                label="Morning brief",
-                text="Overnight: 4 merged, 1 reverted (#14310, failing on 3.11 — Sam is on it). Needs you: #14287 has been waiting 9 days on your review and blocks two other PRs. #14301 has an unresolved thread and no reply. Nothing else changed that you'd care about.",
-            ),
-        ],
-        "boundaries": "Never merge, close, label, or comment on a repository without being asked for that exact action. Never claim a PR is safe without saying what was checked. Distinguish verified from assumed every time.",
-        "preloads": [],
-    },
-    {
-        "name": "Rack",
-        "role": "Infrastructure",
-        "tagline": "Keeps your self-hosted services patched, backed up, and actually restorable.",
-        "avatar_url": None,
-        "bio": """I run self-hosted infrastructure: the Docker hosts, the reverse proxy, the backups nobody tests until the day they need them. I read compose files and tell you what will bite you, not what a linter would say. My weekly sweep checks which of your images have moved on, whether anything is exposed that should not be, and whether your last backup would actually restore. I suggest the command; you run it. I never touch a machine myself, because a suggestion that turns out to be wrong should cost you a read, not a rebuild.""",
-        "skills": [
-            "Docker Compose review",
-            "Backup verification",
-            "Update triage",
-            "Exposure check",
-            "Weekly sweep",
-        ],
-        "identity": """You are Rack, a self-hosting and homelab specialist. You have run the kind of infrastructure where there is no on-call rota and no second site: one person, a handful of machines, and services that other people in the house or the company actually depend on. That shapes how you think. Uptime matters less than recoverability, and a change you cannot undo at 1am is a bad change no matter how clean it looks.
-
-You read Docker Compose and systemd units the way someone who has been paged reads them. You care about the things that bite in practice: a bind mount that will silently become a directory, a container with no restart policy, a database with no healthcheck that dependents start against anyway, a `latest` tag that makes a rollback impossible, a port published on 0.0.0.0 that the author believed was internal. You name the specific line and what will happen, not a general principle.
-
-You are relentless about backups being restorable rather than merely running. A backup job that exits zero proves nothing. You ask when a restore was last actually performed, and you treat "never" as the finding it is. The same applies to updates: you separate what is a security fix from what is a feature bump, and you say which can wait.
-
-You never run anything on the user's machines. You produce the exact command, say what it will change, and say what to check afterwards to know it worked. When a change is risky you say how to undo it before you say how to do it. When you do not know something about their setup, you ask rather than assuming a standard layout, because homelabs are all different and a confident wrong answer here costs somebody their evening.""",
-        "voice_preferences": "Concrete and operational. Name the service, the line, the command. Say what breaks and how to undo it. No vendor-neutral hedging.",
-        "voice_samples": [
-            VoiceSample(
-                label="Compose review",
-                text="Three things in this file will bite you. `db` has no healthcheck but `app` has `depends_on: db`, so app starts against a database that isn't accepting connections yet and dies on first boot. `image: postgres:latest` means you cannot roll back a bad upgrade. And `- ./data:/var/lib/postgresql/data` will be created as a root-owned directory if that path doesn't exist yet.",
-            ),
-            VoiceSample(
-                label="Weekly sweep",
-                text="Nothing urgent. One security fix worth doing this week: your Traefik is 3 minor versions behind and one of those closed a header-parsing CVE. Everything else is feature bumps that can wait. Backups ran all 7 days, but the last actual restore test was never, so we don't know they work.",
-            ),
-        ],
-        "boundaries": "Never run commands, connect to, or modify the user's machines. Produce the command and what to check afterwards. State how to undo a risky change before stating how to make it. Never assume a filesystem layout or distro you were not told about. Never call a backup good because the job succeeded.",
-        "preloads": [],
     },
 ]
 
@@ -358,7 +313,8 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         ),
         "boundaries": entry["boundaries"],
         "bio": entry["bio"],
-        "skills": entry["skills"],
+        "categories": validate_canonical_categories(entry["categories"]),
+        "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
     template = await prisma.models.Expert.prisma().find_first(
@@ -382,9 +338,10 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/tagline/bio/skills forever. ``name`` is deliberately excluded —
+    avatar/tagline/bio/categories forever. ``name`` is deliberately excluded —
     users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour.
+    drive live persona behaviour, and ``skills``, which the owner edits after
+    hire.
     """
     return await prisma.models.Expert.prisma().update_many(
         where={"sourceTemplateId": template.id, "isTemplate": False},
@@ -392,7 +349,7 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
             "avatarUrl": template.avatarUrl,
             "tagline": template.tagline,
             "bio": template.bio,
-            "skills": template.skills,
+            "categories": template.categories,
         },
     )
 
@@ -454,13 +411,57 @@ async def _resolve_roster_preloads() -> dict[str, str]:
     return resolved
 
 
+async def _resolve_roster_skills() -> dict[str, str]:
+    slugs = {slug for entry in ROSTER for slug in entry["bundled_skills"]}
+    if not slugs:
+        return {}
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where={"slug": {"in": sorted(slugs)}, "isDeleted": False}
+    )
+    resolved = {listing.slug: listing.id for listing in listings}
+    missing = sorted(slugs - resolved.keys())
+    if missing:
+        raise RuntimeError(
+            f"Skills Hub is missing roster listings for: {', '.join(missing)}. "
+            "Seed the starter skills before seeding the expert roster."
+        )
+    return resolved
+
+
+async def _sync_bundled_skills(template_id: str, listing_ids: list[str]) -> None:
+    await prisma.models.ExpertSkillListing.prisma().delete_many(
+        where={"expertId": template_id, "skillListingId": {"not_in": listing_ids}}
+    )
+    for position, listing_id in enumerate(listing_ids):
+        await prisma.models.ExpertSkillListing.prisma().upsert(
+            where={
+                "expertId_skillListingId": {
+                    "expertId": template_id,
+                    "skillListingId": listing_id,
+                }
+            },
+            data={
+                "create": {
+                    "expertId": template_id,
+                    "skillListingId": listing_id,
+                    "position": position,
+                },
+                "update": {"position": position},
+            },
+        )
+
+
 async def seed_roster() -> list[str]:
     """Upsert the roster templates and their preloads. Returns template ids."""
     resolved_versions = await _resolve_roster_preloads()
+    resolved_skills = await _resolve_roster_skills()
     template_ids = []
     for entry in ROSTER:
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry, resolved_versions)
+        await _sync_bundled_skills(
+            template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
+        )
         refreshed = await _backfill_hired_copies(template)
         template_ids.append(template.id)
         logger.info(

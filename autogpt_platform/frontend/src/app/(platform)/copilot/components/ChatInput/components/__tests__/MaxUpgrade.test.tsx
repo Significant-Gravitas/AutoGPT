@@ -78,6 +78,7 @@ describe("contextual Max upsell", () => {
       deploymentOffer(),
       deploymentOffer({
         offer_id: "codex:locked",
+        auth_provider: "codex",
         provider_family: "openai",
         display_name: "ChatGPT",
         auth_method: "chatgpt_oauth",
@@ -112,6 +113,7 @@ describe("contextual Max upsell", () => {
   it("keeps a connected provider's available Advanced tier selectable", async () => {
     const linked = deploymentOffer({
       offer_id: "codex:cred-1",
+      auth_provider: "codex",
       provider_family: "openai",
       display_name: "ChatGPT",
       auth_method: "chatgpt_oauth",

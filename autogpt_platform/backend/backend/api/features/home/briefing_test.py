@@ -613,7 +613,7 @@ def test_live_briefing_has_no_narrative() -> None:
 
 
 def test_the_brief_is_authored_by_autopilot_whoever_did_the_work() -> None:
-    """Every run here is Ana's, and the brief still is not hers: AutoPilot
+    """Every run here is Ana's, and the brief still is not hers: Otto
     authors it, and `kind` has no expert value to switch to."""
     briefing = compose_briefing(
         now=NOW,
@@ -626,14 +626,14 @@ def test_the_brief_is_authored_by_autopilot_whoever_did_the_work() -> None:
     assert briefing.outcomes[0].expert is not None
     assert briefing.outcomes[0].expert.name == "Ana"
     assert briefing.author == AUTOPILOT_BRIEFING_AUTHOR
-    assert briefing.author.name == "AutoPilot"
+    assert briefing.author.name == "Otto"
     assert briefing.author.role == "Head of AI"
     with pytest.raises(ValidationError):
         HomeBriefingAuthor(kind="expert", name="Ana", role="Researcher")
 
 
 def test_the_live_brief_is_authored_by_autopilot_too() -> None:
-    """No stored row, so nothing was written — the byline is still AutoPilot's."""
+    """No stored row, so nothing was written — the byline is still Otto's."""
     briefing = compose_briefing(
         now=NOW,
         executions=[],

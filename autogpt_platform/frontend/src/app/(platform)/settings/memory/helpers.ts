@@ -23,7 +23,7 @@ export function getScopeName(
   scopeExpertID: string | null,
   experts: Expert[] | undefined,
 ) {
-  if (!scopeExpertID) return "AutoPilot";
+  if (!scopeExpertID) return "Otto";
   const expert = experts?.find((e) => e.id === scopeExpertID);
   return expert?.name ?? "this expert";
 }
@@ -33,4 +33,11 @@ export function formatWhen(createdAt: string | null | undefined) {
   const parsed = new Date(createdAt);
   if (Number.isNaN(parsed.getTime())) return "";
   return formatDistanceToNow(parsed, { addSuffix: true });
+}
+
+/** The Soul drawer links here with ?expert=<id>. An id the caller no longer
+ *  owns is left to the page's active-expert fallback rather than checked here. */
+export function readExpertScopeFromUrl() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("expert") || null;
 }

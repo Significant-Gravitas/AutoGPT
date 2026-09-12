@@ -291,7 +291,7 @@ async def current_workspace_scope(
 
     The scope derives from the server-resolved session the executor placed
     in the execution context — never from a session or expert ID a tool
-    argument names. Personal AutoPilot turns are unrestricted: the account
+    argument names. Personal Otto turns are unrestricted: the account
     owner is acting. Without an executing session nobody can be attributed,
     so access fails closed to ``session_id`` alone.
     """

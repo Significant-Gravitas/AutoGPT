@@ -46,6 +46,17 @@ from backend.util.exceptions import (
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
 
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
+
+
 # ---------------------------------------------------------------------------
 # _build_trigger
 # ---------------------------------------------------------------------------
@@ -456,7 +467,7 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     """The scope pre-check can race an archive/delete, after which
     ``create_chat_session`` drops the attribution and hands back a plain
     session. Dispatching there would write an expert's follow-up into
-    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    Otto memory scope, so the turn is skipped — but the schedule is
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
@@ -600,7 +611,7 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     """A follow-up fired into a chat the user already owns must not persist as
     role="user".
 
-    ``origin`` is a property of the session, so an interactive Autopilot chat
+    ``origin`` is a property of the session, so an interactive Otto chat
     stays interactive when a schedule fires into it — the confirm gate in
     ``expert_proposal`` falls back to the newest user-message sequence to prove
     a human answered the preview. A machine-authored turn landing as role="user"
