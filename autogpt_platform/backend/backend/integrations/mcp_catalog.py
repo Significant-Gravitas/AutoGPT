@@ -14,6 +14,13 @@ from pydantic import (
 )
 
 
+class MCPServerURLPreset(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    label: str = Field(min_length=1)
+    url: str
+
+
 class MCPServerMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -22,9 +29,17 @@ class MCPServerMetadata(BaseModel):
     setup_instructions: str
     connection_mode: Literal["hosted", "custom", "unavailable"]
     auth_mode: Literal["oauth", "token", "none", "unknown"]
+    auth_methods: list[Literal["oauth", "bearer", "basic", "none"]] = Field(
+        default_factory=list
+    )
+    server_url_options: list[MCPServerURLPreset] = Field(default_factory=list)
+    oauth_server_url: str | None = None
+    oauth_scopes: list[str] | None = None
+    oauth_write_scopes: list[str] = Field(default_factory=list)
+    oauth_callback_mode: Literal["any", "loopback"] = "any"
     icon_id: str | None = Field(default=None, pattern=r"^[a-z0-9_-]+$")
 
-    @field_validator("server_url", "documentation_url")
+    @field_validator("server_url", "documentation_url", "oauth_server_url")
     @classmethod
     def validate_public_url(cls, value: str | None) -> str | None:
         if value is None:
@@ -56,12 +71,55 @@ class MCPServerMetadata(BaseModel):
     def validate_connection(self) -> "MCPServerMetadata":
         if self.connection_mode != "unavailable" and self.auth_mode == "unknown":
             raise ValueError("Connectable entries require documented auth")
+        if self.connection_mode == "unavailable":
+            if self.auth_methods:
+                raise ValueError(
+                    "Unavailable entries cannot offer authentication methods"
+                )
+        elif not self.auth_methods:
+            raise ValueError("Connectable entries require authentication methods")
+        elif self.auth_mode != (
+            self.auth_methods[0]
+            if self.auth_methods[0] in ("oauth", "none")
+            else "token"
+        ):
+            raise ValueError("Default authentication must match the first method")
         if self.connection_mode == "hosted":
             if not self.server_url:
                 raise ValueError("Hosted entries require a URL")
         elif self.server_url is not None:
             raise ValueError("Custom and unavailable entries cannot prefill a URL")
+        if len(set(self.auth_methods)) != len(self.auth_methods):
+            raise ValueError("Authentication methods must be unique")
+        if self.oauth_write_scopes and self.oauth_scopes is None:
+            raise ValueError("Optional write scopes require explicit default scopes")
+        if set(self.oauth_scopes or []) & set(self.oauth_write_scopes):
+            raise ValueError("Default and optional write scopes must be disjoint")
+        if (
+            self.oauth_server_url
+            or self.oauth_scopes is not None
+            or self.oauth_write_scopes
+            or self.oauth_callback_mode != "any"
+        ) and "oauth" not in self.auth_methods:
+            raise ValueError("OAuth settings require OAuth authentication")
+        for option in self.server_url_options:
+            self.validate_public_url(option.url)
         return self
+
+    @field_validator("oauth_scopes", "oauth_write_scopes")
+    @classmethod
+    def validate_scope_tokens(cls, scopes: list[str] | None) -> list[str] | None:
+        if scopes is None:
+            return None
+        if len(set(scopes)) != len(scopes):
+            raise ValueError("OAuth scopes must be unique")
+        for scope in scopes:
+            if not scope or any(
+                character.isspace() or ord(character) < 32 or ord(character) == 127
+                for character in scope
+            ):
+                raise ValueError("OAuth scopes must be nonempty tokens")
+        return scopes
 
 
 class MCPCatalogEntry(BaseModel):
@@ -80,12 +138,70 @@ def get_mcp_catalog() -> tuple[MCPCatalogEntry, ...]:
     return parse_mcp_catalog(content)
 
 
-def get_connectable_mcp_catalog() -> tuple[MCPCatalogEntry, ...]:
-    return tuple(
-        entry
-        for entry in get_mcp_catalog()
-        if entry.mcp_server.connection_mode != "unavailable"
-    )
+def _catalog_url_key(url: str) -> tuple[str, str] | None:
+    try:
+        parsed = urlsplit(url.strip())
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.port not in (None, 443)
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        return parsed.hostname, parsed.path.rstrip("/")
+    except ValueError:
+        return None
+
+
+def get_mcp_catalog_entry_for_url(server_url: str) -> MCPCatalogEntry | None:
+    key = _catalog_url_key(server_url)
+    if key is None:
+        return None
+    for entry in get_mcp_catalog():
+        server = entry.mcp_server
+        urls = [
+            server.server_url,
+            server.oauth_server_url,
+            *(option.url for option in server.server_url_options),
+        ]
+        if any(url and _catalog_url_key(url) == key for url in urls):
+            return entry
+    return None
+
+
+def get_connectable_mcp_catalog(
+    frontend_base_url: str | None = None,
+) -> tuple[MCPCatalogEntry, ...]:
+    callback_host = urlsplit(frontend_base_url or "").hostname
+    loopback_callback = callback_host in ("localhost", "127.0.0.1", "::1")
+    entries = []
+    for entry in get_mcp_catalog():
+        server = entry.mcp_server
+        if server.connection_mode == "unavailable":
+            continue
+        if server.oauth_callback_mode == "loopback" and not loopback_callback:
+            methods = [method for method in server.auth_methods if method != "oauth"]
+            if not methods:
+                continue
+            entry = MCPCatalogEntry.model_validate(
+                {
+                    **entry.model_dump(),
+                    "mcp_server": {
+                        **server.model_dump(),
+                        "auth_methods": methods,
+                        "auth_mode": "none" if methods[0] == "none" else "token",
+                        "oauth_server_url": None,
+                        "oauth_scopes": None,
+                        "oauth_write_scopes": [],
+                        "oauth_callback_mode": "any",
+                    },
+                }
+            )
+        entries.append(entry)
+    return tuple(entries)
 
 
 def parse_mcp_catalog(content: str) -> tuple[MCPCatalogEntry, ...]:

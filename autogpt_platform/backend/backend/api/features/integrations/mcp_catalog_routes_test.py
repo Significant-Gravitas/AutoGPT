@@ -7,7 +7,10 @@ from fastapi.testclient import TestClient
 
 from backend.api.features.integrations.models import ProviderNamesResponse
 from backend.api.features.integrations.router import router, settings
-from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.mcp_catalog import (
+    get_connectable_mcp_catalog,
+    get_mcp_catalog,
+)
 from backend.util.settings import BehaveAs
 
 app = FastAPI()
@@ -39,8 +42,7 @@ def test_provider_endpoint_only_exposes_connectable_catalog(behave_as: BehaveAs)
     providers = response.json()
     connectable = {
         entry.name
-        for entry in get_mcp_catalog()
-        if entry.mcp_server.connection_mode != "unavailable"
+        for entry in get_connectable_mcp_catalog(settings.config.frontend_base_url)
     }
     assert {provider["name"] for provider in providers[2:]} == connectable
     assert len({provider["name"] for provider in providers}) == len(providers)

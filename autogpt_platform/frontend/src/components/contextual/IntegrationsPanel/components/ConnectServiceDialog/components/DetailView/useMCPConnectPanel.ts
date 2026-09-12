@@ -1,97 +1,85 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  postV2DiscoverAvailableToolsOnAnMcpServer,
-  postV2StoreABearerTokenForAnMcpServer,
-} from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
-import {
-  prepareMCPAuthCredential,
-  validateMCPAuthCredential,
-  type MCPAuthScheme,
-} from "@/lib/mcp-auth";
-import { getAPIResponseError, getErrorMessage } from "@/lib/mcp-errors";
-import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
+import type { MCPAuthScheme } from "@/lib/mcp-auth";
+import { getErrorMessage } from "@/lib/mcp-errors";
+import { mcpServerIdentity } from "@/lib/mcp-url";
 import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { connectMCPOAuth } from "./mcpOAuth";
+import { mcpOAuthScopes } from "./mcpPresetHelpers";
+import { storeMCPToken } from "./storeMCPToken";
+import { useMCPManualAuth } from "./useMCPManualAuth";
+import { useMCPRequest } from "./useMCPRequest";
 
 interface Args {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
   initialServerURL: string;
   initialAuthMode: string;
+  allowedAuthMethods?: ("oauth" | MCPAuthScheme)[];
+  oauthScopes?: string[] | null;
+  oauthWriteScopes?: string[];
 }
 
 export function useMCPConnectPanel({
   onSuccess,
   initialServerURL,
   initialAuthMode,
+  allowedAuthMethods = ["oauth", "bearer", "basic"],
+  oauthScopes,
+  oauthWriteScopes = [],
 }: Args) {
   const queryClient = useQueryClient();
-  const { data: savedCredentials } = useGetV1ListCredentials({
-    query: {
-      select: (response) => (response.status === 200 ? response.data : []),
-    },
-  });
   const [serverURL, setServerURL] = useState(initialServerURL);
-  const [token, setToken] = useState("");
-  const [phase, setPhase] = useState(
-    initialAuthMode === "token" ? "manual-token" : "form",
-  );
+  const initialPhase = initialAuthMode === "token" ? "manual-token" : "form";
+  const [phase, setPhase] = useState(initialPhase);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
+  const [allowChanges, setAllowChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
-  useEffect(() => () => oauthAbortRef.current?.(), []);
+  const request = useMCPRequest();
 
+  const manualSchemes = allowedAuthMethods.filter(
+    (method): method is MCPAuthScheme => method !== "oauth",
+  );
+  const canUseOAuth = allowedAuthMethods.includes("oauth");
+  const manual = useMCPManualAuth(serverURL, manualSchemes);
   const trimmedURL = serverURL.trim();
-  const trimmedToken = token.trim();
-  const canConnect = isValidHttpURL(trimmedURL) && !isSubmitting;
-  const canSubmitToken = canConnect && trimmedToken.length > 0;
-  const saved = Array.isArray(savedCredentials)
-    ? savedCredentials.find(
-        (credential) =>
-          credential.provider === "mcp" &&
-          typeof credential.host === "string" &&
-          normalizeMcpUrl(credential.host) === normalizeMcpUrl(trimmedURL),
-      )
-    : null;
-  const savedAuthScheme: MCPAuthScheme =
-    saved?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
-  const {
-    scheme: authScheme,
-    selectScheme,
-    detectSchemeFrom,
-    resetScheme,
-  } = useMCPAuthScheme(savedAuthScheme, token);
+  const validURL = isValidHttpURL(trimmedURL);
+  const canConnect = validURL && !isSubmitting && canUseOAuth;
+  const canSubmitToken =
+    validURL &&
+    !isSubmitting &&
+    manualSchemes.length > 0 &&
+    manual.token.trim().length > 0;
 
   async function handleConnect() {
     if (!canConnect) return;
     setError(null);
     setIsSubmitting(true);
-    oauthAbortRef.current?.();
+    const signal = request.start();
     try {
       const credential = await connectMCPOAuth({
         serverURL: trimmedURL,
-        onPopup: (abort) => {
-          oauthAbortRef.current = abort;
-          setIsWaitingForOAuth(abort !== null);
-        },
+        scopes: mcpOAuthScopes(oauthScopes, oauthWriteScopes, allowChanges),
+        signal,
       });
+      signal.throwIfAborted();
       if (!credential) {
-        setPhase("manual-token");
+        if (manualSchemes.length) setPhase("manual-token");
         setError(
-          "This server doesn't support OAuth sign-in. Choose how its API credential should be sent.",
+          manualSchemes.length
+            ? "This server doesn't support OAuth sign-in. Choose how its API credential should be sent."
+            : "Sign-in is unavailable for this connection. Check its setup instructions and try again.",
         );
         return;
       }
       await invalidateConnectionQueries(queryClient);
+      signal.throwIfAborted();
       onSuccess(credential);
     } catch (error) {
+      if (signal.aborted) return;
       const message = getErrorMessage(error);
       if (message === OAUTH_ERROR_FLOW_CANCELED) return;
       setError(
@@ -100,54 +88,52 @@ export function useMCPConnectPanel({
           : message,
       );
     } finally {
-      setIsSubmitting(false);
-      setIsWaitingForOAuth(false);
-      oauthAbortRef.current = null;
+      if (!signal.aborted) setIsSubmitting(false);
     }
   }
 
   async function handleSubmitToken() {
     if (!canSubmitToken) return;
-    const invalid = validateMCPAuthCredential(trimmedToken, authScheme);
+    const invalid = manual.validateToken();
     if (invalid) {
       setError(invalid);
       return;
     }
     setError(null);
     setIsSubmitting(true);
+    const signal = request.start();
     try {
-      const authValue = prepareMCPAuthCredential(trimmedToken, authScheme);
-      const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: trimmedURL,
-        auth_token: authValue,
-      });
-      if (probe.status !== 200)
-        throw getAPIResponseError(probe.status, probe.data);
-      const stored = await postV2StoreABearerTokenForAnMcpServer({
-        server_url: trimmedURL,
-        token: authValue,
-      });
-      if (stored.status !== 200)
-        throw getAPIResponseError(stored.status, stored.data);
+      const credential = await storeMCPToken(
+        trimmedURL,
+        manual.token.trim(),
+        manual.scheme,
+        signal,
+      );
+      signal.throwIfAborted();
       await invalidateConnectionQueries(queryClient);
-      onSuccess(stored.data);
+      signal.throwIfAborted();
+      onSuccess(credential);
     } catch (error) {
+      if (signal.aborted) return;
       setError(getErrorMessage(error));
     } finally {
-      setIsSubmitting(false);
+      if (!signal.aborted) setIsSubmitting(false);
     }
   }
 
   function handleSwitchToOAuth() {
+    if (!canUseOAuth) return;
+    request.cancel();
+    setIsSubmitting(false);
     setPhase("form");
-    setToken("");
-    resetScheme();
+    manual.reset();
     setError(null);
   }
 
   function handleSwitchToToken() {
-    if (isSubmitting && !oauthAbortRef.current) return;
-    oauthAbortRef.current?.();
+    if (!manualSchemes.length) return;
+    request.cancel();
+    setIsSubmitting(false);
     setPhase("manual-token");
     setError(null);
   }
@@ -156,34 +142,35 @@ export function useMCPConnectPanel({
     const changed = mcpServerIdentity(serverURL) !== mcpServerIdentity(nextURL);
     setServerURL(nextURL);
     if (!changed) return;
-    setToken("");
-    resetScheme();
-    setPhase(initialAuthMode === "token" ? "manual-token" : "form");
+    request.cancel();
+    setIsSubmitting(false);
+    manual.reset();
+    setAllowChanges(false);
+    setPhase(initialPhase);
     setError(null);
-  }
-
-  function handleTokenChange(value: string) {
-    setToken(value);
-    detectSchemeFrom(value);
   }
 
   return {
     serverURL,
-    token,
+    token: manual.token,
     phase,
     isSubmitting,
     error,
-    authScheme,
-    selectScheme,
+    allowChanges,
+    setAllowChanges,
+    authScheme: manual.scheme,
+    selectScheme: manual.selectScheme,
+    manualSchemes,
+    canUseOAuth,
     canConnect,
     canSubmitToken,
-    canSwitchToToken: !isSubmitting || isWaitingForOAuth,
+    canSwitchToToken: manualSchemes.length > 0,
     handleConnect,
     handleSubmitToken,
     handleSwitchToOAuth,
     handleSwitchToToken,
     handleServerURLChange,
-    handleTokenChange,
+    handleTokenChange: manual.handleTokenChange,
   };
 }
 

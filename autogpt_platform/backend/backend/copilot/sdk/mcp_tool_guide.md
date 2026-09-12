@@ -39,6 +39,16 @@ through this flow. Do not substitute a community server or suggest exposing a
 desktop application through a public HTTP bridge. Check native blocks for an
 alternative. Follow the setup requirements in the table before starting sign-in;
 some services require an administrator to enable access or a dedicated token.
+Use the listed authentication methods and default permissions. Where the table
+gives a separate OAuth URL, use that URL for signed-in account tools. Do not send
+API keys to an OAuth-only connection or infer that every advertised scope is
+required. Some vendors accept localhost callbacks but reject hosted callbacks;
+their available methods depend on this deployment's configured frontend URL.
+For region choices, confirm where the user's account stores its data. For
+tenant-specific connections, obtain the endpoint using the vendor's setup
+instructions. Never substitute a documentation URL for the connection endpoint
+or invent a tenant hostname. Direct the user to the matching integration preset
+for regional selection, manual credentials, or optional write permissions.
 
 ### Important: Check blocks first, then MCP is MANDATORY
 

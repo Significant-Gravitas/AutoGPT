@@ -73,7 +73,9 @@ def oauth_mocks():
         (["none"], "none", None),
         (["client_secret_basic"], "client_secret_basic", "client_secret_basic"),
         (["client_secret_post"], "client_secret_post", "client_secret_post"),
-        (["client_secret_post", "none"], "client_secret_post", "none"),
+        (["client_secret_post", "none"], "none", "none"),
+        (["client_secret_basic", "none"], "none", "none"),
+        (["client_secret_basic", "client_secret_post", "none"], "none", "none"),
         (None, "client_secret_basic", "client_secret_basic"),
     ],
 )
@@ -235,7 +237,7 @@ async def test_failed_registration_does_not_open_an_unregistered_login(
 async def test_discovered_required_scopes_are_included(
     client, oauth_mocks, scope_source
 ):
-    metadata, _, _, manager = oauth_mocks
+    metadata, _, post, manager = oauth_mocks
     required_scopes = ["openid", "offline_access"]
     metadata["scopes_supported"] = (
         ["other_scope"] if scope_source == "resource" else required_scopes
@@ -260,3 +262,179 @@ async def test_discovered_required_scopes_are_included(
         "openid offline_access"
     ]
     assert manager.store.store_state_token.call_args.args[2] == required_scopes
+    assert post.call_args.kwargs["json"]["scope"] == "openid offline_access"
+
+
+@pytest.mark.parametrize(
+    "advertised,expected",
+    [
+        (
+            ["authorization_code", "refresh_token"],
+            ["authorization_code", "refresh_token"],
+        ),
+        (
+            ["refresh_token", "authorization_code"],
+            ["authorization_code", "refresh_token"],
+        ),
+        (["authorization_code"], ["authorization_code"]),
+        ([], ["authorization_code"]),
+        (None, ["authorization_code"]),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_registration_requests_only_advertised_refresh_grant(
+    client, oauth_mocks, advertised, expected
+):
+    metadata, _, post, _ = oauth_mocks
+    if advertised is not None:
+        metadata["grant_types_supported"] = advertised
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": "https://mcp.example.com/mcp"}
+    )
+
+    assert response.status_code == 200
+    payload = post.call_args.kwargs["json"]
+    assert payload["grant_types"] == expected
+    assert "scope" not in payload
+
+
+@pytest.mark.parametrize(
+    "requested,expected",
+    [
+        (["read"], ["read"]),
+        ([], []),
+        (None, ["read", "write"]),
+        (
+            ["mcp:read", "https://api.example.com/scope"],
+            ["mcp:read", "https://api.example.com/scope"],
+        ),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_explicit_scopes_propagate_to_registration_state_and_login(
+    client, oauth_mocks, requested, expected
+):
+    metadata, _, post, manager = oauth_mocks
+    metadata["scopes_supported"] = ["read", "write"]
+
+    response = await client.post(
+        "/oauth/login",
+        json={"server_url": "https://mcp.example.com/mcp", "scopes": requested},
+    )
+
+    assert response.status_code == 200
+    assert manager.store.store_state_token.call_args.args[2] == expected
+    payload = post.call_args.kwargs["json"]
+    query = parse_qs(urlparse(response.json()["login_url"]).query)
+    if expected:
+        assert payload["scope"] == " ".join(expected)
+        assert query["scope"] == [" ".join(expected)]
+    else:
+        assert "scope" not in payload
+        assert "scope" not in query
+
+
+@pytest.mark.parametrize(
+    "scope", ["", "read write", " read", "read\twrite", "read\nwrite", "read\x00write"]
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_invalid_explicit_scope_does_not_register(client, oauth_mocks, scope):
+    _, _, post, manager = oauth_mocks
+
+    response = await client.post(
+        "/oauth/login",
+        json={"server_url": "https://mcp.example.com/mcp", "scopes": [scope]},
+    )
+
+    assert response.status_code == 422
+    post.assert_not_awaited()
+    manager.store.store_state_token.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_issuer_mismatch_rejected_before_registration(client, oauth_mocks):
+    metadata, _, post, manager = oauth_mocks
+    metadata["issuer"] = "https://another.example.com"
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": "https://mcp.example.com/mcp"}
+    )
+
+    assert response.status_code == 400
+    assert "issuer" in response.json()["detail"].lower()
+    post.assert_not_awaited()
+    manager.store.store_state_token.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "server_url,scope_override,expected",
+    [
+        ("https://mcp.customer.io/mcp", None, ["read"]),
+        ("https://MCP.CUSTOMER.IO:443/mcp/", None, ["read"]),
+        ("https://mcp-eu.customer.io/mcp", None, ["read"]),
+        ("https://mcp.customer.io/mcp", ["read", "write"], ["read", "write"]),
+        ("https://mcp.customer.io/mcp", [], []),
+        ("https://mcp.craft.do/my/mcp", None, []),
+        ("https://unknown.example.com/mcp", None, ["discovered"]),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_catalog_defaults_apply_to_generic_oauth_login(
+    client, oauth_mocks, server_url, scope_override, expected
+):
+    metadata, _, post, manager = oauth_mocks
+    metadata["scopes_supported"] = ["discovered"]
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": server_url, "scopes": scope_override}
+    )
+
+    assert response.status_code == 200
+    assert manager.store.store_state_token.call_args.args[2] == expected
+    assert post.call_args.kwargs["json"].get("scope") == (
+        " ".join(expected) if expected else None
+    )
+    assert parse_qs(urlparse(response.json()["login_url"]).query).get("scope") == (
+        [" ".join(expected)] if expected else None
+    )
+
+
+@pytest.mark.parametrize(
+    "provider_name",
+    ["mcp_antimetal", "mcp_brevo", "mcp_intercom", "mcp_aws_core"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_known_unsupported_oauth_stops_before_discovery(
+    client, oauth_mocks, provider_name
+):
+    from backend.integrations.mcp_catalog import get_mcp_catalog
+
+    entry = next(entry for entry in get_mcp_catalog() if entry.name == provider_name)
+    _, _, post, manager = oauth_mocks
+    with patch("backend.api.features.mcp.routes.MCPClient") as mcp_client:
+        response = await client.post(
+            "/oauth/login", json={"server_url": entry.mcp_server.server_url}
+        )
+
+    assert response.status_code == 400
+    assert entry.display_name in response.json()["detail"]
+    assert "sign-in" in response.json()["detail"]
+    mcp_client.assert_not_called()
+    post.assert_not_awaited()
+    manager.store.store_state_token.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_known_loopback_oauth_remains_available_locally(client, oauth_mocks):
+    _, _, post, _ = oauth_mocks
+    with patch("backend.api.features.mcp.routes.settings") as settings:
+        settings.config.frontend_base_url = "http://127.0.0.1:3000"
+        response = await client.post(
+            "/oauth/login", json={"server_url": "https://mcp.brevo.com/v1/brevo/mcp"}
+        )
+
+    assert response.status_code == 200
+    assert post.call_args.kwargs["json"]["redirect_uris"] == [
+        "http://127.0.0.1:3000/auth/integrations/mcp_callback"
+    ]

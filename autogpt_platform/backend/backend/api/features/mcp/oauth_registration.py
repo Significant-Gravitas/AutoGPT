@@ -26,7 +26,7 @@ def select_client_auth_method(
         "token_endpoint_auth_methods_supported", ["client_secret_basic"]
     )
     if isinstance(supported, list):
-        for method in ("client_secret_basic", "client_secret_post", "none"):
+        for method in ("none", "client_secret_basic", "client_secret_post"):
             if method in supported:
                 return method
     raise ValueError(

@@ -33,6 +33,7 @@ function preset(
     ? "hosted"
     : "unavailable",
   iconID: string | null = null,
+  metadata: Partial<NonNullable<ProviderMetadata["mcp_server"]>> = {},
 ): ProviderMetadata {
   return {
     name: `mcp_${slug}`,
@@ -48,6 +49,7 @@ function preset(
       connection_mode: connectionMode,
       auth_mode: authMode,
       icon_id: iconID,
+      ...metadata,
     },
   };
 }
@@ -65,14 +67,27 @@ const providers: ProviderMetadata[] = [
   },
   preset("notion", "Notion", "https://mcp.notion.com/mcp"),
   preset("treg", "Treg", "https://treg.to/mcp/", "token"),
-  preset("parallel", "Parallel", "https://search.parallel.ai/mcp-oauth"),
+  preset(
+    "parallel",
+    "Parallel",
+    "https://search.parallel.ai/mcp",
+    "none",
+    "hosted",
+    null,
+    {
+      auth_methods: ["none", "oauth", "bearer"],
+      oauth_server_url: "https://search.parallel.ai/mcp-oauth",
+    },
+  ),
   preset(
     "aws_knowledge",
     "AWS Knowledge",
     "https://knowledge-mcp.global.api.aws",
     "none",
   ),
-  preset("langfuse", "Langfuse", null, "token", "custom"),
+  preset("langfuse", "Langfuse", null, "token", "custom", null, {
+    auth_methods: ["basic"],
+  }),
   preset("shadcn_ui", "shadcn/ui", null, "unknown"),
   preset(
     "azure_cosmos_db",
@@ -309,6 +324,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     expect(within(dialog).queryByText(/ready to use/i)).toBeNull();
     expect(discoveryRequest).toHaveBeenCalledWith({
       server_url: "https://knowledge-mcp.global.api.aws",
+      use_saved_credentials: false,
     });
     expect(tokenRequest).not.toHaveBeenCalled();
     expect(oauthRequest).not.toHaveBeenCalled();
@@ -333,16 +349,25 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     }));
     render(<SettingsIntegrationsPage />);
     const dialog = await openPreset(/parallel.*official mcp/i);
+    fireEvent.mouseDown(
+      await within(dialog).findByRole("tab", { name: /^sign in$/i }),
+      { button: 0, ctrlKey: false },
+    );
     fireEvent.click(
       await within(dialog).findByRole("button", { name: /^connect$/i }),
     );
     expect(
       await within(dialog).findByText("Vendor rejected this sign-in"),
     ).toBeDefined();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /use an api token instead/i }),
+    fireEvent.mouseDown(
+      within(dialog).getByRole("tab", { name: /^api token$/i }),
+      { button: 0, ctrlKey: false },
     );
-    expect(within(dialog).getByText(/if this server supports/i)).toBeDefined();
+    expect(
+      within(dialog).getByText(
+        /credential described in the setup instructions/i,
+      ),
+    ).toBeDefined();
     fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
       target: { value: "test-manual-token" },
     });
@@ -351,12 +376,12 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     );
     await waitFor(() =>
       expect(tokenRequest).toHaveBeenCalledWith({
-        server_url: "https://search.parallel.ai/mcp-oauth",
+        server_url: "https://search.parallel.ai/mcp",
         token: "Bearer test-manual-token",
       }),
     );
     expect(discoveryRequest).toHaveBeenCalledWith({
-      server_url: "https://search.parallel.ai/mcp-oauth",
+      server_url: "https://search.parallel.ai/mcp",
       auth_token: "Bearer test-manual-token",
     });
     expect(discoveryRequest.mock.invocationCallOrder[0]).toBeLessThan(
@@ -375,9 +400,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     fireEvent.change(url, {
       target: { value: "https://cloud.langfuse.com/api/public/mcp" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Authentication type"), {
-      target: { value: "basic" },
-    });
+    expect(within(dialog).queryByLabelText("Authentication type")).toBeNull();
     fireEvent.change(within(dialog).getByPlaceholderText(/paste base64/i), {
       target: { value: "public:secret" },
     });

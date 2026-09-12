@@ -16,6 +16,7 @@ export function useCheckMCPConnection(serverURL: string) {
     try {
       const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: serverURL,
+        use_saved_credentials: false,
       });
       if (response.status !== 200)
         throw getAPIResponseError(response.status, response.data);

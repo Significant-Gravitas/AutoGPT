@@ -290,7 +290,7 @@ async def resolve_and_check_blocked(hostname: str) -> list[str]:
 
 def parse_url(url: str) -> URL:
     """Canonicalizes and parses a URL string."""
-    url = url.strip("/ ").replace("\\", "/")
+    url = url.lstrip("/ ").rstrip(" ").replace("\\", "/")
 
     # Ensure scheme is present for proper parsing.
     # Avoid regex to sidestep CodeQL py/polynomial-redos on user-controlled

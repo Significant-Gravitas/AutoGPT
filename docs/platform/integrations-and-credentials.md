@@ -42,6 +42,19 @@ Depending on the service, you'll be prompted to authenticate in one of three way
 Credentials are reusable, but each block or task retains its selected credential reference.
 {% endhint %}
 
+## Connecting MCP Services
+
+MCP services give agents access to remote tools, including public documentation, research resources, and your connected accounts. Open **Settings → Integrations**, search **Available integrations**, and select a service with the **MCP** badge. You can also find these services in **Connect Service**.
+
+Read the service's purpose and setup requirements before connecting:
+
+- **Public tools:** Choose **No sign-in**, when offered, and select **Check connection** to discover available tools. This check does not use saved account credentials or create an account connection.
+- **Account tools:** Use one of the offered sign-in, API token, or Basic authentication options. The required key type, subscription, and administrator approval vary by service.
+- **Regions and custom endpoints:** A **Setup required** badge means you must choose the correct region or supply a documented remote server URL for your tenant, deployment, or product. Follow the linked official setup guide.
+- **Permissions:** Some services start with read permissions and offer **Allow changes** for additional actions. Others use the provider's consent screen or account roles. Review the permissions requested; MCP connections are not universally read-only.
+
+Local desktop processes and unsupported authentication flows are hidden from the MCP catalog. A native integration for the same service may still be available. See the [hosted MCP catalog](contributing/hosted-mcp-catalog.md) for the service matrix, setup requirements, verification limits, and maintainer guidance.
+
 ## Managing Credentials
 
 1. Open **Settings**.

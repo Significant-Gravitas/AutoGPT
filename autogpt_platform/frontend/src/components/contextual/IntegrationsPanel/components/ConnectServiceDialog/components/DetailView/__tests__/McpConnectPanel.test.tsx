@@ -255,10 +255,13 @@ describe("McpConnectPanel", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledTimes(1);
     });
-    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
-      server_url: "https://mcp.example.com",
-      token: "Bearer secret-bearer-token",
-    });
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith(
+      {
+        server_url: "https://mcp.example.com",
+        token: "Bearer secret-bearer-token",
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("submits a selected Basic credential with an explicit prefix", async () => {
@@ -297,10 +300,13 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
 
     await waitFor(() => {
-      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
-        server_url: "https://mcp.example.com",
-        token: "Basic cGstbGYtYWJjZA==",
-      });
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith(
+        {
+          server_url: "https://mcp.example.com",
+          token: "Basic cGstbGYtYWJjZA==",
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
   });
 
@@ -345,10 +351,13 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
 
     await waitFor(() => {
-      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
-        server_url: "https://mcp.example.com/",
-        token: "Basic new-encoded-value",
-      });
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith(
+        {
+          server_url: "https://mcp.example.com/",
+          token: "Basic new-encoded-value",
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
   });
 

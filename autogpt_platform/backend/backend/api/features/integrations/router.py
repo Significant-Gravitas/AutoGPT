@@ -1930,7 +1930,7 @@ async def list_providers(
             description=entry.description,
             mcp_server=entry.mcp_server,
         )
-        for entry in get_connectable_mcp_catalog()
+        for entry in get_connectable_mcp_catalog(settings.config.frontend_base_url)
     ]
 
 

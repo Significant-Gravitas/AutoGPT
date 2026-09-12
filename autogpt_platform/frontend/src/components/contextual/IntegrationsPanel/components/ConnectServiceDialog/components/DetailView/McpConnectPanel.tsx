@@ -11,12 +11,19 @@ import {
   mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPConnectPanel } from "./useMCPConnectPanel";
+import type { MCPAuthScheme } from "@/lib/mcp-auth";
+import { MCPServerURLField } from "./MCPServerURLField";
+import { MCPWriteAccessField } from "./MCPWriteAccessField";
 
 interface Props {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
   initialServerURL?: string;
   lockServerURL?: boolean;
   initialAuthMode?: "oauth" | "token" | "none" | "unknown";
+  allowedAuthMethods?: ("oauth" | MCPAuthScheme)[];
+  oauthScopes?: string[] | null;
+  oauthWriteScopes?: string[];
+  serverURLOptions?: { label: string; url: string }[];
 }
 
 export function McpConnectPanel({
@@ -24,46 +31,58 @@ export function McpConnectPanel({
   initialServerURL = "",
   lockServerURL = false,
   initialAuthMode = "unknown",
+  allowedAuthMethods,
+  oauthScopes,
+  oauthWriteScopes = [],
+  serverURLOptions,
 }: Props) {
   const state = useMCPConnectPanel({
     onSuccess,
     initialServerURL,
     initialAuthMode,
+    allowedAuthMethods,
+    oauthScopes,
+    oauthWriteScopes,
   });
 
   return (
     <div className="flex flex-col gap-4">
       {!lockServerURL && (
         <Text variant="body" className="text-zinc-600">
-          Enter your MCP server URL, then sign in or supply an API credential
-          supported by the server.
+          Enter the server URL from the service&apos;s setup instructions.
         </Text>
       )}
-      <Input
-        id="mcp-server-url"
-        label="Server URL"
-        type="url"
-        placeholder="https://mcp.example.com"
-        value={state.serverURL}
-        onChange={(e) => state.handleServerURLChange(e.target.value)}
+      <MCPServerURLField
+        serverURL={state.serverURL}
+        onChange={state.handleServerURLChange}
         disabled={state.isSubmitting}
         readOnly={lockServerURL}
-        autoFocus={!lockServerURL}
+        options={serverURLOptions}
       />
+      {state.phase === "form" && oauthWriteScopes.length > 0 && (
+        <MCPWriteAccessField
+          checked={state.allowChanges}
+          onChange={state.setAllowChanges}
+          disabled={state.isSubmitting}
+        />
+      )}
       {state.phase === "manual-token" && (
         <>
           <Text variant="small" className="text-zinc-600">
-            Use an API credential only if this server supports it. Follow the
-            server&apos;s documentation for the correct authentication type.
+            {allowedAuthMethods
+              ? "Use the credential described in the setup instructions above."
+              : "Use an API credential only if this server supports it. Follow the server's documentation for the correct authentication type."}
           </Text>
-          <MCPAuthSchemeField
-            value={state.authScheme}
-            onChange={state.selectScheme}
-            disabled={state.isSubmitting}
-            className="flex flex-col gap-1"
-            labelClassName="text-sm font-medium text-zinc-700"
-            selectClassName="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-          />
+          {state.manualSchemes.length > 1 && (
+            <MCPAuthSchemeField
+              value={state.authScheme}
+              onChange={state.selectScheme}
+              disabled={state.isSubmitting}
+              className="flex flex-col gap-1"
+              labelClassName="text-sm font-medium text-zinc-700"
+              selectClassName="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+            />
+          )}
           <Input
             id="mcp-auth-token"
             label={mcpAuthTokenLabel(state.authScheme)}
@@ -86,7 +105,7 @@ export function McpConnectPanel({
         </div>
       )}
       <div className="flex items-center justify-end gap-2">
-        {state.phase === "form" && (
+        {state.phase === "form" && state.manualSchemes.length > 0 && (
           <Button
             variant="secondary"
             size="small"
@@ -96,7 +115,7 @@ export function McpConnectPanel({
             Use an API token instead
           </Button>
         )}
-        {state.phase === "manual-token" && (
+        {state.phase === "manual-token" && state.canUseOAuth && (
           <Button
             variant="secondary"
             size="small"

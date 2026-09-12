@@ -10183,7 +10183,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth credential.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically unless use_saved_credentials is false.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -19706,6 +19706,12 @@
             "title": "Server Url",
             "description": "URL of the MCP server"
           },
+          "use_saved_credentials": {
+            "type": "boolean",
+            "title": "Use Saved Credentials",
+            "description": "Use a saved credential when no auth token is supplied. Set false to discover public tools without signing in.",
+            "default": true
+          },
           "auth_token": {
             "anyOf": [
               {
@@ -23854,6 +23860,14 @@
             "type": "string",
             "title": "Server Url",
             "description": "URL of the MCP server that requires OAuth"
+          },
+          "scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Scopes",
+            "description": "OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; an empty list requests no scopes."
           }
         },
         "type": "object",
@@ -23895,6 +23909,41 @@
             "enum": ["oauth", "token", "none", "unknown"],
             "title": "Auth Mode"
           },
+          "auth_methods": {
+            "items": {
+              "type": "string",
+              "enum": ["oauth", "bearer", "basic", "none"]
+            },
+            "type": "array",
+            "title": "Auth Methods"
+          },
+          "server_url_options": {
+            "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
+            "type": "array",
+            "title": "Server Url Options"
+          },
+          "oauth_server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Oauth Server Url"
+          },
+          "oauth_scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Oauth Scopes"
+          },
+          "oauth_write_scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Oauth Write Scopes"
+          },
+          "oauth_callback_mode": {
+            "type": "string",
+            "enum": ["any", "loopback"],
+            "title": "Oauth Callback Mode",
+            "default": "any"
+          },
           "icon_id": {
             "anyOf": [
               { "type": "string", "pattern": "^[a-z0-9_-]+$" },
@@ -23912,6 +23961,16 @@
           "auth_mode"
         ],
         "title": "MCPServerMetadata"
+      },
+      "MCPServerURLPreset": {
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "title": "Label" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "url"],
+        "title": "MCPServerURLPreset"
       },
       "MCPStoreTokenRequest": {
         "properties": {
