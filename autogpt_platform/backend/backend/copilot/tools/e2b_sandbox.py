@@ -631,7 +631,8 @@ async def get_or_create_sandbox(
             raise
 
         logger.info("[E2B] Created sandbox %.12s for %s", sandbox.sandbox_id, owner)
-        await _acquire_turn(owner)
+        if count_turn:
+            await _acquire_turn(owner)
         return sandbox
 
     raise RuntimeError(f"Could not acquire E2B sandbox for {owner}")

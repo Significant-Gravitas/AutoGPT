@@ -76,15 +76,8 @@ export function ExpertComputerSection({
   expertName,
   enabled,
 }: Props) {
-  const {
-    computer,
-    isLoading,
-    isError,
-    refetch,
-    stream,
-    openDesktop,
-    isOpening,
-  } = useExpertComputerSection({ expertId, enabled });
+  const { computer, isLoading, refetch, stream, openDesktop, isOpening } =
+    useExpertComputerSection({ expertId, enabled });
 
   if (isLoading) {
     return (
@@ -95,7 +88,9 @@ export function ExpertComputerSection({
     );
   }
 
-  if (isError || !computer) {
+  // A failed background poll must not tear down a live desktop the user is
+  // watching; last-good data stays up and the next poll refreshes it.
+  if (!computer) {
     return (
       <ErrorCard
         context="this expert's computer"

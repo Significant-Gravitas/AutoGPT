@@ -43,6 +43,15 @@ def _make_desktop() -> MagicMock:
 
 
 class TestStartDesktop:
+    def test_is_only_offered_with_e2b_and_only_to_signed_in_users(self):
+        tool = StartDesktopTool()
+        assert tool.requires_auth is True
+        with patch("backend.copilot.tools.start_desktop.chat_config") as mock_config:
+            mock_config.active_e2b_api_key = None
+            assert tool.is_available is False
+            mock_config.active_e2b_api_key = "e2b_test_key"
+            assert tool.is_available is True
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_unconfigured_e2b_returns_error(self):
         tool = StartDesktopTool()

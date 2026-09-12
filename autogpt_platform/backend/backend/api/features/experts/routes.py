@@ -372,7 +372,7 @@ async def get_expert_activity(
 
 @router.get(
     "/{expert_id}/computer",
-    operation_id="get_expert_computer",
+    operation_id="getV2GetExpertComputer",
     responses={404: {"description": "Expert not found"}},
 )
 async def get_expert_computer(
@@ -395,7 +395,7 @@ async def get_expert_computer(
 
 @router.post(
     "/{expert_id}/computer/desktop",
-    operation_id="start_expert_desktop",
+    operation_id="postV2StartExpertDesktop",
     responses={
         404: {"description": "Expert not found"},
         502: {"description": "The desktop could not be started"},
@@ -435,8 +435,10 @@ async def start_expert_desktop(
             exc,
             exc_info=True,
         )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
         raise fastapi.HTTPException(
-            status_code=502, detail=f"Failed to start the desktop: {exc}"
+            status_code=502, detail="Failed to start the desktop."
         )
     return stream
 

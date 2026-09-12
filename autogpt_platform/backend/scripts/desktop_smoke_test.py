@@ -76,7 +76,7 @@ async def main() -> None:
 
         if persistence.volume_mounted:
             print("7) cross-sandbox volume check")
-            other, other_persistence = await DesktopSession.create(
+            other, _other_persistence = await DesktopSession.create(
                 api_key=api_key,
                 timeout_seconds=120,
                 width=1024,

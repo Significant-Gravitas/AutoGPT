@@ -3,6 +3,7 @@
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
 import asyncio
+import contextlib
 import base64
 import functools
 from copy import copy
@@ -4785,27 +4786,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
             return sandbox
 
-        (
-            e2b_sandbox,
-            (base_system_prompt, understanding),
-            (graphiti_enabled, warm_ctx),
-            _restore,
-        ) = await asyncio.gather(
-            _setup_e2b(),
-            _build_system_prompt(user_id if not has_history else None),
-            _fetch_graphiti_context(user_id, session, message),
-            # Restore CLI session — single GCS round-trip covers both
-            # --resume and builder state.  message_count watermark lives
-            # in the companion .meta.json alongside the session file.
-            _restore_cli_session_for_turn(
-                user_id,
-                session_id,
-                session,
-                sdk_cwd,
-                transcript_builder,
-                log_prefix,
-            ),
-        )
+        # The E2B leg runs as its own task: if a sibling leg fails first, the
+        # box it may already have opened (and the expert turn it counted)
+        # must still be published so the finally below pauses and releases it.
+        e2b_task = asyncio.create_task(_setup_e2b())
+        try:
+            (
+                (base_system_prompt, understanding),
+                (graphiti_enabled, warm_ctx),
+                _restore,
+            ) = await asyncio.gather(
+                _build_system_prompt(user_id if not has_history else None),
+                _fetch_graphiti_context(user_id, session, message),
+                # Restore CLI session — single GCS round-trip covers both
+                # --resume and builder state.  message_count watermark lives
+                # in the companion .meta.json alongside the session file.
+                _restore_cli_session_for_turn(
+                    user_id,
+                    session_id,
+                    session,
+                    sdk_cwd,
+                    transcript_builder,
+                    log_prefix,
+                ),
+            )
+        except BaseException:
+            with contextlib.suppress(BaseException):
+                e2b_sandbox = await e2b_task
+            raise
+        e2b_sandbox = await e2b_task
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)

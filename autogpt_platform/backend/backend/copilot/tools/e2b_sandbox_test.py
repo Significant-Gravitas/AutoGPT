@@ -906,13 +906,16 @@ class TestExpertShellBox:
         mounts = workspace_volume_mounts(_USER_ID, _EXPERT_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            patch("backend.copilot.tools.e2b_sandbox.AsyncVolume") as mock_volume,
+            # Volumes already exist -> mounted by name.  Patched where the
+            # module looks it up, so no real E2B call can sneak through.
+            patch(
+                "backend.copilot.tools.e2b_sandbox.resolve_volume",
+                AsyncMock(side_effect=lambda name, key: name),
+            ),
             _patch_redis(redis),
         ):
             mock_cls.list = _mock_list([])
             mock_cls.create = AsyncMock(return_value=sb)
-            # Volumes already exist -> mounted by name.
-            mock_volume.create = AsyncMock(side_effect=RuntimeError("exists"))
             result = asyncio.run(
                 get_or_create_sandbox(
                     _SESSION_ID,

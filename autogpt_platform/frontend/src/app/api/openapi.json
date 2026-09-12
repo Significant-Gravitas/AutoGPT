@@ -6933,7 +6933,7 @@
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
         "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
-        "operationId": "get_expert_computer",
+        "operationId": "getV2GetExpertComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -6972,7 +6972,7 @@
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Start Expert Desktop",
         "description": "Start or resume the expert's desktop and return its live stream.\n\nThis is the same box the expert's next ``start_desktop`` turn reconnects\nto, so what the user does here is what the expert sees.",
-        "operationId": "start_expert_desktop",
+        "operationId": "postV2StartExpertDesktop",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {

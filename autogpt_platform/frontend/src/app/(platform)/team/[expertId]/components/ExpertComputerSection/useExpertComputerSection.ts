@@ -1,7 +1,7 @@
 import {
-  getGetExpertComputerQueryKey,
-  useGetExpertComputer,
-  useStartExpertDesktop,
+  getGetV2GetExpertComputerQueryKey,
+  useGetV2GetExpertComputer,
+  usePostV2StartExpertDesktop,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { DesktopStream } from "@/app/api/__generated__/models/desktopStream";
 import { okData } from "@/app/api/helpers";
@@ -19,7 +19,7 @@ export function useExpertComputerSection({ expertId, enabled }: Args) {
   const { toast } = useToast();
   const [stream, setStream] = useState<DesktopStream | null>(null);
 
-  const computerQuery = useGetExpertComputer(expertId, {
+  const computerQuery = useGetV2GetExpertComputer(expertId, {
     query: {
       select: (res) => okData(res) ?? null,
       enabled,
@@ -27,24 +27,25 @@ export function useExpertComputerSection({ expertId, enabled }: Args) {
     },
   });
 
-  const { mutate: startDesktop, isPending: isOpening } = useStartExpertDesktop({
-    mutation: {
-      onSuccess: (res) => {
-        const next = okData(res);
-        if (next) setStream(next);
-        queryClient.invalidateQueries({
-          queryKey: getGetExpertComputerQueryKey(expertId),
-        });
+  const { mutate: startDesktop, isPending: isOpening } =
+    usePostV2StartExpertDesktop({
+      mutation: {
+        onSuccess: (res) => {
+          const next = okData(res);
+          if (next) setStream(next);
+          queryClient.invalidateQueries({
+            queryKey: getGetV2GetExpertComputerQueryKey(expertId),
+          });
+        },
+        onError: () => {
+          toast({
+            title: "Could not open the desktop",
+            description: "The sandbox did not come up. Try again in a moment.",
+            variant: "destructive",
+          });
+        },
       },
-      onError: () => {
-        toast({
-          title: "Could not open the desktop",
-          description: "The sandbox did not come up. Try again in a moment.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+    });
 
   function openDesktop() {
     startDesktop({ expertId });

@@ -1,6 +1,6 @@
 import {
-  getGetExpertComputerMockHandler,
-  getStartExpertDesktopMockHandler,
+  getGetV2GetExpertComputerMockHandler,
+  getPostV2StartExpertDesktopMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ComputerInfo } from "@/app/api/__generated__/models/computerInfo";
 import { server } from "@/mocks/mock-server";
@@ -34,7 +34,7 @@ const computer: ComputerInfo = {
 
 describe("ExpertComputerSection", () => {
   it("shows the expert's boxes and volumes without waking anything", async () => {
-    server.use(getGetExpertComputerMockHandler(computer));
+    server.use(getGetV2GetExpertComputerMockHandler(computer));
 
     render(
       <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
@@ -50,8 +50,8 @@ describe("ExpertComputerSection", () => {
 
   it("starts the desktop and embeds its stream", async () => {
     server.use(
-      getGetExpertComputerMockHandler(computer),
-      getStartExpertDesktopMockHandler({
+      getGetV2GetExpertComputerMockHandler(computer),
+      getPostV2StartExpertDesktopMockHandler({
         kind: "desktop_stream",
         url: "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
         provider: "e2b",
@@ -77,7 +77,7 @@ describe("ExpertComputerSection", () => {
 
   it("explains when sandboxes are not configured", async () => {
     server.use(
-      getGetExpertComputerMockHandler({
+      getGetV2GetExpertComputerMockHandler({
         ...computer,
         e2b_active: false,
         shell: null,

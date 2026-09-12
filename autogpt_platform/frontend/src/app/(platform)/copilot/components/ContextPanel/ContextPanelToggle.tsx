@@ -103,7 +103,9 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
         onClick={handleSidebarToggle}
         aria-label={
           isRightSidebarOpen
-            ? "Hide artifacts"
+            ? isComputerOpen
+              ? "Hide computer"
+              : "Hide artifacts"
             : lastGenerated
               ? `Open ${lastGenerated.item.name}`
               : hasComputer

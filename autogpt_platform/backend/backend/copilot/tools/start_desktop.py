@@ -59,6 +59,16 @@ class StartDesktopTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}, "required": []}
 
+    @property
+    def requires_auth(self) -> bool:
+        # A desktop is a billed box; only a signed-in user may start one.
+        return True
+
+    @property
+    def is_available(self) -> bool:
+        # Without E2B the tool can only fail; do not offer it to the model.
+        return bool(chat_config.active_e2b_api_key)
+
     async def _execute(
         self,
         user_id: str | None,
@@ -95,8 +105,9 @@ class StartDesktopTool(BaseTool):
             )
         except Exception as exc:
             logger.error("[E2B] start_desktop failed: %s", exc, exc_info=True)
+            # The cause is in the server log; the model gets a stable message.
             return ErrorResponse(
-                message=f"Failed to start the desktop: {exc}",
+                message="Failed to start the desktop. Try again in a moment.",
                 error="desktop_start_failed",
                 session_id=session_id,
             )

@@ -465,8 +465,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanel: {
         ...state.artifactPanel,
         mode,
-        isComputerOpen:
-          mode === "computer" ? true : state.artifactPanel.isComputerOpen,
+        // Switching to the artifact face closes the computer face, so a
+        // later registerComputerStream does not flip the panel back.
+        isComputerOpen: mode === "computer",
       },
     })),
   goBackArtifact: () =>

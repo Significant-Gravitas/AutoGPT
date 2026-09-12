@@ -1,5 +1,6 @@
 """Tests for backend.copilot.computer: describe without waking, open by owner."""
 
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -44,10 +45,12 @@ class TestComputerOwner:
             kind="session", id=_SESSION
         )
 
-    def test_mounts_need_a_user(self):
-        assert mounts_for(None, _EXPERT) == {}
+    def test_mounts_follow_the_shells_rule(self):
+        # An expert always has its home; the shared volume needs a user.
+        assert set(mounts_for(None, _EXPERT)) == {WORKSPACE_PATH}
         assert set(mounts_for(_USER, _EXPERT)) == {WORKSPACE_PATH, SHARED_PATH}
         assert set(mounts_for(_USER, None)) == {WORKSPACE_PATH}
+        assert mounts_for(None, None) == {}
 
 
 class TestDescribeComputer:
@@ -160,6 +163,77 @@ class TestOpenDesktop:
         script, _, lock_key, token = redis.eval.await_args.args
         assert lock_key == f"copilot:e2b:expert:{_EXPERT}:desktop:lock"
         assert token == redis.set.await_args_list[1].args[1]
+
+    @pytest.mark.asyncio
+    async def test_the_open_is_cut_off_before_the_lock_can_lapse(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis(None)
+
+        async def never(**_kwargs):
+            await asyncio.Event().wait()
+
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.find_owned_sandbox_id", AsyncMock(return_value=None)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+            patch(f"{_C}._DESKTOP_OPEN_DEADLINE_SECONDS", 0.01),
+        ):
+            cfg.e2b_desktop_timeout = 900
+            cfg.e2b_desktop_template = "desktop"
+            desktop_cls.create = AsyncMock(side_effect=never)
+            with pytest.raises(asyncio.TimeoutError):
+                await open_desktop(owner, {}, "k")
+        from backend.copilot import computer
+
+        assert (
+            computer._DESKTOP_OPEN_DEADLINE_SECONDS < computer._DESKTOP_LOCK_TTL_SECONDS
+        )
+        # The lock is still released on the way out.
+        redis.eval.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failure_after_reconnect_is_an_error_not_a_new_box(self):
+        """Only a failed connect means the box is gone.  A display or stream
+        failure on a live box must surface, not abandon the box and bill for
+        a second one."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis("sb-live")
+        desktop = _desktop("sb-live")
+        desktop.ensure_display = AsyncMock(side_effect=RuntimeError("no display"))
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            desktop_cls.connect = AsyncMock(return_value=desktop)
+            desktop_cls.create = AsyncMock()
+            with pytest.raises(RuntimeError, match="no display"):
+                await open_desktop(owner, {}, "k")
+        desktop_cls.create.assert_not_awaited()
+        redis.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_session_desktop_whose_id_cannot_be_saved_is_killed(self):
+        """Nothing can find a session desktop later; an unsaved one would bill
+        until timeout.  An expert's is recoverable by metadata and is kept."""
+        session_owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis(None)
+        redis.set = AsyncMock(side_effect=[True, ConnectionError("redis down")])
+        desktop = _desktop("sb-new")
+        desktop.kill = AsyncMock()
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            cfg.e2b_desktop_template = "desktop"
+            desktop_cls.create = AsyncMock(return_value=(desktop, PersistenceInfo()))
+            with pytest.raises(ConnectionError):
+                await open_desktop(session_owner, {}, "k")
+        desktop.kill.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_gives_up_when_the_lock_never_frees(self):

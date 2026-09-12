@@ -922,9 +922,9 @@ async def start_session_desktop(
             exc,
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=502, detail=f"Failed to start the desktop: {exc}"
-        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise HTTPException(status_code=502, detail="Failed to start the desktop.")
     return stream
 
 
