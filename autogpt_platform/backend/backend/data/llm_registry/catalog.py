@@ -586,6 +586,20 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.8-flash",
+                display_name="Gemini 3.8 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=112.5,
+                    output_credits_per_1m=562.5,
+                ),
+            ),
+            CatalogModel(
                 slug="gryphe/mythomax-l2-13b",
                 display_name="MythoMax L2 13B",
                 provider="open_router",
@@ -858,6 +872,20 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=262144,
                 price_tier=1,
                 cost=CatalogModelCost(run_credits=1),
+            ),
+            CatalogModel(
+                slug="qwen/qwen3.8-max-0902",
+                display_name="Qwen 3.8 Max (0902)",
+                provider="open_router",
+                creator="qwen",
+                context_window=262144,
+                max_output_tokens=131072,
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=900.0,
+                ),
             ),
             CatalogModel(
                 slug="qwen/qwen3-coder",

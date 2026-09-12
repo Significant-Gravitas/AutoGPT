@@ -32,7 +32,7 @@ describe("VoiceModeBar", () => {
 
   it("gives listening, thinking and speaking each their own colour", () => {
     // The three read as one continuous animation without it: the handover
-    // from the user's turn to AutoPilot's was the part that did not land.
+    // from the user's turn to Otto's was the part that did not land.
     vi.useFakeTimers();
     const seen = new Set<string>();
     const { container, rerender } = render(
@@ -51,7 +51,7 @@ describe("VoiceModeBar", () => {
     vi.useRealTimers();
   });
 
-  it("follows the synthesised audio while AutoPilot speaks", () => {
+  it("follows the synthesised audio while Otto speaks", () => {
     vi.useFakeTimers();
     const levels = vi.mocked(readSpeechLevel);
     levels.mockReturnValue(0.001);
@@ -156,16 +156,14 @@ describe("VoiceModeButton", () => {
     const { rerender } = render(
       <VoiceModeButton isActive={false} onClick={vi.fn()} />,
     );
-    expect(
-      screen.getByRole("button", { name: "Talk to AutoPilot" }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk to Otto" })).toBeDefined();
 
     rerender(<VoiceModeButton isActive onClick={vi.fn()} />);
     const active = screen.getByRole("button", { name: "Leave voice mode" });
     expect(active.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("becomes the stop control while AutoPilot speaks", () => {
+  it("becomes the stop control while Otto speaks", () => {
     // The same click leaves voice mode either way; while a reply is playing
     // the user reads it as "make it stop", so the icon and label say that.
     render(<VoiceModeButton isActive speaking onClick={vi.fn()} />);

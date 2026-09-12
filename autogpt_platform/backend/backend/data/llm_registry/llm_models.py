@@ -199,6 +199,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
@@ -237,6 +238,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K3 = "moonshotai/kimi-k3"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"

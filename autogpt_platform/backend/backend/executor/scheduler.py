@@ -365,7 +365,7 @@ async def _execute_copilot_turn(**kwargs):
             if not expert_scope_was_persisted:
                 logger.info(
                     "Copilot turn schedule %s predates persisted memory scope; "
-                    "preserving its legacy AutoPilot behavior",
+                    "preserving its legacy Otto behavior",
                     args.schedule_id,
                 )
             if args.expert_id is not None:
@@ -397,7 +397,7 @@ async def _execute_copilot_turn(**kwargs):
                 # The scope check above passed, so the expert was archived or
                 # deleted in the window before creation. `create_chat_session`
                 # drops the attribution rather than failing, which would run an
-                # expert's follow-up in AutoPilot memory scope — fail closed
+                # expert's follow-up in Otto memory scope — fail closed
                 # instead. Skip without deleting: archive is reversible, and
                 # this window can't tell it apart from deletion. The next
                 # firing's scope check routes authoritatively (missing →
@@ -441,7 +441,7 @@ async def _execute_copilot_turn(**kwargs):
                 # Legacy explicit-session jobs predate the scope field. The
                 # owned target session is the only authoritative provenance
                 # available, so recover from it rather than interpreting the
-                # missing field as AutoPilot.
+                # missing field as Otto.
                 args = args.model_copy(update={"expert_id": session.expert_id})
             if args.expert_id is not None:
                 expert_status = await _expert_scope_status(args.user_id, args.expert_id)
@@ -450,7 +450,7 @@ async def _execute_copilot_turn(**kwargs):
                     return
             target_session_id = args.session_id
             target_session = session
-            # The target may be the user's own interactive Autopilot chat,
+            # The target may be the user's own interactive Otto chat,
             # where ``origin`` says nothing about who wrote *this* turn. A
             # role="user" row here would raise the confirm watermark
             # ``expert_proposal`` gates on, letting a scheduled follow-up
@@ -1528,7 +1528,7 @@ class CopilotTurnJobArgs(BaseModel):
     # is scoped to the same expert as the chat that scheduled the follow-up —
     # its runs then count toward the expert's budget, surface on her thread,
     # and read/write her isolated memory scope. None keeps legacy schedules
-    # and AutoPilot follow-ups in the user's account scope. Optional for
+    # and Otto follow-ups in the user's account scope. Optional for
     # backward compat with rows persisted before this field was added.
     expert_id: str | None = None
 
@@ -1959,8 +1959,13 @@ class Scheduler(AppService):
                 id="ensure_embeddings_coverage",
                 trigger="interval",
                 hours=6,
+                # Due now rather than called inline below: run_service() is what
+                # starts the event loop uvicorn binds the RPC port on.
+                next_run_time=datetime.now(timezone.utc),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                misfire_grace_time=None,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -1981,18 +1986,6 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
-
-        # Run embedding backfill immediately on startup
-        # This ensures blocks/docs are searchable right away, not after 6 hours
-        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
-        if self.register_system_tasks:
-            logger.info("Running embedding backfill on startup...")
-            try:
-                result = ensure_embeddings_coverage()
-                logger.info(f"Startup embedding backfill complete: {result}")
-            except Exception as e:
-                logger.error(f"Startup embedding backfill failed: {e}")
-                # Don't fail startup - the scheduled job will retry later
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
@@ -2129,7 +2122,7 @@ class Scheduler(AppService):
         """Schedule a copilot turn at a future time.
 
         When *session_id* is ``None`` the executor creates a fresh chat
-        at fire time in the persisted Autopilot or expert scope and routes
+        at fire time in the persisted Otto or expert scope and routes
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 

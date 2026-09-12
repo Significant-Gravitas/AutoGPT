@@ -49,7 +49,7 @@ const REDUCED_CARD_VARIANTS: Variants = {
 export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
   const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
-  const { handleDragStart, handleDragEnd } = useFileDrag(file.id, file.name);
+  const { handleDragStart, handleDragEnd } = useFileDrag([file.id], file.name);
 
   return (
     <motion.li

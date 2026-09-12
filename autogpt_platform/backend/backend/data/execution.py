@@ -158,7 +158,7 @@ class ExecutionTrigger(StrEnum):
     ``webhook``  an integration webhook fired (webhook id in triggerRef)
     ``copilot``  the copilot run_agent tool (chat session id in triggerRef)
     ``subgraph`` nested run started by an AgentExecutorBlock (parent exec id)
-    ``admin``    admin recovery path
+    ``admin``    reserved for future admin-initiated executions
     """
 
     MANUAL = "manual"
@@ -203,6 +203,7 @@ VALID_STATUS_TRANSITIONS = {
     ],
     ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
+        ExecutionStatus.INCOMPLETE,  # Parked for spend approval, never published
     ],
 }
 

@@ -3,7 +3,6 @@ from typing import Any, Literal, Optional
 
 import pydantic
 
-from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
 from backend.data.onboarding_steps import OnboardingStep
 from backend.util.timezone_name import TimeZoneName
@@ -45,23 +44,8 @@ class CreateGraph(pydantic.BaseModel):
     source: GraphCreationSource | None = None
 
 
-class CreateAPIKeyRequest(pydantic.BaseModel):
-    name: str
-    permissions: list[APIKeyPermission]
-    description: Optional[str] = None
-
-
-class CreateAPIKeyResponse(pydantic.BaseModel):
-    api_key: APIKeyInfo
-    plain_text_key: str
-
-
 class SetGraphActiveVersion(pydantic.BaseModel):
     active_graph_version: int
-
-
-class UpdatePermissionsRequest(pydantic.BaseModel):
-    permissions: list[APIKeyPermission]
 
 
 class RequestTopUp(pydantic.BaseModel):

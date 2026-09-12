@@ -1,4 +1,4 @@
-"""Per-user concurrent AutoPilot turn tracking, backed entirely by Postgres.
+"""Per-user concurrent Otto turn tracking, backed entirely by Postgres.
 
 Each :class:`prisma.models.ChatSession` carries a ``chatStatus`` text
 enum: ``"idle"`` (no turn in flight, the 99% case), ``"queued"``
@@ -42,7 +42,7 @@ from backend.copilot.model import (
 from backend.data.db_accessors import chat_db
 from backend.util.settings import Settings
 
-# Upper bound on a single AutoPilot turn's wall-clock duration.  Re-exported
+# Upper bound on a single Otto turn's wall-clock duration.  Re-exported
 # for callers (e.g. ``backend.blocks.autopilot``) that need a sensible
 # upper-wait timeout.  Stale running sessions older than this are an
 # operational concern surfaced via metrics + manual recovery, not
@@ -77,7 +77,7 @@ def running_turn_limit_message(limit: int | None = None) -> str:
     inflight one."""
     resolved = get_running_turn_limit() if limit is None else limit
     return (
-        f"You have {resolved} AutoPilot tasks already running. "
+        f"You have {resolved} Otto tasks already running. "
         "Please wait for one of them to finish before starting a new one."
     )
 
@@ -92,7 +92,7 @@ def queued_turn_message() -> str:
 
 
 class ConcurrentTurnLimitError(Exception):
-    """User has reached the configured running AutoPilot turn cap."""
+    """User has reached the configured running Otto turn cap."""
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message or running_turn_limit_message())

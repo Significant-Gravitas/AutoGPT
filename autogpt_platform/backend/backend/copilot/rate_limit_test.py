@@ -177,6 +177,13 @@ class TestGetUsageStatus:
 
 
 class TestCheckRateLimit:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @pytest.mark.asyncio
     async def test_allows_when_under_limit(self):
         mock_redis = AsyncMock()
@@ -353,6 +360,34 @@ class TestCheckRateLimit:
                 await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
             assert exc_info.value.window == "daily"
 
+    @pytest.mark.asyncio
+    async def test_negative_limit_disables_the_window(self):
+        """A negative limit is the explicit "no cap" sentinel that self-hosted
+        distributions export (the single-container image sets -1 for both
+        windows). Unlike 0 it must never raise, however much was spent."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "999000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await check_rate_limit(_USER, daily_cost_limit=-1, weekly_cost_limit=-1)
+
+    @pytest.mark.asyncio
+    async def test_negative_daily_limit_still_enforces_weekly(self):
+        """Disabling one window must not disable the other."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "5000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(
+                    _USER, daily_cost_limit=-1, weekly_cost_limit=5_000_000
+                )
+            assert exc_info.value.window == "weekly"
+
 
 class TestCoPilotUsagePublicFromStatus:
     """Public-shape projection must surface a 0-limit window as fully
@@ -385,6 +420,14 @@ class TestCoPilotUsagePublicFromStatus:
         assert public.daily.percent_used == 100.0
         assert public.weekly is not None
         assert public.weekly.percent_used == 100.0
+
+    def test_negative_limit_hides_the_window(self):
+        """A negative limit means "no cap configured" (the self-hosted
+        default) and must project to ``None`` so the UI hides the meter
+        instead of rendering a negative percentage."""
+        public = CoPilotUsagePublic.from_status(self._status(-1, -1))
+        assert public.daily is None
+        assert public.weekly is None
 
     def test_positive_limit_renders_normally(self):
         # daily limit $10, used $0 → 0% used
@@ -741,6 +784,13 @@ class TestEnforcePaymentPaywallContinued:
 
 
 class TestRecordCostUsage:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @staticmethod
     def _make_pipeline_mock() -> MagicMock:
         """Create a pipeline mock with sync methods and async execute."""
@@ -882,8 +932,8 @@ class TestSubscriptionTier:
         # rate-limited routes refuse with 429 (backend half of the paywall).
         assert TIER_MULTIPLIERS[SubscriptionTier.NO_TIER] == 0.0
         assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1.0
-        assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5.0
-        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20.0
+        assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 1.25
+        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 10.6667
         assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60.0
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60.0
         assert TIER_MULTIPLIERS is _DEFAULT_TIER_MULTIPLIERS
@@ -1278,6 +1328,13 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
 
 
 class TestGetUserTier:
+    @pytest.fixture(autouse=True)
+    def no_stripe_reconciliation(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+            new=AsyncMock(return_value=False),
+        )
+
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
         """Clear the get_user_tier cache before each test."""
@@ -1721,8 +1778,8 @@ class TestGetGlobalRateLimitsWithTiers:
         assert tier == SubscriptionTier.BASIC
 
     @pytest.mark.asyncio
-    async def test_pro_tier_5x_multiplier(self):
-        """Pro tier should multiply limits by 5."""
+    async def test_pro_tier_multiplier(self):
+        """Pro tier should multiply limits by 1.25."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
@@ -1738,13 +1795,13 @@ class TestGetGlobalRateLimitsWithTiers:
                 _USER, 2_500_000, 12_500_000
             )
 
-        assert daily == 12_500_000
-        assert weekly == 62_500_000
+        assert daily == 3_125_000
+        assert weekly == 15_625_000
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_max_tier_20x_multiplier(self):
-        """Max tier should multiply limits by 20 (self-service $320 tier)."""
+    async def test_max_tier_multiplier(self):
+        """Max tier should multiply limits by 10.6667."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
@@ -1760,8 +1817,8 @@ class TestGetGlobalRateLimitsWithTiers:
                 _USER, 2_500_000, 12_500_000
             )
 
-        assert daily == 50_000_000
-        assert weekly == 250_000_000
+        assert daily == 26_666_750
+        assert weekly == 133_333_750
         assert tier == SubscriptionTier.MAX
 
     @pytest.mark.asyncio
@@ -1853,6 +1910,13 @@ class TestGetGlobalRateLimitsWithTiers:
 
 
 class TestTierLimitsRespected:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """Verify that tier-adjusted limits from get_global_rate_limits flow
     correctly into check_rate_limit, so higher tiers allow more usage and
     lower tiers are blocked when they would exceed their allocation."""
@@ -1878,7 +1942,7 @@ class TestTierLimitsRespected:
     @pytest.mark.asyncio
     async def test_pro_user_allowed_above_basic_limit(self):
         """A PRO user with usage above the BASIC limit should be allowed."""
-        # Usage: 3M tokens (above BASIC limit of 2.5M, below PRO limit of 12.5M)
+        # Usage: 3M tokens (above BASIC limit of 2.5M, below PRO limit of 3.125M)
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["3000000", "3000000"])
 
@@ -1900,10 +1964,10 @@ class TestTierLimitsRespected:
             daily, weekly, tier = await get_global_rate_limits(
                 _USER, self._BASE_DAILY, self._BASE_WEEKLY
             )
-            # PRO: 5x multiplier
-            assert daily == 12_500_000
+            # PRO: 1.25x multiplier
+            assert daily == 3_125_000
             assert tier == SubscriptionTier.PRO
-            # Should NOT raise — 3M < 12.5M
+            # Should NOT raise — 3M < 3.125M
             await check_rate_limit(
                 _USER, daily_cost_limit=daily, weekly_cost_limit=weekly
             )
@@ -2065,6 +2129,13 @@ class TestResetDailyUsage:
 
 
 class TestTierLimitsEnforced:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """Verify that tier-multiplied limits are actually respected by
     ``check_rate_limit`` — i.e. that usage within the tier allowance passes
     and usage at/above the tier allowance is rejected."""
@@ -2253,7 +2324,7 @@ class TestTierLimitsEnforced:
         basic_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC])
         pro_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
         # Usage above BASIC limit but below PRO limit
-        usage = basic_daily + 500_000
+        usage = basic_daily + (pro_daily - basic_daily) // 2
         assert usage < pro_daily, "test sanity: usage must be under PRO limit"
 
         mock_redis = AsyncMock()
@@ -2552,7 +2623,7 @@ class TestWorkspaceStorageLimits:
                 f"SubscriptionTier.{tier.name} has no entry in "
                 f"_DEFAULT_TIER_MULTIPLIERS — add one"
             )
-            if tier == SubscriptionTier.NO_TIER:
+            if tier in (SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL):
                 assert _DEFAULT_TIER_MULTIPLIERS[tier] == 0.0
             else:
                 assert _DEFAULT_TIER_MULTIPLIERS[tier] > 0
@@ -2709,6 +2780,13 @@ class TestWarnIfStripeSubscriptionDriftsYearly:
 
 
 class TestGetRemainingUsdBudget:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @pytest.mark.asyncio
     async def test_zero_limits_return_floor_not_unlimited(self):
         """With no real-world unlimited tier, both limits at 0 means
@@ -2723,6 +2801,35 @@ class TestGetRemainingUsdBudget:
                 _USER, daily_cost_limit=0, weekly_cost_limit=0, floor_usd=0.5
             )
         assert result == 0.5
+
+    @pytest.mark.asyncio
+    async def test_negative_limits_mean_unlimited_budget(self):
+        """Self-hosted installs export -1 for both windows; SDK budget sizing
+        must see an unbounded budget rather than the floor."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "999000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=-1, weekly_cost_limit=-1
+            )
+        assert result == float("inf")
+
+    @pytest.mark.asyncio
+    async def test_negative_daily_limit_defers_to_weekly_remaining(self):
+        # daily uncapped; weekly=$50 used $48 → $2 remaining drives the result.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "48000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=-1, weekly_cost_limit=50_000_000
+            )
+        assert result == pytest.approx(2.0)
 
     @pytest.mark.asyncio
     async def test_smaller_of_daily_and_weekly_remaining(self):
@@ -2797,6 +2904,13 @@ class TestGetRemainingUsdBudget:
 
 
 class TestBuildBudgetCtx:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``
     into a single call so callers don't have to compose them by hand on
     every turn, and returns the *inner* text only — ``inject_user_context``

@@ -79,8 +79,8 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   }, [selectedProvider, handleBackToList, onBack]);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+    <div className="flex flex-col gap-4 px-5 pb-5 pt-4">
+      <Text variant="h5" tone="primary">
         Connect your tools
       </Text>
 
@@ -122,7 +122,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
               {isLoading ? (
                 <div className="flex flex-col gap-2">
                   {[0, 1, 2].map((row) => (
-                    <Skeleton key={row} className="h-16 w-full rounded-xl" />
+                    <Skeleton key={row} className="h-14 w-full rounded-md" />
                   ))}
                 </div>
               ) : isError ? (
@@ -140,8 +140,8 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                   <div className="relative w-full">
                     <Icon
                       icon={Search01Icon}
-                      size={20}
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
+                      size={16}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
                     />
                     <input
                       type="text"
@@ -149,19 +149,19 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search services..."
                       aria-label="Search services"
-                      className="h-[46px] w-full rounded-xl border border-[#DADADC] bg-white pl-12 pr-4 text-sm leading-[22px] text-[#1F1F20] transition-colors placeholder:text-[#83838C] focus:border-violet-500 focus:outline-none"
+                      className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm leading-[22px] text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
                     />
                   </div>
 
                   {query.trim() ? (
                     providers.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-200 py-8 text-center">
                         <Icon
                           icon={Plug01Icon}
-                          size={24}
-                          className="text-[#83838C]"
+                          size={16}
+                          className="text-zinc-400"
                         />
-                        <Text variant="body" className="text-[#505057]">
+                        <Text variant="body" tone="secondary">
                           {`No services match "${query.trim()}"`}
                         </Text>
                       </div>
@@ -180,11 +180,11 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                     )
                   ) : recommendedProviders.length > 0 ? (
                     <div className="flex flex-col gap-2">
-                      <span className="text-xs font-medium text-violet-600">
+                      <Text variant="eyebrow" as="span">
                         {isPersonalized
                           ? "Recommended from our conversation"
                           : "Popular places to start"}
-                      </span>
+                      </Text>
                       <ul className="grid grid-cols-2 gap-2">
                         {recommendedProviders.map((provider) => (
                           <li key={provider.id}>
@@ -199,7 +199,11 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                       </ul>
                     </div>
                   ) : (
-                    <Text variant="body" className="text-center text-[#505057]">
+                    <Text
+                      variant="body"
+                      tone="secondary"
+                      className="text-center"
+                    >
                       Search to find a service to connect.
                     </Text>
                   )}
@@ -210,16 +214,16 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex items-center justify-end gap-2">
         {selectedProvider ? (
           <>
-            <Button variant="secondary" size="small" onClick={handleBackToList}>
+            <Button variant="outline" size="xs" onClick={handleBackToList}>
               Back
             </Button>
             {showContinue && (
               <Button
                 variant="primary"
-                size="small"
+                size="xs"
                 disabled={isContinueDisabled}
                 loading={isConnecting}
                 onClick={handleContinue}
@@ -230,10 +234,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
           </>
         ) : (
           <>
-            <Button variant="secondary" size="small" onClick={onBack}>
+            <Button variant="outline" size="xs" onClick={onBack}>
               Back
             </Button>
-            <Button variant="primary" size="small" onClick={onNext}>
+            <Button variant="primary" size="xs" onClick={onNext}>
               Next
             </Button>
           </>

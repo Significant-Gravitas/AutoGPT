@@ -5,13 +5,20 @@ import {
   getUpdateExpertSoulMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertDayOneItem } from "@/app/api/__generated__/models/expertDayOneItem";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { getGetV1ListSystemProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import MarketplaceExpertPage from "../[expertId]/page";
+import { ExpertPage as MarketplaceExpertPage } from "../[expertId]/components/ExpertPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockRouterPush = vi.hoisted(() => vi.fn());
@@ -66,10 +73,14 @@ const mariaTemplate: Expert = {
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
-  protected_soul_rules: [],
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "The expert asks for approval before acting externally.",
+  ],
   is_template: true,
   source_template_id: null,
   is_archived: false,
+  weekly_budget: 500,
   workflows: [
     {
       id: "wf-1",
@@ -78,6 +89,16 @@ const mariaTemplate: Expert = {
       store_listing_version_id: null,
       library_agent_id: null,
       graph_id: null,
+      integration_providers: ["anthropic", "jina"],
+    },
+    {
+      id: "wf-2",
+      name: "Automated Blog Writer",
+      description: "Turns a brief into a drafted post.",
+      store_listing_version_id: null,
+      library_agent_id: null,
+      graph_id: null,
+      integration_providers: ["dataforseo", "openai"],
     },
   ],
 };
@@ -100,6 +121,27 @@ const mariaWithSamples: Expert = {
   ],
 };
 
+const mariaDayOne = [
+  {
+    title: "Social listening on your brand",
+    description:
+      "Tracks mentions of your brand, product, and founders across X, LinkedIn, Reddit, and news.",
+    timing: "first scan · 1 hr",
+  },
+  {
+    title: "Morning briefing, in your Slack",
+    description:
+      "“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
+    timing: "tomorrow · 9 AM",
+  },
+  {
+    title: "Two-week content calendar",
+    description:
+      "A skeleton calendar built from your site, your niche, and what competitors are shipping. You approve before anything posts.",
+    timing: "day 1",
+  },
+] satisfies ExpertDayOneItem[];
+
 function renderPage() {
   return render(
     <>
@@ -115,6 +157,14 @@ describe("Marketplace expert page", () => {
     mockParams.expertId = "template-maria";
     flagStatusMock.mockReturnValue({ enabled: true, ready: true });
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
+    server.use(
+      getGetV1ListSystemProvidersMockHandler([
+        "anthropic",
+        "openai",
+        "jina",
+        "webshare_proxy",
+      ]),
+    );
   });
 
   test("shows the profile and hires from the page", async () => {
@@ -131,7 +181,11 @@ describe("Marketplace expert page", () => {
     ).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(screen.getByText("Content strategy")).toBeDefined();
-    expect(screen.getByText("LinkedIn Post Generator")).toBeDefined();
+    expect(
+      within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
+        "LinkedIn Post Generator",
+      ),
+    ).toBeDefined();
     expect(
       screen
         .getByRole("link", { name: "Back to marketplace" })
@@ -144,6 +198,162 @@ describe("Marketplace expert page", () => {
     expect(mockRouterPush).toHaveBeenCalledWith(
       `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
     );
+  });
+
+  test("says when a bundled workflow runs on a schedule, before hiring", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          workflows: [
+            { ...mariaTemplate.workflows[0], schedule_cron: "40 7 * * *" },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Runs every day at 07:40")).toBeDefined();
+  });
+
+  test("says nothing about a cadence for a workflow that has none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    await screen.findByText("LinkedIn Post Generator");
+    expect(screen.queryByText(/^Runs /)).toBeNull();
+  });
+
+  test("renders the services, plan and disclosure sections", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    // Only what the viewer connects: Anthropic, OpenAI and Jina are on the
+    // platform's own credentials and must not be asked for.
+    const access = await screen.findByRole("region", {
+      name: "Services Maria can work with",
+    });
+    expect(within(access).getByText("DataForSEO")).toBeDefined();
+    expect(within(access).queryByText("Anthropic")).toBeNull();
+    expect(within(access).queryByText("OpenAI")).toBeNull();
+
+    expect(
+      screen.getByRole("heading", { name: "Included with your plan" }),
+    ).toBeDefined();
+    expect(screen.getByText(/capped at \$5 a week/)).toBeDefined();
+
+    expect(
+      screen.getByText(
+        "The expert discloses that it is AI when acting externally.",
+      ),
+    ).toBeDefined();
+  });
+
+  test("drops the services section when there is nothing to connect", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, workflows: [], protected_soul_rules: [] },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /Services Maria can work with/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/cannot break/)).toBeNull();
+    // The plan line has no data to be missing, so it always stands.
+    expect(
+      screen.getByRole("heading", { name: "Included with your plan" }),
+    ).toBeDefined();
+  });
+
+  test("lists the creator's day-one rows above the skills", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, day_one: mariaDayOne },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    const dayOne = await screen.findByRole("region", {
+      name: "What Maria sets up on day one",
+    });
+    const rows = within(dayOne).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    mariaDayOne.forEach((item, index) => {
+      const row = within(rows[index]);
+      expect(row.getByText(String(index + 1))).toBeDefined();
+      expect(row.getByText(item.title)).toBeDefined();
+      expect(row.getByText(item.description)).toBeDefined();
+      expect(row.getByText(item.timing)).toBeDefined();
+    });
+    // Nothing in the section is derived from the bundled workflows.
+    expect(within(dayOne).queryByText("LinkedIn Post Generator")).toBeNull();
+    const skills = screen.getByRole("region", { name: "Skills" });
+    expect(
+      dayOne.compareDocumentPosition(skills) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test("hides the day-one section when the creator wrote none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([{ ...mariaTemplate, day_one: [] }]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /sets up on day one/ }),
+    ).toBeNull();
+  });
+
+  test("waits for the roster before offering to hire an expert already hired", async () => {
+    let releaseRoster = () => {};
+    const rosterHeld = new Promise<void>((resolve) => {
+      releaseRoster = resolve;
+    });
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      http.get("*/api/experts", async () => {
+        await rosterHeld;
+        return HttpResponse.json([hiredMaria]);
+      }),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    // The roster has not answered, so neither action may be shown yet.
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+    expect(screen.queryByText("On your team")).toBeNull();
+
+    releaseRoster();
+
+    expect(await screen.findByText("On your team")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
   });
 
   test("shows the on-your-team state with a way into the chat", async () => {

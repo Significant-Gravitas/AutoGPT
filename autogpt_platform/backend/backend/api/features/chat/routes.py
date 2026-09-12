@@ -117,6 +117,7 @@ from backend.copilot.tools.models import (
     DocSearchResultsResponse,
     ErrorResponse,
     ExecutionStartedResponse,
+    ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
@@ -1236,6 +1237,8 @@ async def reset_copilot_usage(
         config.weekly_cost_limit_microdollars,
     )
 
+    if tier.value == "TRIAL":
+        raise HTTPException(409, "Trial allowances cannot be reset with credits.")
     if daily_limit <= 0:
         raise HTTPException(
             status_code=400,
@@ -2313,6 +2316,7 @@ ToolResponseUnion = (
     | MemoryForgetConfirmResponse
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
+    | ExpertOnboardingResponse
 )
 
 
