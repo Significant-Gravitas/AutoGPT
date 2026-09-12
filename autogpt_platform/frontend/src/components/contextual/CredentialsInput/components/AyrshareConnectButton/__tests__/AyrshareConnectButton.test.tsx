@@ -31,7 +31,7 @@ function renderWithActions(reload: () => void) {
     vi.fn(() => ({}) as Window),
   );
   return render(
-    <CredentialsActionsContext.Provider value={{ reload }}>
+    <CredentialsActionsContext.Provider value={{ reload, upsert: vi.fn() }}>
       <AyrshareConnectButton />
     </CredentialsActionsContext.Provider>,
   );

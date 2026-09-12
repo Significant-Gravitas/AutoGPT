@@ -369,7 +369,7 @@ class BotBackend:
         """Resolve (or create) the copilot session for this conversation.
 
         Called before uploading attachments so they land in the session folder
-        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        (``/sessions/<id>/``) where Otto reads them — the same way the web
         UI uploads into an already-open session. Carries a ``denial`` instead
         of a session when the turn gate refuses the user, so the caller can
         skip the upload entirely.
@@ -391,7 +391,7 @@ class BotBackend:
     ) -> list[WorkspaceUploadResult]:
         """Upload each attachment into the conversation owner's workspace.
 
-        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        ``session_id`` scopes the files to the turn's session so Otto can
         read them, matching the web upload. Returns one result per file (with a
         ``file_id`` on success or an ``error`` code) so the caller can attach
         the successes to the turn and tell the user about any that were
@@ -490,7 +490,7 @@ class BotBackend:
         setup_notified = False
         setup_drop_notified = False
         clarification_notified = False
-        # Track which text block each delta belongs to. AutoPilot emits text in
+        # Track which text block each delta belongs to. Otto emits text in
         # separate blocks around tool calls / reasoning (each with its own id);
         # the frontend renders them as distinct parts, but here we concatenate
         # into one message, so insert a paragraph break when the block changes —

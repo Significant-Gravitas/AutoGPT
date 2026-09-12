@@ -715,3 +715,55 @@ class TestDreamPermissionsPreset:
                 "memory_forget_confirm",
             }
         )
+
+
+class TestApplyToolPermissionsIsLossless:
+    """A filter that permits everything must be indistinguishable from no
+    filter. It was not: outside E2B only ``read_file`` has an MCP wrapper, so
+    mapping ``Write``/``Edit`` solely to their MCP names dropped them from
+    every filtered turn — silently, since an absent tool just never gets
+    called. Children are the only turns that carry a filter, so this removed
+    file editing from every spawned agent on non-E2B deployments."""
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_identity_whitelist_equals_no_filter(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            ALL_TOOL_NAMES,
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+
+        identity = CopilotPermissions(tools=sorted(ALL_TOOL_NAMES), tools_exclude=False)
+        allowed_identity, _ = apply_tool_permissions(identity, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        assert set(allowed_identity) == set(allowed_unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_a_child_keeps_its_file_tools(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+        from backend.copilot.tree import (
+            DESCENT_DENIED_TOOLS,
+            SpawnRequest,
+            derive_child_envelope,
+            root_envelope,
+        )
+
+        child = derive_child_envelope(root_envelope("t"), SpawnRequest(may_spawn=True))
+        child_permissions = child.as_permissions()
+        assert child_permissions is not None
+        allowed_child, _ = apply_tool_permissions(child_permissions, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        lost = set(allowed_unfiltered) - set(allowed_child)
+        # A child loses exactly the descent-denied set — nothing else.
+        assert lost == {
+            name
+            for name in allowed_unfiltered
+            if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
+        }

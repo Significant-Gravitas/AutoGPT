@@ -19,6 +19,7 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -88,7 +89,7 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
         api_key, base_url = config.main_client_credentials
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
         # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against AutoPilot's heavy system
+        # many minutes for a single turn against Otto's heavy system
         # prompt. The OpenAI client default (600 s) is too short for that
         # case — extend it under the local transport. Cloud transports
         # keep the SDK default so genuine hangs still surface promptly.
@@ -194,7 +195,7 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
 # prompt_cache_test.py. The leading underscore is retained for backwards
 # compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
-_CACHEABLE_SYSTEM_PROMPT = f"""You are AutoPilot, the AI assistant on the AutoGPT platform, helping users build and run automations.
+_CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
 - Understanding their needs and business context
@@ -286,6 +287,17 @@ _ENV_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{ENV_CONTEXT_TAG}>", re.IGNORECASE)
 _ENV_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
 )
+
+# Prepended per-turn on voice turns; the user typed none of it, so it must
+# not appear in their own message when the history is read back.
+_VOICE_TURN_PREFIX_RE = re.compile(
+    rf"^<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\n\n", re.DOTALL
+)
+
+_VOICE_TURN_ANYWHERE_RE = re.compile(
+    rf"<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\s*", re.DOTALL
+)
+_VOICE_TURN_LONE_TAG_RE = re.compile(rf"</?{VOICE_TURN_TAG}>", re.IGNORECASE)
 
 _BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
@@ -387,8 +399,8 @@ def strip_server_injected_tags(text: str) -> str:
 
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
-    blocks (and their lone tags).  Used both by
+    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>`` and
+    ``<voice_turn>`` blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
     will later land alongside server-injected versions of the same tags in
@@ -425,7 +437,12 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
-    return _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    # Strip <voice_turn> blocks and lone tags — a forged closing tag would
+    # otherwise end the server's block and put the user's own text where the
+    # per-turn instruction goes.
+    without_voice = _VOICE_TURN_ANYWHERE_RE.sub("", without_expert)
+    return _VOICE_TURN_LONE_TAG_RE.sub("", without_voice)
 
 
 def sanitize_user_supplied_context(message: str) -> str:
@@ -456,7 +473,8 @@ def strip_injected_context_for_display(message: str) -> str:
     Used by the chat-history GET endpoint to hide server-side prefixes that
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<voice_turn>``, and
+    ``<available_skills>``
     blocks from the **start** of the message, iterating until no more leading
     injected blocks remain.
 
@@ -475,6 +493,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _USER_CONTEXT_PREFIX_RE.sub("", result)
         result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
         result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
+        result = _VOICE_TURN_PREFIX_RE.sub("", result)
         result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
         result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
         result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)
@@ -621,7 +640,7 @@ async def inject_user_context(
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
         expert_id: Hired expert this session is scoped to, or ``None`` for a
-            plain Autopilot session.  Used to build the ``<expert_workflows>``
+            plain Otto session.  Used to build the ``<expert_workflows>``
             (expert session) or ``<team_context>`` (plain session) prefix via
             ``build_expert_context``.  The expert's persona is NOT injected
             here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
@@ -711,7 +730,7 @@ async def inject_user_context(
     # Prepend the expert identity/workflows block (expert session) or team
     # awareness block (plain session).  Server-injected after sanitisation
     # like the other trusted blocks; degrades to "" on any lookup failure so
-    # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
+    # the turn proceeds as plain Otto.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
     expert_ctx = await build_expert_context(user_id, expert_id)
     if expert_ctx:

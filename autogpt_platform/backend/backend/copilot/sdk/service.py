@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
+    from ..tree import TurnEnvelope
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -53,6 +54,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -115,6 +117,8 @@ from ..permissions import (
 )
 from ..prompting import (
     get_delegation_supplement,
+    get_expert_oversight_supplement,
+    get_team_building_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -151,6 +155,7 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
+from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -160,7 +165,12 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
+from ..tools import (
+    ToolGroup,
+    expert_tool_disabled_groups,
+    kickoff_turn_disabled_tools,
+    tool_names_in_groups,
+)
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -240,7 +250,7 @@ _EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
-    "AutoPilot was unable to complete the tool call "
+    "Otto was unable to complete the tool call "
     "— this usually happens when the response is "
     "too large to fit in a single tool call. "
     "Try breaking your request into smaller parts."
@@ -273,7 +283,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     static_cap = config.claude_agent_max_budget_usd
     if not user_id:
         return static_cap
-    daily_limit, weekly_limit, _ = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
@@ -291,6 +301,8 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
         weekly_cost_limit=weekly_limit,
         floor_usd=-1.0,
     )
+    if tier == "TRIAL":
+        return resolve_trial_sdk_budget(static_cap, remaining)
     if remaining < 0 or remaining == float("inf"):
         return static_cap
     return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
@@ -433,7 +445,7 @@ async def _consume_sdk_until_done(
                     else ""
                 )
                 loop_state.stream_error_msg = (
-                    f"AutoPilot stopped responding{tool_phrase}. "
+                    f"Otto stopped responding{tool_phrase}. "
                     "This usually means a tool got stuck. Please try again."
                 )
                 _append_error_marker(
@@ -1691,6 +1703,8 @@ async def _apply_building_mode_restart(
     sdk_options: "ClaudeAgentOptions",
     base_system_prompt: str,
     delegation_supplement: str,
+    oversight_supplement: str,
+    team_building_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1719,14 +1733,17 @@ async def _apply_building_mode_restart(
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
-    # Same supplement order as the main assembly. The delegation tools stay
-    # registered across a restart (registration happens once, before it), so
-    # dropping their disclosure rules here would leave the model able to
-    # delegate silently for the rest of the turn.
+    # Same supplement order as the main assembly. The delegation and
+    # chat-reading tools stay registered across a restart (registration happens
+    # once, before it), so dropping their disclosure rules here would leave the
+    # model able to delegate, or read a teammate's chats, silently for the rest
+    # of the turn.
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -4451,6 +4468,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
@@ -4784,6 +4802,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             Flag.HIRE_EXPERTS, user_id, default=False
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        oversight_supplement = get_expert_oversight_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+        team_building_supplement = get_team_building_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4799,6 +4823,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
+            + oversight_supplement
+            + team_building_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4819,6 +4845,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sandbox=e2b_sandbox,
             sdk_cwd=sdk_cwd,
             permissions=permissions,
+            envelope=envelope,
         )
 
         if (
@@ -4855,10 +4882,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # into the system prompt. Hiding it removes the tempting-but-worse
         # fallback; read_skill("agent_building_guide") remains as escape
         # hatch. The baseline path (no prompt machinery) keeps the tool.
+
+        # A hire's kickoff turn is a server-sent control message, so nothing
+        # on it was asked for: narrow it to the onboarding card and nothing
+        # else. Hiding is the enforcement here — an unregistered MCP tool
+        # does not exist for the CLI, so there is no call left to deny.
+        kickoff_hidden = (
+            kickoff_turn_disabled_tools()
+            if is_expert_kickoff_turn(session)
+            else frozenset()
+        )
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
+            | kickoff_hidden
         )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
@@ -4930,6 +4968,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        if kickoff_hidden:
+            kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
+            allowed = [n for n in allowed if n not in kickoff_hidden_mcp]
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
@@ -5179,7 +5221,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # NOT block the turn — log and continue with an empty index.
             skills_ctx_content = ""
             try:
-                skills_ctx_content = await build_skills_context(user_id)
+                skills_ctx_content = await build_skills_context(
+                    user_id, expert_id=session.expert_id
+                )
             except Exception:
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
@@ -5459,17 +5503,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
-                state.query_message, state.compaction_stats = (
-                    await _build_query_message(
-                        current_message,
-                        session,
-                        state.use_resume,
-                        state.transcript_msg_count,
-                        session_id,
-                        session_msg_ceiling=_pre_drain_msg_count,
-                        target_tokens=state.target_tokens,
-                        expect_compaction=True,
-                    )
+                (
+                    state.query_message,
+                    state.compaction_stats,
+                ) = await _build_query_message(
+                    current_message,
+                    session,
+                    state.use_resume,
+                    state.transcript_msg_count,
+                    session_id,
+                    session_msg_ceiling=_pre_drain_msg_count,
+                    target_tokens=state.target_tokens,
+                    expect_compaction=True,
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -5567,6 +5612,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
+                    oversight_supplement=oversight_supplement,
+                    team_building_supplement=team_building_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
@@ -6307,6 +6354,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
+                    # Same turn continuing, so it keeps its envelope. Omitting
+                    # it would default to None and clear the contextvar for the
+                    # remainder of the turn: tool enforcement off, spend
+                    # uncharged, and the next spawn minted as an unbounded root.
+                    envelope=envelope,
                     model=model,
                     organization_id=organization_id,
                     team_id=team_id,

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -8,12 +8,14 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
   getListWorkspaceFilesMockHandler401,
   getListWorkspaceFoldersMockHandler,
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import type { ExpertIdentity } from "@/app/api/__generated__/models/expertIdentity";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
 const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
@@ -30,10 +32,17 @@ afterEach(() => {
   uploadFileDirectMock.mockReset();
 });
 
+// The generated default answers with random experts, which would render
+// random filter tabs; tests that care register their own roster.
+beforeEach(() => {
+  server.use(getListExpertIdentitiesMockHandler([]));
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS_PAGE: "artifacts-page",
     AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+    HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
@@ -111,6 +120,27 @@ function useFilesHandler(files: WorkspaceFileItem[]) {
       has_more: false,
     }),
   );
+}
+
+const HIRED_EXPERTS: ExpertIdentity[] = [
+  {
+    id: "expert-a",
+    name: "Nova",
+    avatar_url: null,
+    role: "Analyst",
+    is_archived: false,
+  },
+  {
+    id: "expert-b",
+    name: "Kai",
+    avatar_url: null,
+    role: "Writer",
+    is_archived: true,
+  },
+];
+
+function useExpertsHandler(experts: ExpertIdentity[] = HIRED_EXPERTS) {
+  server.use(getListExpertIdentitiesMockHandler(experts));
 }
 
 // The row's name button is the tooltip trigger; focusing it opens the large
@@ -725,5 +755,161 @@ describe("ArtifactsPage - file viewer modal", () => {
     expect(
       await screen.findByRole("button", { name: /^download$/i }),
     ).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - expert filter", () => {
+  test("offers hired experts and narrows the listing to the chosen one", async () => {
+    useStorageHandler();
+    useExpertsHandler();
+    const requests: { expertId: string | null; rootOnly: string | null }[] = [];
+    server.use(
+      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requests.push({
+          expertId: params.get("expert_id"),
+          rootOnly: params.get("root_only"),
+        });
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    const novaTab = await screen.findByRole("tab", { name: "Nova" });
+    expect(screen.getByRole("tab", { name: "Everyone" })).toBeDefined();
+    // A fired expert is history, not a filter you can pick.
+    expect(screen.queryByRole("tab", { name: "Kai" })).toBeNull();
+
+    fireEvent.click(novaTab);
+
+    await waitFor(() => {
+      const last = requests[requests.length - 1];
+      expect(last.expertId).toBe("expert-a");
+      expect(last.rootOnly).toBe("false");
+    });
+    expect(novaTab.getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("labels each file with the expert whose conversation it came from", async () => {
+    useStorageHandler();
+    useExpertsHandler();
+    useFilesHandler([
+      makeFile({ id: "f1", name: "plan.md", expert_id: "expert-a" }),
+      makeFile({ id: "f2", name: "notes.md", expert_id: null }),
+    ]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("notes.md")).toBeDefined();
+    const badges = await screen.findAllByTestId("artifacts-expert-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("Nova");
+  });
+
+  test("hides the expert filter when no expert is hired", async () => {
+    useStorageHandler();
+    useExpertsHandler([]);
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("No files yet")).toBeDefined();
+    expect(screen.queryByTestId("artifacts-expert-filter")).toBeNull();
+  });
+});
+
+describe("ArtifactsPage - empty state", () => {
+  test("offers an upload and a new task when the workspace is empty", async () => {
+    useStorageHandler();
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    expect(
+      screen.getByRole("button", { name: /upload a file/i }),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: /start a task/i })).toBeDefined();
+  });
+
+  test("keeps the search empty state free of calls to action", async () => {
+    useStorageHandler();
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    fireEvent.change(screen.getByPlaceholderText(/search/i), {
+      target: { value: "zzz" },
+    });
+
+    expect(await screen.findByText("No files match your search")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /upload a file/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /start a task/i })).toBeNull();
+  });
+});
+
+describe("ArtifactsPage - rename", () => {
+  test("the row's pencil opens a dialog that patches the file name", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+    let patchedName: string | null = null;
+    server.use(
+      http.patch("/api/proxy/api/workspace/files/f1", async ({ request }) => {
+        const body = (await request.json()) as { name?: string };
+        patchedName = body.name ?? null;
+        return HttpResponse.json(
+          makeFile({ id: "f1", name: body.name ?? "old.txt" }),
+        );
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    expect((input as HTMLInputElement).value).toBe("old.txt");
+    fireEvent.change(input, { target: { value: "new.txt" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(patchedName).toBe("new.txt"));
+  });
+
+  test("clicking inside the rename dialog does not open the viewer", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    fireEvent.click(input);
+
+    expect(screen.queryByTestId("file-viewer")).toBeNull();
+    expect(screen.getByLabelText(/file name/i)).toBeDefined();
+  });
+
+  test("rejects a name with a slash before sending anything", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    fireEvent.change(input, { target: { value: "a/b.txt" } });
+
+    expect(await screen.findByText(/cannot contain slashes/i)).toBeDefined();
+    expect(
+      (screen.getByTestId("rename-file-submit") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

@@ -59,6 +59,7 @@ from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
     queue_pending_for_http,
+    resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
@@ -116,6 +117,7 @@ from backend.copilot.tools.models import (
     DocSearchResultsResponse,
     ErrorResponse,
     ExecutionStartedResponse,
+    ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
@@ -143,7 +145,7 @@ from backend.copilot.transports import (
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.data.workspace import build_files_block
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
@@ -266,6 +268,12 @@ class StreamChatRequest(BaseModel):
     message: str = Field(max_length=64_000)
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    voice: bool = Field(
+        default=False,
+        description="Voice mode is waiting on speech. Adds one line asking the "
+        "reply to open with a spoken acknowledgement before any tool call; "
+        "text turns never pay for it.",
+    )
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
@@ -598,8 +606,8 @@ class SetDefaultTransportRequest(BaseModel):
     """The connection new chats should start on.
 
     ``auth_provider: null`` clears the choice and hands the decision back to
-    the server. Sending ``codex`` requires naming the credential, so the
-    default keeps pointing at one account rather than "whichever ChatGPT".
+    the server. A user-backed provider requires naming the credential, so the
+    default keeps pointing at one account rather than whichever account exists.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -637,7 +645,7 @@ async def set_default_chat_transport(
         )
     except InvalidDefaultChatRoute as e:
         raise HTTPException(
-            status_code=404 if e.detail == "codex_credential_not_found" else 422,
+            status_code=404 if e.detail.endswith("_credential_not_found") else 422,
             detail=e.detail,
         ) from e
     return ChatTransportsResponse(transports=transports)
@@ -654,10 +662,10 @@ async def _resolve_new_session_llm_route(
         await enforce_codex_access_http(user_id)
 
     if request is not None and request.builder_graph_id is not None:
-        if auth_provider == "codex" or credential_id is not None:
+        if auth_provider != "platform" or credential_id is not None:
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{auth_provider}_builder_session_unsupported",
             )
         if not is_deployment_chat_available():
             raise HTTPException(
@@ -677,10 +685,10 @@ async def _resolve_new_session_llm_route(
                     status_code=422,
                     detail="codex_credential_not_allowed",
                 )
-            if auth_provider == "codex" and credential_id is None:
+            if auth_provider != "platform" and credential_id is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="codex_credential_required",
+                    detail=f"{auth_provider}_credential_required",
                 )
             selected_route = next(
                 (
@@ -693,10 +701,10 @@ async def _resolve_new_session_llm_route(
                 None,
             )
             if selected_route is None:
-                if auth_provider == "codex":
+                if auth_provider != "platform":
                     raise HTTPException(
                         status_code=404,
-                        detail="codex_credential_not_found",
+                        detail=f"{auth_provider}_credential_not_found",
                     )
                 raise HTTPException(
                     status_code=503,
@@ -793,10 +801,10 @@ async def create_session(
     )
 
     if builder_graph_id:
-        if llm_auth_provider == "codex":
+        if llm_auth_provider != "platform":
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{llm_auth_provider}_builder_session_unsupported",
             )
         session = await get_or_create_builder_session(
             user_id,
@@ -951,8 +959,11 @@ async def change_session_connection_route(
 
     if auth_provider == "platform" and credential_id is not None:
         raise HTTPException(status_code=422, detail="codex_credential_not_allowed")
-    if auth_provider == "codex" and credential_id is None:
-        raise HTTPException(status_code=422, detail="codex_credential_required")
+    if auth_provider != "platform" and credential_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{auth_provider}_credential_required",
+        )
 
     transports = await get_chat_transports(user_id)
     target = next(
@@ -968,8 +979,11 @@ async def change_session_connection_route(
     if target is None:
         # Same shapes the session-creation path uses, so a client that already
         # handles them does not need a second vocabulary for the same refusals.
-        if auth_provider == "codex":
-            raise HTTPException(status_code=404, detail="codex_credential_not_found")
+        if auth_provider != "platform":
+            raise HTTPException(
+                status_code=404,
+                detail=f"{auth_provider}_credential_not_found",
+            )
         raise HTTPException(status_code=503, detail="chat_transport_not_configured")
 
     changed = await update_session_llm_route(
@@ -1229,6 +1243,8 @@ async def reset_copilot_usage(
         config.weekly_cost_limit_microdollars,
     )
 
+    if tier.value == "TRIAL":
+        raise HTTPException(409, "Trial allowances cannot be reset with credits.")
     if daily_limit <= 0:
         raise HTTPException(
             status_code=400,
@@ -1541,23 +1557,6 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    # The Advanced tier is a paid capability, and it was only enforced where
-    # the picker decides what to grey out. A client that skips the picker and
-    # posts model="advanced" was served it, on our credits. Checked first,
-    # before the session is touched or the message stored: a turn we are going
-    # to refuse should leave nothing behind.
-    if request.model == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            # Not knowing is not permission. The picker stays generous when
-            # the lookup is down; spending does not.
-            raise HTTPException(
-                status_code=503, detail="advanced_tier_unavailable"
-            ) from None
-        if not entitled:
-            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
-
     import time
 
     stream_start_time = time.perf_counter()
@@ -1574,6 +1573,22 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+
+    # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
+    # Every other route can spend platform-gated premium inference, so a client
+    # that skips the picker still has to hold the Advanced entitlement.
+    if (
+        request.model == "advanced"
+        and session.metadata.llm_auth_provider != "microsoft_365_copilot"
+    ):
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            raise HTTPException(
+                status_code=503, detail="advanced_tier_unavailable"
+            ) from None
+        if not entitled:
+            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1663,6 +1678,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
@@ -1721,9 +1737,16 @@ async def stream_chat_post(
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
+    # Expert sessions may only attach files from the expert's own
+    # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
     if request.file_ids:
-        files = await resolve_workspace_files(user_id, request.file_ids)
+        files = await resolve_attachments_for_http(
+            user_id,
+            request.file_ids,
+            session_id=session_id,
+            expert_id=session.expert_id,
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files)
 
@@ -1751,6 +1774,7 @@ async def stream_chat_post(
             message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
             context=request.context,
+            voice=request.voice,
             file_ids=sanitized_file_ids,
             organization_id=turn_org_id,
             team_id=turn_team_id,
@@ -2002,6 +2026,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        expert_id=session.expert_id,
     )
 
 
@@ -2294,6 +2319,7 @@ ToolResponseUnion = (
     | MemoryForgetConfirmResponse
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
+    | ExpertOnboardingResponse
 )
 
 

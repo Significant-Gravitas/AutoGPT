@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { useFileDrag } from "../../WorkspaceFolders/useFileDrag";
+import { ExpertBadge } from "../ExpertBadge";
 import { FileActionsMenu } from "../FileActionsMenu";
 import {
   formatFileSize,
@@ -13,22 +14,31 @@ import {
   getFileTypeIcon,
   getFileTypeLabel,
 } from "../helpers";
+import { STAGGER_CAP, STAGGER_STEP_S } from "../ArtifactsTable/row-layout";
 import { CardPreview } from "./CardPreview";
 
 interface Props {
   file: WorkspaceFileItem;
   onOpen: (file: WorkspaceFileItem) => void;
+  /** Position in the grid; drives the small entrance stagger. */
+  index?: number;
 }
 
+// Cards animate on their own mount so one added by an upload or a refetch
+// is never left in its hidden start state (see row-layout.ts).
 const CARD_VARIANTS: Variants = {
   hidden: { opacity: 0, y: 8, scale: 0.98, filter: "blur(8px)" },
-  show: {
+  show: (index: number = 0) => ({
     opacity: 1,
     y: 0,
     scale: 1,
     filter: "blur(0px)",
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
-  },
+    transition: {
+      duration: 0.4,
+      ease: [0.16, 1, 0.3, 1],
+      delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
+    },
+  }),
 };
 
 const REDUCED_CARD_VARIANTS: Variants = {
@@ -36,14 +46,17 @@ const REDUCED_CARD_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
-export function ArtifactCard({ file, onOpen }: Props) {
+export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
   const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
-  const { handleDragStart, handleDragEnd } = useFileDrag(file.id, file.name);
+  const { handleDragStart, handleDragEnd } = useFileDrag([file.id], file.name);
 
   return (
     <motion.li
       variants={reduceMotion ? REDUCED_CARD_VARIANTS : CARD_VARIANTS}
+      custom={index}
+      initial={reduceMotion ? false : "hidden"}
+      animate="show"
       style={{ willChange: "transform, opacity, filter" }}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
@@ -73,11 +86,14 @@ export function ArtifactCard({ file, onOpen }: Props) {
             >
               {file.name}
             </Text>
-            <Text variant="small" className="truncate text-zinc-500">
-              {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
-              {formatFileSize(file.size_bytes)} ·{" "}
-              {formatRelativeDate(file.created_at)}
-            </Text>
+            <div className="flex min-w-0 items-center gap-2">
+              <Text variant="small" className="truncate text-zinc-500">
+                {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
+                {formatFileSize(file.size_bytes)} ·{" "}
+                {formatRelativeDate(file.created_at)}
+              </Text>
+              <ExpertBadge expertId={file.expert_id} className="shrink-0" />
+            </div>
           </div>
           <div className="pointer-events-auto">
             <FileActionsMenu file={file} />

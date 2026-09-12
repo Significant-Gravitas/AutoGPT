@@ -81,7 +81,8 @@ export type CopilotLlmModel = "standard" | "advanced";
 
 export type CopilotLlmAuthSelection =
   | { authProvider: "platform"; credentialId: null }
-  | { authProvider: "codex"; credentialId: string };
+  | { authProvider: "codex"; credentialId: string }
+  | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
 /** Context panel tab: "files" is the inline workspace-files card, "artifacts"
  *  the docked artifacts library. */

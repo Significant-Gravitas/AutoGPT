@@ -212,7 +212,7 @@ class TestSdkExpertsFlagGuard:
 
         is_feature_enabled_mock.assert_awaited_once()
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
-        # Plain Autopilot session (no session.expert_id): loses the
+        # Plain Otto session (no session.expert_id): loses the
         # expert-session tools, keeps the staffing ("expert_admin") tools.
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden

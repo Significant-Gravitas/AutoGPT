@@ -431,7 +431,7 @@ class TestExpertMemoryScope:
         audit_log.assert_called_once()
         message = audit_log.call_args.args[0]
         assert mock_jwt_admin["user_id"] in message
-        assert "scope AutoPilot" in message
+        assert "scope Otto" in message
         assert "group None" not in message
 
     @pytest.mark.parametrize(
@@ -493,7 +493,7 @@ class TestExpertMemoryScope:
         audit_log.assert_called_once()
         message = audit_log.call_args.args[0]
         assert mock_jwt_admin["user_id"] in message
-        assert "AutoPilot (group user_abc)" in message
+        assert "Otto (group user_abc)" in message
 
 
 class TestListEntities:
@@ -524,7 +524,7 @@ class TestListEntities:
         audit_log.assert_called_once()
         message = audit_log.call_args.args[0]
         assert mock_jwt_admin["user_id"] in message
-        assert "AutoPilot (group user_abc)" in message
+        assert "Otto (group user_abc)" in message
         assert "group None" not in message
 
     def test_limit_above_cap_rejected_with_422(self) -> None:
