@@ -234,6 +234,9 @@ def test_muse_spark_1_3_bills_at_authored_rates():
     )
     assert muse_spark_entry.price_tier == 1
     assert muse_spark_entry.context_window == 1048576
+    assert muse_spark_entry.supports_tools is True
+    assert muse_spark_entry.supports_json_output is True
+    assert muse_spark_entry.supports_reasoning is True
 
 
 def test_provider_usd_prices_are_all_or_nothing():
