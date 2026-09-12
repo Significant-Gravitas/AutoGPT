@@ -636,6 +636,23 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-spark-1.3",
+                display_name="Muse Spark 1.3",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=1000000,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=187.5,
+                    output_credits_per_1m=637.5,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
