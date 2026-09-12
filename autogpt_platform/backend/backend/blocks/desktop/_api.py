@@ -8,7 +8,6 @@ package pins a conflicting pillow version.
 """
 
 import asyncio
-import base64
 import contextlib
 import secrets
 import shlex
@@ -30,7 +29,6 @@ PERSISTENT_HOME_DIRS = ("Downloads", "Desktop", "Documents")
 DISPLAY = ":0"
 VNC_PORT = 5900
 STREAM_PORT = 6080
-SCREENSHOT_PATH = "/tmp/agpt_screenshot.png"
 # The stream password lives next to x11vnc's hashed one so a resume can hand
 # back the URL the user already holds instead of restarting the proxy.
 STREAM_PASSWORD_PATH = f"{HOME_PATH}/.vnc/agpt_stream_password"
@@ -44,27 +42,6 @@ _TYPE_DELAY_MS = 75
 _READY_POLL_SECONDS = 0.5
 # XFCE routinely takes 10-15 s to bring up xfwm4 on a cold start.
 _READY_POLL_ATTEMPTS = 40
-
-_KEY_ALIASES = {
-    "enter": "Return",
-    "return": "Return",
-    "esc": "Escape",
-    "escape": "Escape",
-    "backspace": "BackSpace",
-    "delete": "Delete",
-    "tab": "Tab",
-    "space": "space",
-    "up": "Up",
-    "down": "Down",
-    "left": "Left",
-    "right": "Right",
-    "home": "Home",
-    "end": "End",
-    "pageup": "Page_Up",
-    "pagedown": "Page_Down",
-    "cmd": "super",
-    "win": "super",
-}
 
 
 class DesktopStream(BaseModel):
@@ -83,10 +60,6 @@ class PersistenceInfo(BaseModel):
     # computer, SHARED_PATH). ``volume_mounted``/``volume_name`` describe the
     # WORKSPACE_PATH mount specifically.
     mounted_paths: list[str] = []
-
-
-def map_key(key: str) -> str:
-    return _KEY_ALIASES.get(key.strip().lower(), key.strip())
 
 
 class DesktopSession:
@@ -139,8 +112,15 @@ class DesktopSession:
         return session, persistence
 
     @classmethod
-    async def connect(cls, sandbox_id: str, api_key: str) -> "DesktopSession":
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+    async def connect(
+        cls, sandbox_id: str, api_key: str, timeout_seconds: Optional[int] = None
+    ) -> "DesktopSession":
+        """Reattach to a desktop; *timeout_seconds* re-arms its running-time
+        limit, otherwise the SDK's 300 s default would pause a resumed desktop
+        under the user long before a freshly created one."""
+        sandbox = await AsyncSandbox.connect(
+            sandbox_id, api_key=api_key, timeout=timeout_seconds
+        )
         return cls(sandbox)
 
     async def start_stream(self) -> DesktopStream:
@@ -195,44 +175,6 @@ class DesktopSession:
         saved = saved.strip() if isinstance(saved, str) else ""
         return saved or None
 
-    async def screenshot_base64(self) -> str:
-        await self.run_command(f"scrot --pointer {SCREENSHOT_PATH}")
-        data = await self.sandbox.files.read(SCREENSHOT_PATH, format="bytes")
-        await self.run_command(f"rm -f {SCREENSHOT_PATH}")
-        return base64.b64encode(data).decode()
-
-    async def move_mouse(self, x: int, y: int) -> None:
-        await self._xdotool(f"mousemove --sync {x} {y}")
-
-    async def click(
-        self, button: int, x: Optional[int], y: Optional[int], double: bool = False
-    ) -> None:
-        if x is not None and y is not None:
-            await self.move_mouse(x, y)
-        repeat = "--repeat 2 --delay 100 " if double else ""
-        await self._xdotool(f"click {repeat}{button}")
-
-    async def drag(self, from_x: int, from_y: int, to_x: int, to_y: int) -> None:
-        await self._xdotool(f"mousemove --sync {from_x} {from_y}")
-        await self._xdotool("mousedown 1")
-        await self._xdotool(f"mousemove --sync {to_x} {to_y}")
-        await self._xdotool("mouseup 1")
-
-    async def scroll(self, direction: Literal["up", "down"], amount: int) -> None:
-        button = 4 if direction == "up" else 5
-        await self._xdotool(f"click --repeat {amount} {button}")
-
-    async def type_text(self, text: str) -> None:
-        for i in range(0, len(text), _TYPE_CHUNK_SIZE):
-            chunk = text[i : i + _TYPE_CHUNK_SIZE]
-            await self._xdotool(
-                f"type --delay {_TYPE_DELAY_MS} -- {shlex.quote(chunk)}"
-            )
-
-    async def press(self, keys: list[str]) -> None:
-        combo = "+".join(map_key(k) for k in keys if k.strip())
-        await self._xdotool(f"key {combo}")
-
     async def run_command(
         self, command: str, cwd: Optional[str] = None, timeout: int = 60
     ):
@@ -267,29 +209,11 @@ class DesktopSession:
         )
         await self.run_command(script)
 
-    async def resources(self) -> Optional[tuple[int, float]]:
-        """``(vCPU, RAM GiB)`` as E2B reports for this box, or ``None``.
-
-        Templates are sized by E2B, not by us, so cost telemetry reads the
-        real numbers instead of assuming them. Never raises: a failed lookup
-        just means the meter falls back to its default sizing.
-        """
-        try:
-            info = await asyncio.wait_for(
-                self.sandbox.get_info(), timeout=_KILL_TIMEOUT_SECONDS
-            )
-            return info.cpu_count, info.memory_mb / 1024
-        except Exception:
-            return None
-
     async def pause(self) -> None:
         await self.sandbox.pause()
 
     async def kill(self) -> None:
         await self.sandbox.kill()
-
-    async def _xdotool(self, args: str) -> None:
-        await self.run_command(f"xdotool {args}")
 
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):
@@ -364,6 +288,14 @@ async def resolve_volume(volume_name: str, api_key: str) -> "AsyncVolume | str":
         return volume_name
 
 
+# Client-side deadline on each create call (E2B provisions in 5-15 s), and
+# the number of mounted attempts before the volumes are given up on.  A
+# desktop keeps its volumes for life once created, so one transient failure
+# must not decide that for it.
+CREATE_TIMEOUT_SECONDS = 30
+MOUNTED_CREATE_ATTEMPTS = 2
+
+
 async def _create_sandbox_with_volumes(
     volume_mounts: Optional[Mapping[str, str]],
     api_key: str,
@@ -373,25 +305,45 @@ async def _create_sandbox_with_volumes(
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
     kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template, metadata)
     if not volume_mounts:
-        return await AsyncSandbox.create(**kwargs), PersistenceInfo()
+        sandbox = await asyncio.wait_for(
+            AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+        )
+        return sandbox, PersistenceInfo()
 
     paths = list(volume_mounts)
     volumes = await asyncio.gather(
         *(resolve_volume(volume_mounts[path], api_key) for path in paths)
     )
     mounts = dict(zip(paths, volumes))
-    try:
-        sandbox = await AsyncSandbox.create(**kwargs, volume_mounts=mounts)
-    except Exception as mount_error:
-        sandbox = await AsyncSandbox.create(**kwargs)
-        return sandbox, PersistenceInfo(
-            warning=(
-                "Persistent volume unavailable (E2B volumes are in private beta); "
-                f"using suspend/resume persistence only: {mount_error}"
+    mount_error: Exception | None = None
+    for attempt in range(1, MOUNTED_CREATE_ATTEMPTS + 1):
+        try:
+            sandbox = await asyncio.wait_for(
+                AsyncSandbox.create(**kwargs, volume_mounts=mounts),
+                timeout=CREATE_TIMEOUT_SECONDS,
             )
+        except Exception as exc:
+            mount_error = exc
+            if attempt < MOUNTED_CREATE_ATTEMPTS:
+                await asyncio.sleep(attempt)
+            continue
+        return sandbox, PersistenceInfo(
+            volume_mounted=WORKSPACE_PATH in volume_mounts,
+            volume_name=volume_mounts.get(WORKSPACE_PATH),
+            mounted_paths=list(volume_mounts),
         )
+
+    # The volumes really are unavailable: fall back to a volume-less box and
+    # say so in its stamp, so the Computer tab does not report mounts it
+    # does not have.
+    if kwargs.get("metadata"):
+        kwargs["metadata"] = {**kwargs["metadata"], "autogpt_mounts": "none"}
+    sandbox = await asyncio.wait_for(
+        AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+    )
     return sandbox, PersistenceInfo(
-        volume_mounted=WORKSPACE_PATH in volume_mounts,
-        volume_name=volume_mounts.get(WORKSPACE_PATH),
-        mounted_paths=list(volume_mounts),
+        warning=(
+            "Persistent volume unavailable (E2B volumes are in private beta); "
+            f"using suspend/resume persistence only: {mount_error}"
+        )
     )

@@ -25,6 +25,19 @@ describe("DesktopStreamRenderer", () => {
     ).toBe(false);
   });
 
+  it("refuses anything but an https stream URL", () => {
+    for (const url of [
+      "javascript:alert(document.cookie)",
+      "http://6080-sandbox.e2b.app/vnc.html",
+      "data:text/html,<script>1</script>",
+      "not a url",
+    ]) {
+      expect(desktopStreamRenderer.canRender({ ...streamValue, url })).toBe(
+        false,
+      );
+    }
+  });
+
   it("renders an interactive iframe pointing at the stream URL", () => {
     const { container } = render(
       <>{desktopStreamRenderer.render(streamValue)}</>,

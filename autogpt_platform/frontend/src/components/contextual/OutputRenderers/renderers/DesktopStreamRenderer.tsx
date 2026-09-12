@@ -20,12 +20,24 @@ interface DesktopStreamValue {
   requires_auth?: boolean;
 }
 
+function isHttpsUrl(url: unknown): url is string {
+  if (typeof url !== "string") return false;
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function isDesktopStream(value: unknown): value is DesktopStreamValue {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  // This renderer is in the global registry, so any output shaped like a
+  // stream reaches the iframe. Only an https URL may: a javascript: URL
+  // would run in our origin with allow-scripts allow-same-origin.
   return (
     candidate.kind === "desktop_stream" &&
-    typeof candidate.url === "string" &&
+    isHttpsUrl(candidate.url) &&
     typeof candidate.sandbox_id === "string"
   );
 }

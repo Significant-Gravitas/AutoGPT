@@ -139,9 +139,24 @@ _SANDBOX_ID_TTL = 48 * 3600  # 48 hours
 _EXPERT_ID_TTL = 30 * 24 * 3600
 
 # Leak guard for the per-expert active-turn counter: a turn that dies without
-# releasing its slot stops blocking the pause after this long.  Past it the
-# lifecycle timeout has long since paused the box anyway.
-_ACTIVE_TURN_TTL = 3600
+# releasing its slot stops blocking the pause after this long.  A turn may
+# legitimately run for the 6 h executor limit (``consumer-timeout`` in
+# ``executor/utils.py``), so the guard sits just past that; every acquire
+# refreshes it.
+_ACTIVE_TURN_TTL = 6 * 3600 + 15 * 60
+
+# Release one turn and report how many are left; the last one out deletes
+# the key.  One script, so a turn that starts between the DECR and the DEL
+# can never have its count wiped.
+_RELEASE_TURN_SCRIPT = (
+    'local n = redis.call("decr", KEYS[1]) '
+    'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
+    "return n"
+)
+
+# One more reconnect attempt before a listed expert box is given up on: a
+# durable box that fails once on a transient error must not be forked.
+_RECONNECT_RETRY_DELAY_SECONDS = 1.0
 
 
 class SandboxOwner(BaseModel):
@@ -244,6 +259,14 @@ async def _clear_stored_sandbox_id(
     await redis.delete(owner.key(sandbox_kind))
 
 
+class SandboxLookupError(Exception):
+    """E2B could not tell us which boxes an owner has.
+
+    Distinct from "none": for an expert the box *is* the state, so a failed
+    lookup must not be read as "no box" and answered with a fresh one.
+    """
+
+
 async def list_owned_sandboxes(
     owner: SandboxOwner, sandbox_kind: SandboxKind, api_key: str
 ) -> list[SandboxInfo]:
@@ -251,7 +274,7 @@ async def list_owned_sandboxes(
 
     A running box sorts before a paused one.  Listing never connects, so a
     paused box stays paused — connecting is what auto-resume reacts to.
-    Returns ``[]`` on any API failure so callers degrade to "nothing found".
+    Raises :class:`SandboxLookupError` when the API call fails or times out.
     """
     try:
         paginator = AsyncSandbox.list(
@@ -266,10 +289,9 @@ async def list_owned_sandboxes(
             paginator.next_items(), timeout=_E2B_API_TIMEOUT_SECONDS
         )
     except Exception as exc:
-        logger.warning(
-            "[E2B] Metadata lookup for %s %s failed: %s", owner, sandbox_kind, exc
-        )
-        return []
+        raise SandboxLookupError(
+            f"E2B lookup of {owner}'s {sandbox_kind} boxes failed: {exc}"
+        ) from exc
     infos = sorted(infos, key=lambda info: info.started_at, reverse=True)
     running = [info for info in infos if info.state == SandboxState.RUNNING]
     paused = [info for info in infos if info.state != SandboxState.RUNNING]
@@ -286,6 +308,8 @@ async def find_owned_sandbox_id(
     expert the box *is* the state, so we query E2B by the owner metadata every
     sandbox is stamped with, preferring a running box over a paused one and
     the newest of several (a lost creation race can leave duplicates).
+    A failed lookup raises :class:`SandboxLookupError` rather than answering
+    ``None``: "unknown" must never turn into a second box.
     """
     if not owner.is_expert:
         return None
@@ -364,6 +388,16 @@ async def _acquire_turn(owner: SandboxOwner) -> None:
         logger.warning("[E2B] Could not record active turn for %s: %s", owner, exc)
 
 
+async def count_expert_turn(session_id: str, expert_id: str | None) -> None:
+    """Count a turn on the expert's box (no-op for a plain session).
+
+    For callers that opened the box with ``count_turn=False`` because work
+    that could still fail sits between opening it and the ``try`` whose
+    ``finally`` releases the turn.  Count only once that ``try`` is reached.
+    """
+    await _acquire_turn(SandboxOwner.for_session(session_id, expert_id))
+
+
 async def _release_turn(owner: SandboxOwner) -> bool:
     """Return ``True`` when the box may be paused: no other turn is still on it."""
     if not owner.is_expert:
@@ -371,9 +405,8 @@ async def _release_turn(owner: SandboxOwner) -> bool:
     try:
         redis = await get_redis_async()
         key = _active_turns_key(owner)
-        remaining = await redis.decr(key)
+        remaining = int(await redis.eval(_RELEASE_TURN_SCRIPT, 1, key))
         if remaining <= 0:
-            await redis.delete(key)
             return True
         logger.info(
             "[E2B] %s still has %d active turn(s); leaving its box running",
@@ -403,6 +436,7 @@ async def get_or_create_sandbox(
     *,
     expert_id: str | None = None,
     user_id: str | None = None,
+    count_turn: bool = True,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for this turn's owner or create a new one.
 
@@ -422,14 +456,21 @@ async def get_or_create_sandbox(
     ``~/workspace`` with the on-demand desktop and, for an expert, the owning
     user's ``~/shared``.  A mount failure degrades to a volume-less sandbox
     rather than failing the session.
+    *count_turn* records this turn on an expert's box so another turn's end
+    cannot pause it; pass ``False`` and call ``count_expert_turn`` later when
+    the release is not yet guaranteed to run.
+
+    Raises :class:`SandboxLookupError` when E2B cannot say whether an expert
+    already has a box: a fresh box would fork the expert's durable state.
     """
     owner = SandboxOwner.for_session(session_id, expert_id)
     redis = await get_redis_async()
     key = owner.key("shell")
-    # Boxes E2B still lists but we could not reconnect to (mid-teardown, an
-    # unresumable snapshot). Without this an expert owner would re-find the
+    # Boxes E2B still lists but we could not reconnect to twice (mid-teardown,
+    # an unresumable snapshot). Without this an expert owner would re-find the
     # same id on every iteration and never fall through to creating a fresh one.
     failed_ids: set[str] = set()
+    retried_ids: set[str] = set()
 
     for _ in range(_MAX_WAIT_ATTEMPTS):
         raw = await redis.get(key)
@@ -446,9 +487,16 @@ async def get_or_create_sandbox(
         if value and value != _CREATING_SENTINEL:
             # Existing sandbox ID — try to reconnect (auto-resumes if paused).
             sandbox = await _try_reconnect(value, owner, api_key)
+            if sandbox is None and owner.is_expert and value not in retried_ids:
+                # A durable box gets one more chance before it is given up
+                # on; a single transient failure must not fork it.
+                retried_ids.add(value)
+                await asyncio.sleep(_RECONNECT_RETRY_DELAY_SECONDS)
+                sandbox = await _try_reconnect(value, owner, api_key)
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
-                await _acquire_turn(owner)
+                if count_turn:
+                    await _acquire_turn(owner)
                 return sandbox
             # _try_reconnect cleared the key — loop to create a new sandbox.
             failed_ids.add(value)
@@ -735,7 +783,11 @@ async def kill_expert_sandboxes(expert_id: str, api_key: str) -> int:
     for sandbox_kind in ("shell", "desktop"):
         sandbox_id = await _get_stored_sandbox_id(owner, sandbox_kind)
         if not sandbox_id:
-            sandbox_id = await find_owned_sandbox_id(owner, sandbox_kind, api_key)
+            try:
+                sandbox_id = await find_owned_sandbox_id(owner, sandbox_kind, api_key)
+            except SandboxLookupError as exc:
+                logger.warning("[E2B] Archive of %s: %s", owner, exc)
+                continue
         if not sandbox_id:
             continue
         if await _act_on_sandbox(

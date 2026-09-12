@@ -11,9 +11,11 @@ the one write: it creates or resumes the owner's desktop and hands back the
 live stream, exactly as the ``start_desktop`` tool does from inside a turn.
 """
 
+import asyncio
 import logging
+import uuid
 from datetime import datetime
-from typing import Literal, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional
 
 from pydantic import BaseModel
 
@@ -27,6 +29,7 @@ from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools.e2b_sandbox import (
     METADATA_MOUNTS,
     SandboxKind,
+    SandboxLookupError,
     SandboxOwner,
     find_owned_sandbox_id,
     list_owned_sandboxes,
@@ -36,6 +39,16 @@ from backend.data.redis_client import get_redis_async
 logger = logging.getLogger(__name__)
 
 _DESKTOP_RESOLUTION = (1280, 720)
+
+# Opening a desktop is create + display + stream, tens of seconds at worst;
+# the lock outlives that, and a second opener waits about as long.
+_DESKTOP_LOCK_TTL_SECONDS = 120
+_DESKTOP_LOCK_WAIT_SECONDS = 120
+_DESKTOP_LOCK_POLL_SECONDS = 0.5
+_UNLOCK_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("del", KEYS[1]) else return 0 end'
+)
 
 
 class SandboxSummary(BaseModel):
@@ -83,7 +96,12 @@ async def describe_computer(
     if not api_key:
         return info
     for kind in ("shell", "desktop"):
-        boxes = await list_owned_sandboxes(owner, kind, api_key)
+        try:
+            boxes = await list_owned_sandboxes(owner, kind, api_key)
+        except SandboxLookupError as exc:
+            # A listing is informational; show nothing rather than fail the page.
+            logger.warning("[E2B] describe_computer: %s", exc)
+            continue
         if not boxes:
             continue
         box = boxes[0]
@@ -117,9 +135,40 @@ async def open_desktop(
     Shared by the ``start_desktop`` tool and the HTTP endpoints, so a desktop
     opened from the expert page is the same box the expert's next turn finds.
     *user_id* / *session_id* are provenance only, stamped on a newly created box.
+
+    One opener at a time per owner: the panel's Start and the model's
+    ``start_desktop`` (or two tabs) can both miss the cache, and without the
+    lock each would create a box, one of which nothing would ever find again.
+    A second opener waits for the first and then reattaches to its box.
     """
     redis = await get_redis_async()
     key = owner.key("desktop")
+    lock_key = f"{key}:lock"
+    token = uuid.uuid4().hex
+    waited = 0.0
+    while not await redis.set(lock_key, token, nx=True, ex=_DESKTOP_LOCK_TTL_SECONDS):
+        if waited >= _DESKTOP_LOCK_WAIT_SECONDS:
+            raise RuntimeError(f"Another request is still opening {owner}'s desktop")
+        await asyncio.sleep(_DESKTOP_LOCK_POLL_SECONDS)
+        waited += _DESKTOP_LOCK_POLL_SECONDS
+    try:
+        return await _open_desktop_locked(
+            owner, mounts, api_key, redis, key, user_id=user_id, session_id=session_id
+        )
+    finally:
+        await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
+
+
+async def _open_desktop_locked(
+    owner: SandboxOwner,
+    mounts: Mapping[str, str],
+    api_key: str,
+    redis: Any,
+    key: str,
+    *,
+    user_id: Optional[str],
+    session_id: Optional[str],
+) -> tuple[DesktopStream, bool, bool]:
     raw = await redis.get(key)
     sandbox_id = raw.decode() if isinstance(raw, bytes) else raw
     if not sandbox_id:
@@ -127,7 +176,9 @@ async def open_desktop(
         sandbox_id = await find_owned_sandbox_id(owner, "desktop", api_key)
     if sandbox_id:
         try:
-            desktop = await DesktopSession.connect(sandbox_id, api_key)
+            desktop = await DesktopSession.connect(
+                sandbox_id, api_key, timeout_seconds=chat_config.e2b_desktop_timeout
+            )
             await desktop.ensure_display(*_DESKTOP_RESOLUTION)
             await redis.set(key, sandbox_id, ex=owner.ttl)
             stream = await desktop.start_stream()

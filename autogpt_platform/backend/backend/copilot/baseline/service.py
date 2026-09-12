@@ -128,6 +128,7 @@ from backend.copilot.tools import (
     get_available_tools,
 )
 from backend.copilot.tools.e2b_sandbox import (
+    count_expert_turn,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
@@ -1803,6 +1804,11 @@ async def stream_chat_completion_baseline(
                 volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
                 expert_id=session.expert_id,
                 user_id=user_id,
+                # Counted just before the try/finally that releases it, below:
+                # everything between here and there can still fail or be
+                # stopped, and a count with no release keeps the expert's box
+                # unpaused at every later turn end.
+                count_turn=False,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
@@ -2193,6 +2199,10 @@ async def stream_chat_completion_baseline(
         )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
+
+    if e2b_sandbox is not None:
+        # From here the finally below always runs, so the turn can be counted.
+        await count_expert_turn(session_id, session.expert_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.

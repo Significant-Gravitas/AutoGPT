@@ -27,8 +27,9 @@ _STREAM = DesktopStream(
 def _make_redis(stored: str | None = None) -> MagicMock:
     redis = MagicMock()
     redis.get = AsyncMock(return_value=stored)
-    redis.set = AsyncMock()
+    redis.set = AsyncMock(return_value=True)
     redis.delete = AsyncMock()
+    redis.eval = AsyncMock(return_value=1)
     return redis
 
 
@@ -119,6 +120,7 @@ class TestStartDesktop:
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
+            mock_config.e2b_desktop_timeout = 900
             mock_session_cls.connect = AsyncMock(return_value=desktop)
             mock_session_cls.create = AsyncMock()
 
@@ -126,7 +128,7 @@ class TestStartDesktop:
 
         assert isinstance(result, DesktopStreamToolResponse)
         mock_session_cls.connect.assert_awaited_once_with(
-            "sbx-desktop-1", "e2b_test_key"
+            "sbx-desktop-1", "e2b_test_key", timeout_seconds=900
         )
         mock_session_cls.create.assert_not_awaited()
         desktop.ensure_display.assert_awaited_once()
@@ -256,7 +258,7 @@ class TestExpertDesktop:
 
         assert isinstance(result, DesktopStreamToolResponse)
         mock_session_cls.connect.assert_awaited_once_with(
-            "sbx-desktop-1", "e2b_test_key"
+            "sbx-desktop-1", "e2b_test_key", timeout_seconds=900
         )
         mock_session_cls.create.assert_not_awaited()
         # The recovered id is re-cached under the expert key.

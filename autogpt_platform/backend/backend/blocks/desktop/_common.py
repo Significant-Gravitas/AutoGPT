@@ -1,10 +1,8 @@
-from enum import Enum
 from typing import Optional
 
 from pydantic import SecretStr
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
-from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials
 
 __all__ = [
@@ -13,11 +11,8 @@ __all__ = [
     "TEST_CREDENTIALS",
     "TEST_CREDENTIALS_INPUT",
     "WORKSPACE_PATH",
-    "WorkspaceScope",
-    "agent_volume_name",
     "expert_volume_name",
     "user_volume_name",
-    "volume_name_for_scope",
     "workspace_volume_mounts",
 ]
 
@@ -42,11 +37,6 @@ CREDENTIALS_FIELD_DESCRIPTION = (
 )
 
 
-class WorkspaceScope(str, Enum):
-    USER = "user"
-    AGENT = "agent"
-
-
 def user_volume_name(user_id: str) -> str:
     """Name of the per-user durable workspace volume.
 
@@ -55,11 +45,6 @@ def user_volume_name(user_id: str) -> str:
     same persistent ``/home/user/workspace``.
     """
     return f"autogpt-user-{user_id}"
-
-
-def agent_volume_name(graph_id: str) -> str:
-    """Name of the per-agent (graph) durable workspace volume."""
-    return f"autogpt-agent-{graph_id}"
 
 
 def expert_volume_name(expert_id: str) -> str:
@@ -71,16 +56,6 @@ def expert_volume_name(expert_id: str) -> str:
     ever rebuilt.
     """
     return f"autogpt-expert-{expert_id}"
-
-
-def volume_name_for_scope(
-    scope: WorkspaceScope, execution_context: ExecutionContext
-) -> Optional[str]:
-    if scope == WorkspaceScope.USER and execution_context.user_id:
-        return user_volume_name(execution_context.user_id)
-    if scope == WorkspaceScope.AGENT and execution_context.graph_id:
-        return agent_volume_name(execution_context.graph_id)
-    return None
 
 
 def workspace_volume_mounts(

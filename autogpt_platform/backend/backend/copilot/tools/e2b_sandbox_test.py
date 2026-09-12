@@ -30,8 +30,10 @@ from backend.util.sandbox_metadata import deployment_env
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
+    SandboxLookupError,
     SandboxOwner,
     _try_reconnect,
+    count_expert_turn,
     find_owned_sandbox_id,
     get_or_create_sandbox,
     kill_expert_sandboxes,
@@ -719,7 +721,8 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     r.delete = AsyncMock()
     r.incr = AsyncMock(return_value=1)
     r.expire = AsyncMock()
-    r.decr = AsyncMock(return_value=decr_result)
+    # ``_release_turn`` runs one script: DECR, and DEL when nothing is left.
+    r.eval = AsyncMock(return_value=max(decr_result, 0))
     return r
 
 
@@ -795,15 +798,17 @@ class TestFindOwnedSandboxId:
             )
         assert result == "sb-new"
 
-    def test_api_failure_is_a_miss_not_an_error(self):
+    def test_api_failure_is_an_error_not_a_miss(self):
+        """ "Unknown" must never be read as "none": the caller would create a
+        second box and fork the expert's durable state."""
         with patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls:
             mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
-            result = asyncio.run(
-                find_owned_sandbox_id(
-                    SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
+            with pytest.raises(SandboxLookupError, match="e2b down"):
+                asyncio.run(
+                    find_owned_sandbox_id(
+                        SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
+                    )
                 )
-            )
-        assert result is None
 
 
 class TestExpertShellBox:
@@ -832,6 +837,65 @@ class TestExpertShellBox:
         assert _EXPERT_SHELL_KEY in keys
         assert f"copilot:e2b:sandbox:{_SESSION_ID}" not in keys
         # This turn is counted so a concurrent turn's end cannot pause the box.
+        redis.incr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
+
+    def test_lookup_failure_never_creates_a_second_expert_box(self):
+        redis = _keyed_redis({})
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.ensure_template", AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
+            mock_cls.create = AsyncMock()
+            with pytest.raises(SandboxLookupError):
+                asyncio.run(
+                    get_or_create_sandbox(
+                        _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                    )
+                )
+        mock_cls.create.assert_not_awaited()
+
+    def test_listed_expert_box_gets_a_second_reconnect_before_being_forked(self):
+        """One transient connect failure must not leave the durable box behind."""
+        sb = _mock_sandbox("sb-expert")
+        redis = _keyed_redis({})
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([_info("sb-expert", SandboxState.PAUSED)])
+            mock_cls.connect = AsyncMock(side_effect=[RuntimeError("502"), sb])
+            mock_cls.create = AsyncMock()
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                )
+            )
+        assert result is sb
+        assert mock_cls.connect.await_count == 2
+        mock_cls.create.assert_not_awaited()
+
+    def test_count_turn_false_defers_the_turn_count(self):
+        sb = _mock_sandbox("sb-expert")
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    expert_id=_EXPERT_ID,
+                    count_turn=False,
+                )
+            )
+            redis.incr.assert_not_awaited()
+            asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
         redis.incr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
 
     def test_creates_expert_box_with_home_and_shared_volumes(self):
@@ -920,8 +984,10 @@ class TestExpertPause:
             )
         assert ok is True
         sb.pause.assert_awaited_once()
-        redis.decr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
-        redis.delete.assert_awaited_with(_EXPERT_ACTIVE_KEY)
+        # One script does the DECR and, at zero, the DEL: no window for a turn
+        # that starts in between to lose its count.
+        script, _, key = redis.eval.await_args.args
+        assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
 
     def test_concurrent_turn_keeps_the_box_running(self):
         """Pausing under another session of the same expert would sever its
@@ -952,7 +1018,7 @@ class TestExpertPause:
         with _patch_redis(redis):
             ok = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
         assert ok is True
-        redis.decr.assert_not_awaited()
+        redis.eval.assert_not_awaited()
 
 
 class TestExpertKill:
@@ -1085,6 +1151,7 @@ class TestExpertBoxRecovery:
         redis = _keyed_redis({})
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", AsyncMock()),
             _patch_redis(redis),
         ):
             mock_cls.list = _mock_list([_info("sb-dead", SandboxState.PAUSED)])
@@ -1096,7 +1163,9 @@ class TestExpertBoxRecovery:
                 )
             )
         assert result is fresh
-        mock_cls.connect.assert_awaited_once_with("sb-dead", api_key=_API_KEY)
+        # Exactly one retry of the listed box, then a replacement.
+        assert mock_cls.connect.await_count == 2
+        mock_cls.connect.assert_awaited_with("sb-dead", api_key=_API_KEY)
         mock_cls.create.assert_awaited_once()
         assert mock_cls.list.call_count <= 2
 
@@ -1144,7 +1213,7 @@ class TestExpertBoxRecovery:
         box is left running for the lifecycle timeout to pause."""
         sb = _mock_sandbox()
         redis = _keyed_redis({})
-        redis.decr = AsyncMock(side_effect=ConnectionError("redis down"))
+        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
         with _patch_redis(redis):
             ok = asyncio.run(
                 pause_sandbox_direct(sb, _SESSION_ID, expert_id=_EXPERT_ID)

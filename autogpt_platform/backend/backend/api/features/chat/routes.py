@@ -48,7 +48,6 @@ from backend.copilot.model import (
     ChatSessionMetadata,
     create_chat_session,
     delete_chat_session,
-    get_chat_session,
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
@@ -872,11 +871,8 @@ async def get_session_computer(
     A plain chat has its own boxes; a chat that runs as a hired expert reports
     the expert's persistent computer instead. Listing never wakes a paused box.
     """
-    session = await get_chat_session(session_id, user_id)
-    if session is None:
-        raise HTTPException(
-            status_code=404, detail="Session not found or access denied"
-        )
+    # Metadata only: the panel polls this, and the history is not needed.
+    session = await _validate_and_get_session(session_id, user_id)
     return await describe_computer(
         computer_owner(session_id, session.expert_id),
         mounts_for(user_id, session.expert_id),
@@ -901,11 +897,10 @@ async def start_session_desktop(
     Same box the ``start_desktop`` tool uses from inside a turn, so the side
     panel and the model always look at one screen.
     """
-    session = await get_chat_session(session_id, user_id)
-    if session is None:
-        raise HTTPException(
-            status_code=404, detail="Session not found or access denied"
-        )
+    # Same gate as a turn: an archived expert's chat must not resurrect the
+    # expert's box (the archive already killed it, and nothing would kill
+    # the new one).
+    session = await _validate_and_get_writable_session(session_id, user_id)
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
         raise HTTPException(

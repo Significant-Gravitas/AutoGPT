@@ -55,14 +55,8 @@ async def main() -> None:
             resp = await client.get(stream.url, timeout=15)
         print(f"  stream HTTP status: {resp.status_code}")
 
-        print("3) input actions")
-        t = time.monotonic()
-        await session.click(button=1, x=640, y=360)
-        timed("click_round_trip", t, timings)
-        t = time.monotonic()
-        shot = await session.screenshot_base64()
-        timed("screenshot_round_trip", t, timings)
-        print(f"  screenshot bytes(b64): {len(shot)}")
+        # Input actions (click / screenshot) live with the desktop blocks in
+        # #14381; this smoke test covers the box lifecycle and the stream.
 
         print("4) workspace file write")
         await session.sandbox.files.write(TEST_FILE, "persistence check")

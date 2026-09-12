@@ -4134,7 +4134,7 @@ def test_get_session_computer_uses_the_expert_owner_for_expert_chats(
     from backend.copilot.computer import ComputerInfo
 
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=_session_like("exp-9"),
     )
@@ -4161,7 +4161,7 @@ def test_get_session_computer_plain_chat_is_session_owned(
     from backend.copilot.computer import ComputerInfo
 
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=_session_like(None),
     )
@@ -4181,7 +4181,7 @@ def test_get_session_computer_unknown_session_is_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -4194,7 +4194,7 @@ def test_start_session_desktop_returns_the_stream(
     from backend.blocks.desktop._api import DesktopStream
 
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=_session_like(None),
     )
@@ -4218,10 +4218,37 @@ def test_start_session_desktop_without_e2b_is_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=_session_like(None),
     )
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = None
     assert client.post("/sessions/sess-1/desktop").status_code == 503
+
+
+def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The archive killed the expert's boxes; a Start from an old chat must not
+    create a new one that nothing will ever kill."""
+    from backend.util.exceptions import NotAuthorizedError
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_session_like("exp-archived"),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_session_expert_writable_by_user",
+        new_callable=AsyncMock,
+        side_effect=NotAuthorizedError("archived"),
+    )
+    open_desktop = mocker.patch(
+        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+    )
+    # The test app has no exception handlers, so the gate's error surfaces
+    # here; the real app maps it to an HTTP error before anything is opened.
+    with pytest.raises(NotAuthorizedError):
+        client.post("/sessions/sess-1/desktop")
+    open_desktop.assert_not_awaited()

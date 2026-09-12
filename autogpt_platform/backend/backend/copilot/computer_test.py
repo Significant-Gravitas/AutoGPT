@@ -81,6 +81,21 @@ class TestDescribeComputer:
         desktop_cls.connect.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_a_failed_listing_shows_nothing_rather_than_failing(self):
+        from backend.copilot.tools.e2b_sandbox import SandboxLookupError
+
+        with (
+            patch(f"{_C}.chat_config") as cfg,
+            patch(
+                f"{_C}.list_owned_sandboxes",
+                AsyncMock(side_effect=SandboxLookupError("e2b down")),
+            ),
+        ):
+            cfg.active_e2b_api_key = "k"
+            info = await describe_computer(SandboxOwner(kind="expert", id=_EXPERT), {})
+        assert info.e2b_active and info.shell is None and info.desktop is None
+
+    @pytest.mark.asyncio
     async def test_without_e2b_it_says_so_and_lists_nothing(self):
         owner = SandboxOwner(kind="session", id=_SESSION)
         with (
@@ -93,11 +108,12 @@ class TestDescribeComputer:
         list_mock.assert_not_awaited()
 
 
-def _redis(stored: str | None):
+def _redis(stored: str | None, lock_free: bool = True):
     r = MagicMock()
     r.get = AsyncMock(return_value=stored)
-    r.set = AsyncMock()
+    r.set = AsyncMock(return_value=lock_free)
     r.delete = AsyncMock()
+    r.eval = AsyncMock(return_value=1)
     return r
 
 
@@ -115,6 +131,51 @@ def _desktop(sandbox_id="sb-desk"):
 
 
 class TestOpenDesktop:
+    @pytest.mark.asyncio
+    async def test_a_second_opener_waits_and_reattaches(self):
+        """Start from the panel and start_desktop from the model can both miss
+        the cache; only one may create, the other reattaches to its box."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis(None)
+        # Lock taken on the first attempt; free on the second, by which time
+        # the first opener has cached its box.
+        redis.set = AsyncMock(side_effect=[False, True, True])
+        redis.get = AsyncMock(side_effect=[b"sb-first"])
+        desktop = _desktop("sb-first")
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.asyncio.sleep", AsyncMock()) as sleep,
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            desktop_cls.connect = AsyncMock(return_value=desktop)
+            desktop_cls.create = AsyncMock()
+            stream, created, _ = await open_desktop(owner, {}, "k")
+
+        assert not created and stream.sandbox_id == "sb-first"
+        sleep.assert_awaited_once()
+        desktop_cls.create.assert_not_awaited()
+        # The lock is released by token, never a bare delete of the key.
+        script, _, lock_key, token = redis.eval.await_args.args
+        assert lock_key == f"copilot:e2b:expert:{_EXPERT}:desktop:lock"
+        assert token == redis.set.await_args_list[1].args[1]
+
+    @pytest.mark.asyncio
+    async def test_gives_up_when_the_lock_never_frees(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis(None, lock_free=False)
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.asyncio.sleep", AsyncMock()),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+        ):
+            desktop_cls.create = AsyncMock()
+            with pytest.raises(RuntimeError, match="still opening"):
+                await open_desktop(owner, {}, "k")
+        desktop_cls.create.assert_not_awaited()
+        redis.eval.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_creates_under_the_owner_key_with_the_owner_mounts(self):
         owner = SandboxOwner(kind="expert", id=_EXPERT)
@@ -157,12 +218,15 @@ class TestOpenDesktop:
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.find_owned_sandbox_id", AsyncMock(return_value="sb-old")),
             patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
         ):
+            cfg.e2b_desktop_timeout = 900
             desktop_cls.connect = AsyncMock(return_value=desktop)
             desktop_cls.create = AsyncMock()
             stream, created, shared = await open_desktop(owner, {}, "k")
 
         assert not created and shared and stream.sandbox_id == "sb-old"
-        desktop_cls.connect.assert_awaited_once_with("sb-old", "k")
+        # A resumed desktop gets the same running-time limit as a new one.
+        desktop_cls.connect.assert_awaited_once_with("sb-old", "k", timeout_seconds=900)
         desktop_cls.create.assert_not_awaited()
         desktop.start_stream.assert_awaited_once()
