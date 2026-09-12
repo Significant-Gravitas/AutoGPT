@@ -14664,6 +14664,66 @@
         }
       }
     },
+    "/api/store/media/{user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get stored marketplace media",
+        "operationId": "getV2Get stored marketplace media",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],

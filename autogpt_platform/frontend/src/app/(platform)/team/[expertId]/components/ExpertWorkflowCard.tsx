@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
 import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
 import { useState } from "react";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
@@ -63,6 +64,7 @@ export function ExpertWorkflowCard({
         {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
+            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
