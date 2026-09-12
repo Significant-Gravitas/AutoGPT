@@ -476,6 +476,14 @@ export function useCopilotStream({
   async function sendMessage(
     ...args: Parameters<typeof sdkSendMessage>
   ): ReturnType<typeof sdkSendMessage> {
+    // Guard: when chatRuntime is null, useChat is initialised with a fallback
+    // `{ id: "new" }` config whose sdkSendMessage has no real backend chat
+    // object. Invoking it causes the AI SDK to read `this.activeResponse.state`
+    // which is undefined, throwing a TypeError. Mirror the identical guard in
+    // `resumeStreamFromStart` (PR #13766): bail out here and let the existing
+    // pendingFirstSend / sessionId re-dispatch path deliver the message once
+    // the runtime-backed useChat instance mounts.
+    if (!chatRuntime) return;
     const text = extractSendMessageText(args[0]);
     const metadata =
       args[0] && typeof args[0] === "object" && "metadata" in args[0]
