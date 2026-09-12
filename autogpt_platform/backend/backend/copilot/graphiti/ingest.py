@@ -14,6 +14,7 @@ from graphiti_core.nodes import EpisodeType
 
 from .client import derive_memory_group_id, ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .rollout import shared_memory_enabled
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -495,6 +496,8 @@ async def enqueue_episode(
         return False
 
     is_personal = group_id is None
+    if not is_personal and not await shared_memory_enabled(user_id):
+        return False
     if is_personal:
         try:
             resolved_group_id = derive_memory_group_id(user_id, expert_id)

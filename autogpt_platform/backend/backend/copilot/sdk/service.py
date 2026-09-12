@@ -49,6 +49,7 @@ from backend.copilot.model_router import (
 )
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.graphiti.rollout import shared_memory_enabled
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -4689,7 +4690,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
-        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        shared_memory = graphiti_enabled and await shared_memory_enabled(user_id)
+        graphiti_supplement = (
+            get_graphiti_supplement(shared_memory=shared_memory)
+            if graphiti_enabled
+            else ""
+        )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -4783,7 +4789,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
         )
         mcp_server = create_copilot_mcp_server(
-            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+            use_e2b=use_e2b,
+            hidden_tool_names=hidden_tools,
+            shared_memory=shared_memory,
         )
 
         # Resolve model (request tier → LD per-user override → config default).

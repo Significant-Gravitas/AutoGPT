@@ -83,11 +83,14 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 class TestGraphitiMemoryScope:
     def test_supplement_describes_assistant_scoped_memory(self):
-        result = prompting.get_graphiti_supplement()
+        result = prompting.get_graphiti_supplement(shared_memory=True)
 
         assert "scoped to the assistant running this session" in result
         assert "AutoPilot uses the user's personal memory" in result
         assert "each hired expert uses its own separate memory" in result
-        assert "Memory is private and isolated to the current assistant" in result
-        assert "cannot read each other's memories" in result
+        assert (
+            "Personal memory is private and isolated to the current assistant"
+            in result
+        )
+        assert "cannot read each other's personal memory" in result
         assert "Memory is private to this user — no other user can see it" not in result

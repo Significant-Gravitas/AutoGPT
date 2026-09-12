@@ -11,6 +11,10 @@ from typing import Any, Literal
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
 from backend.copilot.graphiti.client import derive_memory_group_id, get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.rollout import (
+    SHARED_MEMORY_DISABLED,
+    shared_memory_enabled,
+)
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -140,7 +144,11 @@ class MemoryForgetSearchTool(BaseTool):
 
         if tier and tier != "personal":
             return ErrorResponse(
-                message=_SHARED_TIER_FORGET_MESSAGE,
+                message=(
+                    _SHARED_TIER_FORGET_MESSAGE
+                    if await shared_memory_enabled(user_id)
+                    else SHARED_MEMORY_DISABLED
+                ),
                 session_id=session.session_id,
             )
 
@@ -281,7 +289,11 @@ class MemoryForgetConfirmTool(BaseTool):
 
         if tier and tier != "personal":
             return ErrorResponse(
-                message=_SHARED_TIER_FORGET_MESSAGE,
+                message=(
+                    _SHARED_TIER_FORGET_MESSAGE
+                    if await shared_memory_enabled(user_id)
+                    else SHARED_MEMORY_DISABLED
+                ),
                 session_id=session.session_id,
             )
 

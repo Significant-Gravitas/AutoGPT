@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.tenancy import get_user_team_ids
 
 from .client import derive_memory_group_id, derive_org_group_id, derive_team_group_id
+from .rollout import SHARED_MEMORY_DISABLED, shared_memory_enabled
 
 if TYPE_CHECKING:
     from prisma.types import OrgMemberWhereInput, TeamMemberWhereInput
@@ -209,6 +210,8 @@ async def resolve_store_team(
     user is not an ACTIVE member of it. Returns the TeamMember row so
     the caller can read ``teamId`` and ``isAdmin`` without a second query.
     """
+    if not await shared_memory_enabled(user_id):
+        raise TierError(SHARED_MEMORY_DISABLED)
     target = explicit_team_id or session_team_id
     if not target:
         active_ids = await get_user_team_ids(user_id, org_id)
@@ -261,7 +264,7 @@ async def resolve_warm_targets(
         )
     ]
 
-    if organization_id:
+    if organization_id and await shared_memory_enabled(user_id):
         try:
             org_group_id = derive_org_group_id(organization_id)
         except ValueError:
@@ -317,6 +320,10 @@ async def resolve_search_targets(
         raise TierError(
             f"Unknown memory tier '{tier}'. Valid tiers: all, personal, org, team."
         )
+    if tier != "personal" and not await shared_memory_enabled(user_id):
+        if tier in ("org", "team"):
+            raise TierError(SHARED_MEMORY_DISABLED)
+        tier = "personal"
     include_personal = tier in ("all", "personal")
     include_org = tier in ("all", "org")
     include_team = tier in ("all", "team")

@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.graphiti import tiers
+from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.memory_model import MemoryEnvelope, MemoryKind, SourceKind
 from backend.copilot.graphiti.tiers import MemoryTier, TierTarget
 from backend.copilot.model import ChatSession
@@ -16,6 +18,11 @@ from backend.copilot.tools.graphiti_search import (
     _format_episodes,
 )
 from backend.copilot.tools.models import ErrorResponse, MemorySearchResponse
+
+
+@pytest.fixture(autouse=True)
+def _enable_shared_memory_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
 
 
 @pytest.mark.asyncio
@@ -159,6 +166,74 @@ def _org_session() -> ChatSession:
 
 
 class TestMemorySearchTiers:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_id", [None, "expert-1"])
+    async def test_rollout_flip_keeps_private_memory_without_shared_guidance(
+        self, monkeypatch: pytest.MonkeyPatch, expert_id: str | None
+    ) -> None:
+        tool = MemorySearchTool()
+        session = ChatSession.new(
+            "user-1",
+            dry_run=False,
+            expert_id=expert_id,
+            organization_id="org-1",
+            team_id="team-1",
+        )
+        private_group = derive_memory_group_id("user-1", expert_id)
+        clients = {
+            private_group: _tier_client([_fact_edge("private fact")]),
+            "org_org-1": _tier_client([_fact_edge("org fact")]),
+            "team_team-1": _tier_client([_fact_edge("team fact")]),
+        }
+
+        # Reuse the tool and populated session across flag flips to catch stale
+        # targets or shared guidance without replacing the real tier resolver.
+        for enabled in (True, False, True):
+            monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", str(enabled).lower())
+            with (
+                patch.object(
+                    search_mod, "is_enabled_for_user", AsyncMock(return_value=True)
+                ),
+                patch.object(
+                    tiers, "is_org_member", AsyncMock(return_value=True)
+                ) as org_access,
+                patch.object(
+                    tiers, "get_user_team_ids", AsyncMock(return_value=["team-1"])
+                ) as team_access,
+                patch.object(
+                    tiers,
+                    "resolve_team_names",
+                    AsyncMock(return_value={"team-1": "Platform"}),
+                ),
+                patch.object(
+                    search_mod,
+                    "get_graphiti_client",
+                    AsyncMock(side_effect=lambda group_id: clients[group_id]),
+                ) as get_client,
+            ):
+                result = await tool._execute("user-1", session, query="fact")
+
+            assert isinstance(result, MemorySearchResponse)
+            assert any(fact.startswith("private fact") for fact in result.facts)
+            assert ("'org memory'" in result.message) is enabled
+            assert ("'team memory (<name>)'" in result.message) is enabled
+            expected_groups = set(clients) if enabled else {private_group}
+            assert {
+                call.args[0] for call in get_client.await_args_list
+            } == expected_groups
+            if enabled:
+                assert any("[org memory] org fact" in fact for fact in result.facts)
+                assert any(
+                    "[team memory (Platform)] team fact" in fact
+                    for fact in result.facts
+                )
+                org_access.assert_awaited_once()
+                team_access.assert_awaited_once()
+            else:
+                assert len(result.facts) == 1
+                org_access.assert_not_awaited()
+                team_access.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_all_tiers_label_shared_results(self) -> None:
         tool = MemorySearchTool()

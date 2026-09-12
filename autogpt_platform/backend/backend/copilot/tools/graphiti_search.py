@@ -218,13 +218,18 @@ class MemorySearchTool(BaseTool):
 
         scope_note = f" (scope filter: {scope})" if scope else ""
         tier_note = "" if tier in ("", "all") else f" (tier: {tier})"
+        shared_note = (
+            " Facts labelled 'org memory' / 'team memory (<name>)' are shared "
+            "context — weigh them against your personal (unlabelled) memory."
+            if any(label for _, label in [*merged_facts, *merged_eps])
+            else ""
+        )
         return MemorySearchResponse(
             message=(
                 f"Found {len(facts)} relationship facts and {len(recent)} stored memories{scope_note}{tier_note}. "
                 "Use BOTH sections to answer — stored memories often contain operational "
-                "rules and instructions that relationship facts summarize. Facts labelled "
-                "'org memory' / 'team memory (<name>)' are shared context — weigh them "
-                "against your personal (unlabelled) memory."
+                "rules and instructions that relationship facts summarize."
+                f"{shared_note}"
             ),
             session_id=session.session_id,
             facts=facts,

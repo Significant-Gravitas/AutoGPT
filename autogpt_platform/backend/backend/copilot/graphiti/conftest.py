@@ -51,6 +51,12 @@ from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 
 
+@pytest.fixture(autouse=True)
+def _enable_shared_memory_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shared-memory behavior tests opt into the organization rollout."""
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
+
+
 class ScriptedLLMClient(LLMClient):
     """Real ``LLMClient`` whose responses are canned per response model.
 

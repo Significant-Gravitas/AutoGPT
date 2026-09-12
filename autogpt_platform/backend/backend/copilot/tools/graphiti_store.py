@@ -15,6 +15,10 @@ from backend.copilot.graphiti.memory_model import (
     RuleMemory,
     SourceKind,
 )
+from backend.copilot.graphiti.rollout import (
+    SHARED_MEMORY_DISABLED,
+    shared_memory_enabled,
+)
 from backend.copilot.graphiti.tiers import (
     TierError,
     hold_buffer_enabled,
@@ -262,6 +266,10 @@ class MemoryStoreTool(BaseTool):
         # buffer is off — land 'active'. The governed status is stamped onto
         # the edge (edge_metadata) so admin review can query it natively.
         resolved_tier = tier if tier in ("personal", "team", "org") else "personal"
+        if resolved_tier != "personal" and not await shared_memory_enabled(user_id):
+            return ErrorResponse(
+                message=SHARED_MEMORY_DISABLED, session_id=session.session_id
+            )
         memory_status = MemoryStatus.active
         target_group_id: str | None = None  # None → personal path in enqueue
 

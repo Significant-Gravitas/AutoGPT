@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.graphiti.rollout import memory_tool_parameters
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -243,6 +244,7 @@ def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
 def get_available_tools(
     *,
     disabled_groups: Iterable[ToolGroup] = (),
+    shared_memory: bool = False,
 ) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
@@ -254,7 +256,16 @@ def get_available_tools(
     """
     hidden = tool_names_in_groups(disabled_groups)
     return [
-        tool.as_openai_tool()
+        ChatCompletionToolParam(
+            type="function",
+            function={
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": memory_tool_parameters(
+                    name, tool.parameters, shared_memory=shared_memory
+                ),
+            },
+        )
         for name, tool in TOOL_REGISTRY.items()
         if tool.is_available and name not in hidden
     ]

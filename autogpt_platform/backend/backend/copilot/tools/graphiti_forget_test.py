@@ -25,6 +25,11 @@ from backend.copilot.tools.models import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _enable_shared_memory_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
+
+
 def _session() -> ChatSession:
     return ChatSession(
         session_id="s",

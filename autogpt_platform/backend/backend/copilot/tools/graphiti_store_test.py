@@ -12,6 +12,11 @@ from backend.copilot.tools.graphiti_store import MemoryStoreTool
 from backend.copilot.tools.models import ErrorResponse, MemoryStoreResponse
 
 
+@pytest.fixture(autouse=True)
+def _enable_shared_memory_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
+
+
 def _make_session(
     session_id: str = "test-session", *, expert_id: str | None = None
 ) -> ChatSession:

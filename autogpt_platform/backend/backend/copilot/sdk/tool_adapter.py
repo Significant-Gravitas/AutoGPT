@@ -28,6 +28,7 @@ from backend.copilot.context import (
     get_execution_context,
     is_sdk_tool_path,
 )
+from backend.copilot.graphiti.rollout import memory_tool_parameters
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -433,7 +434,9 @@ def create_tool_handler(base_tool: BaseTool):
     return tool_handler
 
 
-def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
+def _build_input_schema(
+    base_tool: BaseTool, *, shared_memory: bool = False
+) -> dict[str, Any]:
     """Build a JSON Schema input schema for a tool.
 
     ``required`` is intentionally omitted from the schema sent to the MCP SDK.
@@ -445,7 +448,9 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     """
     return {
         "type": "object",
-        "properties": base_tool.parameters.get("properties", {}),
+        "properties": memory_tool_parameters(
+            base_tool.name, base_tool.parameters, shared_memory=shared_memory
+        ).get("properties", {}),
     }
 
 
@@ -832,6 +837,7 @@ def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
+    shared_memory: bool = False,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -867,7 +873,7 @@ def create_copilot_mcp_server(
         if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
             continue
         handler = create_tool_handler(base_tool)
-        schema = _build_input_schema(base_tool)
+        schema = _build_input_schema(base_tool, shared_memory=shared_memory)
         required = list(base_tool.parameters.get("required", []))
         # All tools annotated readOnlyHint=True to enable parallel dispatch.
         # The SDK CLI uses this hint to dispatch concurrent tool calls in
