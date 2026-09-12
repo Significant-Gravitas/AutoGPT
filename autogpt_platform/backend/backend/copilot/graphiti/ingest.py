@@ -251,6 +251,11 @@ async def _process_ingestion_payload(
     if payload.get("group_id") != group_id:
         raise MemoryScopeViolationError("Ingestion payload memory group mismatch")
     resource_scope = payload.pop("_resource_scope", None)
+    if (
+        resource_scope is not None or group_id.startswith(("org_", "team_"))
+    ) and not await shared_memory_enabled(user_id):
+        logger.info("Dropping shared-memory episode while organization rollout is off")
+        return
     client = await get_graphiti_client(group_id)
     await ensure_indices_once(group_id, client)
     edge_metadata = payload.pop("_edge_metadata", None)

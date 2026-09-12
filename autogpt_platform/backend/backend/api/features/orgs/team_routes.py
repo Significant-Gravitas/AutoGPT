@@ -10,6 +10,7 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 
+from backend.api.org_rollout import org_rollout_cleanup
 from backend.data.tenancy import live_org_context_barrier
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -184,6 +185,7 @@ async def update_team(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@org_rollout_cleanup
 @_rejects_as_400
 async def delete_team(
     org_id: str,
@@ -225,6 +227,7 @@ async def join_team(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@org_rollout_cleanup
 @_rejects_as_400
 async def leave_team(
     org_id: str,
@@ -325,6 +328,7 @@ async def update_member(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@org_rollout_cleanup
 @_rejects_as_400
 async def remove_member(
     org_id: str,

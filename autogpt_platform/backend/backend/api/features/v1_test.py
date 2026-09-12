@@ -70,6 +70,8 @@ def setup_app_auth(
     mock_jwt_user, mock_shared_cache, setup_test_user, test_user_id, monkeypatch
 ):
     """Setup auth overrides for all tests in this module"""
+    # Existing org/team action tests opt in; dedicated rollout tests cover off.
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
     from autogpt_libs.auth.models import RequestContext

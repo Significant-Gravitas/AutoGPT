@@ -1,6 +1,6 @@
 import type { SelectOption } from "@/components/atoms/Select/Select";
-import { useOrgTeamStore } from "@/services/org-team/store";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { ORG_HOME_OPTION_VALUE } from "./helpers";
 
 interface Params {

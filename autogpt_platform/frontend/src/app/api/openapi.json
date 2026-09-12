@@ -13425,6 +13425,33 @@
         ]
       }
     },
+    "/api/orgs/default": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Get personal organization context",
+        "operationId": "getV2Get personal organization context",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
     "/api/orgs/{org_id}": {
       "delete": {
         "tags": ["v2", "orgs", "orgs"],
@@ -17786,6 +17813,127 @@
         }
       }
     },
+    "/api/store/media/orgs/{organization_id}/teams/{team_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get local workspace marketplace media",
+        "operationId": "getV2Get local workspace marketplace media",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Organization Id"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Media Type"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/media/orgs/{organization_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get local organization marketplace media",
+        "operationId": "getV2Get local organization marketplace media",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Organization Id"
+            }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Media Type"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -18279,7 +18427,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission.\n\nPersonal requests are scoped to the personal organization resolved by\n``RequestContext``; the storage layer never accepts an unscoped owner.",
         "operationId": "postV2Upload submission media",
         "requestBody": {
           "content": {

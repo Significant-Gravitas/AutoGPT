@@ -74,6 +74,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.org_rollout import install_org_rollout_boundary
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -287,6 +288,7 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
 )
+install_org_rollout_boundary(app)
 
 app.add_middleware(SecurityHeadersMiddleware)
 

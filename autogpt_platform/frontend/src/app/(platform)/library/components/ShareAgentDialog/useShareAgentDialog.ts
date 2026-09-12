@@ -23,7 +23,7 @@ import {
 } from "./helpers";
 
 export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
-  const enabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
+  const isEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const orgId = useOrgTeamStore((s) => s.activeOrgID);
@@ -41,13 +41,13 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
 
   const grantsQuery = useGetV2ListGrantsOnAGraph(orgId ?? "", agent.graph_id, {
     query: {
-      enabled: enabled && Boolean(orgId) && isOpen,
+      enabled: isEnabled && Boolean(orgId) && isOpen,
       select: (res) => res.data as GrantResponse[],
     },
   });
   const teamsQuery = useGetV2ListWorkspaces(orgId ?? "", {
     query: {
-      enabled: enabled && Boolean(orgId) && isOpen,
+      enabled: isEnabled && Boolean(orgId) && isOpen,
       select: (response) => response.data as TeamResponse[],
     },
   });
@@ -64,7 +64,7 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   async function handleShare() {
-    if (!enabled || !orgId || !teamId) return;
+    if (!isEnabled || !isOpen || !orgId || !teamId) return;
     try {
       await shareGraph({
         orgId,
@@ -95,7 +95,7 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   async function handleRevoke(grantId: string) {
-    if (!enabled || !orgId) return;
+    if (!isEnabled || !isOpen || !orgId) return;
     try {
       await revokeGrant({ orgId, graphId: agent.graph_id, grantId });
       toast({ title: "Access revoked" });
@@ -111,8 +111,8 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   return {
-    enabled,
-    teams: enabled ? (teamsQuery.data ?? []) : [],
+    isEnabled,
+    teams: teamsQuery.data ?? [],
     isLoadingTeams: teamsQuery.isLoading,
     teamId,
     setTeamId,
@@ -123,12 +123,13 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
     credentialMode,
     setCredentialMode,
     isOwner,
-    grants: enabled ? (grantsQuery.data ?? []) : [],
+    grants: grantsQuery.data ?? [],
     isLoadingGrants: grantsQuery.isLoading,
     isGrantsError: grantsQuery.isError,
     isSharing,
     canShare:
-      enabled &&
+      isEnabled &&
+      isOpen &&
       Boolean(orgId) &&
       Boolean(teamId) &&
       !teamsQuery.isLoading &&

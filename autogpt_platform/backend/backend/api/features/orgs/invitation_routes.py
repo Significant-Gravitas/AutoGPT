@@ -15,6 +15,7 @@ from prisma.models import OrgInvitation
 from prisma.types import OrgInvitationWhereInput
 
 from backend.api.live_auth import requires_live_org_permission
+from backend.api.org_rollout import org_rollout_cleanup
 from backend.data.db import execute_raw_with_schema, prisma, transaction
 from backend.data.tenancy import lock_live_org_permission_scope
 from backend.util.exceptions import NotFoundError
@@ -101,8 +102,8 @@ async def create_invitation(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> InvitationCreateResponse:
-    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     return await _create_invitation_locked(org_id, request, ctx.user_id)
 
 
@@ -231,6 +232,7 @@ async def list_invitations(
     tags=["orgs", "invitations"],
     status_code=204,
 )
+@org_rollout_cleanup
 async def revoke_invitation(
     org_id: str,
     invitation_id: str,
@@ -279,8 +281,8 @@ async def resend_invitation(
     Rotating the token invalidates any previously sent link, so a resend
     also acts as a soft revoke of the old email.
     """
-    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     preliminary = await _get_org_invitation(org_id, invitation_id)
     async with transaction() as tx:
         await _lock_invitation_admin(tx, org_id, ctx.user_id, preliminary.targetUserId)
@@ -516,6 +518,7 @@ async def accept_invitation(
     dependencies=[Security(requires_user)],
     status_code=204,
 )
+@org_rollout_cleanup
 async def decline_invitation(
     token: str,
     user_id: Annotated[str, Security(get_user_id)],

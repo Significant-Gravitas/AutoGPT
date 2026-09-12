@@ -1,4 +1,7 @@
 import { getGetV2ListWorkspacesMockHandler } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
+import { getGetV2ListWorkspacesQueryKey } from "@/app/api/__generated__/endpoints/orgs/orgs";
+import { getGetV2ListGrantsOnAGraphQueryKey } from "@/app/api/__generated__/endpoints/grants/grants";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import { useOrgTeamStore } from "@/services/org-team/store";
@@ -104,34 +107,55 @@ async function openTeamSelect() {
 }
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
+  vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
   seedTeams();
   server.use(getGetV2ListWorkspacesMockHandler(WORKSPACES));
 });
 
-afterEach(() => {
-  delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-});
+afterEach(() => vi.unstubAllEnvs());
 
 describe("ShareAgentDialog", () => {
-  it.each(["false", undefined])(
-    "hides an open dialog and makes no grants request when the flag is %s",
-    (flag) => {
-      if (flag === undefined)
-        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
-      let requests = 0;
-      server.use(
-        http.get(GRANTS_URL, () => {
-          requests += 1;
-          return HttpResponse.json([GRANT]);
-        }),
-      );
-      renderDialog();
-      expect(screen.queryByRole("dialog")).toBeNull();
-      expect(requests).toBe(0);
-    },
-  );
+  it("hides a directly opened dialog and never fetches team or grant data when disabled", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    const queryClient = new QueryClient();
+    const setIsOpen = vi.fn();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ShareAgentDialog agent={AGENT} isOpen setIsOpen={setIsOpen} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+    for (const key of [
+      getGetV2ListWorkspacesQueryKey("org-1"),
+      getGetV2ListGrantsOnAGraphQueryKey("org-1", "graph-1"),
+    ]) {
+      expect(queryClient.getQueryState(key)?.fetchStatus).toBe("idle");
+    }
+  });
+
+  it("closes an already open populated dialog when the flag turns off", async () => {
+    server.use(
+      http.get(GRANTS_URL, () => HttpResponse.json([GRANT], { status: 200 })),
+    );
+    const setIsOpen = vi.fn();
+    const view = render(
+      <ShareAgentDialog agent={AGENT} isOpen setIsOpen={setIsOpen} />,
+    );
+    await screen.findByTestId("share-grant-row");
+
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    view.rerender(
+      <ShareAgentDialog agent={AGENT} isOpen setIsOpen={setIsOpen} />,
+    );
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Growth")).toBeNull();
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
   it("creates a grant pinned to the current version with the chosen team and capability", async () => {
     let body: Record<string, unknown> | null = null;
     server.use(

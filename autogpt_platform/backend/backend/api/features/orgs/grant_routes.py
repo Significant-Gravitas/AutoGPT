@@ -10,6 +10,7 @@ from autogpt_libs.auth.permissions import OrgAction, TeamAction, check_org_permi
 from fastapi import APIRouter, HTTPException, Security
 
 from backend.api.live_auth import requires_live_resource_permission
+from backend.api.org_rollout import org_rollout_cleanup
 from backend.data.tenancy import live_org_context_barrier
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -103,6 +104,7 @@ async def list_grants(
     tags=["orgs", "grants"],
     status_code=204,
 )
+@org_rollout_cleanup
 async def revoke_grant(
     org_id: str,
     graph_id: str,

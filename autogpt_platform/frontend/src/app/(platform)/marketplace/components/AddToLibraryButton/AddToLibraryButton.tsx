@@ -97,16 +97,20 @@ export function AddToLibraryButton({
   variant = "ghost",
   size = "small",
 }: Props) {
-  const collaborationEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const teams = useOrgTeamStore((s) => s.teams);
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const isLoaded = useOrgTeamStore((s) => s.isLoaded);
-  const currentTeams = collaborationEnabled
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
+  const currentTeams = showOrgSettings
     ? teams.filter((team) => team.orgId === activeOrgID)
     : [];
+  const personalTeamId = showOrgSettings
+    ? null
+    : (teams.find((team) => team.orgId === activeOrgID && team.isDefault)?.id ??
+      null);
   const libraryListParams = { is_hidden: false, page_size: 1000 };
 
   const { data: libraryAgents, isLoading: isLibraryLoading } =
@@ -154,7 +158,7 @@ export function AddToLibraryButton({
   if (!isLoggedIn) return null;
 
   const targets: { id: string | null; name: string }[] = [
-    { id: null, name: ORG_TARGET_LABEL },
+    { id: personalTeamId, name: ORG_TARGET_LABEL },
     ...currentTeams.map((team) => ({ id: team.id, name: team.name })),
   ];
   const availableTargets = targets.filter(
@@ -174,13 +178,11 @@ export function AddToLibraryButton({
     e?.preventDefault();
 
     try {
-      const data = await addToLibrary({
-        teamId: collaborationEnabled ? teamId : null,
-      });
+      const data = await addToLibrary({ teamId });
       // Only remember this target once the add actually succeeds, so a failed
       // request can't leave the split button defaulting to a team/Organization
       // that never received the agent.
-      if (collaborationEnabled && activeOrgID) {
+      if (showOrgSettings && activeOrgID) {
         setLastUsedTeam(activeOrgID, CreateSurface.MarketplaceAdd, teamId);
       }
 
@@ -247,7 +249,7 @@ export function AddToLibraryButton({
   // While the org/team store is still loading we render the same control but
   // disable it, so a team member can't click the solo button during the async
   // load window and accidentally add to org context instead of a team.
-  if (!collaborationEnabled || !isLoaded || currentTeams.length === 0) {
+  if (!isLoaded || currentTeams.length === 0) {
     return (
       <Button
         variant={variant}
@@ -255,7 +257,7 @@ export function AddToLibraryButton({
         loading={isPending}
         disabled={!isLoaded || isLibraryLoading}
         leftIcon={<Icon icon={PlusSignIcon} size={14} />}
-        onClick={(e) => handleAdd(null, e)}
+        onClick={(e) => handleAdd(personalTeamId, e)}
         className={buttonClassName}
         aria-label={`Add ${agentName} to library`}
       >

@@ -13,6 +13,7 @@ from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 
 from backend.api.live_auth import live_dependency
+from backend.api.org_rollout import require_personal_scope_without_collaboration
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -118,6 +119,9 @@ async def _live_authorization_principal(
 
 async def _scope_api_key(api_key: APIKeyInfo) -> APIKeyInfo:
     if api_key.organization_id is not None:
+        await require_personal_scope_without_collaboration(
+            api_key.user_id, api_key.organization_id, api_key.team_id_restriction
+        )
         return api_key
     if api_key.team_id_restriction is not None:
         raise HTTPException(
@@ -158,6 +162,10 @@ async def _scope_oauth_token(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="OAuth token has no active organization scope",
+        )
+    if application.organization_id is not None:
+        await require_personal_scope_without_collaboration(
+            token.user_id, organization_id, team_id
         )
     return token.model_copy(
         update={

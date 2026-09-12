@@ -42,11 +42,15 @@ function seedTeams(teams: (typeof TEAM_A)[]) {
 // Harness wiring the picker to the real state hook, mirroring how create
 // surfaces consume it.
 function Harness({ surfaceKey }: { surfaceKey: string }) {
-  const { teamId, setTeamId } = useCreateTeamSelection(surfaceKey);
+  const { teamId, setTeamId, teamRequestInit } =
+    useCreateTeamSelection(surfaceKey);
   return (
     <>
       <TeamPicker surfaceKey={surfaceKey} value={teamId} onChange={setTeamId} />
       <div data-testid="current">{teamId ?? "org-home"}</div>
+      <div data-testid="team-header">
+        {new Headers(teamRequestInit.headers).get("X-Team-Id")}
+      </div>
     </>
   );
 }
@@ -67,23 +71,61 @@ beforeEach(() => {
   });
 });
 
-describe("TeamPicker", () => {
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-  });
+afterEach(() => {
+  delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+});
 
+describe("TeamPicker", () => {
+  it("keeps personal default-team requests working while collaboration is hidden", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    seedTeams([{ ...TEAM_A, id: "personal-default", isDefault: true }]);
+    render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(currentValue()).toBe("personal-default");
+    expect(screen.getByTestId("team-header").textContent).toBe(
+      "personal-default",
+    );
+  });
   it.each(["false", undefined])(
-    "hides team selection when the flag is %s",
-    (flag) => {
-      if (flag === undefined)
+    "hides existing teams and ignores a saved team when the flag is %s",
+    (value) => {
+      if (value === undefined) {
         delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
+      } else {
+        process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = value;
+      }
+      window.localStorage.setItem(
+        "create-surface-teams",
+        JSON.stringify({ [`org-1:${CreateSurface.BuilderSave}`]: "team-a" }),
+      );
       seedTeams([TEAM_A, TEAM_B]);
       render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+
       expect(screen.queryByRole("combobox")).toBeNull();
       expect(currentValue()).toBe("org-home");
+      expect(screen.getByTestId("team-header").textContent).toBe("");
     },
   );
+
+  it("drops a selected team when the flag turns off while mounted", () => {
+    window.localStorage.setItem(
+      "create-surface-teams",
+      JSON.stringify({ [`org-1:${CreateSurface.BuilderSave}`]: "team-a" }),
+    );
+    seedTeams([TEAM_A]);
+    const { rerender } = render(
+      <Harness surfaceKey={CreateSurface.BuilderSave} />,
+    );
+    expect(currentValue()).toBe("team-a");
+
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    rerender(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(currentValue()).toBe("org-home");
+    expect(screen.getByTestId("team-header").textContent).toBe("");
+  });
   it("renders nothing when the user has no teams", () => {
     seedTeams([]);
     render(<Harness surfaceKey={CreateSurface.BuilderSave} />);

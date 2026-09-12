@@ -1,5 +1,10 @@
 import { getPostV1CreateNewApiKeyMockHandler } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
 import type { CreateAPIKeyResponse } from "@/app/api/__generated__/models/createAPIKeyResponse";
+import {
+  CreateSurface,
+  getLastUsedTeam,
+  setLastUsedTeam,
+} from "@/components/contextual/TeamPicker/helpers";
 import { server } from "@/mocks/mock-server";
 import { TEAM_HEADER_NAME } from "@/services/org-team/headers";
 import { useOrgTeamStore } from "@/services/org-team/store";
@@ -10,7 +15,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateAPIKeyDialog } from "../CreateAPIKeyDialog";
 
@@ -53,8 +58,11 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("CreateAPIKeyDialog team restriction", () => {
   it("sends the picked team as the X-Team-Id header on create", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
     let sentTeamHeader: string | null = null;
     const createSpy = vi.fn();
     server.use(
@@ -81,6 +89,7 @@ describe("CreateAPIKeyDialog team restriction", () => {
   });
 
   it("omits the team header when Organization (org-home) is kept", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
     let sentTeamHeader: string | null = "unset";
     const createSpy = vi.fn();
     server.use(
@@ -99,5 +108,42 @@ describe("CreateAPIKeyDialog team restriction", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(sentTeamHeader).toBeNull();
+  });
+
+  it("creates a personal key without the picker and ignores a saved team with rollout off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    const personalTeam = {
+      ...TEAM,
+      id: "team-personal",
+      name: "Personal",
+      isDefault: true,
+    };
+    useOrgTeamStore.setState({
+      activeTeamID: TEAM.id,
+      teams: [personalTeam, TEAM],
+    });
+    setLastUsedTeam("org-1", CreateSurface.ApiKey, TEAM.id);
+    let sentTeamHeader: string | null = null;
+    const createSpy = vi.fn();
+    server.use(
+      getPostV1CreateNewApiKeyMockHandler((info) => {
+        createSpy();
+        sentTeamHeader = info.request.headers.get(TEAM_HEADER_NAME);
+        return CREATED;
+      }),
+    );
+
+    render(<CreateAPIKeyDialog open onOpenChange={() => {}} />);
+
+    expect(
+      screen.queryByRole("combobox", { name: "Restrict to team" }),
+    ).toBeNull();
+    await userEvent.type(screen.getByLabelText("Name"), "CI key");
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Create Key" }));
+
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    expect(sentTeamHeader).toBe(personalTeam.id);
+    expect(getLastUsedTeam("org-1", CreateSurface.ApiKey)).toBeNull();
   });
 });

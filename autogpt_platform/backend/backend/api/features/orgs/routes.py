@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import media as store_media
 from backend.api.live_auth import requires_live_org_permission
+from backend.api.org_rollout import org_rollout_cleanup
 from backend.data.org_credit import get_org_spend_by_team
 from backend.data.tenancy import live_org_permission_barrier
 
@@ -163,6 +164,7 @@ async def _require_org_avatar_access(
     org_id: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AsyncIterator[None]:
+    await require_org_collaboration(user_id)
     async with live_org_permission_barrier(
         user_id, org_id, OrgAction.VIEW_ORG
     ) as allowed:
@@ -286,6 +288,7 @@ async def get_org_avatar(
     tags=["orgs"],
     status_code=204,
 )
+@org_rollout_cleanup
 async def delete_org(
     org_id: str,
     ctx: Annotated[
@@ -309,8 +312,8 @@ async def convert_org(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> OrgResponse:
-    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     return await org_db.convert_personal_org(org_id, ctx.user_id)
 
 
@@ -348,11 +351,11 @@ async def add_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
-    await require_org_collaboration(ctx.user_id)
-    await require_org_collaboration(request.user_id)
     if request.user_id == ctx.user_id:
         raise HTTPException(409, detail="You are already a member")
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
+    await require_org_collaboration(request.user_id)
     return await org_db.add_org_member(
         org_id=org_id,
         user_id=request.user_id,
@@ -395,6 +398,7 @@ async def update_member(
     tags=["orgs"],
     status_code=204,
 )
+@org_rollout_cleanup
 async def remove_member(
     org_id: str,
     uid: str,
@@ -452,6 +456,7 @@ async def get_org_spend(
     team attribution — org-home spend and legacy personal-org migrations — is
     reported in a single bucket with ``team_id = null``.
     """
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     buckets = await get_org_spend_by_team(
         org_id, start_time=from_time, end_time=to_time

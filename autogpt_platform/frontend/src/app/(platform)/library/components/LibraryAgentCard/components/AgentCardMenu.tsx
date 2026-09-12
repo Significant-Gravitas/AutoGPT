@@ -39,7 +39,6 @@ interface AgentCardMenuProps {
 }
 
 export function AgentCardMenu({ agent }: AgentCardMenuProps) {
-  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -52,8 +51,8 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
 
   // Sharing targets a team, so it only makes sense once the user has teams.
   // Ownership/admin rights are enforced by the backend (surfaced as a toast).
-  const hasTeams =
-    useOrgTeamStore((s) => s.teams.length > 0) && showOrgSettings;
+  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
 
   const tenantRequest = getTenantRequestInit(
     agent.organization_id ?? null,
@@ -218,7 +217,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           >
             Duplicate agent
           </DropdownMenuItem>
-          {hasTeams && (
+          {showOrgSettings && hasTeams && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem

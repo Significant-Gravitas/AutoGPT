@@ -14,6 +14,7 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Query, Security
 
+from backend.api.org_rollout import org_rollout_cleanup
 from backend.data.tenancy import live_org_permission_barrier
 
 from . import memory_db
@@ -85,6 +86,7 @@ async def approve_held_memory(
     summary="Reject a held memory (soft-retract)",
     tags=["orgs", "memory"],
 )
+@org_rollout_cleanup
 async def reject_held_memory(
     org_id: str,
     memory_id: str,
@@ -115,6 +117,7 @@ async def list_active_memories(
     ],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> ActiveMemoryListResponse:
+    await require_org_collaboration(ctx.user_id)
     _verify_org_path(ctx, org_id)
     async with live_org_permission_barrier(
         ctx.user_id, org_id, OrgAction.MANAGE_MEMBERS
@@ -129,6 +132,7 @@ async def list_active_memories(
     summary="Revoke an active shared memory",
     tags=["orgs", "memory"],
 )
+@org_rollout_cleanup
 async def revoke_active_memory(
     org_id: str,
     memory_id: str,

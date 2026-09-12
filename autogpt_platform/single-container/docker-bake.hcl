@@ -1,3 +1,15 @@
+variable "NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS" {
+  default = ""
+}
+
+variable "NEXT_PUBLIC_LAUNCHDARKLY_ENABLED" {
+  default = "false"
+}
+
+variable "NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID" {
+  default = ""
+}
+
 group "default" {
   targets = ["single-container"]
 }
@@ -13,7 +25,9 @@ target "single-container" {
   dockerfile = "autogpt_platform/single-container/Dockerfile"
   target     = "single-container"
   args = {
-    NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true"
+    NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS
+    NEXT_PUBLIC_LAUNCHDARKLY_ENABLED = NEXT_PUBLIC_LAUNCHDARKLY_ENABLED
+    NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID = NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID
     NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true"
     NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY = "true"
     NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS = "true"

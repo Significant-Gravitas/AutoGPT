@@ -3,6 +3,11 @@ import {
   getPostV2ForkLibraryAgentMockHandler,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import {
+  CreateSurface,
+  getLastUsedTeam,
+  setLastUsedTeam,
+} from "@/components/contextual/TeamPicker/helpers";
 import { server } from "@/mocks/mock-server";
 import { TEAM_HEADER_NAME } from "@/services/org-team/headers";
 import { useOrgTeamStore } from "@/services/org-team/store";
@@ -13,7 +18,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReadOnlyBanner } from "../ReadOnlyBanner";
 
@@ -56,8 +61,11 @@ beforeEach(() => {
   server.use(getGetV2GetLibraryAgentByGraphIdMockHandler(() => LIB_AGENT));
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("ReadOnlyBanner duplicate into team", () => {
   it("forks the agent with the picked team as the X-Team-Id header", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
     let sentTeamHeader: string | null = null;
     const forkSpy = vi.fn();
     server.use(
@@ -83,6 +91,7 @@ describe("ReadOnlyBanner duplicate into team", () => {
   });
 
   it("forks without a team header when Organization is kept", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
     let sentTeamHeader: string | null = "unset";
     const forkSpy = vi.fn();
     server.use(
@@ -105,5 +114,46 @@ describe("ReadOnlyBanner duplicate into team", () => {
 
     await waitFor(() => expect(forkSpy).toHaveBeenCalledTimes(1));
     expect(sentTeamHeader).toBeNull();
+  });
+
+  it("keeps personal duplication available and ignores a saved team with rollout off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    const personalTeam = {
+      ...TEAM,
+      id: "team-personal",
+      name: "Personal",
+      isDefault: true,
+    };
+    useOrgTeamStore.setState({
+      activeTeamID: TEAM.id,
+      teams: [personalTeam, TEAM],
+    });
+    setLastUsedTeam("org-1", CreateSurface.BuilderDuplicate, TEAM.id);
+    let sentTeamHeader: string | null = null;
+    const forkSpy = vi.fn();
+    server.use(
+      getPostV2ForkLibraryAgentMockHandler((info) => {
+        forkSpy();
+        sentTeamHeader = info.request.headers.get(TEAM_HEADER_NAME);
+        return { ...LIB_AGENT, id: "lib-2", graph_id: "graph-2" };
+      }),
+    );
+
+    renderBanner();
+
+    const duplicateBtn = await screen.findByRole("button", {
+      name: /Duplicate/,
+    });
+    await waitFor(() =>
+      expect(duplicateBtn.hasAttribute("disabled")).toBe(false),
+    );
+    expect(
+      screen.queryByRole("combobox", { name: "Duplicate into team" }),
+    ).toBeNull();
+    fireEvent.click(duplicateBtn);
+
+    await waitFor(() => expect(forkSpy).toHaveBeenCalledTimes(1));
+    expect(sentTeamHeader).toBe(personalTeam.id);
+    expect(getLastUsedTeam("org-1", CreateSurface.BuilderDuplicate)).toBeNull();
   });
 });

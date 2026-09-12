@@ -111,7 +111,7 @@ function captureAddHeader() {
 }
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
+  vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
   toastMocks.toast.mockClear();
   toastMocks.dismiss.mockClear();
   window.localStorage.clear();
@@ -134,35 +134,36 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("AddToLibraryButton", () => {
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+  it("keeps personal Add working without team choices or remembered team selection when disabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "false");
+    const personalTeam = { ...TEAM_A, id: "personal-default", isDefault: true };
+    seedTeams([personalTeam, TEAM_A, TEAM_B], TEAM_B.id);
+    setLastUsedTeam("org-1", CreateSurface.MarketplaceAdd, TEAM_B.id);
+    const add = captureAddHeader();
+    renderButton();
+
+    const button = screen.getByRole("button", {
+      name: "Add Test Agent to library",
+    });
+    await waitFor(() => expect(button).toHaveProperty("disabled", false));
+    expect(
+      screen.queryByRole("button", { name: /Choose where to add/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByText(/Add to (Organization|Growth|Design)/),
+    ).toBeNull();
+    await userEvent.click(button);
+
+    await waitFor(() => expect(add.called).toBe(1));
+    expect(add.teamHeader).toBe(personalTeam.id);
+    expect(getLastUsedTeam("org-1", CreateSurface.MarketplaceAdd)).toBe(
+      TEAM_B.id,
+    );
   });
 
-  it.each(["false", undefined])(
-    "hides team targets and ignores saved selection when the flag is %s",
-    async (flag) => {
-      if (flag === undefined)
-        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
-      seedTeams([TEAM_A, TEAM_B]);
-      setLastUsedTeam("org-1", CreateSurface.MarketplaceAdd, TEAM_A.id);
-      const request = captureAddHeader();
-      renderButton();
-      expect(
-        screen.queryByRole("button", { name: /Choose where to add/i }),
-      ).toBeNull();
-      const addButton = screen.getByRole("button", {
-        name: "Add Test Agent to library",
-      });
-      await waitFor(() =>
-        expect((addButton as HTMLButtonElement).disabled).toBe(false),
-      );
-      await userEvent.click(addButton);
-      await waitFor(() => expect(request.called).toBe(1));
-      expect(request.teamHeader).toBeNull();
-    },
-  );
   it("renders the plain Add button with no caret for solo users", async () => {
     seedTeams([]);
     renderButton();

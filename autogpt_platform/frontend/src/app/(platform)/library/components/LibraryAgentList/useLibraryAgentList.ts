@@ -38,6 +38,7 @@ import {
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTenantEntityKey } from "@/services/org-team/identity";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
@@ -54,7 +55,7 @@ interface Props {
 export function useLibraryAgentList({
   searchTerm,
   librarySort,
-  selectedFolderId,
+  selectedFolderId: requestedFolderId,
   onFolderSelect,
   activeTab,
   statusFilter = "all",
@@ -71,7 +72,8 @@ export function useLibraryAgentList({
   const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const teams = useOrgTeamStore((s) => s.teams);
   const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
-  const [selectedFolderScope, setSelectedFolderScope] = useState<{
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
+  const [storedFolderScope, setSelectedFolderScope] = useState<{
     organizationId: string | null;
     teamId: string | null;
   } | null>(null);
@@ -82,6 +84,25 @@ export function useLibraryAgentList({
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(
     null,
   );
+
+  const isFolderScopeUnavailable = Boolean(
+    storedFolderScope &&
+      (storedFolderScope.organizationId !== activeOrgID ||
+        (!showOrgSettings && storedFolderScope.teamId !== activeTeamID)),
+  );
+  const selectedFolderScope = isFolderScopeUnavailable
+    ? null
+    : storedFolderScope;
+  const selectedFolderId = isFolderScopeUnavailable ? null : requestedFolderId;
+
+  useEffect(() => {
+    if (isFolderScopeUnavailable) {
+      setSelectedFolderScope(null);
+      setEditingFolder(null);
+      setDeletingFolder(null);
+      onFolderSelect(null);
+    }
+  }, [isFolderScopeUnavailable, onFolderSelect]);
 
   const agentParams = {
     page: 1,
@@ -170,6 +191,7 @@ export function useLibraryAgentList({
     [activeOrgID, teams],
   );
   const shouldAggregateOrganizationRootFolders =
+    showOrgSettings &&
     selectedFolderId === null &&
     selectedFolderScope === null &&
     activeOrgID !== null &&

@@ -15,7 +15,7 @@ import { server } from "@/mocks/mock-server";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { MainAgentPage } from "../MainAgentPage";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 
@@ -24,6 +24,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 describe("MainAgentPage", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     mockUseAuth.mockReturnValue({
       user: null,
@@ -110,6 +111,7 @@ describe("MainAgentPage", () => {
   });
 
   test("keeps uninstalled tenant targets available when the active team has a copy", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "true");
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,

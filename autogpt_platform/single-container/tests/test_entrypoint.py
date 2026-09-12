@@ -7,13 +7,13 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ASSET_DIR = Path(__file__).resolve().parents[1]
 COMMON_PATH = ASSET_DIR / "common.sh"
 ENTRYPOINT_PATH = ASSET_DIR / "entrypoint.sh"
 HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
 DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
+ARTIFACT_DELTA_PATH = ASSET_DIR / "OrgsFinalContextArtifactDelta.Dockerfile"
 BAKE_PATH = ASSET_DIR / "docker-bake.hcl"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
@@ -57,12 +57,11 @@ class InternalServiceTopologyTest(unittest.TestCase):
 
 
 class FrontendBuildConfigurationTest(unittest.TestCase):
-    def test_org_surfaces_are_enabled_by_the_self_hosted_bake_target(self) -> None:
+    def test_other_local_surfaces_keep_their_self_hosted_defaults(self) -> None:
         dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
         bake = BAKE_PATH.read_text(encoding="utf-8")
 
         flags = (
-            "SHOW_ORG_SETTINGS",
             "HIRE_EXPERTS",
             "GRAPHITI_MEMORY",
             "ARTIFACTS",
@@ -78,6 +77,38 @@ class FrontendBuildConfigurationTest(unittest.TestCase):
 
         self.assertIn("FORCE_FLAG_GRAPHITI_MEMORY=true", dockerfile)
         self.assertIn("FORCE_FLAG_HIRE_EXPERTS=true", dockerfile)
+
+    def test_org_override_is_unset_by_default_in_both_image_paths(self) -> None:
+        name = "NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS"
+        for path in (DOCKERFILE_PATH, ARTIFACT_DELTA_PATH):
+            with self.subTest(path=path.name):
+                dockerfile = path.read_text(encoding="utf-8")
+                self.assertEqual(dockerfile.count(f'ARG {name}=""'), 2)
+                self.assertIn(f"{name}=${{{name}}}", dockerfile)
+                self.assertIn(f"FORCE_FLAG_SHOW_ORG_SETTINGS=${{{name}}}", dockerfile)
+                self.assertNotIn(f"{name}=true", dockerfile)
+                self.assertNotIn(f"{name}=false", dockerfile)
+
+        bake = BAKE_PATH.read_text(encoding="utf-8")
+        self.assertIn(f'variable "{name}" {{\n  default = ""\n}}', bake)
+        self.assertIn(f"{name} = {name}", bake)
+
+    def test_frontend_launchdarkly_can_be_configured_without_image_source_edits(
+        self,
+    ) -> None:
+        for path in (DOCKERFILE_PATH, ARTIFACT_DELTA_PATH):
+            with self.subTest(path=path.name):
+                dockerfile = path.read_text(encoding="utf-8")
+                self.assertIn("ARG NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false", dockerfile)
+                self.assertIn('ARG NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID=""', dockerfile)
+                for name in (
+                    "NEXT_PUBLIC_LAUNCHDARKLY_ENABLED",
+                    "NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID",
+                ):
+                    self.assertIn(f"{name}=${{{name}}}", dockerfile)
+                    self.assertIn(
+                        f"{name} = {name}", BAKE_PATH.read_text(encoding="utf-8")
+                    )
 
 
 class AccountRegistrationTest(unittest.TestCase):

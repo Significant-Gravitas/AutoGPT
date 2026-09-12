@@ -217,7 +217,8 @@ async def test_oauth_without_app_scope_uses_live_default_context(mocker) -> None
 
 
 @pytest.mark.asyncio
-async def test_oauth_app_scope_is_preserved(mocker) -> None:
+async def test_oauth_app_scope_is_preserved(mocker, monkeypatch) -> None:
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
     token = OAuthAccessTokenInfo(
         id="token-1",
         user_id="user-1",

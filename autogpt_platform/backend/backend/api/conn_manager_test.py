@@ -20,7 +20,8 @@ from backend.data.execution import GraphExecutionMeta
 
 
 @pytest.fixture
-def connection_manager() -> ConnectionManager:
+def connection_manager(monkeypatch) -> ConnectionManager:
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
     manager = ConnectionManager()
     manager._execution_scope_is_live = AsyncMock(return_value=True)
     return manager

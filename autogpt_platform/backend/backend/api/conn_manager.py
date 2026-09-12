@@ -15,6 +15,7 @@ from redis.exceptions import MovedError, RedisError, ResponseError
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
+from backend.api.org_rollout import require_personal_scope_without_collaboration
 from backend.data import redis_client as redis
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
@@ -289,6 +290,10 @@ class ConnectionManager:
         )
         if not await self._execution_scope_is_live(scope):
             raise ValueError("Access denied")
+        if scope.organization_id is not None or scope.team_id is not None:
+            await require_personal_scope_without_collaboration(
+                user_id, scope.organization_id, scope.team_id
+            )
         await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
 
@@ -318,6 +323,12 @@ class ConnectionManager:
         full_channel = event_bus_channel(graph_all_channel(user_id, graph_id))
         if not await self._execution_scope_is_live(scope):
             raise ValueError("Access denied")
+        # Fully unscoped subscriptions are legacy personal channels; the
+        # exact-scope filter still excludes every org/team execution from them.
+        if organization_id is not None or team_id is not None:
+            await require_personal_scope_without_collaboration(
+                user_id, organization_id, team_id
+            )
         await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
 

@@ -3,7 +3,7 @@ import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 import { server } from "@/mocks/mock-server";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { APIKeyList } from "../APIKeyList";
 
@@ -45,29 +45,33 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("APIKeyList team badges", () => {
-  it("shows the team name badge only on team-restricted keys", async () => {
-    server.use(
-      getGetV1ListUserApiKeysMockHandler([
-        apiKey({
-          id: "key-team",
-          name: "Team key",
-          team_id_restriction: "team-a",
-        }),
-        apiKey({ id: "key-org", name: "Org key", team_id_restriction: null }),
-      ]),
-    );
+  it.each([true, false])(
+    "preserves the key list with team badges gated by rollout=%s",
+    async (enabled) => {
+      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", String(enabled));
+      server.use(
+        getGetV1ListUserApiKeysMockHandler([
+          apiKey({
+            id: "key-team",
+            name: "Team key",
+            team_id_restriction: "team-a",
+          }),
+          apiKey({ id: "key-org", name: "Org key", team_id_restriction: null }),
+        ]),
+      );
 
-    render(<APIKeyList />);
+      render(<APIKeyList />);
 
-    // The restricted key surfaces the team name badge.
-    expect(await screen.findByText("Team key")).toBeTruthy();
-    expect(await screen.findByText("Growth")).toBeTruthy();
+      // Both existing keys remain visible; only collaboration labels are gated.
+      expect(await screen.findByText("Team key")).toBeTruthy();
 
-    // Exactly one badge — the org-home key gets none.
-    await waitFor(() => {
-      expect(screen.getAllByText("Growth")).toHaveLength(1);
-    });
-    expect(screen.getByText("Org key")).toBeTruthy();
-  });
+      await waitFor(() => {
+        expect(screen.queryAllByText("Growth")).toHaveLength(enabled ? 1 : 0);
+      });
+      expect(screen.getByText("Org key")).toBeTruthy();
+    },
+  );
 });

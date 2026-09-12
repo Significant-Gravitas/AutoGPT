@@ -15,6 +15,7 @@ import {
 } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ARTIFACTS_LIST_QUERY_KEY } from "./useArtifactsPage";
 
 interface TenantScope {
@@ -30,15 +31,15 @@ function folderScope(folder: WorkspaceFolder): TenantScope {
 }
 
 export function useArtifactsFolders(requestedScope?: TenantScope) {
+  const collaborationEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
-  const organizationId = requestedScope
-    ? requestedScope.organizationId
-    : activeOrgID;
-  const teamId = requestedScope ? requestedScope.teamId : activeTeamID;
+  const scope = collaborationEnabled ? requestedScope : undefined;
+  const organizationId = scope ? scope.organizationId : activeOrgID;
+  const teamId = scope ? scope.teamId : activeTeamID;
 
   const foldersQuery = useListWorkspaceFolders({
     query: {

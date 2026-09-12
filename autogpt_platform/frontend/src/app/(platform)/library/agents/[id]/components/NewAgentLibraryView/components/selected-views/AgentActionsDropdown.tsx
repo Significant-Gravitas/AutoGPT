@@ -58,7 +58,6 @@ export function AgentActionsDropdown({
   scheduleId,
   onClearSelectedRun,
 }: Props) {
-  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { toast } = useToast();
   const organizationId = agent.organization_id ?? null;
   const teamId = agent.team_id ?? null;
@@ -81,8 +80,8 @@ export function AgentActionsDropdown({
 
   // Share only makes sense once the user has teams; the backend enforces
   // owner/admin rights and any 400 is surfaced via the dialog's toast.
-  const hasTeams =
-    useOrgTeamStore((s) => s.teams.length > 0) && showOrgSettings;
+  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
+  const showOrgSettings = useGetFlag(Flag.SHOW_ORG_SETTINGS);
 
   const { mutateAsync: deleteSchedule } = useDeleteV1DeleteExecutionSchedule({
     request: getTenantRequestInit(organizationId, teamId),
@@ -251,7 +250,7 @@ export function AgentActionsDropdown({
           >
             Export agent to file
           </DropdownMenuItem>
-          {hasTeams ? (
+          {showOrgSettings && hasTeams ? (
             <DropdownMenuItem
               onClick={() => setShowShareDialog(true)}
               className="flex items-center gap-2"

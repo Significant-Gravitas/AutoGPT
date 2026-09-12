@@ -51,6 +51,7 @@ async def test_off_warm_and_default_search_keep_only_personal_memory(expert_id):
             "user-1",
             "org-personal",
             "all",
+            session_team_id="team-personal",
             expert_id=expert_id,
         )
     assert warm == search
@@ -109,7 +110,7 @@ async def test_off_keeps_personal_store_in_personal_organization():
 
 
 @pytest.mark.asyncio
-async def test_off_rejects_shared_enqueue_but_keeps_personal_ingestion():
+async def test_off_rejects_shared_enqueue_and_drops_already_queued_work():
     with patch.object(
         ingest, "_enqueue_payload", AsyncMock(return_value=True)
     ) as enqueue:
@@ -119,12 +120,26 @@ async def test_off_rejects_shared_enqueue_but_keeps_personal_ingestion():
             name="Shared",
             episode_body="Policy",
             group_id="org_org-1",
+            organization_id="org-1",
         )
         enqueue.assert_not_awaited()
         assert await ingest.enqueue_episode(
             "user-1", "session-1", name="Private", episode_body="Preference"
         )
         assert enqueue.await_args.args[1] == "user_user-1"
+    with patch.object(ingest, "get_graphiti_client", AsyncMock()) as client:
+        await ingest._process_ingestion_payload(
+            "user-1",
+            "org_org-1",
+            {
+                "group_id": "org_org-1",
+                "_resource_scope": {
+                    "organization_id": "org-1",
+                    "team_id": None,
+                },
+            },
+        )
+    client.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { useAuthMock } = vi.hoisted(() => ({
@@ -96,6 +97,7 @@ function mockOrgsResponse(orgs: unknown, ok = true) {
 
 describe("OrgTeamProvider", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
     useOrgTeamStore.setState({
       activeOrgID: null,
@@ -107,8 +109,225 @@ describe("OrgTeamProvider", () => {
   });
 
   afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it.each(["false", undefined])(
+    "uses the server's own personal workspace and clears a saved shared scope when the flag is %s",
+    async (flagValue) => {
+      if (flagValue === undefined) {
+        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+      } else {
+        process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flagValue;
+      }
+      mockLoggedIn();
+      useOrgTeamStore.setState({
+        activeOrgID: COMPANY_ORG.id,
+        activeTeamID: "team-company",
+        orgs: [COMPANY_ORG, { ...PERSONAL_ORG, id: "somebody-elses-personal" }],
+        isLoaded: true,
+      });
+      window.localStorage.setItem("unrelated-preference", "preserved");
+      const resetQueries = vi.spyOn(getQueryClient(), "resetQueries");
+      const fetchMock = vi.fn().mockImplementation((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: url.endsWith("/default")
+              ? PERSONAL_ORG_API
+              : [
+                  {
+                    id: "team-default",
+                    name: "General",
+                    slug: "general",
+                    is_default: true,
+                    join_policy: "OPEN",
+                    org_id: PERSONAL_ORG.id,
+                    is_member: true,
+                  },
+                ],
+          }),
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <OrgTeamProvider>
+          <span>personal content</span>
+        </OrgTeamProvider>,
+      );
+      expect(screen.queryByText("personal content")).toBeNull();
+      await screen.findByText("personal content");
+
+      expect(useOrgTeamStore.getState()).toMatchObject({
+        activeOrgID: PERSONAL_ORG.id,
+        activeTeamID: "team-default",
+        orgs: [PERSONAL_ORG],
+        isLoaded: true,
+      });
+      expect(
+        fetchMock.mock.calls
+          .map(([url]) => url)
+          .filter((url) => url.startsWith("/api/proxy/api/orgs")),
+      ).toEqual([
+        "/api/proxy/api/orgs/default",
+        `/api/proxy/api/orgs/${PERSONAL_ORG.id}/workspaces`,
+      ]);
+      expect(resetQueries).toHaveBeenCalled();
+      expect(window.localStorage.getItem("unrelated-preference")).toBe(
+        "preserved",
+      );
+      resetQueries.mockRestore();
+    },
+  );
+
+  it("does not restore a cached shared workspace if the personal lookup fails", async () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    mockLoggedIn();
+    useOrgTeamStore.setState({
+      activeOrgID: COMPANY_ORG.id,
+      orgs: [COMPANY_ORG],
+      isLoaded: true,
+    });
+    mockOrgsResponse(null, false);
+
+    render(
+      <OrgTeamProvider>
+        <span>resource actions</span>
+      </OrgTeamProvider>,
+    );
+    await screen.findByText("We couldn't load your workspace.");
+
+    expect(screen.queryByText("resource actions")).toBeNull();
+    expect(useOrgTeamStore.getState().activeOrgID).toBeNull();
+    expect(useOrgTeamStore.getState().orgs).toEqual([]);
+  });
+
+  it("discards in-flight shared-org results when the flag turns off", async () => {
+    mockLoggedIn();
+    useOrgTeamStore.setState({ activeOrgID: COMPANY_ORG.id });
+    let finishOldRequest: ((value: unknown) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url === "/api/proxy/api/orgs") {
+          return new Promise((resolve) => {
+            finishOldRequest = resolve;
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: url.endsWith("/default")
+              ? PERSONAL_ORG_API
+              : [
+                  {
+                    id: "team-default",
+                    name: "General",
+                    slug: "general",
+                    is_default: true,
+                    join_policy: "OPEN",
+                    org_id: PERSONAL_ORG.id,
+                    is_member: true,
+                  },
+                ],
+          }),
+        });
+      }),
+    );
+    const { rerender } = render(
+      <OrgTeamProvider>
+        <span>resource actions</span>
+      </OrgTeamProvider>,
+    );
+
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    rerender(
+      <OrgTeamProvider>
+        <span>resource actions</span>
+      </OrgTeamProvider>,
+    );
+    await waitFor(() =>
+      expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id),
+    );
+    finishOldRequest?.({
+      ok: true,
+      json: async () => ({ data: [COMPANY_ORG_API] }),
+    });
+    await screen.findByText("resource actions");
+
+    expect(useOrgTeamStore.getState().orgs).toEqual([PERSONAL_ORG]);
+    expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+  });
+
+  it("restores personal scope when a pending mutation selects a shared org after the flag turns off", async () => {
+    mockLoggedIn();
+    useOrgTeamStore.setState({ activeOrgID: COMPANY_ORG.id });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({
+          data: url.endsWith("/default")
+            ? PERSONAL_ORG_API
+            : isWorkspacesUrl(url)
+              ? [
+                  {
+                    id: "team-default",
+                    name: "General",
+                    slug: "general",
+                    is_default: true,
+                    join_policy: "OPEN",
+                    org_id: PERSONAL_ORG.id,
+                    is_member: true,
+                  },
+                ]
+              : [COMPANY_ORG_API, PERSONAL_ORG_API],
+        }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    let finishMutation!: () => void;
+    const pendingMutation = new Promise<void>((resolve) => {
+      finishMutation = resolve;
+    }).then(() => useOrgTeamStore.getState().setActiveOrg(COMPANY_ORG.id));
+    const { rerender } = render(
+      <OrgTeamProvider>
+        <span>resource actions</span>
+      </OrgTeamProvider>,
+    );
+
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    rerender(
+      <OrgTeamProvider>
+        <span>resource actions</span>
+      </OrgTeamProvider>,
+    );
+    await screen.findByText("resource actions");
+    expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    fetchMock.mockClear();
+
+    await act(async () => {
+      finishMutation();
+      await pendingMutation;
+    });
+    await screen.findByText("resource actions");
+    expect(useOrgTeamStore.getState()).toMatchObject({
+      activeOrgID: PERSONAL_ORG.id,
+      activeTeamID: "team-default",
+      isLoaded: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `/api/proxy/api/orgs/${COMPANY_ORG.id}/workspaces`,
+      expect.anything(),
+    );
+
+    act(() => useOrgTeamStore.getState().setActiveTeam("stale-shared-team"));
+    await screen.findByText("resource actions");
+    expect(useOrgTeamStore.getState().activeTeamID).toBe("team-default");
+    expect(window.localStorage.getItem("active-org-id")).toBe(PERSONAL_ORG.id);
+    expect(window.localStorage.getItem("active-team-id")).toBe("team-default");
   });
 
   it("renders children, normalizes the snake_case response, and defaults the active org to the personal org on login", async () => {

@@ -8,6 +8,7 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useEffect } from "react";
 
 import {
   capabilityLabel,
@@ -25,7 +26,7 @@ interface Props {
 
 export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
   const {
-    enabled,
+    isEnabled,
     teams,
     isLoadingTeams,
     teamId,
@@ -46,7 +47,11 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
     handleRevoke,
   } = useShareAgentDialog(agent, isOpen);
 
-  if (!enabled) return null;
+  useEffect(() => {
+    if (!isEnabled && isOpen) setIsOpen(false);
+  }, [isEnabled, isOpen, setIsOpen]);
+
+  if (!isEnabled) return null;
 
   return (
     <Dialog

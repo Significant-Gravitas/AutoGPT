@@ -19,7 +19,23 @@ export function useCreateTeamSelection(surfaceKey: string) {
     orgId: activeOrgID,
     teamId: activeOrgID ? getLastUsedTeam(activeOrgID, surfaceKey) : null,
   }));
-  const teamId = selection.orgId === activeOrgID ? selection.teamId : null;
+  const defaultTeamId =
+    teams.find((team) => team.orgId === activeOrgID && team.isDefault)?.id ??
+    null;
+  const teamId = enabled
+    ? selection.orgId === activeOrgID
+      ? selection.teamId
+      : null
+    : defaultTeamId;
+
+  // A hidden picker must not keep creating resources in its previous team.
+  // Clear only this surface's choice; leave other preferences intact.
+  useEffect(() => {
+    if (!enabled && selection.teamId !== null) {
+      setSelection({ orgId: activeOrgID, teamId: null });
+      if (activeOrgID) setLastUsedTeam(activeOrgID, surfaceKey, null);
+    }
+  }, [activeOrgID, enabled, selection.teamId, surfaceKey]);
 
   // Once the store has loaded, clamp a last-used team that no longer exists
   // (deleted, or the user left the org / now has no teams at all) back to
@@ -40,10 +56,13 @@ export function useCreateTeamSelection(surfaceKey: string) {
     if (isLoaded && selection.orgId !== activeOrgID) {
       setSelection({
         orgId: activeOrgID,
-        teamId: activeOrgID ? getLastUsedTeam(activeOrgID, surfaceKey) : null,
+        teamId:
+          enabled && activeOrgID
+            ? getLastUsedTeam(activeOrgID, surfaceKey)
+            : null,
       });
     }
-  }, [activeOrgID, isLoaded, selection.orgId, surfaceKey]);
+  }, [activeOrgID, enabled, isLoaded, selection.orgId, surfaceKey]);
 
   function setTeamId(next: string | null) {
     if (!enabled) return;
@@ -54,12 +73,12 @@ export function useCreateTeamSelection(surfaceKey: string) {
   }
 
   return {
-    teamId: enabled ? teamId : null,
+    teamId,
     setTeamId,
     hasTeams: enabled && teams.length > 0,
     isReady: isLoaded && activeOrgID !== null,
     teamRequestInit: getTeamRequestInit(
-      enabled ? teamId : null,
+      teamId,
       isLoaded && activeOrgID !== null,
     ),
   };

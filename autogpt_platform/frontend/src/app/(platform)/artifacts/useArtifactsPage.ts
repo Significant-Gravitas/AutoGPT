@@ -5,6 +5,7 @@ import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFo
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
 
@@ -16,6 +17,7 @@ export const ARTIFACTS_LIST_QUERY_KEY = ["artifacts", "list"] as const;
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
 export function useArtifactsPage() {
+  const collaborationEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -26,12 +28,22 @@ export function useArtifactsPage() {
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
-  const organizationId = selectedFolderScope
-    ? selectedFolderScope.organizationId
+  const scopedFolder =
+    collaborationEnabled ||
+    (selectedFolderScope?.organizationId === activeOrgID &&
+      selectedFolderScope?.teamId === activeTeamID)
+      ? selectedFolderScope
+      : null;
+  const currentFolderId = scopedFolder ? selectedFolderId : null;
+  const organizationId = scopedFolder
+    ? scopedFolder.organizationId
     : activeOrgID;
-  const teamId = selectedFolderScope
-    ? selectedFolderScope.teamId
-    : activeTeamID;
+  const teamId = scopedFolder ? scopedFolder.teamId : activeTeamID;
+
+  useEffect(() => {
+    setSelectedFolderId(null);
+    setSelectedFolderScope(null);
+  }, [activeOrgID, activeTeamID, collaborationEnabled]);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -42,10 +54,10 @@ export function useArtifactsPage() {
   const origin = originFilter === "all" ? undefined : originFilter;
   // No folder selected → show only root-level files; a folder is selected →
   // scope the listing to that folder.
-  const folderId = selectedFolderId ?? undefined;
+  const folderId = currentFolderId ?? undefined;
   // While searching, span the whole workspace (including files inside folders)
   // so global search isn't limited to root-level files.
-  const rootOnly = selectedFolderId === null && !q;
+  const rootOnly = currentFolderId === null && !q;
 
   const query = useInfiniteQuery({
     queryKey: [
@@ -95,8 +107,15 @@ export function useArtifactsPage() {
     debouncedSearch,
     originFilter,
     setOriginFilter,
-    selectedFolderId,
+    selectedFolderId: currentFolderId,
     selectFolder: (folder: WorkspaceFolder | null) => {
+      if (
+        !collaborationEnabled &&
+        folder &&
+        (folder.organization_id !== activeOrgID ||
+          (folder.team_id ?? null) !== activeTeamID)
+      )
+        return;
       setSelectedFolderId(folder?.id ?? null);
       setSelectedFolderScope(
         folder

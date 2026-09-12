@@ -72,18 +72,6 @@ describe("OrgTeamSwitcher", () => {
     delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   });
 
-  it.each(["false", undefined])(
-    "hides the whole org/team switcher when the flag is %s",
-    (flag) => {
-      if (flag === undefined)
-        delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-      else process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = flag;
-      seedStore();
-      const { container } = render(<OrgTeamSwitcher />);
-      expect(container.innerHTML).toBe("");
-    },
-  );
-
   it("renders nothing before the org context has loaded", () => {
     seedStore({ isLoaded: false });
 
@@ -123,15 +111,23 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getByTestId("org-switcher-manage")).toBeDefined();
   });
 
-  it("hides organization management when the feature flag is off", async () => {
+  it("hides the entire switcher with existing organizations when the flag is off", () => {
     process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
     seedStore();
     render(<OrgTeamSwitcher />);
 
-    await openSwitcher();
-
+    expect(screen.queryByTestId("org-switcher-trigger")).toBeNull();
+    expect(screen.queryByText(COMPANY_ORG.name)).toBeNull();
     expect(screen.queryByTestId("org-switcher-create")).toBeNull();
     expect(screen.queryByTestId("org-switcher-manage")).toBeNull();
+  });
+
+  it("hides the entire switcher when the flag is unavailable", () => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+    seedStore();
+    render(<OrgTeamSwitcher />);
+
+    expect(screen.queryByTestId("org-switcher-trigger")).toBeNull();
   });
 
   it("does not render a team-switching section (teams are badges, not context)", async () => {
