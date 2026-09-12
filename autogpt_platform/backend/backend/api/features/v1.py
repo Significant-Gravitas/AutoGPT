@@ -2162,6 +2162,8 @@ async def execute_graph(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            trigger=execution_db.ExecutionTrigger.MANUAL,
+            trigger_ref=source,
         )
         record_graph_operation(operation="execute", status="success")
         if source == "library":

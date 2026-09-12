@@ -21915,6 +21915,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22104,6 +22112,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22216,6 +22232,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
           },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
