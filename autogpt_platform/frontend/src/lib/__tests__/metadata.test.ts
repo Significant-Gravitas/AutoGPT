@@ -43,6 +43,37 @@ describe("buildPageMetadata", () => {
     expect(metadata.twitter).toMatchObject({ card: "summary" });
   });
 
+  test("keeps a description that fits under the cap", () => {
+    const description = "Sends a summary of yesterday's runs every morning.";
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    expect(metadata.description).toBe(description);
+    expect(metadata.openGraph?.description).toBe(description);
+    expect(metadata.twitter?.description).toBe(description);
+  });
+
+  test("cuts an over-long description on a word boundary", () => {
+    const description = `${"word ".repeat(60)}tail`;
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    const summary = metadata.description as string;
+    expect(summary.length).toBeLessThanOrEqual(201);
+    expect(summary.endsWith("…")).toBe(true);
+    expect(summary).not.toMatch(/wor…$/);
+    expect(summary.slice(0, -1).endsWith("word")).toBe(true);
+  });
+
+  test.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["blank", "   "],
+  ])("omits the description when it is %s", (_label, description) => {
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    expect(metadata.description).toBeUndefined();
+    expect(metadata.openGraph?.description).toBeUndefined();
+  });
+
   test("resolves the canonical and og:url against the site URL", () => {
     vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://platform.agpt.co");
 
