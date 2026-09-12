@@ -2,9 +2,9 @@ import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetup
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { getSetupRowCopy, isCredentialItem } from "../helpers";
 
 interface Props {
   item: ExpertSetupItem;
@@ -22,9 +22,8 @@ export function SetupNeededRow({
   onAllow,
 }: Props) {
   const provider = item.providers[0];
-  const providerName = provider ? formatProviderName(provider) : "A service";
-  const workflowName = item.workflow_name ?? "a workflow";
-  const isCredential = item.resolution !== "workflow";
+  const isCredential = isCredentialItem(item);
+  const { title, detail } = getSetupRowCopy(item);
 
   return (
     <article className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 smooth-shadow-ring-sm">
@@ -44,14 +43,10 @@ export function SetupNeededRow({
           as="span"
           className="truncate !text-zinc-800"
         >
-          {isCredential
-            ? `${providerName} for ${item.expert_name}`
-            : `Schedule ${workflowName} for ${item.expert_name}`}
+          {title}
         </Text>
         <Text variant="small" as="span" className="truncate !text-zinc-400">
-          {isCredential
-            ? `${workflowName} needs it to run on schedule.`
-            : "Every connection is in place; the schedule still has to be created."}
+          {detail}
         </Text>
       </div>
       <div className="flex shrink-0 items-center">

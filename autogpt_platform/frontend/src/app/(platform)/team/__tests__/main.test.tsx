@@ -1171,6 +1171,36 @@ describe("TeamPage - setup needed card", () => {
     ).toBe("/library/agents/lib-1");
   });
 
+  test("an input only the user can give is named, with the workflow to fill it in", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({
+          workflow_name: "Personal Newsletter",
+          providers: [],
+          resolution: "inputs",
+          missing_inputs: ["Email Address"],
+        }),
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(
+      within(card).getByText("Schedule Personal Newsletter for Maria"),
+    ).toBeDefined();
+    expect(
+      within(card).getByText(
+        "Needs Email Address before it can run on schedule.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(card)
+        .getByRole("link", { name: "Open workflow" })
+        .getAttribute("href"),
+    ).toBe("/library/agents/lib-1");
+  });
+
   test("a provider the user cannot connect is explained instead of offered", async () => {
     server.use(
       getListExpertSetupItemsMockHandler([

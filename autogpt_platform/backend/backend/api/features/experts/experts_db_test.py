@@ -28,6 +28,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store.categories import StoreCategory
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
@@ -35,6 +36,7 @@ from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.model import User
 from backend.data.user import get_or_create_user
+from backend.executor import utils as execution_utils
 from backend.util.exceptions import ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -110,6 +112,7 @@ async def _seed_store_listing(
     server: SpinTestServer,
     approved: bool = True,
     extra_block_ids: list[str] | None = None,
+    input_value: str | None = "seeded",
 ) -> str:
     """Create a graph plus a store listing on top of it.
 
@@ -119,6 +122,9 @@ async def _seed_store_listing(
     blocks in the graph — a credentialed one gives the listing an integration
     to summarise. Mirrors the seeding pattern from
     ``backend/data/graph_test.py::test_access_store_listing_graph``.
+
+    ``input_value=None`` leaves the graph's one input without a default,
+    which is what makes it a required user-supplied field.
     """
     owner = await _create_seed_user()
     admin = await _create_seed_user()
@@ -129,7 +135,8 @@ async def _seed_store_listing(
         nodes=[
             Node(
                 block_id=AgentInputBlock().id,
-                input_default={"name": "input_1"},
+                input_default={"name": "input_1"}
+                | ({} if input_value is None else {"value": input_value}),
             ),
             *(Node(block_id=block_id) for block_id in extra_block_ids or []),
         ],
@@ -1401,6 +1408,7 @@ async def test_hire_existing_team_expert_fails_closed():
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -1451,6 +1459,7 @@ async def test_hire_raced_org_expert_fails_closed():
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -2376,6 +2385,89 @@ async def test_hire_creates_schedule_from_template_cadence(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_hire_creates_the_schedule_on_the_hiring_users_clock(
+    server: SpinTestServer, test_user
+):
+    """A 07:40 cadence means 07:40 where the user is, not UTC."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-tz")
+    )
+    with (
+        patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone="Pacific/Auckland")),
+        ),
+    ):
+        await experts_db.hire_expert(test_user.id, template.id, None)
+
+    kwargs = mock_scheduler.add_execution_schedule.call_args.kwargs
+    assert kwargs["user_timezone"] == "Pacific/Auckland"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_skips_the_schedule_when_the_graph_needs_user_input(
+    server: SpinTestServer, test_user
+):
+    """A cadence on a workflow whose inputs only the user can supply gets no
+    schedule: the cadence stays on the row so the Team page can ask for them."""
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler):
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    wf = result.expert.workflows[0]
+    assert wf.schedule_cron == "40 7 * * *"
+    assert wf.schedule_id is None
+    assert result.failed_preloads == []
+    mock_scheduler.add_execution_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_scheduler_accepts_a_schedule_missing_a_required_input(
+    server: SpinTestServer, test_user
+):
+    """Why the skip above is load-bearing: nothing downstream refuses it.
+
+    ``add_graph_execution_schedule`` validates through this call, and an
+    ``AgentInputBlock`` with no value validates clean — so an unguarded
+    install creates a schedule that fires daily on an input yielding nothing.
+    """
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(name="Frankie", preload_listings=[slv_id])
+    result = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent_id = result.expert.workflows[0].library_agent_id
+    assert library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None
+
+    await execution_utils.validate_and_construct_node_execution_input(
+        graph_id=library_agent.agentGraphId,
+        user_id=test_user.id,
+        graph_inputs={},
+        graph_version=library_agent.agentGraphVersion,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_hire_schedule_failure_marks_needs_setup(
     server: SpinTestServer, test_user
 ):
@@ -3273,6 +3365,7 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
         "avatar_url": None,
         "bio": "",
         "skills": [],
+        "categories": [],
         "identity": template.identity,
         "preloads": [{"slug": listing.slug, "cron": "40 7 * * *"}],
     }
@@ -3319,6 +3412,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a senior marketing strategist.",
         "skills": ["Content strategy", "SEO writing"],
+        "categories": ["marketing"],
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
@@ -3336,6 +3430,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.avatar_url == "/experts/maria.svg"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
+    assert refreshed.categories == ["marketing"]
     # A user's rename and skill list survive the refresh: the template's
     # skills neither replace the owner's nor get merged back into them.
     assert refreshed.skills == ["Customer interviews"]
@@ -4126,3 +4221,147 @@ def test_expert_soul_fields_patch_strips_and_preserves_none():
     assert patch.voice_preferences == ""
     assert patch.boundaries == "Keep it short."
     assert patch.identity is None
+
+
+async def _template(name: str, **fields) -> prisma.models.Expert:
+    return await prisma.models.Expert.prisma().create(
+        data={
+            "name": name,
+            "role": fields.pop("role", "Writer"),
+            "identity": f"You are {name}.",
+            "isTemplate": True,
+            **fields,
+        }
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_filters_by_category(server: SpinTestServer):
+    """A category chip narrows the roster, and never widens it: an expert
+    filed under another category must not surface under an unrelated chip."""
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mira {suffix}", categories=["marketing"])
+    seller = await _template(f"Sal {suffix}", categories=["sales"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="marketing")}
+    assert marketer.id in listed
+    assert seller.id not in listed
+
+    assert marketer.categories == ["marketing"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_category_filter_accepts_a_legacy_alias(
+    server: SpinTestServer,
+):
+    """`category_match_values` folds aliases, so a chip stored as "seo"
+    still matches an expert filed under the canonical "marketing"."""
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mo {suffix}", categories=["marketing"])
+    seller = await _template(f"So {suffix}", categories=["sales"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="seo")}
+    assert marketer.id in listed
+    # Without the exclusion this passes on an unfiltered list, which would
+    # prove nothing about the alias.
+    assert seller.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_without_a_category_keeps_uncategorised_experts(
+    server: SpinTestServer,
+):
+    """The unfiltered roster is the whole roster. `category_filter_values`
+    would narrow it to experts that HAVE a canonical category once
+    `marketplace_require_canonical_category` is on, hiding this one."""
+    plain = await _template(f"Nil {uuid.uuid4().hex[:8]}")
+
+    assert plain.categories == []
+    assert plain.id in {t.id for t in await experts_db.list_templates()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_searches_name_role_tagline_and_bio(
+    server: SpinTestServer,
+):
+    suffix = uuid.uuid4().hex[:8]
+    by_name = await _template(f"Marigold {suffix}")
+    by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
+    by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
+
+    async def ids_for(query: str) -> set[str]:
+        return {t.id for t in await experts_db.list_templates(search_query=query)}
+
+    assert by_name.id in await ids_for("marigold")
+    assert by_role.id in await ids_for(f"podcaster {suffix}")
+    assert by_tagline.id in await ids_for(f"books {suffix}")
+    assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
+
+    # One term, four templates: the OR spans the four searchable columns.
+    assert await ids_for(suffix) >= {
+        by_name.id,
+        by_role.id,
+        by_tagline.id,
+        by_bio.id,
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_misses_return_nothing(server: SpinTestServer):
+    await _template(f"Quiet {uuid.uuid4().hex[:8]}")
+
+    assert await experts_db.list_templates(search_query=uuid.uuid4().hex) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_treats_a_blank_search_as_no_filter(
+    server: SpinTestServer,
+):
+    template = await _template(f"Blank {uuid.uuid4().hex[:8]}")
+
+    listed = await experts_db.list_templates(search_query="   ")
+
+    assert template.id in {t.id for t in listed}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_combines_search_and_category(server: SpinTestServer):
+    suffix = uuid.uuid4().hex[:8]
+    matching = await _template(f"Both {suffix}", categories=["marketing"])
+    wrong_category = await _template(f"Both {suffix} too", categories=["sales"])
+    # Right category, wrong name: without the search half this one leaks in,
+    # which is what makes the test load-bearing for both filters at once.
+    wrong_name = await _template(f"Neither {suffix}", categories=["marketing"])
+
+    listed = {
+        t.id
+        for t in await experts_db.list_templates(
+            search_query=f"both {suffix}", category="marketing"
+        )
+    }
+    assert listed == {matching.id}
+    assert wrong_category.id not in listed
+    assert wrong_name.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_copies_the_template_categories(server: SpinTestServer, test_user):
+    template = await _template(f"Cat {uuid.uuid4().hex[:8]}", categories=["operations"])
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.categories == ["operations"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_files_every_template_under_a_canonical_category(
+    server: SpinTestServer,
+):
+    await _load_roster_store_assets()
+    ids = await seed.seed_roster()
+    seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
+
+    for entry in seed.ROSTER:
+        assert seeded[entry["name"]].categories == entry["categories"]
+        assert set(entry["categories"]) <= {c.value for c in StoreCategory}

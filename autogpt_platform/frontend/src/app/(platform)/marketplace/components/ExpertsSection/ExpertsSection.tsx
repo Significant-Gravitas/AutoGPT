@@ -10,11 +10,20 @@ import { useExpertsSection } from "./useExpertsSection";
 const RAISE_LABEL = "Raise your own";
 const RAISE_HREF = "/raise";
 
-export function ExpertsSection() {
+interface Props {
+  category?: string | null;
+}
+
+export function ExpertsSection({ category }: Props) {
   const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
-    useExpertsSection();
+    useExpertsSection({ category });
 
   if (isError || (!isLoading && templates.length === 0)) {
+    // Under a category filter an empty shelf means "no experts in this
+    // category", so the whole section goes rather than inviting a raise.
+    // Only on a successful empty response: a failed request is not an answer
+    // about the category, and still deserves the fallback below.
+    if (!isError && category) return null;
     // Raising an expert needs no roster templates, so the second door
     // stays open even when the template list is empty or failed to load.
     // It needs an account, though, so visitors get nothing here.
