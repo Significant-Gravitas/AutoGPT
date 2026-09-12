@@ -7780,7 +7780,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__v1__ShareResponse"
+                  "$ref": "#/components/schemas/backend__api__features__executions__model__ShareResponse"
                 }
               }
             }
@@ -32007,7 +32007,7 @@
         "required": ["share_url", "share_token"],
         "title": "ShareResponse"
       },
-      "backend__api__features__v1__ShareResponse": {
+      "backend__api__features__executions__model__ShareResponse": {
         "properties": {
           "share_url": { "type": "string", "title": "Share Url" },
           "share_token": { "type": "string", "title": "Share Token" }
