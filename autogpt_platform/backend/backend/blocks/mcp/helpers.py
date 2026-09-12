@@ -20,8 +20,17 @@ def normalize_mcp_url(url: str) -> str:
     Strips leading/trailing whitespace and a single trailing slash so that
     ``https://mcp.example.com/`` and ``https://mcp.example.com`` resolve to
     the same stored credential.
+
+    A URL with no scheme gets ``https://``. That is the user omitting a scheme
+    rather than asking for cleartext — but the reason it belongs *here* is
+    matching, not politeness: the credential is stored under this value and
+    every lookup re-derives it from user input through this same function, so
+    the default has to be applied in one place or storage and lookup disagree.
     """
-    return url.strip().rstrip("/")
+    url = url.strip().rstrip("/")
+    if url and "://" not in url:
+        url = f"https://{url}"
+    return url
 
 
 def server_host(server_url: str) -> str:
@@ -145,6 +154,12 @@ async def auto_lookup_mcp_credential(
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if it can expire and needs it, or ``None`` when no match is found.
+
+    A failed refresh also yields ``None``, deliberately. Returning the stale
+    access token instead would earn a 401 from the server, and the caller
+    treats a 401 on a credential it *has* as proof the token is dead — so a
+    transient outage at the provider's token endpoint would delete a row whose
+    refresh token is still perfectly good.
     """
     try:
         mgr = IntegrationCredentialsManager()

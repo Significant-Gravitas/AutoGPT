@@ -26,6 +26,8 @@ from backend.api.features.search.hybrid_search import (
 )
 from backend.data.db import query_raw_with_schema
 
+from .categories import category_filter_values
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,9 +158,9 @@ async def hybrid_search(
         where_parts.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
 
-    if category:
-        params.append(category)
-        where_parts.append(f"${param_idx} = ANY(sa.categories)")
+    if category_values := category_filter_values(category):
+        params.append(category_values)
+        where_parts.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_clause = " AND ".join(where_parts)

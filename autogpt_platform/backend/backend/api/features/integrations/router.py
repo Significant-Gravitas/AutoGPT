@@ -93,6 +93,7 @@ from .codex import (
     revoke_codex_credentials,
 )
 from .codex import router as codex_router
+from .failure_events import CredentialFailure, report_credential_failure
 from .models import (
     ProviderConstants,
     ProviderMetadata,
@@ -346,7 +347,14 @@ async def callback(
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {user_id}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.PROVIDER_REGISTRATION_WRONG,
+            "invalid_state_token",
+            "Invalid or expired state token",
+            provider=provider.value,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
@@ -375,10 +383,15 @@ async def callback(
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
-            # For now, we'll just log the warning and continue
-            logger.warning(
+            # Stored and accepted anyway; the frontend then refuses to select it,
+            # so this is the only record that the credential is short.
+            report_credential_failure(
+                logger,
+                CredentialFailure.SCOPES_TOO_NARROW,
+                "granted_scopes_narrower",
                 f"Granted scopes {credentials.scopes} for provider {provider.value} "
-                f"do not include all requested scopes {scopes}"
+                f"do not include all requested scopes {scopes}",
+                provider=provider.value,
             )
 
     except Exception as e:
@@ -496,7 +509,13 @@ async def _credential_for_grant(
     try:
         return await creds_manager.store.get_creds_by_id(user_id, credential_id)
     except Exception as e:
-        logger.warning(f"Could not read stored credential for {provider}: {e}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.DEVICE_CODE_RACE,
+            "credential_unreadable",
+            f"Could not read stored credential for {provider}: {e}",
+            provider=provider_key(provider),
+        )
         return None
 
 
@@ -749,11 +768,13 @@ async def _ensure_managed_credentials_bounded(user_id: str) -> None:
             timeout=_MANAGED_PROVISION_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
-        logger.warning(
-            "Managed credential sweep exceeded %.1fs for user=%s; "
+        report_credential_failure(
+            logger,
+            CredentialFailure.MANAGED_PROVISIONING_LATE,
+            "sweep_timeout",
+            f"Managed credential sweep exceeded {_MANAGED_PROVISION_TIMEOUT_S:.1f}s; "
             "continuing without it — provisioning will complete in background",
-            _MANAGED_PROVISION_TIMEOUT_S,
-            user_id,
+            user_id=user_id,
         )
         asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
 
@@ -1430,9 +1451,9 @@ async def _merge_or_create_credential(
     advertises.  Without that guard a narrowed re-auth would overwrite the
     stored ``access_token`` with a token whose grant is smaller than the
     ``scopes`` list — the record would claim authorizations the token does
-    not grant, the credential matcher would happily route AutoPilot tools
+    not grant, the credential matcher would happily route Otto tools
     to that "more capable" credential, and the tool would fail with opaque
-    401/403s on the missing scopes ("AutoPilot keeps picking the old
+    401/403s on the missing scopes ("Otto keeps picking the old
     creds" symptom).  On a narrowing re-auth we keep the existing
     credential intact and persist the new one alongside it instead.
     """
@@ -1886,6 +1907,8 @@ async def list_providers(
 
         load_all_blocks()
     except Exception as e:
+        # The list still returns, one provider short — every card for a missing
+        # provider then renders as a permanent loading state, not an error.
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()

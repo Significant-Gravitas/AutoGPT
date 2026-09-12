@@ -6,8 +6,8 @@ Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
 from official store listing slugs; all listings are validated before any
 template is mutated. Each upsert also refreshes the presentation fields
-(avatar, tagline, bio, skills) on experts already hired from that template,
-so roster changes reach existing users and not just new hires.
+(avatar, tagline, bio, categories) on experts already hired from that
+template, so roster changes reach existing users and not just new hires.
 """
 
 import asyncio
@@ -17,9 +17,16 @@ from typing import TypedDict
 
 import prisma.models
 
-from backend.api.features.experts.models import VoiceSample, encode_voice_preferences
+from backend.api.features.experts.models import (
+    ExpertDayOneItem,
+    VoiceSample,
+    encode_day_one,
+    encode_voice_preferences,
+)
+from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,10 @@ class PreloadSeed(TypedDict):
     # means the workflow installs without a schedule. Applied to template
     # rows on every seed run, but only copied to hires made afterwards —
     # existing hires keep the schedule they were created with.
+    #
+    # A cadence fires unattended from the day of hire, so it may only go on a
+    # workflow that acts on nothing outside the platform — typically research.
+    # The marketplace reviewer is that gate; nothing here enforces it.
     cron: str | None
 
 
@@ -47,12 +58,18 @@ class RosterEntry(TypedDict):
     avatar_url: str | None
     bio: str
     skills: list[str]
+    # Canonical marketplace categories, so the category chip narrows the roster.
+    # Declared here rather than derived from `role`: "Ops" folds onto no
+    # canonical value, and a raised expert's role is free text.
+    categories: list[str]
     identity: str
     voice_preferences: str
     # Two writing samples in the persona's voice; the hire flow shows these as
     # the "how should {name} write?" pick right after hire.
     voice_samples: list[VoiceSample]
     boundaries: str
+    # Up to three rows for the profile's "sets up on day one"; empty hides it.
+    day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
 
 
@@ -70,6 +87,7 @@ ROSTER: list[RosterEntry] = [
             "Web copy",
             "Positioning",
         ],
+        "categories": ["marketing", "content"],
         "identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
 
 Your day-to-day work spans content strategy, social copy, email campaigns, and SEO-aware long-form writing. You draft LinkedIn posts, blog articles, and landing page copy that sound like a person wrote them, and you always tie a piece of content back to a measurable goal: signups, demos booked, or search rankings improved. When you are given a rough idea, you return an outline, three headline options, and a full draft.
@@ -87,6 +105,23 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
             ),
         ],
         "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
+        "day_one": [
+            ExpertDayOneItem(
+                title="Social listening on your brand",
+                description="Tracks mentions of your brand, product, and founders across X, LinkedIn, Reddit, and news.",
+                timing="first scan · 1 hr",
+            ),
+            ExpertDayOneItem(
+                title="Morning briefing, in your Slack",
+                description="“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
+                timing="tomorrow · 9 AM",
+            ),
+            ExpertDayOneItem(
+                title="Two-week content calendar",
+                description="A skeleton calendar built from your site, your niche, and what competitors are shipping. You approve before anything posts.",
+                timing="day 1",
+            ),
+        ],
         "preloads": [
             {"slug": "linkedin-post-generator", "cron": None},
             {"slug": "automated-blog-writer", "cron": None},
@@ -106,6 +141,7 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
             "ICP targeting",
             "Account research",
         ],
+        "categories": ["sales"],
         "identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
 
 Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
@@ -123,6 +159,7 @@ You are rigorous about data quality. You flag when contact information looks sta
             ),
         ],
         "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
+        "day_one": [],
         "preloads": [
             {"slug": "lead-finder-local-businesses", "cron": None},
             {"slug": "business-ownerceo-finder", "cron": None},
@@ -142,6 +179,7 @@ You are rigorous about data quality. You flag when contact information looks sta
             "Scheduling",
             "Checklists",
         ],
+        "categories": ["operations", "support"],
         "identity": """You are Frankie, an operations specialist who has run the back office for fast-growing teams. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
 
 Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
@@ -159,6 +197,7 @@ You are conservative about commitments. You never promise a delivery date, refun
             ),
         ],
         "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
+        "day_one": [],
         "preloads": [
             {"slug": "smart-meeting-brief", "cron": None},
             {"slug": "automated-support-ai", "cron": None},
@@ -291,6 +330,8 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "boundaries": entry["boundaries"],
         "bio": entry["bio"],
         "skills": entry["skills"],
+        "categories": validate_canonical_categories(entry["categories"]),
+        "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
     template = await prisma.models.Expert.prisma().find_first(
@@ -314,9 +355,10 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/tagline/bio/skills forever. ``name`` is deliberately excluded —
+    avatar/tagline/bio/categories forever. ``name`` is deliberately excluded —
     users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour.
+    drive live persona behaviour, and ``skills``, which the owner edits after
+    hire.
     """
     return await prisma.models.Expert.prisma().update_many(
         where={"sourceTemplateId": template.id, "isTemplate": False},
@@ -324,7 +366,7 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
             "avatarUrl": template.avatarUrl,
             "tagline": template.tagline,
             "bio": template.bio,
-            "skills": template.skills,
+            "categories": template.categories,
         },
     )
 

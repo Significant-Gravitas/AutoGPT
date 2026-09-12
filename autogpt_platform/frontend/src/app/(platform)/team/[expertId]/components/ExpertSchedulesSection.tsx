@@ -46,7 +46,7 @@ export function ExpertSchedulesSection({
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="large-medium" tone="primary">
             {title}
           </Text>
           {lastRunLabel ? (
@@ -59,7 +59,7 @@ export function ExpertSchedulesSection({
           {expertId && workflows ? (
             <Button
               variant="secondary"
-              size="xs"
+              size="small"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -67,7 +67,7 @@ export function ExpertSchedulesSection({
             </Button>
           ) : null}
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search schedules"
@@ -97,6 +97,7 @@ export function ExpertSchedulesSection({
             <li key={schedule.id}>
               <GraphScheduleListItem
                 schedule={schedule}
+                className="rounded-2xl border-0 smooth-shadow-ring-sm"
                 iconClassName={accentClassName}
                 actionClassName={ACTION_BUTTON_CLASS}
                 editAction={
