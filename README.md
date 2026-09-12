@@ -7,6 +7,10 @@
 <h1 align="center">AutoGPT — AI agents that finish the work</h1>
 
 <p align="center">
+  <b>English</b> · <a href="README.zh.md">简体中文</a>
+</p>
+
+<p align="center">
   <strong>Get 10 hours back every week.</strong><br />
   Describe what you want done. AutoGPT builds the agent, runs it, and reports back.
 </p>
