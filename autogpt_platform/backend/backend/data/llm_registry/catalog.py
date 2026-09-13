@@ -485,7 +485,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="open_router",
                 creator="deepseek",
                 context_window=1048576,
-                max_output_tokens=1048576,
+                max_output_tokens=384000,
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
