@@ -14,7 +14,13 @@ from backend.data.redis_client import get_redis_async
 
 from .local_pc_relay import get_local_pc_relay
 from .local_pc_relay_presence import MAX_DISCOVERY_PRESENCES, owner_presences
-from .local_pc_relay_protocol import RelayPresence, machine_scope_id
+from .local_pc_relay_protocol import (
+    EXPECTED_RESPONSE_TYPES,
+    SHIM_RESPONSE_TYPES,
+    RelayPresence,
+    machine_scope_id,
+    validate_envelope,
+)
 
 
 class MachineControlError(RuntimeError):
@@ -154,11 +160,13 @@ async def machine_rpc(
         await transport.send_text(envelope)
         async with asyncio.timeout(timeout):
             async for raw in transport.iter_text():
-                message = json.loads(raw)
-                if not isinstance(message, dict) or message.get("id") != message_id:
+                message = validate_envelope(raw, SHIM_RESPONSE_TYPES)
+                if message["id"] != message_id:
                     continue
-                response_payload = message.get("payload")
-                if not isinstance(response_payload, dict):
+                response_payload = message["payload"]
+                if message["type"] not in (
+                    EXPECTED_RESPONSE_TYPES.get(message_type, frozenset()) | {"ERROR"}
+                ):
                     raise MachineControlError(
                         "INVALID_MACHINE_RESPONSE",
                         "The Local PC executor returned an invalid response",
@@ -183,6 +191,11 @@ async def machine_rpc(
                         "The Local PC executor reconnected while the request was running",
                     )
                 return message
+    except ValueError as exc:
+        raise MachineControlError(
+            "INVALID_MACHINE_RESPONSE",
+            "The Local PC executor returned an invalid response",
+        ) from exc
     except TimeoutError as exc:
         raise MachineControlError(
             "MACHINE_REQUEST_TIMEOUT",
@@ -219,7 +232,7 @@ async def attach_machine_session(
             "expected_connection_id": presence.connection_id,
         },
     )
-    return MachineSessionBinding.model_validate(message["payload"])
+    return _validate_binding_response(message["payload"], session_id)
 
 
 async def activate_machine_session(
@@ -231,8 +244,8 @@ async def activate_machine_session(
         "ACTIVATE_SESSION",
         {"session_id": binding.session_id, "revision": binding.revision},
     )
-    return MachineSessionBinding.model_validate(
-        {**message["payload"], "root_grant": binding.root_grant}
+    return _validate_binding_response(
+        {**message["payload"], "root_grant": binding.root_grant}, binding.session_id
     )
 
 
@@ -245,7 +258,7 @@ async def restore_machine_session(
         "RESTORE_SESSION",
         {"session_id": binding.session_id, "root_grant": binding.root_grant},
     )
-    return MachineSessionBinding.model_validate(message["payload"])
+    return _validate_binding_response(message["payload"], binding.session_id)
 
 
 async def detach_machine_session(
@@ -258,3 +271,21 @@ async def detach_machine_session(
         {"session_id": session_id},
         timeout=5.0,
     )
+
+
+def _validate_binding_response(
+    payload: dict[str, Any], session_id: str
+) -> MachineSessionBinding:
+    try:
+        binding = MachineSessionBinding.model_validate(payload)
+    except ValueError as exc:
+        raise MachineControlError(
+            "INVALID_MACHINE_RESPONSE",
+            "The Local PC executor returned an invalid session binding",
+        ) from exc
+    if binding.session_id != session_id:
+        raise MachineControlError(
+            "INVALID_MACHINE_RESPONSE",
+            "The Local PC executor returned a binding for a different session",
+        )
+    return binding

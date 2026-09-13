@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -41,6 +42,11 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from backend.api.features.local_executor.routes import router
 from backend.api.features.local_executor.websocket import _deny, _receive_hello
+from backend.copilot.model import (
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+)
 from backend.copilot.tools import local_pc_shim as shim_module
 from backend.copilot.tools.local_pc_relay import RedisShimRelay
 from backend.copilot.tools.local_pc_relay_test import FakeRedis
@@ -74,6 +80,30 @@ _FAKE_TOKEN_INFO = TokenIntrospectionResult(
 _AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
+def _owned_session(session_id: str, user_id: str) -> ChatSessionInfo:
+    machine_id, allowed_root = {
+        "sess-1": ("m-uuid", "/Users/test/ws"),
+        "sess-2": ("m-uuid", "C:\\workspace"),
+        "sess-3": ("m", "/Users/test/ws"),
+    }.get(session_id, ("m", "/workspace"))
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id=user_id,
+        usage=[],
+        started_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        metadata=ChatSessionMetadata(
+            execution_target=LocalExecutionTargetMetadata(
+                machine_id=machine_id,
+                allowed_root=allowed_root,
+                directory_ref="directory-ref",
+                root_fingerprint="a" * 64,
+                root_grant="root-grant",
+            )
+        ),
+    )
+
+
 @pytest.fixture
 def _patched_introspect():
     """Auth is exercised in oauth_test.py; here we want to exercise the
@@ -85,7 +115,7 @@ def _patched_introspect():
         ),
         patch(
             "backend.api.features.local_executor.websocket.get_chat_session_metadata",
-            return_value=object(),
+            side_effect=_owned_session,
         ),
         patch(
             "backend.api.features.local_executor.websocket.is_local_executor_enabled",

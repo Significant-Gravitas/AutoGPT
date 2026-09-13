@@ -1,7 +1,7 @@
 """Tests for the confirm-gated hire/raise/update flow.
 
 The contract under test is the gate itself: a preview must never write, the
-confirmation_id must be single-use and bound to the Autopilot session that
+confirmation_id must be single-use and bound to the Otto session that
 produced it, confirm must apply exactly what was previewed, and only a
 session a human is actually driving may reach any of it.
 """

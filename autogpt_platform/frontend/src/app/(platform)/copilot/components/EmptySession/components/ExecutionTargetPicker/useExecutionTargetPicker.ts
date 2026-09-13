@@ -19,6 +19,23 @@ function localTargetForMachine(machine: ExecutorMachine) {
   };
 }
 
+function invalidateDirectorySelection(message: string) {
+  const state = useCopilotUIStore.getState();
+  const target = state.newChatExecutionTarget;
+  if (
+    target.kind === "local" &&
+    (target.browseID || target.directoryRef || target.displayPath)
+  ) {
+    state.setNewChatExecutionTarget({
+      ...target,
+      browseID: null,
+      directoryRef: null,
+      displayPath: null,
+    });
+  }
+  state.setExecutionTargetError(message);
+}
+
 export function useExecutionTargetPicker() {
   const target = useCopilotUIStore((state) => state.newChatExecutionTarget);
   const setTarget = useCopilotUIStore(
@@ -46,7 +63,7 @@ export function useExecutionTargetPicker() {
 
   useEffect(
     function reconcileSelectedMachine() {
-      if (target.kind !== "local") return;
+      if (target.kind !== "local" || !machinesQuery.isSuccess) return;
 
       if (machines.length === 0) {
         if (target.machineID || target.connectionID || target.directoryRef) {
@@ -88,7 +105,7 @@ export function useExecutionTargetPicker() {
         setError("Your Local PC reconnected. Choose the folder again.");
       }
     },
-    [machines, setError, setTarget, target],
+    [machines, machinesQuery.isSuccess, setError, setTarget, target],
   );
 
   function selectCloud() {
@@ -150,6 +167,7 @@ export function useExecutionTargetPicker() {
     setOpen,
     error,
     setError,
+    invalidateDirectorySelection,
     machines,
     isLoadingMachines: machinesQuery.isLoading,
     isRefreshingMachines: machinesQuery.isFetching,

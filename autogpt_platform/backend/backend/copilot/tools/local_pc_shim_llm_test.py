@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from . import local_pc_llm as llm_module
+from . import local_pc_shim as shim_module
 from .local_pc_shim import LocalLLMError, LocalPCShim, ShimHello, _LocalLLMProxy
 
 
@@ -38,6 +40,7 @@ def _make_shim_for_streaming(
     shim.computer_use_features = []
     shim._pending = {}
     shim._streaming = {}
+    shim._recording_steps = {}
     shim._pending_capacity = None
     shim._capacity_available = asyncio.Event()
     shim._capacity_available.set()
@@ -216,6 +219,116 @@ async def test_recv_loop_routes_stream_frames_to_queue() -> None:
     assert second["type"] == "LOCAL_LLM_COMPLETION_RESPONSE"
     shim._cleanup_stream(msg_id)
     assert msg_id not in shim._streaming
+
+
+@pytest.mark.asyncio
+async def test_silent_llm_stream_times_out_and_unregisters(monkeypatch):
+    monkeypatch.setattr(llm_module, "_LLM_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    shim = _make_shim_for_streaming()
+    with pytest.raises(LocalLLMError) as error:
+        await asyncio.wait_for(
+            shim.local_llm.complete_blocking(model="llama3.2:3b", messages=[]),
+            timeout=0.2,
+        )
+    assert error.value.code == "LOCAL_LLM_TIMEOUT"
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_llm_backlog_overflow_fails_stream_and_drops_further_frames(monkeypatch):
+    monkeypatch.setattr(shim_module, "_LLM_STREAM_MAX_FRAMES", 2)
+    shim = _make_shim_for_streaming()
+    queue = shim._register_stream("stream-1")
+    for _ in range(4):
+        shim._process_raw_message(json.dumps(_chunk("stream-1", "chunk")))
+    assert queue.qsize() == 1
+    error = queue.get_nowait()
+    assert error["type"] == "ERROR"
+    assert error["payload"]["code"] == "LOCAL_LLM_STREAM_LIMIT"
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_oversized_llm_frame_fails_without_buffering_payload(monkeypatch):
+    monkeypatch.setattr(shim_module, "_LLM_STREAM_MAX_FRAME_BYTES", 100)
+    shim = _make_shim_for_streaming()
+    queue = shim._register_stream("stream-1")
+    shim._process_raw_message(json.dumps(_chunk("stream-1", "x" * 1000)))
+    error = queue.get_nowait()
+    assert error["type"] == "ERROR"
+    assert error["payload"]["code"] == "LOCAL_LLM_STREAM_LIMIT"
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_llm_stream_registration_is_bounded(monkeypatch):
+    monkeypatch.setattr(shim_module, "_LLM_STREAM_MAX_CONCURRENT", 1)
+    shim = _make_shim_for_streaming()
+    shim._register_stream("stream-1")
+    with pytest.raises(LocalLLMError) as error:
+        shim._register_stream("stream-2")
+    assert error.value.code == "LOCAL_LLM_BUSY"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_initial_llm_send_unregisters():
+    shim = _make_shim_for_streaming()
+    shim._ws.send_text.side_effect = asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await shim.local_llm.complete_blocking(model="llama3.2:3b", messages=[])
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_total_llm_deadline_expires_even_with_buffered_frames(monkeypatch):
+    monkeypatch.setattr(llm_module, "_LLM_STREAM_TIMEOUT_SECONDS", 0.02)
+    shim = _make_shim_for_streaming()
+
+    async def send(payload: str):
+        msg_id = json.loads(payload)["id"]
+        queue = shim._streaming[msg_id]
+        await queue.put(_chunk(msg_id, "first"))
+        await queue.put(_chunk(msg_id, "second"))
+
+    shim._ws.send_text.side_effect = send
+    stream = shim.local_llm.complete(model="llama3.2:3b", messages=[])
+    assert await anext(stream) == "first"
+    await asyncio.sleep(0.03)
+    with pytest.raises(LocalLLMError) as error:
+        await anext(stream)
+    assert error.value.code == "LOCAL_LLM_TIMEOUT"
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_llm_output_limit_counts_all_chunks(monkeypatch):
+    monkeypatch.setattr(llm_module, "_LLM_STREAM_MAX_OUTPUT_BYTES", 5)
+    shim = _make_shim_for_streaming()
+
+    async def send(payload: str):
+        msg_id = json.loads(payload)["id"]
+        queue = shim._streaming[msg_id]
+        await queue.put(_chunk(msg_id, "one"))
+        await queue.put(_chunk(msg_id, "two"))
+        await queue.put(_response(msg_id, "onetwo"))
+
+    shim._ws.send_text.side_effect = send
+    with pytest.raises(LocalLLMError) as error:
+        await shim.local_llm.complete_blocking(model="llama3.2:3b", messages=[])
+    assert error.value.code == "LOCAL_LLM_STREAM_LIMIT"
+    assert shim._streaming == {}
+
+
+@pytest.mark.asyncio
+async def test_disconnect_replaces_full_llm_backlog_with_terminal_error(monkeypatch):
+    monkeypatch.setattr(shim_module, "_LLM_STREAM_MAX_FRAMES", 1)
+    shim = _make_shim_for_streaming()
+    queue = shim._register_stream("stream-1")
+    queue.put_nowait(_chunk("stream-1", "pending"))
+    shim._fail_in_flight(ConnectionError("disconnected"))
+    assert queue.qsize() == 1
+    assert queue.get_nowait()["payload"]["code"] == "CONNECTION_LOST"
+    assert shim._streaming == {}
 
 
 @pytest.mark.asyncio

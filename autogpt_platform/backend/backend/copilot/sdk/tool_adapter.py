@@ -321,7 +321,7 @@ async def _execute_tool_sync(
 
     The call runs to completion — no per-handler timeout, no parking. The
     stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
-    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    is pending, so a long sub-Otto / graph execution doesn't trip the
     30-min idle safety net (SECRT-2247). A genuine hang is handled by the
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
@@ -839,55 +839,6 @@ def _make_truncating_wrapper(
             return await execute(clean_args)
 
     return wrapper
-
-
-def local_pc_tool_names_for_features(
-    coarse_features: Iterable[str], fine_features: Iterable[str]
-) -> frozenset[str]:
-    coarse = frozenset(coarse_features)
-    fine = frozenset(fine_features)
-    groups: dict[str, frozenset[str]] = {
-        "screenshot": frozenset({"local_pc_screenshot"}),
-        "input": frozenset(
-            {
-                "local_pc_click",
-                "local_pc_type",
-                "local_pc_key",
-                "local_pc_scroll",
-                "local_pc_cursor_position",
-            }
-        ),
-        "windows": frozenset({"local_pc_list_windows", "local_pc_focus_window"}),
-        "apps": frozenset({"local_pc_list_apps", "local_pc_launch_app"}),
-        "clipboard": frozenset({"local_pc_clipboard_read", "local_pc_clipboard_write"}),
-        "permissions": frozenset({"local_pc_permissions_check"}),
-    }
-    allowed: set[str] = set()
-    for feature, names in groups.items():
-        if feature in coarse:
-            allowed.update(names)
-    fine_to_tools = {
-        "screenshot.": {"local_pc_screenshot"},
-        "input.": {
-            "local_pc_click",
-            "local_pc_type",
-            "local_pc_key",
-            "local_pc_scroll",
-        },
-        "cursor.position": {"local_pc_cursor_position"},
-        "window.list": {"local_pc_list_windows"},
-        "window.focus": {"local_pc_focus_window"},
-        "app.list": {"local_pc_list_apps"},
-        "app.launch": {"local_pc_launch_app"},
-        "clipboard.read": {"local_pc_clipboard_read"},
-        "clipboard.write": {"local_pc_clipboard_write"},
-        "permissions.check": {"local_pc_permissions_check"},
-    }
-    for feature in fine:
-        for prefix, names in fine_to_tools.items():
-            if feature == prefix or feature.startswith(prefix):
-                allowed.update(names)
-    return frozenset(allowed)
 
 
 _SDK_FILE_TOOL_ALIASES = ("Read", "Write", "Edit", "Glob", "Grep")

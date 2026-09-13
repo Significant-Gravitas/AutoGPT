@@ -492,6 +492,37 @@ class TestComputerUseBetaEnablement:
     flag — but ONLY when the transport isn't OpenRouter, which always
     rejects Anthropic beta headers."""
 
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_subscription_with_openrouter_settings_still_enables_beta(self, _mock):
+        cfg = _make_config(
+            use_claude_code_subscription=True,
+            use_openrouter=True,
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert result["ANTHROPIC_BASE_URL"] == ""
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+
+    def test_codex_gateway_never_enables_anthropic_computer_beta(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                enable_computer_use_beta=True,
+                codex_gateway_url="http://127.0.0.1:43210",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert result["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] == "1"
+        assert "ANTHROPIC_BETAS" not in result
+
     def test_default_keeps_strip_and_omits_betas(self):
         """No opt-in => the existing OpenRouter-safe behaviour persists."""
         cfg = _make_config(use_openrouter=False)

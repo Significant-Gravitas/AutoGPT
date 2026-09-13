@@ -1,10 +1,10 @@
-"""The briefing's opening line, written in AutoPilot's voice.
+"""The briefing's opening line, written in Otto's voice.
 
 The briefing body is deterministic template text (``render.py``). This module
 adds a 2-3 sentence lede on top — what the team did, what it found, what needs
-you — so the briefing reads as being *from* AutoPilot rather than about it.
+you — so the briefing reads as being *from* Otto rather than about it.
 
-AutoPilot authors it whatever the team looks like: it reports the hired
+Otto authors it whatever the team looks like: it reports the hired
 experts' work and credits them for it, and never speaks as one of them.
 
 Two invariants make this safe to bolt onto a delivery path:

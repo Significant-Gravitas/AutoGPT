@@ -47,7 +47,7 @@ export function LocalPCRecordingConsent({
       controlled={{
         isOpen,
         set: async (open) => {
-          if (!open) onKeepLocal();
+          if (!open && !isSubmitting) onKeepLocal();
         },
       }}
     >

@@ -3,17 +3,18 @@
 import type { DirectoryEntry } from "@/app/api/__generated__/models/directoryEntry";
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Select } from "@/components/atoms/Select/Select";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  CaretLeftIcon,
-  CaretRightIcon,
-  FolderIcon,
-  HouseIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Folder01Icon,
+  Home01Icon,
+  Alert02Icon,
+} from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
@@ -52,6 +53,15 @@ export function LocalFolderPicker({
   const machine =
     machines.find((item) => item.machine_id === selectedMachineID) ?? null;
   const browser = useLocalFolderPicker({ isOpen, machine, onStale });
+  const canSelectDirectory =
+    !!machine &&
+    !!browser.directory?.current &&
+    browser.directory.connection_id === machine.connection_id &&
+    !browser.isLoading &&
+    !browser.isLoadingMore &&
+    !browser.error &&
+    !isMachinesError &&
+    !isLoadingMachines;
   const previousMachineCountRef = useRef(machines.length);
   const [machineAnnouncement, setMachineAnnouncement] = useState("");
 
@@ -73,7 +83,7 @@ export function LocalFolderPicker({
   );
 
   function handleUseFolder() {
-    if (!machine || !browser.directory?.current) return;
+    if (!canSelectDirectory || !machine || !browser.directory?.current) return;
     onSelectDirectory(
       machine,
       browser.directory.browse_id,
@@ -104,9 +114,9 @@ export function LocalFolderPicker({
               role="alert"
               className="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-6 text-center"
             >
-              <WarningCircleIcon
+              <Icon
+                icon={Alert02Icon}
                 size={24}
-                weight="fill"
                 className="text-red-700"
                 aria-hidden="true"
               />
@@ -179,9 +189,9 @@ export function LocalFolderPicker({
                     role="alert"
                     className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center"
                   >
-                    <WarningCircleIcon
+                    <Icon
+                      icon={Alert02Icon}
                       size={24}
-                      weight="fill"
                       className="text-amber-700"
                       aria-hidden="true"
                     />
@@ -216,16 +226,17 @@ export function LocalFolderPicker({
                           onClick={() => browser.openDirectory(entry)}
                           className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1"
                         >
-                          <FolderIcon
+                          <Icon
+                            icon={Folder01Icon}
                             size={20}
-                            weight="fill"
                             className="shrink-0 text-violet-500"
                             aria-hidden="true"
                           />
                           <span className="min-w-0 flex-1 truncate">
                             {entry.name}
                           </span>
-                          <CaretRightIcon
+                          <Icon
+                            icon={ArrowRight01Icon}
                             size={16}
                             className="shrink-0 text-zinc-400"
                             aria-hidden="true"
@@ -275,7 +286,7 @@ export function LocalFolderPicker({
               type="button"
               variant="primary"
               size="small"
-              disabled={!browser.directory?.current || browser.isLoading}
+              disabled={!canSelectDirectory}
               onClick={handleUseFolder}
             >
               Use This Folder
@@ -312,7 +323,7 @@ function FolderPath({
           onClick={onBack}
           className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CaretLeftIcon size={18} weight="bold" aria-hidden="true" />
+          <Icon icon={ArrowLeft01Icon} size={18} aria-hidden="true" />
         </button>
         <nav
           aria-label="Folder path"
@@ -326,13 +337,14 @@ function FolderPath({
                 onClick={() => onOpenBreadcrumb(-1)}
                 className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-zinc-600 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600"
               >
-                <HouseIcon size={16} aria-hidden="true" />
+                <Icon icon={Home01Icon} size={16} aria-hidden="true" />
                 Computer
               </button>
             </li>
             {history.map((item, index) => (
               <li key={item.directory_ref} className="flex items-center gap-1">
-                <CaretRightIcon
+                <Icon
+                  icon={ArrowRight01Icon}
                   size={14}
                   className="text-zinc-400"
                   aria-hidden="true"

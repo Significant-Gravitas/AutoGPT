@@ -21,7 +21,14 @@ def _shim(*, capabilities: tuple[str, ...] = ("computer_use",)) -> LocalPCShim:
     shim.allowed_root = "/Users/test/workspace"
     shim.capabilities = list(capabilities)
     shim.capability_set = frozenset(capabilities)
-    shim.computer_use_features_coarse = ["screenshot", "input"]
+    shim.computer_use_features_coarse = [
+        "screenshot",
+        "input",
+        "windows",
+        "apps",
+        "clipboard",
+        "permissions",
+    ]
     shim.computer_use_features = ["screenshot.capture", "input.click"]
     shim._connection_generation = 1
     shim.computer = MagicMock()
@@ -60,6 +67,49 @@ def _payload(result: dict) -> dict:
 
 class TestGating:
     @pytest.mark.asyncio
+    async def test_fine_scroll_grant_allows_scroll_but_blocks_typing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim()
+        shim.computer_use_features_coarse = []
+        shim.computer_use_features = ["input.scroll.amount"]
+        _install(monkeypatch, shim)
+
+        scroll = await tools._h_scroll({"coordinate": [1, 2]})
+        typed = await tools._h_type({"text": "injected"})
+
+        assert scroll["isError"] is False
+        assert typed["isError"] is True
+        assert _payload(typed)["code"] == "CAPABILITY_NOT_GRANTED"
+        shim.computer.scroll.assert_awaited_once()
+        shim.computer.type.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("handler", "args"),
+        [
+            (tools._h_click, {"coordinate": [1, 2]}),
+            (tools._h_type, {"text": "injected"}),
+            (tools._h_key, {"key": "enter"}),
+            (tools._h_scroll, {"coordinate": [1, 2]}),
+            (tools._h_clipboard_write, {"text": "injected"}),
+        ],
+    )
+    async def test_screenshot_only_grant_blocks_direct_input_handler(
+        self, monkeypatch: pytest.MonkeyPatch, handler, args: dict
+    ):
+        shim = _shim()
+        shim.computer_use_features_coarse = ["screenshot"]
+        shim.computer_use_features = ["screenshot.capture"]
+        _install(monkeypatch, shim)
+
+        result = await handler(args)
+
+        assert result["isError"] is True
+        assert _payload(result)["code"] == "CAPABILITY_NOT_GRANTED"
+        assert shim.computer.method_calls == []
+
+    @pytest.mark.asyncio
     async def test_no_executor_fails_closed(self, monkeypatch: pytest.MonkeyPatch):
         _install(monkeypatch, None)
 
@@ -96,7 +146,7 @@ class TestGating:
             "session-1",
             "user-1",
             machine_id="machine-1",
-            features_coarse=("screenshot", "input"),
+            features_coarse=tuple(shim.computer_use_features_coarse),
             features=("screenshot.capture", "input.click"),
         )
         shim.computer.click.assert_not_awaited()

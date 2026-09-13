@@ -2162,6 +2162,8 @@ async def execute_graph(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            trigger=execution_db.ExecutionTrigger.MANUAL,
+            trigger_ref=source,
         )
         record_graph_operation(operation="execute", status="success")
         if source == "library":
@@ -2774,6 +2776,17 @@ class UploadCopilotSkillRequest(BaseModel):
     content: str
 
 
+async def _require_skill_owner(user_id: str, expert_id: str | None) -> None:
+    """A skill owner named on a REST call must be one of the caller's active
+    experts; personal Otto (``None``) needs no check."""
+    if expert_id is None:
+        return
+    if not await experts_db.owns_private_active_expert(user_id, expert_id):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Expert '{expert_id}' not found"
+        )
+
+
 @v1_router.get(
     path="/skills",
     summary="List user-distilled copilot skills",
@@ -2783,15 +2796,20 @@ class UploadCopilotSkillRequest(BaseModel):
 )
 async def list_copilot_skills(
     user_id: Annotated[str, Security(get_user_id)],
+    expert_id: str | None = Query(
+        default=None,
+        description="List this expert's own skills instead of personal Otto's.",
+    ),
 ) -> list[CopilotSkillInfo]:
-    """Return user-stored skills for the current user.
+    """Return the skills owned by personal Otto, or by one expert.
 
     Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
     library UI sees the exact same set the copilot ``<available_skills>``
     block surfaces, minus the built-in defaults (which are read-only and
     handled separately by the copilot runtime).
     """
-    skills = await list_user_skills(user_id)
+    await _require_skill_owner(user_id, expert_id)
+    skills = await list_user_skills(user_id, expert_id)
     return [
         CopilotSkillInfo(
             name=s.name,
@@ -2817,6 +2835,9 @@ async def list_copilot_skills(
 async def upload_copilot_skill(
     user_id: Annotated[str, Security(get_user_id)],
     body: UploadCopilotSkillRequest,
+    expert_id: str | None = Query(
+        default=None, description="Store the skill as this expert's own."
+    ),
 ) -> CopilotSkillInfo:
     """Create a user-distilled skill from an uploaded ``SKILL.md`` file.
 
@@ -2826,6 +2847,7 @@ async def upload_copilot_skill(
     via ``store_skill``.  Malformed files return 400, the per-user cap returns
     409, and an existing slug is overwritten (upsert).
     """
+    await _require_skill_owner(user_id, expert_id)
     parsed = parse_skill_markdown(body.content)
     if parsed is None:
         raise HTTPException(
@@ -2838,6 +2860,7 @@ async def upload_copilot_skill(
     try:
         stored = await store_user_skill(
             user_id,
+            expert_id=expert_id,
             name=parsed.name,
             description=parsed.description,
             body=parsed.body,
@@ -2871,6 +2894,9 @@ async def upload_copilot_skill(
 async def read_copilot_skill(
     user_id: Annotated[str, Security(get_user_id)],
     name: str = Path(..., description="Slug of the skill to read"),
+    expert_id: str | None = Query(
+        default=None, description="Read this expert's own copy of the skill."
+    ),
 ) -> CopilotSkillDetail:
     """Return full SKILL.md content (name, description, triggers, body)
     for the library UI's expand-to-view dialog.
@@ -2897,12 +2923,15 @@ async def read_copilot_skill(
             is_default=True,
         )
 
-    parsed = await read_user_skill_with_body(user_id, slug)
+    await _require_skill_owner(user_id, expert_id)
+    parsed = await read_user_skill_with_body(user_id, slug, expert_id=expert_id)
     if parsed is None:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
         )
-    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
+    sibling_files = await list_user_skill_sibling_paths(
+        user_id, slug, expert_id=expert_id
+    )
     return CopilotSkillDetail(
         name=parsed.name,
         description=parsed.description,
@@ -2924,6 +2953,9 @@ async def read_copilot_skill(
 async def delete_copilot_skill(
     user_id: Annotated[str, Security(get_user_id)],
     name: str = Path(..., description="Slug of the skill to delete"),
+    expert_id: str | None = Query(
+        default=None, description="Delete this expert's own copy of the skill."
+    ),
 ) -> dict[str, str]:
     """Delete a user-distilled skill by slug.
 
@@ -2931,8 +2963,9 @@ async def delete_copilot_skill(
     returns 400.  Missing skills return 404 so the UI can reconcile a
     stale list.
     """
+    await _require_skill_owner(user_id, expert_id)
     try:
-        slug = await delete_user_skill(user_id, name)
+        slug = await delete_user_skill(user_id, name, expert_id=expert_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except BuiltInSkillError as exc:

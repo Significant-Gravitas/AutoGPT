@@ -40,12 +40,18 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
         setDirectory(null);
         setHistory([]);
         setError(null);
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        setLastTarget({ directoryRef: null, history: [] });
         return;
       }
 
       const requestID = requestIDRef.current + 1;
       requestIDRef.current = requestID;
       setIsLoading(true);
+      setIsLoadingMore(false);
+      setDirectory(null);
+      setHistory([]);
       setError(null);
       setLastTarget({ directoryRef: null, history: [] });
 
@@ -57,8 +63,9 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
         .then((response) => {
           if (requestIDRef.current !== requestID) return;
           if (response.connection_id !== machine.connection_id) {
-            onStale("Your Local PC reconnected. Choose the folder again.");
-            setError("The computer connection changed. Refresh and try again.");
+            invalidateDirectory(
+              "Your Local PC reconnected. Choose the folder again.",
+            );
             return;
           }
           setDirectory(response);
@@ -81,15 +88,20 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     [isOpen, machine?.connection_id, machine?.machine_id, onStale],
   );
 
+  function invalidateDirectory(message: string) {
+    setDirectory(null);
+    setHistory([]);
+    setLastTarget({ directoryRef: null, history: [] });
+    setIsLoadingMore(false);
+    setError(message);
+    onStale(message);
+  }
+
   function handleRequestError(requestError: unknown) {
     if (requestError instanceof ApiError && requestError.status === 409) {
       const message =
         "The computer or folder changed while you were browsing. Refresh and choose it again.";
-      setDirectory(null);
-      setHistory([]);
-      setLastTarget({ directoryRef: null, history: [] });
-      setError(message);
-      onStale(message);
+      invalidateDirectory(message);
       return;
     }
     setError("Could not load folders from this computer. Try again.");
@@ -100,6 +112,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     const requestID = requestIDRef.current + 1;
     requestIDRef.current = requestID;
     setIsLoading(true);
+    setIsLoadingMore(false);
     setError(null);
     setLastTarget(target);
     try {
@@ -111,8 +124,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
       if (requestIDRef.current !== requestID) return;
       if (response.connection_id !== machine.connection_id) {
         const message = "Your Local PC reconnected. Choose the folder again.";
-        setError(message);
-        onStale(message);
+        invalidateDirectory(message);
         return;
       }
       setDirectory(response);
@@ -178,8 +190,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
         response.current?.directory_ref !== current.directory_ref
       ) {
         const message = "Your Local PC folder view changed. Choose it again.";
-        setError(message);
-        onStale(message);
+        invalidateDirectory(message);
         return;
       }
       const entries = new Map(

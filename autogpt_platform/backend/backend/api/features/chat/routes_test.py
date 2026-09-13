@@ -32,6 +32,10 @@ from backend.integrations.codex.auth_bundle import (
     CodexAuthTokensV1,
     encode_provider_state,
 )
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import BehaveAs
 
@@ -48,6 +52,13 @@ async def _not_found_handler(
 
 
 client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    """These route tests mock service boundaries and do not create graphs."""
+    yield
+
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 VALID_CODEX_PROVIDER_STATE = encode_provider_state(
@@ -428,7 +439,7 @@ def test_stream_chat_rejects_an_archived_expert_session(
 def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Plain Autopilot turns must not pay for the write-gate's extra query."""
+    """Plain Otto turns must not pay for the write-gate's extra query."""
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = None
 
@@ -1231,6 +1242,18 @@ def _codex_credentials(
     )
 
 
+def _microsoft_365_copilot_credentials(
+    credential_id: str = "cred-microsoft",
+) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id=credential_id,
+        provider=ProviderName.MICROSOFT_365_COPILOT,
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.DEFAULT_SCOPES,
+    )
+
+
 def _set_self_hosted_chat_config(
     mocker: pytest_mock.MockerFixture,
     *,
@@ -1297,6 +1320,36 @@ def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
     }
 
 
+def test_list_chat_transports_includes_microsoft_365_copilot(
+    test_user_id: str,
+) -> None:
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
+    credential = _microsoft_365_copilot_credentials()
+    lookup.side_effect = lambda _user_id, provider: (
+        [credential] if provider == ProviderName.MICROSOFT_365_COPILOT else []
+    )
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json()["transports"] == [
+        {
+            "auth_provider": "platform",
+            "credential_id": None,
+            "label": "AutoGPT Platform",
+            "available": True,
+            "default": True,
+        },
+        {
+            "auth_provider": "microsoft_365_copilot",
+            "credential_id": "cred-microsoft",
+            "label": "Microsoft 365 Copilot",
+            "available": True,
+            "default": False,
+        },
+    ]
+
+
 def test_list_chat_transports_hosted_omits_codex_without_required_plan(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -1324,7 +1377,7 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
         ]
     }
     access.assert_awaited_once_with(test_user_id)
-    lookup.assert_not_awaited()
+    lookup.assert_awaited_once_with(test_user_id, ProviderName.MICROSOFT_365_COPILOT)
 
 
 def test_list_chat_transports_omits_invalid_codex_credentials(
@@ -1846,6 +1899,107 @@ async def test_local_session_success_detaches_validation_child(
 
 
 @pytest.mark.asyncio
+async def test_local_session_detach_failure_preserves_valid_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    target = chat_routes.LocalExecutionTargetRequest(
+        machine_id="machine-1",
+        expected_connection_id="connection-1",
+        browse_id="browse-1",
+        directory_ref="directory-1",
+    )
+    presence = SimpleNamespace(connection_id="connection-1")
+
+    async def _attach(_presence, *, session_id, browse_id, directory_ref):
+        return MachineSessionBinding(
+            session_id=session_id,
+            allowed_root="/workspace",
+            fingerprint="a" * 64,
+            revision=1,
+            root_grant="grant-1",
+        )
+
+    async def _create(user_id, *, session_id, execution_target, **_kwargs):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+        )
+
+    async def _activate(_presence, binding):
+        return binding
+
+    manager = MagicMock()
+    manager.wait_for = AsyncMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            platform="linux",
+            arch="x86_64",
+            allowed_root="/workspace",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            use_local_pc_executor=True,
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=presence,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_attach,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_create,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.activate_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_activate,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_shim_manager",
+        return_value=manager,
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("control channel unavailable"),
+    )
+    delete = mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        target=target,
+    )
+
+    assert session.metadata.execution_target.kind == "local"
+    detach.assert_awaited_once_with(presence, session.session_id)
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_local_session_creation_cancellation_still_compensates(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -1962,7 +2116,7 @@ def test_create_session_codex_route_rejects_unowned_credential(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "codex_credential_not_found"
-    lookup.assert_awaited_once_with(test_user_id, "codex")
+    lookup.assert_any_await(test_user_id, "codex")
 
 
 def test_create_session_codex_route_rejects_user_without_required_plan(
@@ -2030,6 +2184,44 @@ def test_create_session_codex_route_persists_owned_credential(
     mock_paywall.assert_not_awaited()
 
 
+def test_create_session_microsoft_route_persists_owned_credential(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    codex_gate = mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
+    credential = _microsoft_365_copilot_credentials("cred-msft")
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
+    lookup.side_effect = lambda _user_id, provider: (
+        [credential] if provider == ProviderName.MICROSOFT_365_COPILOT else []
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "llm_auth_provider": "microsoft_365_copilot",
+            "llm_credential_id": "cred-msft",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == ("microsoft_365_copilot")
+    assert response.json()["metadata"]["llm_credential_id"] == "cred-msft"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == (
+        "microsoft_365_copilot"
+    )
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-msft"
+    mock_paywall.assert_not_awaited()
+    codex_gate.assert_not_awaited()
+
+
 def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -2050,7 +2242,7 @@ def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     assert response.json()["metadata"]["llm_credential_id"] is None
     assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
     assert mock_create.call_args.kwargs["llm_credential_id"] is None
-    lookup.assert_awaited_once_with(test_user_id, "codex")
+    lookup.assert_any_await(test_user_id, "codex")
     mock_paywall.assert_awaited_once_with(test_user_id)
 
 
@@ -2181,7 +2373,8 @@ def test_create_session_respects_explicit_platform_route(
     assert response.status_code == 200
     assert response.json()["metadata"]["llm_auth_provider"] == "platform"
     assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
-    lookup.assert_awaited_once()
+    lookup.assert_any_await(TEST_USER_ID, "codex")
+    lookup.assert_any_await(TEST_USER_ID, ProviderName.MICROSOFT_365_COPILOT)
 
 
 def test_create_session_platform_route_still_enforces_paywall(
@@ -3148,7 +3341,7 @@ def test_delete_session_success(mocker: pytest_mock.MockerFixture) -> None:
     # Patch use_e2b_sandbox env-var to disable E2B so the route skips sandbox cleanup.
     # Patching the Pydantic property directly doesn't work (Pydantic v2 intercepts
     # attribute setting on BaseSettings instances and raises AttributeError).
-    mocker.patch.dict("os.environ", {"USE_E2B_SANDBOX": "false"})
+    mocker.patch.dict("os.environ", {"CHAT_USE_E2B_SANDBOX": "false"})
 
     response = client.delete("/sessions/sess-1")
 
@@ -3174,6 +3367,54 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("deleted", [True, False])
+def test_delete_local_session_only_cleans_up_after_deletion(
+    mocker: pytest_mock.MockerFixture, deleted: bool
+) -> None:
+    session = _make_session_info()
+    session.metadata.execution_target = chat_routes.LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+    )
+    mocker.patch.object(
+        chat_routes, "get_chat_session_metadata", AsyncMock(return_value=session)
+    )
+    delete = mocker.patch.object(
+        chat_routes, "delete_chat_session", AsyncMock(return_value=deleted)
+    )
+
+    async def presence_after_delete(*args, **kwargs):
+        delete.assert_awaited_once()
+        return None
+
+    presence = mocker.patch.object(
+        chat_routes,
+        "get_machine_presence",
+        AsyncMock(side_effect=presence_after_delete),
+    )
+    detach = mocker.patch.object(chat_routes, "detach_machine_session", AsyncMock())
+    manager = MagicMock()
+    manager.close_existing_session = AsyncMock()
+    mocker.patch.object(chat_routes, "get_shim_manager", return_value=manager)
+    mocker.patch.object(chat_routes, "kill_sandbox", AsyncMock())
+    mocker.patch.dict("os.environ", {"CHAT_USE_E2B_SANDBOX": "false"})
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == (204 if deleted else 404)
+    manager.get_or_create_shim_for_session.assert_not_called()
+    if deleted:
+        detach.assert_awaited_once_with(None, "sess-1")
+        manager.close_existing_session.assert_awaited_once_with("sess-1")
+    else:
+        presence.assert_not_awaited()
+        detach.assert_not_awaited()
+        manager.close_existing_session.assert_not_awaited()
 
 
 def _mock_validate_session(
@@ -4365,6 +4606,7 @@ def test_advanced_tier_is_refused_without_the_entitlement(
     validate = mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_writable_session",
         new_callable=AsyncMock,
+        return_value=ChatSession.new(TEST_USER_ID, dry_run=False),
     )
 
     response = client.post(
@@ -4374,8 +4616,7 @@ def test_advanced_tier_is_refused_without_the_entitlement(
 
     assert response.status_code == 403
     assert response.json()["detail"] == "advanced_tier_not_entitled"
-    # Refused before the session is even loaded, so nothing is left behind.
-    validate.assert_not_called()
+    validate.assert_awaited_once_with("sess-1", TEST_USER_ID)
 
 
 def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
@@ -4398,6 +4639,7 @@ def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
     validate = mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_writable_session",
         new_callable=AsyncMock,
+        return_value=ChatSession.new(TEST_USER_ID, dry_run=False),
     )
 
     response = client.post(
@@ -4410,7 +4652,47 @@ def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
     assert detail == "advanced_tier_unavailable"
     # The underlying failure is not handed to the client.
     assert "billing down" not in str(detail)
-    validate.assert_not_called()
+    validate.assert_awaited_once_with("sess-1", TEST_USER_ID)
+
+
+def test_advanced_tier_is_not_applied_to_microsoft_365_copilot(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    entitled = mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    session = ChatSession.new(
+        TEST_USER_ID,
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-msft",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new=AsyncMock(return_value=session),
+    )
+    mocker.patch(
+        "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+        return_value=None,
+    )
+    mocker.patch.object(chat_routes, "spawn_background_task")
+    mocker.patch.object(
+        chat_routes,
+        "is_turn_in_flight",
+        new=AsyncMock(
+            side_effect=fastapi.HTTPException(status_code=418, detail="stop here")
+        ),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 418
+    entitled.assert_not_awaited()
 
 
 def test_standard_tier_is_not_gated(

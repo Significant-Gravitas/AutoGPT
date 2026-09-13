@@ -14,7 +14,10 @@ from pydantic import BaseModel, ValidationError
 from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.api.features.local_executor.models import SessionID
 from backend.copilot.config import ChatConfig
-from backend.copilot.model import get_chat_session_metadata
+from backend.copilot.model import (
+    LocalExecutionTargetMetadata,
+    get_chat_session_metadata,
+)
 from backend.copilot.tools.local_pc_metrics import (
     record_handshake_failure,
     record_shim_connected,
@@ -51,6 +54,7 @@ class ShimIdentity(BaseModel):
     user_id: str
     client_id: str
     expires_at: int
+    execution_target: LocalExecutionTargetMetadata | None = None
 
 
 @router.websocket("/ws/local-executor")
@@ -118,7 +122,9 @@ async def local_executor_ws(
     client_id = identity.client_id
 
     await websocket.accept()
-    hello = await _receive_hello(session_id, websocket)
+    hello = await _receive_hello(
+        session_id, websocket, execution_target=identity.execution_target
+    )
     if hello is None:
         return
 
@@ -210,18 +216,19 @@ async def _authenticate_connection(
         user_id = token_info.user_id
         client_id = token_info.client_id
         assert client_id is not None
-        if (
-            session_id is not None
-            and await get_chat_session_metadata(session_id, user_id) is None
-        ):
-            record_handshake_failure("session_access_denied")
-            await _deny(
-                websocket,
-                403,
-                "Session not found or access denied",
-                close_code=4403,
-            )
-            return None
+        execution_target = None
+        if session_id is not None:
+            session = await get_chat_session_metadata(session_id, user_id)
+            if session is None or session.metadata.execution_target.kind != "local":
+                record_handshake_failure("session_access_denied")
+                await _deny(
+                    websocket,
+                    403,
+                    "Session is not bound to this Local PC executor",
+                    close_code=4403,
+                )
+                return None
+            execution_target = session.metadata.execution_target
         if not await is_local_executor_enabled(user_id):
             record_handshake_failure("feature_disabled")
             await _deny(
@@ -244,6 +251,7 @@ async def _authenticate_connection(
         user_id=user_id,
         client_id=client_id,
         expires_at=token_info.exp,
+        execution_target=execution_target,
     )
 
 
@@ -294,6 +302,7 @@ async def _receive_hello(
     *,
     allow_null_root: bool = False,
     connection_id: str | None = None,
+    execution_target: LocalExecutionTargetMetadata | None = None,
 ) -> ShimHello | None:
     try:
         raw = await asyncio.wait_for(
@@ -334,6 +343,15 @@ async def _receive_hello(
         if shim_major != server_major:
             record_handshake_failure("protocol_version_mismatch")
             await websocket.close(code=4426, reason="Protocol major version mismatch")
+            return None
+        if execution_target is not None and (
+            hello.machine_id != execution_target.machine_id
+            or hello.allowed_root != execution_target.allowed_root
+        ):
+            record_handshake_failure("session_binding_mismatch")
+            await websocket.close(
+                code=4403, reason="Local PC executor does not match the session binding"
+            )
             return None
         negotiated_protocol_version = f"{server_major}.{min(shim_minor, server_minor)}"
         granted_capabilities = list(

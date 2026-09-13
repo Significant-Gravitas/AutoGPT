@@ -20,6 +20,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from backend.copilot.local_executor import LocalPCExecutorMarker
 
 from .local_pc_errors import translate_shim_error
+from .local_pc_llm import LocalLLMError
+from .local_pc_llm import LocalLLMProxy as _LocalLLMProxy
 from .local_pc_metrics import record_rpc_retry
 from .local_pc_relay import get_local_pc_relay
 from .local_pc_relay_protocol import (
@@ -37,6 +39,10 @@ from .recording_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_LLM_STREAM_MAX_FRAMES = 64
+_LLM_STREAM_MAX_FRAME_BYTES = 64 * 1024
+_LLM_STREAM_MAX_CONCURRENT = 4
 
 
 # In-flight-on-disconnect semantics — see PROTOCOL.md
@@ -578,6 +584,21 @@ class ShimConnectionManager:
         """Forget a cached adapter if it is still the current instance."""
         if self._shims.get(session_id) is shim:
             self._shims.pop(session_id, None)
+
+    async def close_existing_session(self, session_id: str) -> None:
+        """Close cached resources without waiting for or creating a connection."""
+        transport: TextTransport | None = self._connections.get(session_id)
+        if transport is None:
+            transport = self._relay_transports.get(session_id)
+        shim = self._shims.get(session_id)
+        try:
+            if shim is not None:
+                await shim.kill()
+            elif transport is not None:
+                await transport.close()
+        finally:
+            if transport is not None:
+                self.unregister(session_id, websocket=transport)
 
     async def revoke_user_shims(
         self,
@@ -1453,145 +1474,6 @@ class _CommandResult:
         self.output_truncated = bool(payload.get("output_truncated", False))
 
 
-# ── Local LLM routing ────────────────────────────────────────────────────────
-#
-# When ``LocalLLMRouter`` greenlights local routing, ``_LocalLLMProxy`` sends
-# a LOCAL_LLM_COMPLETION over the WS and consumes the shim's streaming
-# LOCAL_LLM_COMPLETION_CHUNK frames + terminal LOCAL_LLM_COMPLETION_RESPONSE.
-# See autogpt-local-executor/docs/LOCAL_LLM.md for the wire spec.
-
-
-class LocalLLMError(RuntimeError):
-    """Raised when a local LLM completion fails on the shim.
-
-    ``code`` mirrors the wire error (``MODEL_NOT_AVAILABLE`` /
-    ``LOCAL_LLM_BUSY`` / ``LOCAL_LLM_FAILED``) so the platform's error
-    translator can branch on it.
-    """
-
-    def __init__(self, code: str, message: str, details: dict | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.details = details or {}
-
-
-class _LocalLLMProxy:
-    """Stream completions from the shim's local LLM backend.
-
-    Two surfaces:
-      * ``complete(model, messages, **opts)`` — async iterator that yields
-        text deltas in order, then raises StopAsyncIteration when the
-        shim emits the terminal RESPONSE. Errors surface as
-        :class:`LocalLLMError`.
-      * ``complete_blocking(...)`` — non-streaming convenience that
-        returns the assembled content as a single string.
-
-    Both use the shim's per-request streaming queue (see
-    :meth:`LocalPCShim._register_stream` / :meth:`_dispatch_stream_frame`).
-    """
-
-    def __init__(self, shim: "LocalPCShim") -> None:
-        self._shim = shim
-
-    async def complete(
-        self,
-        *,
-        model: str,
-        messages: list[dict[str, str]],
-        max_tokens: int = 1024,
-        temperature: float = 0.0,
-        top_p: float = 1.0,
-    ):
-        """Stream deltas. Yields ``str`` chunks; raises LocalLLMError on
-        shim-side failure. The async generator drives the WS round-trip;
-        callers MUST consume it to completion (or close it) so the
-        per-request queue gets cleaned up.
-
-        See LOCAL_LLM.md for the wire payload shape.
-        """
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-            "stream": True,
-        }
-        msg_id = str(uuid.uuid4())
-        queue = self._shim._register_stream(msg_id)
-        envelope = {
-            "type": "LOCAL_LLM_COMPLETION",
-            "id": msg_id,
-            "ts": time.time(),
-            "payload": payload,
-        }
-        try:
-            await self._shim._ws.send_text(json.dumps(envelope))
-        except Exception as exc:
-            self._shim._cleanup_stream(msg_id)
-            raise LocalLLMError(
-                code="LOCAL_LLM_FAILED",
-                message=f"[LocalPC] Failed to send LOCAL_LLM_COMPLETION: {exc}",
-            ) from exc
-
-        try:
-            while True:
-                frame = await queue.get()
-                msg_type = frame.get("type")
-                payload_in = frame.get("payload") or {}
-                if msg_type == "LOCAL_LLM_COMPLETION_CHUNK":
-                    delta = payload_in.get("delta") or ""
-                    finish_reason = payload_in.get("finish_reason")
-                    if delta:
-                        yield delta
-                    if finish_reason is not None:
-                        # Terminal chunk marker — the RESPONSE will follow.
-                        continue
-                elif msg_type == "LOCAL_LLM_COMPLETION_RESPONSE":
-                    # End of stream; we're done.
-                    return
-                elif msg_type == "ERROR":
-                    code = payload_in.get("code", "LOCAL_LLM_FAILED")
-                    message = payload_in.get("message", "Local LLM completion failed")
-                    details = payload_in.get("details") or {}
-                    raise LocalLLMError(code=code, message=message, details=details)
-                else:
-                    # Unknown frame type for this id — log + skip.
-                    logger.debug(
-                        "[LocalLLM] Unknown frame on stream %s: type=%s",
-                        msg_id,
-                        msg_type,
-                    )
-        finally:
-            self._shim._cleanup_stream(msg_id)
-
-    async def complete_blocking(
-        self,
-        *,
-        model: str,
-        messages: list[dict[str, str]],
-        max_tokens: int = 1024,
-        temperature: float = 0.0,
-        top_p: float = 1.0,
-    ) -> str:
-        """Run a streaming completion and return the assembled string.
-
-        Convenience for callers that want the whole response in one go
-        (tests, the platform-side adapter when wrapped in a non-streaming
-        path). Errors propagate as :class:`LocalLLMError`.
-        """
-        chunks: list[str] = []
-        async for delta in self.complete(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-        ):
-            chunks.append(delta)
-        return "".join(chunks)
-
-
 # ── Workflow recording ───────────────────────────────────────────────────────
 #
 # `_RecordingProxy` wraps the §6 wire ops: START_RECORDING / STOP_RECORDING /
@@ -2305,7 +2187,15 @@ class LocalPCShim(LocalPCExecutorMarker):
                     "LOCAL_LLM_COMPLETION_RESPONSE",
                     "ERROR",
                 ):
-                    self._streaming[msg_id].put_nowait(msg)
+                    queue = self._streaming[msg_id]
+                    if queue.full() or len(raw.encode()) > _LLM_STREAM_MAX_FRAME_BYTES:
+                        self._terminate_stream(
+                            msg_id,
+                            "LOCAL_LLM_STREAM_LIMIT",
+                            "Local LLM response exceeded its buffer limit",
+                        )
+                    else:
+                        queue.put_nowait(msg)
                     return
             if isinstance(msg_id, str) and msg_id in self._pending:
                 expected_types, future = self._pending.pop(msg_id)
@@ -2331,15 +2221,8 @@ class LocalPCShim(LocalPCExecutorMarker):
             if not future.done():
                 future.set_exception(error)
 
-        stream_error = {
-            "type": "ERROR",
-            "payload": {
-                "code": "CONNECTION_LOST",
-                "message": str(error),
-            },
-        }
-        for queue in self._streaming.values():
-            queue.put_nowait(stream_error)
+        for msg_id in list(self._streaming):
+            self._terminate_stream(msg_id, "CONNECTION_LOST", str(error))
         for recording_id in list(self._recording_steps):
             self.close_recording(recording_id)
 
@@ -2351,13 +2234,27 @@ class LocalPCShim(LocalPCExecutorMarker):
         Callers MUST call :meth:`_cleanup_stream` when done so the dict
         doesn't grow without bound.
         """
-        queue: asyncio.Queue[dict] = asyncio.Queue()
+        if len(self._streaming) >= _LLM_STREAM_MAX_CONCURRENT:
+            raise LocalLLMError(
+                "LOCAL_LLM_BUSY", "Too many Local LLM streams are active"
+            )
+        queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=_LLM_STREAM_MAX_FRAMES)
         self._streaming[msg_id] = queue
         return queue
 
     def _cleanup_stream(self, msg_id: str) -> None:
         """Drop the streaming queue. Safe to call multiple times."""
         self._streaming.pop(msg_id, None)
+
+    def _terminate_stream(self, msg_id: str, code: str, message: str) -> None:
+        queue = self._streaming.pop(msg_id, None)
+        if queue is None:
+            return
+        while not queue.empty():
+            queue.get_nowait()
+        queue.put_nowait(
+            {"type": "ERROR", "payload": {"code": code, "message": message}}
+        )
 
     def _handle_envelope_capacity(self, msg: Any) -> None:
         """Mine ``pending_capacity`` out of any shim → platform envelope.

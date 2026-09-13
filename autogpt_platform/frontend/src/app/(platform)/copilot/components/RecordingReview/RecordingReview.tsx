@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EyeSlashIcon, TrashSimpleIcon } from "@phosphor-icons/react";
+import { ViewOffIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 import type { CapturedStep } from "../../hooks/recording-helpers";
 
 interface MetadataFieldProps {
@@ -68,7 +69,7 @@ export function RecordingReview({
       controlled={{
         isOpen,
         set: async (open) => {
-          if (!open) onCancel();
+          if (!open && !isSubmitting) onCancel();
         },
       }}
     >
@@ -258,18 +259,25 @@ export function RecordingReview({
                         variant="ghost"
                         size="icon"
                         aria-label={`Hide value for step ${step.seq}`}
+                        disabled={isSubmitting}
                         onClick={() => onRedactStep(step.seq)}
                       >
-                        <EyeSlashIcon className="h-4 w-4" aria-hidden="true" />
+                        <Icon
+                          icon={ViewOffIcon}
+                          className="h-4 w-4"
+                          aria-hidden="true"
+                        />
                       </Button>
                     ) : null}
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label={`Delete step ${step.seq}`}
+                      disabled={isSubmitting}
                       onClick={() => onDeleteStep(step.seq)}
                     >
-                      <TrashSimpleIcon
+                      <Icon
+                        icon={Delete02Icon}
                         className="h-4 w-4 text-red-600"
                         aria-hidden="true"
                       />

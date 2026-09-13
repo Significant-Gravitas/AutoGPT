@@ -188,6 +188,29 @@ class TestShimHello:
 
 
 class TestShimConnectionManager:
+    @pytest.mark.asyncio
+    async def test_close_missing_session_never_allocates(self) -> None:
+        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
+        manager.wait_for = AsyncMock()
+        await manager.close_existing_session("missing")
+        manager.wait_for.assert_not_awaited()
+        assert not manager._shims
+        assert not manager._waiters
+
+    @pytest.mark.asyncio
+    async def test_close_existing_session_closes_registered_transport(self) -> None:
+        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
+        websocket = MagicMock()
+        websocket.close = AsyncMock()
+        manager.register("session-1", websocket, ShimHello())
+
+        await manager.close_existing_session("session-1")
+
+        websocket.close.assert_awaited_once()
+        assert manager.get("session-1") is None
+        assert manager.get_hello("session-1") is None
+        assert not manager._shims
+
     class NoPresenceRelay:
         def __init__(self):
             self.revocations: list[tuple[str, str | None, str]] = []

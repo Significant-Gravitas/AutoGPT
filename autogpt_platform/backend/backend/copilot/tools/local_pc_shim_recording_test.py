@@ -350,8 +350,7 @@ class TestRecordingStepStream:
         shim = _make_recording_shim()
         rec_id = "rec_abc"
 
-        async def produce():
-            await asyncio.sleep(0)
+        def produce():
             shim._handle_recording_step(
                 {
                     "type": "RECORDING_STEP",
@@ -378,7 +377,15 @@ class TestRecordingStepStream:
             async for step in shim.recording.stream_steps(rec_id):
                 collected.append(step)
 
-        await asyncio.gather(produce(), asyncio.wait_for(consume(), timeout=2))
+        async def wait_until_consumer_started():
+            while rec_id not in shim._started_recording_ids:
+                await asyncio.sleep(0)
+
+        consumer = asyncio.create_task(consume())
+        await asyncio.wait_for(wait_until_consumer_started(), timeout=2)
+
+        produce()
+        await asyncio.wait_for(consumer, timeout=2)
         assert [s.action for s in collected] == ["fill", "submit"]
         # Buffer is dropped after the iterator finishes.
         assert rec_id not in shim._recording_steps

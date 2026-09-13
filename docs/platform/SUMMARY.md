@@ -54,6 +54,7 @@
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
 * [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
+* [Local PC Executor Security Boundaries](local-pc-executor-security.md)
 
 ## Changelog
 

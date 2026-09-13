@@ -1,14 +1,17 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from .local_pc_machine import (
     MachineConnectionStaleError,
+    MachineControlError,
     MachineSessionBinding,
     activate_machine_session,
     attach_machine_session,
     get_machine_presence,
     is_machine_presence,
+    machine_rpc,
     restore_machine_session,
 )
 from .local_pc_relay_protocol import RelayPresence, machine_scope_id
@@ -132,3 +135,60 @@ async def test_restore_sends_only_durable_grant() -> None:
         "session_id": "session-1",
         "root_grant": "grant-1",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["json", "type", "payload", "object"])
+async def test_machine_rpc_rejects_invalid_response_and_closes_transport(invalid: str):
+    transport = MagicMock()
+    transport.send_text = AsyncMock()
+    transport.close = AsyncMock()
+
+    async def responses():
+        request = json.loads(transport.send_text.await_args.args[0])
+        if invalid == "json":
+            yield "{"
+        elif invalid == "object":
+            yield "[]"
+        else:
+            yield json.dumps(
+                {
+                    "id": request["id"],
+                    "type": "ACK" if invalid == "type" else "DIRECTORY_LIST_RESPONSE",
+                    "payload": [] if invalid == "payload" else {},
+                }
+            )
+
+    transport.iter_text = responses
+    relay = MagicMock()
+    relay.get_presence = AsyncMock(return_value=_presence())
+    relay.open_transport = AsyncMock(return_value=transport)
+    with patch(
+        "backend.copilot.tools.local_pc_machine.get_local_pc_relay", return_value=relay
+    ):
+        with pytest.raises(MachineControlError) as error:
+            await machine_rpc(_presence(), "DIRECTORY_LIST_REQUEST", {})
+    assert error.value.code == "INVALID_MACHINE_RESPONSE"
+    transport.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["attach", "activate", "restore"])
+async def test_binding_response_must_match_requested_session(operation: str):
+    payload = _binding().model_dump()
+    payload["session_id"] = "another-session"
+    rpc = AsyncMock(return_value={"payload": payload})
+    with patch("backend.copilot.tools.local_pc_machine.machine_rpc", rpc):
+        with pytest.raises(MachineControlError) as error:
+            if operation == "attach":
+                await attach_machine_session(
+                    _presence(),
+                    session_id="session-1",
+                    browse_id="browse-1",
+                    directory_ref="dir-1",
+                )
+            elif operation == "activate":
+                await activate_machine_session(_presence(), _binding())
+            else:
+                await restore_machine_session(_presence(), _binding())
+    assert error.value.code == "INVALID_MACHINE_RESPONSE"

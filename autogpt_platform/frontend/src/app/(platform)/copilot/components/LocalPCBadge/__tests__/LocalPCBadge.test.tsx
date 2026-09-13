@@ -1,9 +1,11 @@
+import { getGetExperimentalGetSessionExecutorQueryKey } from "@/app/api/__generated__/endpoints/copilot/copilot";
 import {
   getGetExperimentalGetSessionExecutorMockHandler200,
   getGetExperimentalGetSessionExecutorMockHandler401,
 } from "@/app/api/__generated__/endpoints/copilot/copilot.msw";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { act, render, screen } from "@/tests/integrations/test-utils";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, test } from "vitest";
@@ -103,5 +105,36 @@ describe("LocalPCBadge", () => {
         name: /local pc status unavailable/i,
       }),
     ).toBeDefined();
+  });
+
+  test("does not show retained connection details after polling fails", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    server.use(
+      http.get(EXECUTOR_URL, () =>
+        HttpResponse.json({ kind: "shim", platform: "darwin" }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LocalPCBadge sessionID={SESSION_ID} />
+      </QueryClientProvider>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /local pc connected/i }),
+    );
+    server.use(getGetExperimentalGetSessionExecutorMockHandler401());
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: getGetExperimentalGetSessionExecutorQueryKey(SESSION_ID),
+      });
+    });
+
+    expect(
+      await screen.findByText(/status could not be loaded/i),
+    ).toBeDefined();
+    expect(screen.queryByText(/Files and commands route to/i)).toBeNull();
   });
 });

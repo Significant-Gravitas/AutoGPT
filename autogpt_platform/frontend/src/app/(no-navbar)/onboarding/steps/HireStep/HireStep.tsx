@@ -22,7 +22,7 @@ const CARD_WIDTH_CLASS = "w-full sm:w-[calc(50%-0.375rem)] lg:w-72";
 const EDGE_FADE_CLASS =
   "pointer-events-none absolute inset-x-0 z-10 h-16 from-gray-100 via-gray-100/70 to-transparent transition-opacity duration-200";
 
-// AutoPilot's first act as Head of AI: right after the brain dump, before the
+// Otto's first act as Head of AI: right after the brain dump, before the
 // user is asked to pay for anything, it proposes the experts that take the
 // problems it heard off the user's plate. Hiring here is one click per card;
 // the voice pick waits for the expert's own page.

@@ -21,6 +21,10 @@ const MACHINE = {
   capabilities: ["files", "shell"],
 };
 
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "user-1" } }),
+}));
+
 function resetTargetStore() {
   useCopilotUIStore.setState({
     newChatExecutionTarget: { kind: "cloud" },
@@ -36,7 +40,7 @@ function mockMachines(executors = [MACHINE]) {
 describe("ExecutionTargetPicker", () => {
   beforeEach(() => {
     resetTargetStore();
-    storage.set(Key.COPILOT_LOCAL_PC_WARNING_ACKED, "true");
+    storage.set(Key.COPILOT_LOCAL_PC_WARNING_ACKED, "user-1");
   });
 
   afterEach(() => {
@@ -268,15 +272,88 @@ describe("ExecutionTargetPicker", () => {
     expect(await screen.findByText("Connect a Computer")).toBeDefined();
     expect(
       screen.getByText(
-        "pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git",
+        /^pipx install git\+https:\/\/github\.com\/Significant-Gravitas\/autogpt-local-executor\.git@[a-f0-9]{40}$/,
       ),
     ).toBeDefined();
-    expect(screen.getByText("autogpt-shim auth")).toBeDefined();
+    expect(
+      screen.getByText(
+        /autogpt-shim --platform-url .* --platform-oauth-url .* auth/,
+      ),
+    ).toBeDefined();
     expect(screen.getByText("autogpt-shim install")).toBeDefined();
     expect(
       screen.getByText(/even when this chat is open on another device/i),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Check Again" })).toBeDefined();
+  });
+
+  it("invalidates the folder when a paginated response changes its binding", async () => {
+    const user = userEvent.setup();
+    mockMachines();
+    server.use(
+      http.post(DIRECTORIES_URL, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const home = {
+          directory_ref: "home-ref",
+          name: "Home",
+          path: "C:\\Users\\Ada",
+        };
+        return HttpResponse.json({
+          connection_id: "connection-1",
+          browse_id: body.cursor ? "unexpected-browse" : "browse-1",
+          current: body.directory_ref ? home : null,
+          parent_ref: null,
+          entries: body.directory_ref
+            ? [{ ...home, directory_ref: "child-ref", name: "Child" }]
+            : [home],
+          next_cursor: body.directory_ref ? "next-page" : null,
+          truncated: false,
+          expires_at: 1,
+        });
+      }),
+    );
+
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+    await user.click(await screen.findByRole("button", { name: "Home" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Load More Folders" }),
+    );
+
+    await screen.findAllByText(/folder view changed/i);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Use This Folder",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.queryByText("C:\\Users\\Ada")).toBeNull();
+  });
+
+  it("preserves a selected folder while the first machine check is pending", async () => {
+    const selectedTarget = {
+      kind: "local" as const,
+      machineID: "machine-1",
+      machineLabel: "Workstation",
+      connectionID: "connection-1",
+      browseID: "browse-1",
+      directoryRef: "folder-1",
+      displayPath: "C:\\Projects",
+    };
+    useCopilotUIStore.setState({ newChatExecutionTarget: selectedTarget });
+    mockMachines();
+
+    render(<ExecutionTargetPicker />);
+
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
+      selectedTarget,
+    );
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
+        selectedTarget,
+      );
+    });
   });
 
   it("surfaces stale directory failures and offers retry", async () => {
@@ -317,6 +394,51 @@ describe("ExecutionTargetPicker", () => {
         directory_ref: null,
       },
     ]);
+  });
+
+  it("clears a previously confirmed folder after a stale browse response", async () => {
+    const user = userEvent.setup();
+    mockMachines();
+    let stale = false;
+    server.use(
+      http.post(DIRECTORIES_URL, () =>
+        stale
+          ? HttpResponse.json({ detail: "Browse expired" }, { status: 409 })
+          : HttpResponse.json({
+              connection_id: "connection-1",
+              browse_id: "browse-1",
+              current: {
+                directory_ref: "home-ref",
+                name: "Home",
+                path: "C:\\Users\\Ada",
+              },
+              parent_ref: null,
+              entries: [],
+              truncated: false,
+              expires_at: 1,
+            }),
+      ),
+    );
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Use This Folder" }),
+      ).toHaveProperty("disabled", false);
+    });
+    await user.click(screen.getByRole("button", { name: "Use This Folder" }));
+    stale = true;
+    await user.click(screen.getByRole("button", { name: /Local folder:/ }));
+
+    await screen.findAllByText(/computer or folder changed/i);
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject({
+      kind: "local",
+      machineID: "machine-1",
+      connectionID: "connection-1",
+      browseID: null,
+      directoryRef: null,
+      displayPath: null,
+    });
   });
 
   it("clears a selected folder when its machine disconnects", async () => {

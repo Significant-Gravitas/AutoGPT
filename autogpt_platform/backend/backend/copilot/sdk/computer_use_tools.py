@@ -41,6 +41,7 @@ from backend.copilot.context import (
     is_local_pc_executor,
     resolve_executor_path,
 )
+from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimComputerUseError,
@@ -81,9 +82,9 @@ def _get_local_pc_shim() -> LocalPCShim | None:
     return sb if is_local_pc_executor(sb) else None
 
 
-async def _require_computer_use() -> (
-    tuple[LocalPCShim | None, ShimConnectionGuard | None, dict[str, Any] | None]
-):
+async def _require_computer_use(
+    tool_name: str,
+) -> tuple[LocalPCShim | None, ShimConnectionGuard | None, dict[str, Any] | None]:
     """Resolve the shim and revalidate revocable per-session consent."""
     shim = _get_local_pc_shim()
     if shim is None:
@@ -112,6 +113,17 @@ async def _require_computer_use() -> (
         )
     user_id, session = get_execution_context()
     guard = shim.capture_connection_guard()
+    if tool_name not in local_pc_tool_names_for_features(
+        guard.computer_use_features_coarse, guard.computer_use_features
+    ):
+        return (
+            None,
+            None,
+            _err(
+                "CAPABILITY_NOT_GRANTED",
+                "The connected Local PC executor did not grant this computer action.",
+            ),
+        )
     if (
         not user_id
         or session is None
@@ -155,7 +167,7 @@ def _handle_shim_error(exc: ShimComputerUseError) -> dict[str, Any]:
 
 
 async def _h_screenshot(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_screenshot")
     if shim is None:
         assert gate is not None
         return gate
@@ -212,7 +224,7 @@ def _coord(args: dict[str, Any]) -> list[int]:
 
 
 async def _h_click(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_click")
     if shim is None:
         assert gate is not None
         return gate
@@ -232,7 +244,7 @@ async def _h_click(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_type(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_type")
     if shim is None:
         assert gate is not None
         return gate
@@ -253,7 +265,7 @@ async def _h_type(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_key(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_key")
     if shim is None:
         assert gate is not None
         return gate
@@ -269,7 +281,7 @@ async def _h_key(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_scroll(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_scroll")
     if shim is None:
         assert gate is not None
         return gate
@@ -290,7 +302,7 @@ async def _h_scroll(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_cursor_position(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_cursor_position")
     if shim is None:
         assert gate is not None
         return gate
@@ -303,7 +315,7 @@ async def _h_cursor_position(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_list_windows(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_list_windows")
     if shim is None:
         assert gate is not None
         return gate
@@ -321,7 +333,7 @@ async def _h_list_windows(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_focus_window(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_focus_window")
     if shim is None:
         assert gate is not None
         return gate
@@ -339,7 +351,7 @@ async def _h_focus_window(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_list_apps(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_list_apps")
     if shim is None:
         assert gate is not None
         return gate
@@ -355,7 +367,7 @@ async def _h_list_apps(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_launch_app(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_launch_app")
     if shim is None:
         assert gate is not None
         return gate
@@ -392,7 +404,7 @@ async def _h_launch_app(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_clipboard_read(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_clipboard_read")
     if shim is None:
         assert gate is not None
         return gate
@@ -407,7 +419,7 @@ async def _h_clipboard_read(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_clipboard_write(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_clipboard_write")
     if shim is None:
         assert gate is not None
         return gate
@@ -425,7 +437,7 @@ async def _h_clipboard_write(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_permissions_check(args: dict[str, Any]) -> dict[str, Any]:
-    shim, guard, gate = await _require_computer_use()
+    shim, guard, gate = await _require_computer_use("local_pc_permissions_check")
     if shim is None:
         assert gate is not None
         return gate

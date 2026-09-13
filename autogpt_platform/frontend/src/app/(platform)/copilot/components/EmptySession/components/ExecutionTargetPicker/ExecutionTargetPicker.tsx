@@ -1,6 +1,7 @@
 "use client";
 
 import { LocalPCWarning } from "@/app/(platform)/copilot/components/LocalPCWarning/LocalPCWarning";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +12,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import {
-  CaretDownIcon,
+  ArrowDown01Icon,
   CloudIcon,
-  DesktopIcon,
+  ComputerIcon,
   FolderOpenIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { LocalFolderPicker } from "./components/LocalFolderPicker/LocalFolderPicker";
 import { useExecutionTargetPicker } from "./useExecutionTargetPicker";
@@ -41,22 +42,23 @@ export function ExecutionTargetPicker() {
               className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm outline-none hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2"
             >
               {isLocal ? (
-                <DesktopIcon
+                <Icon
+                  icon={ComputerIcon}
                   size={17}
-                  weight="fill"
                   className="shrink-0 text-violet-600"
                   aria-hidden="true"
                 />
               ) : (
-                <CloudIcon
+                <Icon
+                  icon={CloudIcon}
                   size={17}
-                  weight="fill"
                   className="shrink-0 text-sky-600"
                   aria-hidden="true"
                 />
               )}
               <span>{isLocal ? "Local PC" : "Cloud"}</span>
-              <CaretDownIcon
+              <Icon
+                icon={ArrowDown01Icon}
                 size={14}
                 className="shrink-0 text-zinc-500"
                 aria-hidden="true"
@@ -101,9 +103,9 @@ export function ExecutionTargetPicker() {
             }
             className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 shadow-sm outline-none hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2"
           >
-            <FolderOpenIcon
+            <Icon
+              icon={FolderOpenIcon}
               size={17}
-              weight="fill"
               className="shrink-0 text-amber-500"
               aria-hidden="true"
             />
@@ -155,7 +157,7 @@ export function ExecutionTargetPicker() {
             directory.path,
           )
         }
-        onStale={picker.setError}
+        onStale={picker.invalidateDirectorySelection}
       />
     </>
   );

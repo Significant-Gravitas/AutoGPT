@@ -32,7 +32,7 @@ const FALLBACK_ARCHIVED_NAME = "This expert";
  *
  * Fail closed: once the roster query has SETTLED (success or error), a
  * session pointing at an expert we can't resolve is treated as archived
- * (read-only history, generic name) — never a writable plain Autopilot
+ * (read-only history, generic name) — never a writable plain Otto
  * thread. A cached identity can still supply its name after a failed
  * refetch, but is marked unavailable and read-only. Passing the settled
  * flag rather than the success flag is load-bearing: a failed roster fetch

@@ -80,7 +80,7 @@ export function CopilotChatHost({
               allowedRoot={sessionExecutionTarget.allowed_root}
             />
             {isRecordingEnabled ? (
-              <RecordWorkflow sessionID={sessionId} />
+              <RecordWorkflow key={sessionId} sessionID={sessionId} />
             ) : null}
           </div>
           <LocalPCComputerUseConsent

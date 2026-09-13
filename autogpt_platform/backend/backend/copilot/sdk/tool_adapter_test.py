@@ -12,6 +12,7 @@ from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
 
@@ -26,7 +27,6 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     create_tool_handler,
     get_copilot_tool_names,
-    local_pc_tool_names_for_features,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -50,6 +50,24 @@ def test_local_pc_tool_names_follow_advertised_feature_groups() -> None:
     }
     assert "local_pc_clipboard_read" not in names
     assert "local_pc_list_windows" not in names
+
+
+@pytest.mark.parametrize(
+    ("feature", "expected"),
+    [
+        ("input.click", {"local_pc_click"}),
+        ("input.click.modifiers", {"local_pc_click"}),
+        ("input.scroll.amount", {"local_pc_scroll"}),
+        ("input.key.hold", set()),
+        ("input.wait", set()),
+        ("screenshot.unknown", set()),
+        ("clipboard.read.extra", set()),
+    ],
+)
+def test_fine_features_do_not_broaden_action_grants(
+    feature: str, expected: set[str]
+) -> None:
+    assert local_pc_tool_names_for_features([], [feature]) == expected
 
 
 @pytest.mark.asyncio

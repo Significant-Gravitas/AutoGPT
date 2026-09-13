@@ -36,7 +36,7 @@ export function useSkillPage(slug: string) {
   // The install lands under the listing slug, so the user's own skill names
   // are the truth about whether this one is already added — a reload no
   // longer offers to install it again.
-  const installedSkills = useListCopilotSkills({
+  const installedSkills = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled: isLoggedIn },
   });
   const isAdded = (installedSkills.data ?? []).some(

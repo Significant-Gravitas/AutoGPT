@@ -206,6 +206,11 @@ async def set_session_computer_use_consent(
 ) -> ComputerUseConsentResponse:
     """Persist the authenticated owner's explicit per-session decision."""
     session = await _require_owned_session(session_id, user_id)
+    if session.metadata.execution_target.kind != "local":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This session is not bound to a Local PC executor",
+        )
     await _require_local_executor_enabled(user_id)
     hello = await _get_session_executor_hello(session, user_id)
     if request.approved:
@@ -378,9 +383,11 @@ async def _get_session_executor_hello(
 ) -> ShimHello | None:
     """Resolve an active child HELLO or project the persistent machine HELLO."""
     target = session.metadata.execution_target
+    if target.kind != "local":
+        return None
     hello = await get_shim_manager().get_hello_async(session.session_id)
     if hello is not None:
-        if target.kind != "local" or (
+        if (
             hello.machine_id == target.machine_id
             and hello.allowed_root == target.allowed_root
         ):
@@ -390,8 +397,6 @@ async def _get_session_executor_hello(
             session.session_id[:12],
         )
 
-    if target.kind != "local":
-        return None
     try:
         presence = await get_machine_presence(
             user_id,
@@ -467,6 +472,12 @@ async def _require_owned_shim(
     session_id: str, user_id: str, *, recording: bool = False
 ) -> LocalPCShim:
     session = await _require_owned_session(session_id, user_id)
+    target = session.metadata.execution_target
+    if target.kind != "local":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This session is not bound to a Local PC executor",
+        )
     await _require_local_executor_enabled(user_id)
     if recording:
         await _require_workflow_recording_enabled(user_id)
@@ -474,8 +485,7 @@ async def _require_owned_shim(
         shim = await get_shim_manager().get_or_create_shim_for_session(
             session_id, timeout=1.0
         )
-        target = session.metadata.execution_target
-        if target.kind == "local" and (
+        if (
             shim.machine_id != target.machine_id
             or shim.allowed_root != target.allowed_root
         ):

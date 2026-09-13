@@ -162,7 +162,7 @@ describe("RecordingReview", () => {
   });
 
   test("disables review actions while the authoritative review is applied", () => {
-    renderReview({ isSubmitting: true });
+    const { onCancel } = renderReview({ isSubmitting: true });
     expect(
       screen.getByRole("button", { name: /finish review/i }),
     ).toHaveProperty("disabled", true);
@@ -170,5 +170,15 @@ describe("RecordingReview", () => {
       "disabled",
       true,
     );
+    expect(screen.getByLabelText(/hide value for step 1/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByLabelText(/delete step 1/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

@@ -3,13 +3,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from autogpt_libs import auth
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from backend.api.features.local_executor.routes import router
+from backend.api.features.local_executor.routes import _require_owned_shim, router
 from backend.api.features.local_executor.state import RecordingState
 from backend.copilot.model import ChatSessionMetadata, LocalExecutionTargetMetadata
-from backend.copilot.tools.local_pc_machine import MachineConnectionStaleError
+from backend.copilot.tools.local_pc_machine import (
+    MachineConnectionStaleError,
+    MachineNotConnectedError,
+)
 from backend.copilot.tools.local_pc_relay_protocol import RelayPresence
 from backend.copilot.tools.local_pc_shim import ShimHello, ShimRecordingError
 from backend.copilot.tools.recording_models import (
@@ -22,6 +25,12 @@ from backend.copilot.tools.recording_models import (
 @pytest.fixture(autouse=True)
 def _enabled_local_executor_features():
     with (
+        patch(
+            "backend.api.features.local_executor.routes.get_machine_presence",
+            AsyncMock(
+                side_effect=MachineNotConnectedError("MACHINE_NOT_CONNECTED", "offline")
+            ),
+        ),
         patch(
             "backend.api.features.local_executor.routes.is_local_executor_enabled",
             AsyncMock(return_value=True),
@@ -42,6 +51,10 @@ def _make_client(user_id: str = "owner-1") -> TestClient:
 
 
 def _owned_session() -> SimpleNamespace:
+    return _local_owned_session()
+
+
+def _cloud_owned_session() -> SimpleNamespace:
     return SimpleNamespace(
         session_id="session-1",
         metadata=ChatSessionMetadata(),
@@ -62,6 +75,51 @@ def _local_owned_session() -> SimpleNamespace:
             )
         ),
     )
+
+
+def test_cloud_session_ignores_stale_local_executor_presence():
+    manager = MagicMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(machine_id="machine-1", allowed_root="/workspace")
+    )
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_cloud_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_computer_use_consent",
+            AsyncMock(return_value="pending"),
+        ),
+    ):
+        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+    assert response.status_code == 200
+    assert response.json()["kind"] == "none"
+    manager.get_hello_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cloud_session_cannot_use_cached_local_executor():
+    manager = MagicMock()
+    manager.get_or_create_shim_for_session = AsyncMock(return_value=object())
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_cloud_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+    ):
+        with pytest.raises(HTTPException) as error:
+            await _require_owned_shim("session-1", "owner-1", recording=True)
+    assert error.value.status_code == 409
+    manager.get_or_create_shim_for_session.assert_not_awaited()
 
 
 def test_list_executors_is_strictly_owner_scoped() -> None:
@@ -208,6 +266,10 @@ def test_executor_status_remains_readable_after_feature_is_disabled() -> None:
             AsyncMock(return_value=False),
         ),
         patch(
+            "backend.api.features.local_executor.routes.get_computer_use_consent",
+            AsyncMock(return_value="pending"),
+        ),
+        patch(
             "backend.api.features.local_executor.routes.get_shim_manager",
             return_value=manager,
         ),
@@ -313,6 +375,7 @@ def test_computer_use_consent_is_owner_scoped(approved: bool, state: str) -> Non
     set_consent = AsyncMock(return_value=state)
     hello = ShimHello(
         machine_id="machine-1",
+        allowed_root="C:\\Users\\Ada\\Projects",
         capabilities=["computer_use"],
         computer_use_features=["screenshot.capture"],
         computer_use_features_coarse=["screenshot"],
@@ -408,6 +471,7 @@ def test_computer_use_approval_rejects_changed_executor_scope(
     manager.get_hello_async = AsyncMock(
         return_value=ShimHello(
             machine_id="machine-1",
+            allowed_root="C:\\Users\\Ada\\Projects",
             capabilities=["computer_use"],
             computer_use_features_coarse=["screenshot"],
             computer_use_features=["input.click"],
@@ -735,6 +799,8 @@ def test_recording_stop_remains_available_after_recording_kill_switch() -> None:
         fetch=AsyncMock(return_value=workflow),
     )
     shim = SimpleNamespace(
+        machine_id="machine-1",
+        allowed_root="C:\\Users\\Ada\\Projects",
         capabilities=["recording"],
         recording=recording,
         close_recording=MagicMock(),

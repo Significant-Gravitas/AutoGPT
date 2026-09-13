@@ -1,12 +1,13 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { DesktopIcon } from "@phosphor-icons/react";
+import { ComputerIcon } from "@hugeicons/core-free-icons";
 import { useLocalPCExecutor } from "../../hooks/useLocalPCExecutor";
 
 const PLATFORM_DISPLAY: Record<string, string> = {
@@ -23,9 +24,14 @@ interface Props {
 }
 
 export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
-  const { data: executor, isError, isLoading } = useLocalPCExecutor(sessionID);
+  const {
+    data: executor,
+    isError,
+    isLoading,
+    isSuccess,
+  } = useLocalPCExecutor(sessionID);
 
-  const connected = executor?.kind === "shim";
+  const connected = isSuccess && executor?.kind === "shim";
   const platformLabel = executor?.platform
     ? (PLATFORM_DISPLAY[executor.platform] ?? executor.platform)
     : "unknown platform";
@@ -61,9 +67,9 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
               : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-left text-amber-900 outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
           }
         >
-          <DesktopIcon
+          <Icon
+            icon={ComputerIcon}
             className="h-3.5 w-3.5 shrink-0"
-            weight="fill"
             aria-hidden="true"
           />
           <Text

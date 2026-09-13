@@ -1,4 +1,4 @@
-import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import {
   Avatar,
   AvatarFallback,
@@ -7,6 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
+import { formatSkillTitle } from "../../SkillsSection/helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -15,7 +16,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  expert: Expert;
+  expert: ExpertTemplate;
   isHired: boolean;
 }
 
@@ -23,6 +24,7 @@ interface Props {
  *  shared and opened directly. */
 export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
+  const skills = expert.bundled_skills ?? [];
 
   return (
     <Link
@@ -65,23 +67,23 @@ export function ExpertCard({ expert, isHired }: Props) {
           ) : null}
         </div>
 
-        {expert.skills && expert.skills.length > 0 ? (
+        {skills.length > 0 ? (
           <div>
             <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
               Skills
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {expert.skills.slice(0, 3).map((skill) => (
+              {skills.slice(0, 3).map((skill) => (
                 <span
-                  key={skill}
+                  key={skill.id}
                   className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
                 >
-                  {skill}
+                  {formatSkillTitle(skill.name)}
                 </span>
               ))}
-              {expert.skills.length > 3 ? (
+              {skills.length > 3 ? (
                 <span className="px-1 py-1 text-xs font-medium text-zinc-400">
-                  +{expert.skills.length - 3}
+                  +{skills.length - 3}
                 </span>
               ) : null}
             </div>

@@ -84,4 +84,11 @@ describe("LocalPCRecordingConsent", () => {
     );
     expect(onKeepLocal).toHaveBeenCalledOnce();
   });
+
+  test("cannot dismiss an in-flight cloud consent as keeping data local", () => {
+    const { onKeepLocal } = renderDialog({ isSubmitting: true });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onKeepLocal).not.toHaveBeenCalled();
+  });
 });
