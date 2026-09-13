@@ -30,7 +30,10 @@ function preset(
 }
 
 export const authProviders: ProviderMetadata[] = [
-  preset("AgentMail", "agentmail", { auth_methods: ["oauth"] }),
+  preset("AgentMail", "agentmail", {
+    auth_methods: ["oauth"],
+    icon_id: "agent_mail",
+  }),
   preset("Intercom", "intercom", {
     auth_methods: ["bearer"],
   }),

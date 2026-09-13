@@ -56,7 +56,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     });
     expect(within(preset).getByText("MCP", { exact: true })).toBeDefined();
     expect(preset.querySelector("img")?.getAttribute("src")).toBe(
-      "/integrations/mcp.png",
+      "/integrations/agent_mail.png",
     );
     expect(screen.queryByText("Mcp Agentmail")).toBeNull();
   });
@@ -92,7 +92,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     expect(input.readOnly).toBe(true);
     expect(
       within(dialog).getByAltText("AgentMail logo").getAttribute("src"),
-    ).toBe("/integrations/mcp.png");
+    ).toBe("/integrations/agent_mail.png");
     fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
     await waitFor(() => {
       expect(oauthRequest).toHaveBeenCalledWith({

@@ -12,7 +12,8 @@
         "bearer",
         "oauth",
         "none"
-      ]
+      ],
+      "icon_id": "1inch"
     }
   },
   {
@@ -26,7 +27,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "none"
-      ]
+      ],
+      "icon_id": "aave"
     }
   },
   {
@@ -82,7 +84,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "airwallex"
     }
   },
   {
@@ -96,7 +99,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "airwallex"
     }
   },
   {
@@ -110,7 +114,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "algolia"
     }
   },
   {
@@ -124,7 +129,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "amplemarket"
     }
   },
   {
@@ -147,7 +153,8 @@
           "label": "EU",
           "url": "https://mcp.eu.amplitude.com/mcp"
         }
-      ]
+      ],
+      "icon_id": "amplitude"
     }
   },
   {
@@ -162,7 +169,8 @@
       "auth_methods": [
         "oauth",
         "bearer"
-      ]
+      ],
+      "icon_id": "ando"
     }
   },
   {
@@ -176,7 +184,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "antimetal"
     }
   },
   {
@@ -191,7 +200,8 @@
       "auth_methods": [
         "oauth",
         "bearer"
-      ]
+      ],
+      "icon_id": "apify"
     }
   },
   {
@@ -231,7 +241,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "appwrite"
     }
   },
   {
@@ -245,7 +256,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "none"
-      ]
+      ],
+      "icon_id": "arize"
     }
   },
   {
@@ -259,7 +271,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "astronomer"
     }
   },
   {
@@ -274,7 +287,8 @@
       "auth_methods": [
         "oauth",
         "bearer"
-      ]
+      ],
+      "icon_id": "atlan"
     }
   },
   {
@@ -290,7 +304,8 @@
         "oauth",
         "basic",
         "bearer"
-      ]
+      ],
+      "icon_id": "atlassian"
     }
   },
   {
@@ -304,7 +319,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "none"
-      ]
+      ],
+      "icon_id": "atlassian"
     }
   },
   {
@@ -316,7 +332,7 @@
       "documentation_url": "https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server",
       "setup_instructions": "Read public AWS documentation and guidance without an AWS account.",
       "connection_mode": "hosted",
-      "icon_id": "amazon",
+      "icon_id": "aws",
       "auth_methods": [
         "none"
       ]
@@ -330,7 +346,7 @@
       "documentation_url": "https://learn.microsoft.com/en-us/azure/cosmos-db/gen-ai/model-context-protocol-toolkit",
       "setup_instructions": "Deploy the official Toolkit, then enter its HTTPS endpoint and an Entra access token for that deployment with the Mcp.Tool.Executor role. Configure managed identity and database permissions; token renewal remains external.",
       "connection_mode": "custom",
-      "icon_id": "microsoft",
+      "icon_id": "azure_cosmos_db",
       "auth_methods": [
         "bearer"
       ]
@@ -347,7 +363,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "bird"
     }
   },
   {
@@ -361,7 +378,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "brevo"
     }
   },
   {
@@ -376,7 +394,8 @@
       "auth_methods": [
         "oauth",
         "bearer"
-      ]
+      ],
+      "icon_id": "brex"
     }
   },
   {
@@ -394,7 +413,8 @@
       "oauth_scopes": [
         "mcp:scheduling:read",
         "mcp:scheduling:write"
-      ]
+      ],
+      "icon_id": "calendly"
     }
   },
   {
@@ -407,7 +427,8 @@
       "connection_mode": "custom",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "chargebee"
     }
   },
   {
@@ -424,7 +445,8 @@
       ],
       "oauth_scopes": [
         "mcp"
-      ]
+      ],
+      "icon_id": "clay"
     }
   },
   {
@@ -442,7 +464,8 @@
       ],
       "oauth_scopes": [
         "mcp:all"
-      ]
+      ],
+      "icon_id": "coda"
     }
   },
   {
@@ -456,7 +479,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "composio"
     }
   },
   {
@@ -476,7 +500,8 @@
       ],
       "oauth_write_scopes": [
         "api.write"
-      ]
+      ],
+      "icon_id": "context_dev"
     }
   },
   {
@@ -493,7 +518,8 @@
         "bearer",
         "none"
       ],
-      "oauth_server_url": "https://mcp.context7.com/mcp/oauth"
+      "oauth_server_url": "https://mcp.context7.com/mcp/oauth",
+      "icon_id": "context7"
     }
   },
   {
@@ -508,7 +534,8 @@
       "auth_methods": [
         "oauth"
       ],
-      "oauth_scopes": []
+      "oauth_scopes": [],
+      "icon_id": "craft"
     }
   },
   {
@@ -524,7 +551,8 @@
         "oauth",
         "bearer"
       ],
-      "oauth_scopes": []
+      "oauth_scopes": [],
+      "icon_id": "crustdata"
     }
   },
   {
@@ -544,7 +572,8 @@
       ],
       "oauth_write_scopes": [
         "write"
-      ]
+      ],
+      "icon_id": "customer_io"
     }
   },
   {
@@ -564,7 +593,8 @@
       ],
       "oauth_write_scopes": [
         "write"
-      ]
+      ],
+      "icon_id": "customer_io"
     }
   },
   {
@@ -577,7 +607,8 @@
       "connection_mode": "custom",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "datarobot"
     }
   },
   {
@@ -594,22 +625,23 @@
       ],
       "oauth_scopes": [
         "mcp:dashboard"
-      ]
+      ],
+      "icon_id": "plaid"
     }
   },
   {
-    "name": "mcp_firetiger",
-    "display_name": "Firetiger",
-    "description": "Query telemetry and manage investigations and agent sessions.",
+    "name": "mcp_github",
+    "display_name": "GitHub",
+    "description": "Search repositories and read code, issues, and pull requests with GitHub's read-only MCP tools.",
     "mcp_server": {
-      "server_url": "https://api.cloud.firetiger.com/mcp/v1",
-      "documentation_url": "https://docs.firetiger.com/guides/mcp-server.html",
-      "setup_instructions": "Sign in with your Firetiger account. For API-key authentication, create a read-write key and paste the complete Basic authorization value from the reveal dialog.",
+      "server_url": "https://api.githubcopilot.com/mcp/readonly",
+      "documentation_url": "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
+      "setup_instructions": "Use a fine-grained personal access token limited to the repositories and read permissions you need. Organization approval or SSO authorization may be required. This connection exposes read-only tools.",
       "connection_mode": "hosted",
       "auth_methods": [
-        "oauth",
-        "basic"
-      ]
+        "bearer"
+      ],
+      "icon_id": "github"
     }
   },
   {
@@ -623,7 +655,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "gojiberry"
     }
   },
   {
@@ -637,7 +670,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "gong"
     }
   },
   {
@@ -651,7 +685,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "granola"
     }
   },
   {
@@ -665,7 +700,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "harmonic"
     }
   },
   {
@@ -678,7 +714,8 @@
       "connection_mode": "custom",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "infobip"
     }
   },
   {
@@ -692,7 +729,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "intercom"
     }
   },
   {
@@ -706,7 +744,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "intercom"
     }
   },
   {
@@ -737,6 +776,48 @@
           "label": "HIPAA US",
           "url": "https://hipaa.cloud.langfuse.com/api/public/mcp"
         }
+      ],
+      "icon_id": "langfuse"
+    }
+  },
+  {
+    "name": "mcp_linear",
+    "display_name": "Linear",
+    "description": "Search issues, projects, and documents, with optional updates to your team's work.",
+    "mcp_server": {
+      "server_url": "https://mcp.linear.app/mcp",
+      "documentation_url": "https://linear.app/docs/mcp",
+      "setup_instructions": "Sign in to the Linear workspace to connect. Read access is selected initially; Allow changes adds write access. You can also use a Linear API key limited to the teams and permissions you need.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "oauth_scopes": [
+        "read"
+      ],
+      "oauth_write_scopes": [
+        "write"
+      ],
+      "icon_id": "linear"
+    }
+  },
+  {
+    "name": "mcp_miro",
+    "display_name": "Miro",
+    "description": "Read board content and turn plans into diagrams, documents, and board items.",
+    "mcp_server": {
+      "server_url": "https://mcp.miro.com/",
+      "documentation_url": "https://developers.miro.com/docs/connecting-to-miro-mcp",
+      "setup_instructions": "Sign in and select the team containing your boards. Miro requests board read and write access; your existing board permissions apply. Enterprise organizations may require an administrator to enable MCP.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "miro",
+      "oauth_scopes": [
+        "boards:read",
+        "boards:write"
       ]
     }
   },
@@ -754,7 +835,24 @@
       ],
       "oauth_scopes": [
         "openid"
-      ]
+      ],
+      "icon_id": "mobbin"
+    }
+  },
+  {
+    "name": "mcp_monday",
+    "display_name": "monday.com",
+    "description": "Search and manage boards, items, updates, and workdocs in your monday.com account.",
+    "mcp_server": {
+      "server_url": "https://mcp.monday.com/mcp",
+      "documentation_url": "https://developer.monday.com/api-reference/docs/build-on-monday-with-ai",
+      "setup_instructions": "Sign in as a member or administrator and review monday.com's requested account permissions. Available reads and changes follow your user permissions. A personal API token is also supported.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "monday"
     }
   },
   {
@@ -786,7 +884,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "opsera"
     }
   },
   {
@@ -806,7 +905,8 @@
       "oauth_server_url": "https://search.parallel.ai/mcp-oauth",
       "oauth_scopes": [
         "key:read"
-      ]
+      ],
+      "icon_id": "parallel"
     }
   },
   {
@@ -824,7 +924,8 @@
       "oauth_scopes": [
         "openid",
         "offline_access"
-      ]
+      ],
+      "icon_id": "plain"
     }
   },
   {
@@ -837,7 +938,23 @@
       "connection_mode": "custom",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "runlayer"
+    }
+  },
+  {
+    "name": "mcp_sentry",
+    "display_name": "Sentry",
+    "description": "Investigate errors and performance, triage issues, and inspect project context.",
+    "mcp_server": {
+      "server_url": "https://mcp.sentry.dev/mcp",
+      "documentation_url": "https://mcp.sentry.dev/",
+      "setup_instructions": "Sign in to Sentry and select the MCP skills to authorize. Choose inspection and documentation for investigation; enable triage or project management only when needed. Your Sentry organization permissions apply.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "sentry"
     }
   },
   {
@@ -853,7 +970,24 @@
       ],
       "oauth_scopes": [
         "mcp"
-      ]
+      ],
+      "icon_id": "sourcegraph"
+    }
+  },
+  {
+    "name": "mcp_stripe",
+    "display_name": "Stripe",
+    "description": "Inspect Stripe customers, invoices, subscriptions, and payments, and use permitted account operations.",
+    "mcp_server": {
+      "server_url": "https://mcp.stripe.com",
+      "documentation_url": "https://docs.stripe.com/mcp",
+      "setup_instructions": "Sign in and choose the Stripe account and sandbox or live environment. Review the requested access before authorizing. For narrowly scoped access, use a restricted API key with only the required read permissions.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "stripe"
     }
   },
   {
@@ -876,7 +1010,8 @@
       "oauth_write_scopes": [
         "settings.privacy.element_block:write",
         "settings.privacy.url:write"
-      ]
+      ],
+      "icon_id": "subtext"
     }
   },
   {
@@ -890,7 +1025,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "superme"
     }
   },
   {
@@ -903,7 +1039,41 @@
       "connection_mode": "custom",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "tabnine"
+    }
+  },
+  {
+    "name": "mcp_tavily",
+    "display_name": "Tavily",
+    "description": "Search the web and extract page content for research and grounded answers.",
+    "mcp_server": {
+      "server_url": "https://mcp.tavily.com/mcp/",
+      "documentation_url": "https://docs.tavily.com/documentation/mcp",
+      "setup_instructions": "Sign in to Tavily and authorize the connection. Searches and extraction use credits from the API key selected by Tavily for this MCP connection.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "tavily"
+    }
+  },
+  {
+    "name": "mcp_todoist",
+    "display_name": "Todoist",
+    "description": "Review and organize tasks and projects, including creating and updating tasks.",
+    "mcp_server": {
+      "server_url": "https://ai.todoist.net/mcp",
+      "documentation_url": "https://developer.todoist.com/api/v1/",
+      "setup_instructions": "Sign in to Todoist. Its MCP connection requests read and write access to your tasks and projects; shared workspace permissions still apply.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "oauth_scopes": [
+        "data:read_write"
+      ],
+      "icon_id": "todoist"
     }
   },
   {
@@ -925,7 +1095,23 @@
       ],
       "oauth_write_scopes": [
         "treg:call"
-      ]
+      ],
+      "icon_id": "treg"
+    }
+  },
+  {
+    "name": "mcp_webflow",
+    "display_name": "Webflow",
+    "description": "Work with site content, CMS collections, pages, and assets through Webflow's API tools.",
+    "mcp_server": {
+      "server_url": "https://mcp.webflow.com/mcp",
+      "documentation_url": "https://developers.webflow.com/mcp/reference/how-it-works",
+      "setup_instructions": "Sign in and authorize the Webflow sites or workspace to connect. Your role controls available changes. Content and API tools work remotely; visual snapshots and canvas interactions require the Designer with its MCP Bridge app open.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "webflow"
     }
   },
   {
@@ -939,7 +1125,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "icon_id": "wonder"
     }
   }
 ]
