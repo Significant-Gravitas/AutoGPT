@@ -101,6 +101,14 @@ class ValidateJUnitTests(unittest.TestCase):
         self.assertEqual(summary.tests, 2)
         self.assertEqual(summary.passed, 0)
 
+    def test_rejects_report_with_no_test_cases(self):
+        with self.assertRaisesRegex(ValueError, "no test cases"):
+            summarize_junit(
+                ElementTree.fromstring(
+                    '<testsuites tests="0"><testsuite name="s" tests="0"/></testsuites>'
+                )
+            )
+
     def test_require_no_skips_rejects_a_skipped_case(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / "skipped.xml"
