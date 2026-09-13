@@ -31,6 +31,7 @@ CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
 )
 
 # The tokenizer generation introduced with Opus 4.7 (shared by the whole
@@ -140,7 +141,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O3_PRO = "o3-pro"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5.6 models (current flagship, July 2026)
+    # GPT-6 models (September 2026)
+    GPT6_ASTRA = "gpt-6-astra"
+    # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
     GPT5_6_LUNA = "gpt-5.6-luna"
@@ -172,8 +175,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_5_OPUS = "claude-opus-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
+    CLAUDE_5_1_FABLE = "claude-fable-5-1"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
@@ -194,6 +199,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
@@ -232,6 +238,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K3 = "moonshotai/kimi-k3"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"

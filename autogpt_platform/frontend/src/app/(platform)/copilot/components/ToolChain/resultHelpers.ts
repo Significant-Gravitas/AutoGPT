@@ -31,8 +31,19 @@ const BASE_RESPONSE_KEYS = new Set(["type", "message", "session_id"]);
 export function stripBaseFields(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
+  // A couple of responses repeat their own discriminator in `name`
+  // ("no_results", "agents_found"). It is envelope, not payload, and left in
+  // it both renders as a field of its own and pushes the object past the
+  // single-key check that picks a real card -- so a no-results answer came out
+  // as a raw suggestions array labelled "Suggestions", with "Name no_results"
+  // under it. Only drop `name` when it is that echo: a payload whose name
+  // means something (a folder, a file, a block) never equals the type.
+  const type = obj.type;
   return Object.fromEntries(
-    Object.entries(obj).filter(([key]) => !BASE_RESPONSE_KEYS.has(key)),
+    Object.entries(obj).filter(
+      ([key, value]) =>
+        !BASE_RESPONSE_KEYS.has(key) && !(key === "name" && value === type),
+    ),
   );
 }
 

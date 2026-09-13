@@ -7,13 +7,19 @@ const LEGACY_MARKER_PATTERN =
   /^\[\[EXPERT_KICKOFF:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\](?:\n\n)?/i;
 const PENDING_TTL_MS = 2 * 60 * 1000;
 
+// A hire's first turn is an intake, not a first job: the expert says hello and
+// asks what the user actually wants before touching anything. Never instruct it
+// to start a workflow here — one click on Hire ran a Gmail send (SECRT-2622) —
+// so any redesign of this message, including this one, stays ask-first.
 const KICKOFF_PROMPT =
-  "You were just hired. Introduce yourself in 2-3 sentences in your voice. " +
-  "If you have installed workflows, state the day-one job they support and " +
-  "start the first bundled workflow with run_agent. If no workflow is " +
-  "installed, explain the outcomes you can help with and ask which one to " +
-  "start. If required access or credentials are missing, ask for exactly the " +
-  "one connection the next job needs and why. Never pretend a run succeeded.";
+  "You were just hired. Call expert_onboarding once, and nothing else, this " +
+  "turn: a greeting of 1-2 sentences introducing yourself in your voice, " +
+  "then 3-5 questions the user can answer by tapping. Draw the questions and " +
+  "their options from your own role and skills and from the workflows " +
+  "installed on you — ask which outcome to start with, and which of the " +
+  "services your work depends on you should be connected to, naming the real " +
+  "providers rather than asking in the abstract. Do not run a workflow, " +
+  "create a schedule, or start any other work before the answers come back.";
 
 export interface ExpertKickoffMetadata {
   kind: typeof EXPERT_KICKOFF_KIND;
@@ -117,21 +123,12 @@ export function shouldClearKickoffParam(
   return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
 }
 
-// The kickoff prompt reads in the thread like any other opening message, so a
-// freshly raised expert answers something visible rather than thin air. Older
-// threads carry an inline marker that was never meant to be read.
-export function revealKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
-  return messages.map((message) => {
-    if (!isKickoffMessage(message)) return message;
-    return {
-      ...message,
-      parts: message.parts.map((part) =>
-        part.type === "text"
-          ? { ...part, text: stripLegacyKickoffMarker(part.text) }
-          : part,
-      ),
-    };
-  });
+// The kickoff prompt is a control turn the client sends on the user's behalf.
+// It reads as an instruction, not as something the user typed, so the thread
+// never shows it. The backend marks the persisted row hidden for the same
+// reason.
+export function hideKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
+  return messages.filter((message) => !isKickoffMessage(message));
 }
 
 export function kickoffStorageKey(userId: string, expertId: string): string {

@@ -240,6 +240,7 @@ def test_codex_callback_persists_one_safe_credential():
         "scopes": [],
         "username": "user@example.com",
         "host": None,
+        "mcp_auth_scheme": None,
         "is_managed": False,
     }
     raw_response = response.text

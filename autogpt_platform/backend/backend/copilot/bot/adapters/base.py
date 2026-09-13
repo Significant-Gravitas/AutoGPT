@@ -85,7 +85,7 @@ class InboundAttachment(BaseModel):
 
     The adapter downloads the bytes from the platform up-front (bounded by the
     adapter's ``max_attachment_bytes``); the handler then uploads them to the
-    user's workspace so AutoPilot can read them during the turn.
+    user's workspace so Otto can read them during the turn.
     """
 
     filename: str
