@@ -4,9 +4,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from xml.etree import ElementTree
 
-from backend_test_shard import shard_args
+import backend_test_shard
+from backend_test_shard import SHARDS, shard_args
 
 
 class BackendShardTests(unittest.TestCase):
@@ -66,3 +68,36 @@ class BackendShardTests(unittest.TestCase):
     def test_unknown_shard_is_rejected(self):
         with self.assertRaises(ValueError):
             shard_args("typo")
+
+    def test_workflow_matrix_matches_script_shards(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-backend-ci.yml"
+        )
+        line = next(
+            line
+            for line in workflow.read_text().splitlines()
+            if line.strip().startswith("test-shard: [")
+        )
+        matrix = [
+            shard.strip() for shard in line.split("[", 1)[1].rstrip("] ").split(",")
+        ]
+        self.assertCountEqual(matrix, [*SHARDS, "remainder"])
+
+    def test_main_propagates_pytest_status_and_scopes_restart_test_to_data(self):
+        for shard, restart in (("data", "1"), ("copilot", None)):
+            with (
+                self.subTest(shard=shard),
+                patch.object(
+                    backend_test_shard.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess([], 3),
+                ) as run,
+                patch.dict(os.environ),
+                patch.object(sys, "argv", ["backend_test_shard.py", shard, "--", "-q"]),
+            ):
+                os.environ.pop("E2E_REDIS_CLUSTER_RESTART", None)
+                self.assertEqual(backend_test_shard.main(), 3)
+                self.assertEqual(os.environ.get("E2E_REDIS_CLUSTER_RESTART"), restart)
+                run.assert_called_once_with(
+                    ["poetry", "run", "pytest", *shard_args(shard), "-q"], check=False
+                )
