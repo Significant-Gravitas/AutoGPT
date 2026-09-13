@@ -86,11 +86,13 @@ jobs:
       # so they only need to exist. Nothing in this job ever connects to them.
       SUPABASE_URL: "http://localhost:54321"
       SUPABASE_SERVICE_ROLE_KEY: "synthetic-bake-no-real-key" # pragma: allowlist secret
-      # Non-production test key (identical to the one used in backend CI) so
-      # backend module imports that read settings.secrets don't error.
-      ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # pragma: allowlist secret # DO NOT USE IN PRODUCTION
 
     steps:
+      - name: Generate ephemeral secrets
+        # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
+        # exist. Generated per run: a value committed here would be published.
+        run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
