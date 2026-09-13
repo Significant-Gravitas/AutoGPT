@@ -15,7 +15,6 @@ import { ChatContainer } from "../ChatContainer";
 import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
-const mockArtifactsEnabled = vi.fn(() => false);
 const clipboardWrite = vi.fn(async (_text: string) => {});
 
 const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
@@ -109,10 +108,8 @@ vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ARTIFACTS: "ARTIFACTS",
-  },
-  useGetFlag: () => mockArtifactsEnabled(),
+  Flag: { TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR" },
+  useGetFlag: () => false,
 }));
 
 vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
@@ -192,7 +189,6 @@ const baseProps = {
 describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
-    mockArtifactsEnabled.mockReturnValue(false);
     mockShareState({ is_shared: false });
     resetCopilotStore();
     Object.defineProperty(navigator, "clipboard", {
@@ -341,8 +337,6 @@ describe("ChatContainer", () => {
     }
 
     it("does not auto-open the artifact panel on initial render", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
-
       render(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
@@ -350,8 +344,6 @@ describe("ChatContainer", () => {
     });
 
     it("does not auto-open when rerendering within the same session", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
-
       const { rerender } = render(<ChatContainer {...baseProps} />);
       rerender(<ChatContainer {...baseProps} />);
 
@@ -360,7 +352,6 @@ describe("ChatContainer", () => {
     });
 
     it("clears the artifact preview when sessionId changes", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
@@ -388,7 +379,6 @@ describe("ChatContainer", () => {
     });
 
     it("does not carry a stale back stack into the next session", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
@@ -409,7 +399,6 @@ describe("ChatContainer", () => {
     });
 
     it("clears artifact preview on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
@@ -429,7 +418,6 @@ describe("ChatContainer", () => {
     });
 
     it("does not re-open a panel whose store state is stale on fresh mount (SECRT-2220)", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,

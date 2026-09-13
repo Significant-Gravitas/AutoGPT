@@ -640,7 +640,6 @@ export function ChatMessagesContainer({
                       isCurrentlyStreaming={isCurrentlyStreaming}
                       onRetry={isLastAssistant ? onRetry : undefined}
                       fileUrlBuilder={fileUrlBuilder}
-                      forceArtifacts={readOnly}
                       readOnly={readOnly}
                       compactionPhase={compactionPhase}
                       liveCompactionCallId={liveCompactionCallId}
@@ -655,7 +654,6 @@ export function ChatMessagesContainer({
                           messageID={message.id}
                           partIndex={i}
                           fileUrlBuilder={fileUrlBuilder}
-                          forceArtifacts={readOnly}
                           readOnly={readOnly}
                           compactionPhase={compactionPhase}
                           liveCompactionCallId={liveCompactionCallId}
@@ -720,7 +718,6 @@ export function ChatMessagesContainer({
                   <MessageAttachments
                     files={fileParts}
                     isUser={message.role === "user"}
-                    forceArtifacts={readOnly}
                     filePattern={filePattern}
                     readOnly={readOnly}
                   />
