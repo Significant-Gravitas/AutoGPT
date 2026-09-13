@@ -1,6 +1,8 @@
 # Security Model — Local PC Executor
 
-> ⚠️ This feature is a security nightmare by design. The goal is to make it a *manageable* security nightmare.
+The executor is experimental software running as your OS user. Its safeguards
+limit accepted requests; they do not isolate agent work from that user account.
+Use a dedicated workspace and enable only the capabilities you need.
 
 ---
 
@@ -11,20 +13,23 @@
 | Threat | Severity | Mitigation |
 |--------|----------|------------|
 | Prompt injection causing arbitrary command execution | Critical | Shell disabled by default; explicit local opt-in; command audit log |
-| Shim token stolen → attacker controls machine | Critical | OS keychain storage; token scoped to `local_executor` only |
+| Shim token stolen → attacker controls machine | Critical | OS keychain storage; platform ownership/client checks; OAuth uses `USE_TOOLS` |
 | Path traversal outside allowed_root | High | Shim enforces path jail; platform validates paths before sending |
-| Platform compromise → all shims pwned | High | Shim can block platform-side: capability gates, rate limits, local confirm prompts |
-| Man-in-the-middle on WebSocket | High | TLS required; certificate pinning recommended |
-| Runaway agent loops (infinite commands) | Medium | Per-turn command quota; shim-side rate limiter |
-| Accidental file deletion/overwrite | Medium | Shim-side recycle bin mode (move to ~/.autogpt-trash instead of delete) |
-| Screen capture leaking sensitive info | High | Computer use requires explicit opt-in per session; platform shows "screen access active" indicator |
+| Platform compromise → misuse of paired machines | High | Locally disabled capabilities remain disabled; no per-operation local confirmation is implemented |
+| Man-in-the-middle on WebSocket | High | TLS required except explicit loopback development URLs; certificate verification, no pinning |
+| Runaway agent loops (infinite commands) | Medium | Machine-wide rate and concurrency limits |
+| Accidental file deletion/overwrite | Medium | Selected-root restriction only; no recycle bin, backup, or rollback |
+| Screen capture leaking sensitive info | High | Local computer-use opt-in plus platform grant; no sensitive-region masking |
 
 ### What We Are NOT Protecting Against
 
 - A compromised AutoGPT platform account — if someone has your OAuth token, they can use your shim. Protect your account with 2FA.
 - Physical access to the machine running the shim.
 - A malicious Claude response that the user explicitly approved.
-- Root-level operations — the shim runs as the user, not root. Don't run it as root.
+- Concurrent local processes replacing files or ancestors after path validation.
+- Same-user code accessing the account's credentials or executor configuration.
+- Elevated operations — the shim does not drop privileges. Do not run it as root
+  or an administrator; enabled shell/computer access can request elevation.
 
 ---
 
@@ -39,6 +44,18 @@ are available. Recording is stricter: it remains a design preview, is never
 advertised, and causes startup to fail closed if enabled. The platform's grant
 cannot turn on a locally disabled capability.
 
+There are no separate OAuth scopes for shell, computer use, hardware, or
+background work. Hardware probes exist, but hardware operation dispatch is not
+implemented. The daemon checks negotiated capability grants outside the model
+before dispatching operations.
+
+All platform endpoints and explicit OAuth/WebSocket overrides require HTTPS
+or WSS. HTTP and WS are accepted only for exact `localhost` or literal loopback
+IP addresses for local development, not private LAN addresses or hostnames
+that merely resolve to loopback. URLs containing credentials, queries,
+fragments, invalid ports, or ambiguous characters are rejected. Validation
+runs during configuration and again when deriving URLs for use.
+
 ### Layer 2: Allowed Root Path Jail
 All `FILE_*` operations are jailed to the per-chat `allowed_root`. In normal
 control mode the user selects it through one-level remote directory browsing;
@@ -46,13 +63,18 @@ legacy `--session-id` mode still reads it from startup configuration.
 The full algorithm is in [CROSS_PLATFORM.md → Path Jail Strategy](CROSS_PLATFORM.md#path-jail-strategy);
 a naive `path.startswith(allowed_root)` check is **not enough** and the shim
 must use the prescribed algorithm. Violation → `PATH_OUTSIDE_ALLOWED_ROOT`
-error, no execution.
+error, no execution. Complete destinations are checked even when the file or
+its parent directories do not exist yet.
 
 **This jail is not a shell sandbox.** When the user explicitly enables shell
 execution, both shell strings and direct `argv` processes run with the shim
 user's normal OS permissions. Validating the subprocess working directory does
 not stop a command from reading, writing, executing, or making network requests
 outside `allowed_root`. Treat `--enable-shell` as user-account-level access.
+Filtering inherited environment variables and storing tokens in keyring do
+not isolate credentials from arbitrary code running as that same user.
+Computer use can operate applications, browsers, and terminals outside the
+selected folder with the user's existing access.
 
 Recommended: create a dedicated workspace directory, not your home dir.
 ```
@@ -67,6 +89,9 @@ selection consumes the browse and produces an HMAC-signed root grant bound to
 machine, session, revision, canonical path, and filesystem fingerprint. Every
 control reconnect invalidates all outstanding references. Restoring a session
 requires the grant and revalidates the live directory identity.
+The paired user can select a folder remotely without a native confirmation on
+the executor computer. Detaching a session does not permanently revoke its
+signed root grant; restoration still requires platform session authorization.
 
 Directory browsing exposes immediate directory names and canonical paths to the
 paired platform. It never returns files, content, sizes, timestamps,
@@ -86,24 +111,36 @@ use copied configuration and immutable session-bound audit contexts.
 | macOS | Case-insensitive default FS: `/Workspace/foo` references the same inode as `/workspace/foo` — naive string `startswith` lets `/workspaceother/foo` through if `allowed_root = /workspace` | Always compare with `os.path.normcase` after `realpath`, AND with a `os.sep` boundary appended. |
 | Linux | Bind mounts pointing outside the jail | `realpath` does NOT resolve bind mounts. Document that the user is responsible for not bind-mounting external dirs into `allowed_root`. |
 | Linux | Case-folded ext4 dirs (kernel 5.2+) inside a case-sensitive FS | The jail probe must check case-sensitivity *per directory*, not globally. |
-| All | Path-jail TOCTOU: attacker swaps a file for a symlink between check and open | Use `O_NOFOLLOW` on Linux, `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, and on macOS open by file descriptor after the realpath check. |
+| All | Path-jail TOCTOU: attacker swaps a file or ancestor between check and open | **Not contained.** Descriptor-based traversal and Windows reparse-safe handles are not implemented. Do not share the workspace with untrusted concurrent local processes. |
 | All | Long-path attacks (`a/../a/../a/...` repeated) to exhaust normalization | Cap path length at OS-appropriate max (4096 Linux, 1024 macOS, 32767 Windows with `\\?\`) before normalization. |
 
+The path jail is not a filesystem sandbox. Bind mounts and hard links can
+expose data whose names lie inside the selected tree. Selecting a broad root
+also exposes credentials and executor configuration stored there. Avoid
+selecting your home, filesystem root, or executor state/configuration folders.
+
 ### Layer 3: Command Auditing
-Every wire operation (`EXECUTE_COMMAND`, `FILE_*`, `INPUT_ACTION`,
+
+Wire operations (`EXECUTE_COMMAND`, `FILE_*`, `INPUT_ACTION`,
 `SCREENSHOT_REQUEST`) plus shim-internal events (start/stop, WS
-connect/disconnect, `JAIL_VIOLATION`, `TOKEN_REFRESHED`) is appended to
+connect/disconnect, `JAIL_VIOLATION`, `TOKEN_REFRESHED`) attempt to append to
 a JSONL audit log in the per-OS state directory (see
 [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-location)).
-Each record carries an HMAC-SHA256 chain so truncation, record
-deletion, or field tampering breaks verification at the first
-modification. Full format, per-op fields, the tamper-evidence
+Each record carries an HMAC-SHA256 chain to detect modified records and
+interior gaps. Deletion of an entire valid tail, rotated file, or log is not
+detectable without an independently stored checkpoint. Full format, per-op fields, the tamper-evidence
 algorithm, and the `autogpt-shim audit` CLI are spec'd in
 [AUDIT_LOG.md](AUDIT_LOG.md). The audit key never leaves the machine;
 the user provides it out-of-band when uploading a log for support.
 Audit initialization is mandatory: if the key or writer cannot be created,
 daemon construction fails and the CLI exits with `EX_CONFIG` rather than
 running in an unaudited degraded mode.
+An existing log must verify before appending; malformed stored keys or corrupt
+logs fail closed without being silently replaced. Runtime audit writes remain
+best-effort for most data operations: disk/writer failures can leave completed
+operations unrecorded. Audit evidence is not an execution authorization
+mechanism or a guaranteed complete record. A same-user attacker who obtains
+the audit key can forge records.
 
 ### Layer 4: Rate Limiting (Shim-Side)
 Shim enforces:
@@ -121,9 +158,9 @@ before executing commands matching certain patterns (e.g., `rm`, `sudo`, any wri
 outside a sub-directory). Useful for cautious users who want human-in-the-loop.
 
 ### Layer 6: Network Isolation (Future)
-Shim can optionally run commands inside a network namespace that blocks outbound internet
-while allowing localhost. Useful for preventing data exfiltration via executed commands.
-Requires Linux + root for namespace setup, or a bubblewrap wrapper.
+No network namespace, outbound destination policy, or network restriction is
+implemented. Enabled shell commands and controlled applications use the host's
+normal network access. OS isolation and destination approval are future work.
 
 ---
 
@@ -135,11 +172,11 @@ Requires Linux + root for namespace setup, or a bubblewrap wrapper.
 | Write files in allowed_root | ✅ | — |
 | Execute shell commands | ❌ | `start --enable-shell` (unrestricted user-level access) |
 | Access files outside allowed_root | ❌ | Expand allowed_root (explicit) |
-| Take screenshots | ❌ | `local_executor:computer_use` scope |
-| Inject mouse/keyboard | ❌ | `local_executor:computer_use` scope |
-| Access serial/USB/GPIO | ❌ | `local_executor:hardware` scope |
-| Run as root / sudo | ❌ | Not supported, period |
-| Background tasks when user absent | ❌ | `local_executor:background` scope |
+| Take screenshots | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
+| Inject mouse/keyboard | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
+| Access serial/USB/GPIO | ❌ | Operation dispatch is not implemented |
+| Run elevated operations | Uses executor user's privileges | No privilege-dropping or elevation sandbox |
+| Background tasks when user absent | Available while daemon is running | No separate background-work permission |
 | Access the internet via commands | ❌ (shell is off) | Shell commands may use the network after `--enable-shell` |
 
 ---
@@ -147,7 +184,7 @@ Requires Linux + root for namespace setup, or a bubblewrap wrapper.
 ## Token Security
 
 - Tokens stored in OS keychain (never in dotfiles or env vars)
-- Access token short-lived (1 hour); refresh token used for renewal
+- Access-token lifetime and refresh rotation are controlled by the platform
 - Refresh token stored encrypted in keychain
 - `autogpt-shim revoke` posts both access and refresh tokens to
   `POST /api/oauth/revoke` as the public client, and only then clears the OS
@@ -161,23 +198,20 @@ Requires Linux + root for namespace setup, or a bubblewrap wrapper.
 
 | OS | Backend | Reliability | Fallback when unavailable |
 |---|---|---|---|
-| macOS | Keychain Services (via `keyring`) | Always available | n/a |
-| Windows | Credential Manager (via `keyring`) | Always available | n/a |
-| Linux (GUI session, GNOME / KDE) | Secret Service (`gnome-keyring`, `kwallet`) via D-Bus | Usually available | Encrypted-file fallback (below) |
-| Linux (headless server, no D-Bus, no `pass`) | none | **`keyring` fails** | Encrypted-file fallback (below) |
-| WSL2 (most distros) | none by default | **`keyring` fails** | Encrypted-file fallback (below) |
+| macOS | Keychain Services (via `keyring`) | Requires usable, unlocked keyring | No OAuth token fallback |
+| Windows | Credential Manager (via `keyring`) | Requires usable keyring | No OAuth token fallback |
+| Linux (GUI session, GNOME / KDE) | Secret Service (`gnome-keyring`, `kwallet`) via D-Bus | Depends on session setup | Configure a supported keyring |
+| Linux (headless server, no D-Bus, no `pass`) | none | OAuth token storage fails | Configure a supported keyring |
+| WSL2 (most distros) | none by default | OAuth token storage fails | Configure a supported keyring |
 
-**Encrypted-file fallback**: when the OS keychain is unavailable, the shim
-stores tokens in `$XDG_STATE_HOME/autogpt-local-executor/tokens.enc`
-(Linux/WSL2) using AES-256-GCM. The key is derived (Argon2id) from a
-passphrase that must be supplied via the `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
-env var on every shim start. **No passphrase = no shim start.** This is
-deliberately friction-heavy so users on capable systems install a real
-keyring instead.
-
-Security note: an attacker with read access to the file AND the env var
-can decrypt the tokens. This is no worse than dotfile-based storage but no
-better either — the keychain backends remain the recommended path.
+**OAuth tokens have no file fallback.** A legacy audit-key-only fallback uses
+`AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE` and `audit-key.enc` under
+`AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`). Its format is
+HMAC-derived XOR obfuscation, not authenticated encryption or a slow password
+KDF. It does not make headless pairing work. Malformed stored keys fail closed;
+an existing log detects a wrong decoded key before appending. Without an
+existing log, the fallback cannot authenticate a passphrase or detect
+valid-length ciphertext corruption. Prefer a supported OS keyring.
 
 ---
 
@@ -199,8 +233,13 @@ If you believe your shim was compromised:
   user's normal access and are not confined to `allowed_root`)
 - No local confirmation prompts yet
 - No network isolation
+- No separate read-only file capability, recycle-bin deletion, or write rollback
+- No protection against concurrent same-user path replacement
 - Audit records are HMAC-chained; protect the audit key in the OS keychain.
 - Computer use has no "sensitive region" masking (entire screen captured)
 - Shim crash does not guarantee in-flight commands are cancelled
 
-These are tracked as issues. PRs welcome.
+Prompt instructions cannot supply these controls. Treat files, webpages,
+terminal output, and model output as untrusted input. Additional policy must
+be enforced in the executor or an OS isolation layer before granting broader
+access.

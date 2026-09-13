@@ -24,7 +24,6 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict, deque
-from pathlib import Path
 from typing import Any, Literal, cast
 
 from . import platform_info
@@ -753,7 +752,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = self._jail_for_write(payload.path, payload.create_parents)
+            path = assert_inside_jail(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_WRITE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -816,31 +815,6 @@ class FileHandler:
             _ok_result(_elapsed_ms(start)),
         )
         return make_ack(msg.id)
-
-    def _jail_for_write(self, raw_path: str, create_parents: bool) -> Path:
-        """FILE_WRITE may target a not-yet-existing path; jail the *parent*."""
-        target = Path(raw_path).expanduser()
-        parent = target.parent
-        # The parent (which must exist after create_parents) is what we
-        # jail-check; we then return the final target path.
-        if create_parents:
-            # Find the nearest existing ancestor for the jail check.
-            probe = parent
-            while not probe.exists() and probe != probe.parent:
-                probe = probe.parent
-            assert_inside_jail(probe, self.config.allowed_root)
-            # Also make sure the requested parent itself (once it exists)
-            # would be inside the jail.
-            if parent.exists():
-                assert_inside_jail(parent, self.config.allowed_root)
-        else:
-            assert_inside_jail(parent, self.config.allowed_root)
-        # Re-check the full target via the standard path (catches symlink
-        # tricks under the target name).
-        # If the file doesn't exist yet, realpath on its parent is enough.
-        if target.exists():
-            return assert_inside_jail(target, self.config.allowed_root)
-        return target
 
     # -- FILE_STAT -----------------------------------------------------------
 
@@ -1084,13 +1058,7 @@ class FileHandler:
         start = time.monotonic()
         try:
             src = assert_inside_jail(payload.src, self.config.allowed_root)
-            dst_raw = Path(payload.dst).expanduser()
-            if dst_raw.exists():
-                dst = assert_inside_jail(dst_raw, self.config.allowed_root)
-            else:
-                # Jail the destination's parent (it must exist before move).
-                assert_inside_jail(dst_raw.parent, self.config.allowed_root)
-                dst = dst_raw
+            dst = assert_inside_jail(payload.dst, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(
                 self.audit, "FILE_MOVE", f"{payload.src} -> {payload.dst}", exc

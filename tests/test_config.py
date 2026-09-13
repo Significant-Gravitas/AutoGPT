@@ -78,9 +78,85 @@ def test_derived_oauth_revoke_url_from_wss() -> None:
 def test_explicit_overrides_take_priority() -> None:
     cfg = ShimConfig(
         platform_url="https://x",
-        platform_ws_url="ws://explicit-override/ws",
+        platform_ws_url="wss://explicit-override/ws",
     )
-    assert cfg.derived_ws_url == "ws://explicit-override/ws"
+    assert cfg.derived_ws_url == "wss://explicit-override/ws"
+
+
+@pytest.mark.parametrize("field", ["platform_url", "platform_ws_url", "platform_oauth_url"])
+@pytest.mark.parametrize("host", ["platform.example.com", "192.168.1.20", "localhost.example.com"])
+def test_platform_endpoints_reject_cleartext_remote_urls(field: str, host: str) -> None:
+    scheme = "ws" if field == "platform_ws_url" else "http"
+    with pytest.raises(ValidationError, match="TLS"):
+        ShimConfig.model_validate({field: f"{scheme}://{host}:8000"})
+
+
+@pytest.mark.parametrize("field", ["platform_url", "platform_ws_url", "platform_oauth_url"])
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
+def test_platform_endpoints_allow_explicit_loopback_urls(field: str, host: str) -> None:
+    scheme = "ws" if field == "platform_ws_url" else "http"
+    url = f"{scheme}://{host}:8000"
+    assert getattr(ShimConfig.model_validate({field: url}), field) == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@platform.example.com",
+        "https://platform.example.com?redirect=elsewhere",
+        "https://platform.example.com#fragment",
+        "https:///no-host",
+        "https://platform.example.com:70000",
+        "https://platform.example.com\\@localhost",
+        "https://platform.example.com\n",
+        "file:///tmp/platform",
+    ],
+)
+def test_platform_endpoints_reject_ambiguous_urls(url: str) -> None:
+    with pytest.raises(ValidationError):
+        ShimConfig(platform_url=url)
+
+
+@pytest.mark.parametrize(
+    ("field", "url"),
+    [
+        ("platform_ws_url", "https://platform.example.com"),
+        ("platform_oauth_url", "wss://platform.example.com"),
+    ],
+)
+def test_platform_overrides_require_matching_transport(field: str, url: str) -> None:
+    with pytest.raises(ValidationError):
+        ShimConfig.model_validate({field: url})
+
+
+def test_platform_endpoints_validate_assignment() -> None:
+    config = ShimConfig()
+    with pytest.raises(ValidationError, match="TLS"):
+        config.platform_ws_url = "ws://platform.example.com/ws"
+
+
+def test_uppercase_secure_scheme_derives_correct_transports() -> None:
+    config = ShimConfig(platform_url="HTTPS://platform.example.com")
+    assert config.derived_ws_url == "wss://platform.example.com/ws/local-executor"
+    assert config.derived_oauth_token_url == "https://platform.example.com/api/oauth/token"
+
+
+@pytest.mark.parametrize(
+    ("field", "property_name", "url"),
+    [
+        ("platform_url", "derived_ws_url", "http://platform.example.com"),
+        ("platform_url", "derived_oauth_token_url", "http://platform.example.com"),
+        ("platform_url", "derived_oauth_revoke_url", "http://platform.example.com"),
+        ("platform_ws_url", "derived_ws_url", "ws://platform.example.com/ws"),
+        ("platform_oauth_url", "derived_oauth_url", "http://platform.example.com/auth"),
+    ],
+)
+def test_platform_endpoints_are_revalidated_at_use(
+    field: str, property_name: str, url: str
+) -> None:
+    config = ShimConfig().model_copy(update={field: url})
+    with pytest.raises(ValueError, match="TLS"):
+        getattr(config, property_name)
 
 
 @pytest.mark.parametrize(

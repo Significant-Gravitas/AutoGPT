@@ -8,9 +8,8 @@ Design notes:
 
 - One record per write. Each `write()` rebuilds the JCS canonical form of the
   record (sans `hmac`), computes the HMAC, appends the full JSON line, fsyncs.
-- The chain is keyed by a per-machine 32-byte secret stored in the OS keychain
-  alongside the OAuth tokens (encrypted-file fallback when no keychain is
-  available). The audit key never leaves the machine.
+- The chain is keyed by a per-machine 32-byte secret stored in the OS keychain.
+  A legacy audit-only fallback exists; OAuth tokens always require keyring.
 - Rotation: 64 MiB hard cap or 30 days since the first record, whichever comes
   first. Rotated files keep their tail (`audit.log.{YYYYMMDD-HHMMSS}`); the
   new file starts at `seq=1` with `prev_hmac=null`.
@@ -41,8 +40,7 @@ logger = logging.getLogger(__name__)
 ROTATE_MAX_BYTES = 64 * 1024 * 1024
 ROTATE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
-# Keychain/storage identifiers — share the service id with the OAuth store so
-# the encrypted-file fallback can hold both blobs side-by-side.
+# Keychain/storage identifiers share the service id with the OAuth store.
 KEYCHAIN_SERVICE = "autogpt-local-executor"
 KEYCHAIN_AUDIT_KEY_USERNAME = "audit_key"
 
@@ -157,6 +155,15 @@ class AuditWriter:
         self._default_session_id = session_id
         self._default_machine_id = machine_id
         self._lock = asyncio.Lock()
+        if self.path.exists():
+            try:
+                violations = self.verify(self.path, audit_key)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Existing audit log cannot be verified; refusing to append"
+                ) from exc
+            if violations:
+                raise RuntimeError("Existing audit log failed verification; refusing to append")
         self._seq, self._prev_hmac = self._load_tail_state(self.path)
         # 0600 on POSIX; on Windows the file inherits the user-only ACL.
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -293,23 +300,17 @@ class AuditWriter:
         if not path.is_file() or path.stat().st_size == 0:
             return 1, None
         try:
-            with open(path, "rb") as f:
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                # Walk backwards looking for the start of the last complete
-                # line. 8 KiB is generous for our line sizes.
-                window = min(size, 8192)
-                f.seek(size - window)
-                tail = f.read(window)
-            # Drop any trailing partial line (no newline).
-            lines = [ln for ln in tail.split(b"\n") if ln.strip()]
-            if not lines:
+            last_line = b""
+            with open(path, "rb") as file:
+                for line in file:
+                    if line.strip():
+                        last_line = line
+            if not last_line:
                 return 1, None
-            last = json.loads(lines[-1].decode("utf-8"))
+            last = json.loads(last_line.decode("utf-8"))
             return int(last.get("seq", 0)) + 1, last.get("hmac")
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            logger.warning("Audit tail recovery failed; restarting chain: %s", exc)
-            return 1, None
+            raise RuntimeError("Existing audit log tail cannot be recovered") from exc
 
     # ── Shim-internal convenience methods ────────────────────────────────
 
@@ -451,38 +452,49 @@ class AuditWriter:
 # ── Audit key storage ────────────────────────────────────────────────────────
 
 
+class AuditKeyError(RuntimeError):
+    pass
+
+
 def get_or_create_audit_key() -> bytes:
     """Return the persisted audit key, generating + storing one on first use.
 
-    Prefers the OS keychain (same backend as OAuth tokens). Falls back to the
-    encrypted-file store when the keychain is unavailable — gated by the same
-    `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE` env var as the OAuth fallback.
+    Prefers the OS keychain. The legacy audit-only fallback requires
+    AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
     """
     # Try keyring first.
     try:
         import keyring
 
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
-        if stored:
+        if stored is not None:
             try:
-                return bytes.fromhex(stored)
+                key = bytes.fromhex(stored)
             except ValueError:
-                logger.warning("Stored audit key in keychain is not hex; regenerating.")
+                raise AuditKeyError(
+                    "Stored audit key is malformed; refusing to replace it"
+                ) from None
+            if len(key) != 32:
+                raise AuditKeyError(
+                    "Stored audit key has an invalid length; refusing to replace it"
+                )
+            return key
         key = secrets.token_bytes(32)
         keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
         return key
+    except AuditKeyError:
+        raise
     except Exception as exc:
         logger.warning("Keychain unavailable for audit key (%s); using fallback.", exc)
         return _fallback_audit_key()
 
 
 def _fallback_audit_key() -> bytes:
-    """Encrypted-file fallback. Symmetric with the OAuth-token fallback so
-    operators don't end up with two passphrases.
+    """Legacy audit-only obfuscation; the existing log authenticates the key.
 
-    The on-disk format is `hex(salt) || ':' || hex(ciphertext)`. We use the
-    stdlib-only HMAC-as-KDF so we don't pull in cryptography just for the
-    fallback. If you want stronger guarantees, install `keyring`."""
+    This format has no authentication tag or slow password KDF. OAuth tokens
+    require an OS keychain, so this is not a headless token-storage solution.
+    """
     fallback_path = _fallback_path()
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
     passphrase = os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE")
@@ -492,13 +504,19 @@ def _fallback_audit_key() -> bytes:
             "Either install a keyring backend or set the env var to enable the "
             "encrypted-file fallback."
         )
-    if fallback_path.is_file():
+    if fallback_path.exists():
         try:
             blob = fallback_path.read_text(encoding="utf-8").strip()
             salt_hex, ct_hex = blob.split(":", 1)
-            return _xor_decrypt(passphrase, bytes.fromhex(salt_hex), bytes.fromhex(ct_hex))
+            salt = bytes.fromhex(salt_hex)
+            ciphertext = bytes.fromhex(ct_hex)
+            if len(salt) != 16 or len(ciphertext) != 32:
+                raise ValueError("Invalid audit key envelope length")
+            return _xor_decrypt(passphrase, salt, ciphertext)
         except (OSError, ValueError) as exc:
-            logger.warning("Audit-key fallback unreadable, regenerating: %s", exc)
+            raise AuditKeyError(
+                "Stored audit key fallback is malformed; refusing to replace it"
+            ) from exc
     key = secrets.token_bytes(32)
     salt = secrets.token_bytes(16)
     ct = _xor_encrypt(passphrase, salt, key)
@@ -516,10 +534,7 @@ def _fallback_path() -> Path:
 
 
 def _kdf(passphrase: str, salt: bytes, length: int) -> bytes:
-    """HMAC-SHA256-based stream KDF. Not as strong as scrypt/argon2 but pulls
-    no extra deps and is fine for protecting the key when keyring is absent —
-    the threat model here is "casual file-system snoop", not "well-funded
-    offline attacker"."""
+    """Legacy obfuscation stream, without slow password derivation."""
     out = b""
     counter = 0
     while len(out) < length:

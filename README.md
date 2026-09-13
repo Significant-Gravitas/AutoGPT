@@ -97,7 +97,7 @@ documentation, not a currently enabled product promise.
 | [HARDWARE.md](docs/HARDWARE.md) | Hardware access wire spec (serial / USB / GPIO) |
 | [COMPUTER_USE.md](docs/COMPUTER_USE.md) | Computer-use wire spec — screenshots, input, windows, clipboard |
 | [MULTI_MACHINE.md](docs/MULTI_MACHINE.md) | Multi-machine orchestration spec (one session, N shims) |
-| [PRIVACY_MODE.md](docs/PRIVACY_MODE.md) | Privacy mode spec — files never leave the machine, local LLM processes content |
+| [PRIVACY_MODE.md](docs/PRIVACY_MODE.md) | Privacy mode design proposal — not a current guarantee that files or local-model content stay on the machine |
 | [RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) | Operator runbook for PyPI / Homebrew / Scoop publish |
 | [WORKFLOW_RECORDING.md](docs/WORKFLOW_RECORDING.md) | Record a workflow → agent generalizes it into a skill (design draft) |
 

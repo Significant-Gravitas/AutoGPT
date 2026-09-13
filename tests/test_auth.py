@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -229,4 +230,29 @@ async def test_revoke_failure_preserves_local_tokens(
     with pytest.raises(RuntimeError, match="platform unavailable"):
         await flow.revoke_tokens()
 
+    assert store.cleared is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["exchange", "refresh", "revoke"])
+async def test_insecure_platform_is_rejected_before_sending_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    config = _config(tmp_path).model_copy(update={"platform_url": "http://platform.example.com"})
+    client = AsyncMock()
+    factory = MagicMock()
+    factory.return_value.__aenter__.return_value = client
+    monkeypatch.setattr("autogpt_local_executor.auth.httpx.AsyncClient", factory)
+    store = _TokenStore()
+    flow = OAuthFlow(config, token_store=store)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="TLS"):
+        if operation == "exchange":
+            await flow._exchange_code("code", "verifier")
+        elif operation == "refresh":
+            await flow.refresh_token()
+        else:
+            await flow.revoke_tokens()
+
+    client.post.assert_not_awaited()
     assert store.cleared is False

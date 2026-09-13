@@ -95,6 +95,22 @@ async def test_initial_401_refreshes_once_and_sets_relay_receive_limit(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["platform_url", "platform_ws_url"])
+async def test_insecure_websocket_is_rejected_before_loading_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    daemon = _daemon(tmp_path)
+    daemon.config = daemon.config.model_copy(update={field: "ws://platform.example.com"})
+    token_calls, connect = _install_auth_doubles(daemon, monkeypatch, [None])
+
+    with pytest.raises(ValueError, match="TLS"):
+        await daemon._session()
+
+    assert token_calls == []
+    assert connect.calls == []
+
+
+@pytest.mark.asyncio
 async def test_initial_403_is_terminal_without_refresh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

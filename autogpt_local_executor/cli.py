@@ -19,6 +19,8 @@ import logging
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
 
 def main() -> None:
     parser = _build_parser()
@@ -42,7 +44,13 @@ def main() -> None:
         _cmd_uninstall(args)
         return
 
-    config = _build_config(args)
+    try:
+        config = _build_config(args)
+    except ValidationError as exc:
+        for error in exc.errors(include_input=False, include_context=False, include_url=False):
+            field = ".".join(str(part) for part in error["loc"])
+            print(f"Configuration error ({field}): {error['msg']}", file=sys.stderr)
+        sys.exit(78)
 
     if args.command == "auth":
         _cmd_auth(config)
@@ -90,6 +98,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--platform-url",
         default=None,
         help="Base URL of the AutoGPT platform (default: https://platform.autogpt.net).",
+    )
+    parser.add_argument(
+        "--platform-oauth-url",
+        default=None,
+        help="Frontend OAuth base URL, including /auth, when separate from the backend platform URL.",
     )
     parser.add_argument(
         "--session-id",
@@ -198,6 +211,8 @@ def _build_config(args):
         overrides["allowed_root"] = args.allowed_root
     if args.platform_url is not None:
         overrides["platform_url"] = args.platform_url
+    if args.platform_oauth_url is not None:
+        overrides["platform_oauth_url"] = args.platform_oauth_url
     if args.session_id is not None:
         overrides["session_id"] = args.session_id
     # Subcommand-specific flags (start) — argparse only sets them when

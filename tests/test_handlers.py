@@ -136,6 +136,46 @@ async def test_write_no_parents_returns_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("create_parents", [False, True])
+async def test_write_rejects_dangling_symlink_outside_jail(
+    tmp_path: Path, create_parents: bool
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    target = root / "link.txt"
+    try:
+        target.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks unavailable on this platform/account")
+
+    response = await FileHandler(make_config(root)).handle_write(
+        _write_msg(target, "blocked", create_parents=create_parents)
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert not outside.exists()
+    assert target.is_symlink()
+
+
+@pytest.mark.asyncio
+async def test_write_rejects_traversal_through_missing_parents(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "missing" / ".." / ".." / "outside" / "file.txt"
+
+    response = await FileHandler(make_config(root)).handle_write(
+        _write_msg(target, "blocked", create_parents=True)
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert not (tmp_path / "outside").exists()
+    assert not (root / "missing").exists()
+
+
+@pytest.mark.asyncio
 async def test_read_base64_path(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     raw = bytes(range(256))
@@ -391,6 +431,34 @@ async def test_move_blocks_dst_outside_jail(tmp_path: Path) -> None:
     resp = await h.handle_move(msg)
     assert isinstance(resp, ErrorMessage)
     assert resp.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+
+
+@pytest.mark.asyncio
+async def test_move_rejects_dangling_destination_outside_jail(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    source = root / "source.txt"
+    source.write_text("original")
+    outside = tmp_path / "outside.txt"
+    target = root / "link.txt"
+    try:
+        target.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks unavailable on this platform/account")
+
+    response = await FileHandler(make_config(root)).handle_move(
+        FileMoveMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileMovePayload(src=str(source), dst=str(target)),
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert source.read_text() == "original"
+    assert not outside.exists()
+    assert target.is_symlink()
 
 
 @pytest.mark.asyncio

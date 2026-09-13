@@ -2,7 +2,8 @@
 
 > **Status**: Draft v0.1 — subject to change
 >
-> Every operation the shim executes is appended to a local audit log.
+> Operations attempt to append to a local audit log. Most runtime data-operation
+> audit writes are best-effort; disk/writer errors can leave completed work unrecorded.
 > The log is the user's primary forensic tool: "what did the platform
 > ask my machine to do, and when?" This doc pins the format, the
 > tamper-evidence scheme, and the rotation policy so consumers (the
@@ -125,8 +126,10 @@ default session ID, so one chat's operation cannot be attributed to another.
 ## Tamper-evidence chain
 
 Each record carries an HMAC of its own JSON form chained to the
-previous record's HMAC. Truncating the log, deleting a record, or
-modifying any field breaks the chain at the modification point.
+previous record's HMAC. Modifying a record or removing an interior record
+breaks verification. Removing a complete valid tail or an entire log/rotated
+file is not detectable without an independent checkpoint. A same-user attacker
+who obtains the key can forge records; this log does not provide OS isolation.
 
 ### Keying
 
@@ -135,9 +138,17 @@ OS keychain (same backend as the OAuth tokens — see CROSS_PLATFORM.md
 "Keychain / credential storage"). The key is 32 bytes from
 `secrets.token_bytes(32)`. It NEVER leaves the machine.
 
-If the keychain is unavailable, the encrypted-file fallback
-(`AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`) holds the audit key alongside the
-OAuth tokens.
+If the keychain is unavailable, a legacy audit-only fallback uses
+`AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
+authenticated encryption or a slow password KDF. OAuth tokens have no file
+fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+
+Malformed stored keys are preserved and rejected rather than regenerated.
+Before appending to an existing active log, startup verifies its chain using
+the loaded key. A wrong key, wrong fallback passphrase, or corrupt log causes
+startup to fail. Preserve the original key and files for investigation; do not
+delete them to hide verification failures. Without an existing log, the legacy
+fallback cannot authenticate a passphrase or detect valid-length corruption.
 
 ### Algorithm
 

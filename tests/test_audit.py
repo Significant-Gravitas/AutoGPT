@@ -326,8 +326,9 @@ def test_get_or_create_audit_key_round_trips_via_keyring() -> None:
     assert len(first) == 32
 
 
-def test_get_or_create_audit_key_regenerates_when_stored_value_corrupt() -> None:
-    store: dict[tuple[str, str], str] = {("autogpt-local-executor", "audit_key"): "not-hex!"}
+@pytest.mark.parametrize("stored", ["not-hex!", "", "ab", "ab" * 31])
+def test_get_or_create_audit_key_preserves_corrupt_stored_value(stored: str) -> None:
+    store: dict[tuple[str, str], str] = {("autogpt-local-executor", "audit_key"): stored}
 
     def fake_get(svc: str, user: str) -> str | None:
         return store.get((svc, user))
@@ -340,10 +341,51 @@ def test_get_or_create_audit_key_regenerates_when_stored_value_corrupt() -> None
     with (
         patch.object(keyring, "get_password", side_effect=fake_get),
         patch.object(keyring, "set_password", side_effect=fake_set),
+        patch("autogpt_local_executor.audit._fallback_audit_key") as fallback,
     ):
-        key = get_or_create_audit_key()
-    assert len(key) == 32
-    assert store[("autogpt-local-executor", "audit_key")] == key.hex()
+        with pytest.raises(RuntimeError, match="audit key"):
+            get_or_create_audit_key()
+        fallback.assert_not_called()
+    assert store[("autogpt-local-executor", "audit_key")] == stored
+
+
+@pytest.mark.parametrize("blob", ["not-an-encrypted-key", "ab:cd", "00" * 16 + ":" + "ab" * 31])
+def test_corrupt_fallback_key_is_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, blob: str
+) -> None:
+    from autogpt_local_executor.audit import _fallback_audit_key
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "test-only-passphrase")
+    path = tmp_path / "audit-key.enc"
+    path.write_text(blob)
+
+    with pytest.raises(RuntimeError, match="audit key"):
+        _fallback_audit_key()
+
+    assert path.read_text() == blob
+
+
+@pytest.mark.asyncio
+async def test_writer_rejects_changed_key_without_modifying_existing_chain(tmp_path: Path) -> None:
+    writer = _writer(tmp_path)
+    await writer.write("SHIM_START", request_id=None, details={})
+    previous = writer.path.read_bytes()
+
+    with pytest.raises(RuntimeError, match="audit log"):
+        AuditWriter(path=writer.path, audit_key=b"x" * 32)
+
+    assert writer.path.read_bytes() == previous
+
+
+def test_writer_rejects_corrupt_existing_chain(tmp_path: Path) -> None:
+    path = tmp_path / "audit.log"
+    path.write_bytes(b"{truncated")
+
+    with pytest.raises(RuntimeError, match="audit log"):
+        _writer(tmp_path)
+
+    assert path.read_bytes() == b"{truncated"
 
 
 # ── Tail-state recovery across writer reopens ───────────────────────────────

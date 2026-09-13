@@ -10,6 +10,62 @@ from autogpt_local_executor import cli
 from autogpt_local_executor.config import ShimConfig
 
 
+def test_platform_oauth_url_cli_override(tmp_path: Path) -> None:
+    args = cli._build_parser().parse_args(
+        [
+            "--config",
+            str(tmp_path / "missing.toml"),
+            "--platform-url",
+            "https://api.example.com",
+            "--platform-oauth-url",
+            "https://app.example.com/auth",
+            "auth",
+        ]
+    )
+
+    config = cli._build_config(args)
+
+    assert config.derived_oauth_url == "https://app.example.com/auth"
+    assert config.derived_oauth_token_url == "https://api.example.com/api/oauth/token"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://platform.example.com",
+        "https://user:secret-value@platform.example.com",
+        "https://platform.example.com:secret-value",
+        "https://[secret-value]",
+    ],
+)
+def test_invalid_endpoint_exits_cleanly_without_echoing_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    url: str,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "autogpt-shim",
+            "--config",
+            str(tmp_path / "missing.toml"),
+            "--platform-url",
+            url,
+            "start",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 78
+    output = capsys.readouterr()
+    assert "Configuration error" in output.err
+    assert "secret-value" not in output.err + output.out
+    assert "Traceback" not in output.err + output.out
+
+
 @pytest.mark.parametrize("session_after_start", [False, True])
 def test_start_session_id_is_accepted_before_or_after_subcommand_without_overwrite(
     tmp_path: Path, session_after_start: bool

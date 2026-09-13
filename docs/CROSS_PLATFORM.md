@@ -150,8 +150,8 @@ paths only; navigation and selection use short-lived opaque references.
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Backend | Keychain Services | Secret Service (D-Bus) — gnome-keyring or kwallet | Windows Credential Manager | Via the `keyring` library. |
-| Headless fallback | n/a (always available) | **`keyring` fails** if no D-Bus / no keyring daemon | n/a | Shim detects via `keyring.backend.SecretService.priority` check; on fail, prompts user to either install `gnome-keyring`/`pass` or fall back to an encrypted file at `$XDG_STATE_HOME/autogpt-local-executor/tokens.enc` with a passphrase derived from a `KEYCHAIN_PASSPHRASE` env var. |
-| WSL2 | n/a | Use the Linux path (D-Bus on WSL2 is rare; encrypted-file fallback is the practical default) | n/a | Document the fallback in install guide. |
+| Headless fallback | Requires usable keyring | **`keyring` fails** if no D-Bus / no keyring daemon | Requires usable keyring | OAuth tokens have no file fallback. Configure a supported keyring before pairing. The legacy audit-key fallback does not store OAuth tokens. |
+| WSL2 | n/a | Use a supported Linux keyring; none is configured by default in many distros | n/a | Pairing requires working keyring storage. |
 
 ### Machine ID source
 
@@ -360,8 +360,8 @@ working `/proc/sys/kernel/osrelease` containing `WSL2`.
    `usbipd-win` on the Windows host. Shim detects `/dev/ttyUSB*` presence
    as usual; absence isn't surprising.
 5. **Keychain typically unavailable.** Most WSL2 distros don't run a Secret
-   Service daemon. Encrypted-file fallback (`tokens.enc`) is the practical
-   default. Document this in the install guide.
+   Service daemon. Configure a supported keyring before pairing; OAuth token
+   storage has no file fallback.
 6. **`machine_id` is per-distro, not per-host.** A user with Ubuntu WSL2 and
    Debian WSL2 has two separate shims to the platform — that's intentional;
    they have separate filesystems.

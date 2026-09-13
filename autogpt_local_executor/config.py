@@ -13,19 +13,57 @@ docs/CROSS_PLATFORM.md "Default allowed_root" and "Audit log location".
 
 from __future__ import annotations
 
+import ipaddress
 import socket
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore[no-redef]
 
-from pydantic import Field
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from . import platform_info
+
+
+def _validate_platform_endpoint(value: str, schemes: set[str]) -> str:
+    if any(ord(char) <= 32 or ord(char) == 127 for char in value) or "\\" in value:
+        raise ValueError("Platform endpoint contains invalid URL characters")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        raise ValueError("Platform endpoint has an invalid host or port") from None
+    if (
+        parsed.scheme not in schemes
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            "Platform endpoint requires a supported URL without credentials, query, or fragment"
+        )
+    if port is not None and port < 1:
+        raise ValueError("Platform endpoint requires a valid port")
+    if parsed.scheme in {"http", "ws"}:
+        loopback = hostname == "localhost"
+        if not loopback:
+            try:
+                loopback = ipaddress.ip_address(hostname).is_loopback
+            except ValueError:
+                pass
+        if not loopback:
+            raise ValueError(
+                "Platform endpoints require TLS except for explicit loopback development URLs"
+            )
+    return parsed.geturl()
 
 
 def _default_config_path() -> Path:
@@ -65,6 +103,8 @@ class ShimConfig(BaseSettings):
         env_prefix="AUTOGPT_SHIM_",
         extra="ignore",
         env_file=None,
+        validate_assignment=True,
+        hide_input_in_errors=True,
     )
 
     # ── Platform / OAuth ───────────────────────────────────────────────────
@@ -83,6 +123,19 @@ class ShimConfig(BaseSettings):
         description="Override for the OAuth base URL. Defaults to "
         "<platform_url>/auth (with http/https adjusted).",
     )
+
+    @field_validator("platform_url", "platform_ws_url", "platform_oauth_url")
+    @classmethod
+    def validate_platform_endpoint(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        schemes = {
+            "platform_url": {"https", "wss", "http", "ws"},
+            "platform_ws_url": {"wss", "ws"},
+            "platform_oauth_url": {"https", "http"},
+        }
+        return _validate_platform_endpoint(value, schemes[info.field_name or "platform_url"])
+
     oauth_client_id: str = Field(default="autogpt-local-executor")
     oauth_redirect_port: int = Field(
         default=41899,
@@ -209,45 +262,31 @@ class ShimConfig(BaseSettings):
     @property
     def derived_ws_url(self) -> str:
         if self.platform_ws_url:
-            return self.platform_ws_url
-        base = self.platform_url.rstrip("/")
-        # Convert https→wss, http→ws when needed.
-        if base.startswith("https://"):
-            base = "wss://" + base[len("https://") :]
-        elif base.startswith("http://"):
-            base = "ws://" + base[len("http://") :]
-        return base + "/ws/local-executor"
+            return _validate_platform_endpoint(self.platform_ws_url, {"wss", "ws"})
+        return self._platform_base(websocket=True) + "/ws/local-executor"
 
     @property
     def derived_oauth_url(self) -> str:
         if self.platform_oauth_url:
-            return self.platform_oauth_url
-        base = self.platform_url.rstrip("/")
-        if base.startswith("wss://"):
-            base = "https://" + base[len("wss://") :]
-        elif base.startswith("ws://"):
-            base = "http://" + base[len("ws://") :]
-        return base + "/auth"
+            return _validate_platform_endpoint(self.platform_oauth_url, {"https", "http"})
+        return self._platform_base() + "/auth"
 
     @property
     def derived_oauth_token_url(self) -> str:
         """Backend OAuth token endpoint for code exchange and refresh."""
-        base = self.platform_url.rstrip("/")
-        if base.startswith("wss://"):
-            base = "https://" + base[len("wss://") :]
-        elif base.startswith("ws://"):
-            base = "http://" + base[len("ws://") :]
-        return base + "/api/oauth/token"
+        return self._platform_base() + "/api/oauth/token"
 
     @property
     def derived_oauth_revoke_url(self) -> str:
         """Backend OAuth revocation endpoint."""
-        base = self.platform_url.rstrip("/")
-        if base.startswith("wss://"):
-            base = "https://" + base[len("wss://") :]
-        elif base.startswith("ws://"):
-            base = "http://" + base[len("ws://") :]
-        return base + "/api/oauth/revoke"
+        return self._platform_base() + "/api/oauth/revoke"
+
+    def _platform_base(self, *, websocket: bool = False) -> str:
+        base = _validate_platform_endpoint(self.platform_url, {"https", "wss", "http", "ws"})
+        parsed = urlsplit(base)
+        secure = parsed.scheme in {"https", "wss"}
+        scheme = ("wss" if secure else "ws") if websocket else ("https" if secure else "http")
+        return parsed._replace(scheme=scheme).geturl().rstrip("/")
 
 
 def load_config(
