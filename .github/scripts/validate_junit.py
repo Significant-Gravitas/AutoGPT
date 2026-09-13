@@ -20,16 +20,16 @@ class JUnitSummary:
         return self.tests - self.failures - self.errors - self.skipped
 
 
-def _declared_count(root: ElementTree.Element, key: str) -> int | None:
-    raw = root.get(key)
+def _declared_count(element: ElementTree.Element, key: str, label: str) -> int | None:
+    raw = element.get(key)
     if raw is None:
         return None
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(f"root {key} count is not an integer: {raw!r}") from exc
+        raise ValueError(f"{label} {key} count is not an integer: {raw!r}") from exc
     if value < 0:
-        raise ValueError(f"root {key} count is negative: {value}")
+        raise ValueError(f"{label} {key} count is negative: {value}")
     return value
 
 
@@ -47,7 +47,7 @@ def _validate_declared_counts(
     element: ElementTree.Element, summary: JUnitSummary, label: str
 ) -> None:
     for key in ("tests", "failures", "errors", "skipped"):
-        declared = _declared_count(element, key)
+        declared = _declared_count(element, key, label)
         actual = getattr(summary, key)
         if declared is not None and declared != actual:
             raise ValueError(

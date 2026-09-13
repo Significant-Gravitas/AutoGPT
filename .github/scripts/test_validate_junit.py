@@ -90,6 +90,18 @@ class ValidateJUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "testsuite 'suite' tests count"):
             summarize_junit(root)
 
+    def test_invalid_nested_counts_identify_the_affected_suite(self):
+        for key in ("tests", "failures", "errors", "skipped"):
+            for value, reason in (("invalid", "not an integer"), ("-1", "negative")):
+                with self.subTest(key=key, value=value):
+                    root = report_xml()
+                    suite = next(root.iter("testsuite"))
+                    suite.set(key, value)
+                    with self.assertRaisesRegex(
+                        ValueError, f"testsuite 'suite' {key} count is {reason}"
+                    ):
+                        summarize_junit(root)
+
     def test_accepts_skipped_only_report(self):
         root = report_xml(skipped=1)
         passing_case = next(root.iter("testcase"))
