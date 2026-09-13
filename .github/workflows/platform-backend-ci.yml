@@ -33,6 +33,8 @@ on:
   # automatic push/pull_request runs are skipped) but you still want to run the
   # suite and produce a fresh coverage upload for that branch's HEAD commit.
   #   gh workflow run platform-backend-ci.yml --ref <branch>
+  # Pass pr_number to attach the upload to that branch's open PR:
+  #   gh workflow run platform-backend-ci.yml --ref <branch> -f pr_number=<PR#>
   workflow_dispatch:
     inputs:
       pr_number:
@@ -511,7 +513,7 @@ jobs:
 
           if [ "${{ runner.os }}" = "macOS" ]; then
             PATH="$HOME/.local/bin:$PATH"
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
         env:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
