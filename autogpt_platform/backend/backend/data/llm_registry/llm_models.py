@@ -212,6 +212,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     COHERE_COMMAND_A_VISION_07_2025 = "cohere/command-a-vision-07-2025"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
+    DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
     PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"

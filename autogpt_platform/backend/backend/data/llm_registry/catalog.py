@@ -480,6 +480,21 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="deepseek/deepseek-v4.1-flash",
+                display_name="DeepSeek V4.1 Flash",
+                provider="open_router",
+                creator="deepseek",
+                context_window=1048576,
+                max_output_tokens=1048576,
+                price_tier=1,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=22.5,
+                    output_credits_per_1m=90.0,
+                    cache_read_credits_per_1m=0.45,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-2.0-flash-001",
                 display_name="Gemini 2.0 Flash 001",
                 provider="open_router",
