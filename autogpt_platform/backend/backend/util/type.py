@@ -55,7 +55,16 @@ def __convert_dict(value: Any) -> dict:
 
 
 def __convert_tuple(value: Any) -> tuple:
-    if isinstance(value, (str, list, set)):
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return tuple(json.loads(value))
+            except json.JSONDecodeError:
+                return (value,)
+        else:
+            return (value,)
+    elif isinstance(value, (list, set)):
         return tuple(value)
     elif isinstance(value, dict):
         return tuple(value.items())
@@ -68,7 +77,16 @@ def __convert_tuple(value: Any) -> tuple:
 
 
 def __convert_set(value: Any) -> set:
-    if isinstance(value, (str, list, tuple)):
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return set(json.loads(value))
+            except json.JSONDecodeError:
+                return {value}
+        else:
+            return {value}
+    elif isinstance(value, (list, tuple)):
         return set(value)
     elif isinstance(value, dict):
         return set(value.items())
@@ -104,7 +122,7 @@ def __convert_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     elif isinstance(value, str):
-        if value.lower() in ["true", "1"]:
+        if value.strip().lower() in ["true", "1"]:
             return True
         else:
             return False

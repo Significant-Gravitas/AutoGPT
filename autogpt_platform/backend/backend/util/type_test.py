@@ -17,6 +17,11 @@ def test_type_conversion():
 
     assert convert("True", bool) is True
     assert convert("False", bool) is False
+    assert convert("true", bool) is True
+    assert convert("1", bool) is True
+    assert convert(" true ", bool) is True
+    assert convert("1 ", bool) is True
+    assert convert("true\n", bool) is True
 
     assert convert(5, str) == "5"
     assert convert({"a": 1, "b": 2}, str) == '{"a": 1, "b": 2}'
@@ -25,6 +30,11 @@ def test_type_conversion():
     assert convert("5", list) == ["5"]
     assert convert((1, 2, 3), list) == [1, 2, 3]
     assert convert({1, 2, 3}, list) == [1, 2, 3]
+
+    assert convert("hello", set) == {"hello"}
+    assert convert("[1, 2, 3]", set) == {1, 2, 3}
+    assert convert("hello", tuple) == ("hello",)
+    assert convert("[1, 2, 3]", tuple) == (1, 2, 3)
 
     assert convert("5", dict) == {"value": 5}
     assert convert('{"a": 1, "b": 2}', dict) == {"a": 1, "b": 2}
