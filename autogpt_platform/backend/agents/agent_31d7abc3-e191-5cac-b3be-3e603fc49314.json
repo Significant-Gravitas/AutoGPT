@@ -12,7 +12,6 @@
       "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
       "input_default": {
         "name": "Contact or Segment",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "Who you are writing to \u2014 a person, or the segment they belong to.",
@@ -45,7 +44,6 @@
       "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
       "input_default": {
         "name": "What Happened",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "What they last did, when, and anything you know about why they went quiet.",
@@ -78,7 +76,6 @@
       "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
       "input_default": {
         "name": "The Offer",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "What you can offer them now, including any condition attached to it.",
@@ -111,7 +108,6 @@
       "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
       "input_default": {
         "name": "Sender Name",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "Who the email is signed by.",
@@ -290,32 +286,33 @@
         "advanced": false,
         "secret": false,
         "title": "Contact or Segment",
-        "description": "Who you are writing to \u2014 a person, or the segment they belong to.",
-        "default": ""
+        "description": "Who you are writing to \u2014 a person, or the segment they belong to."
       },
       "What Happened": {
         "advanced": false,
         "secret": false,
         "title": "What Happened",
-        "description": "What they last did, when, and anything you know about why they went quiet.",
-        "default": ""
+        "description": "What they last did, when, and anything you know about why they went quiet."
       },
       "The Offer": {
         "advanced": false,
         "secret": false,
         "title": "The Offer",
-        "description": "What you can offer them now, including any condition attached to it.",
-        "default": ""
+        "description": "What you can offer them now, including any condition attached to it."
       },
       "Sender Name": {
         "advanced": false,
         "secret": false,
         "title": "Sender Name",
-        "description": "Who the email is signed by.",
-        "default": ""
+        "description": "Who the email is signed by."
       }
     },
-    "required": []
+    "required": [
+      "Contact or Segment",
+      "What Happened",
+      "The Offer",
+      "Sender Name"
+    ]
   },
   "output_schema": {
     "type": "object",

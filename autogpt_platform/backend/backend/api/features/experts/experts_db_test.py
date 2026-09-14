@@ -63,9 +63,10 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-to-linkedin-post-converter",
     "youtube-transcription-scraper",
 }
-# Both roster cadences, keyed by expert. Research-only workflows are the only
-# ones allowed to fire unattended from the day of hire (see PreloadSeed.cron),
-# so this set is also the list of personas whose schedules need attribution.
+# Every cron the roster ships, as (expert, slug, cron). A cadence fires
+# unattended from the day of hire, so PreloadSeed.cron limits which workflows
+# may carry one; pinning the whole set here makes adding a cron a deliberate
+# edit to this test rather than a silent roster change.
 EXPECTED_ROSTER_SCHEDULES = {
     ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),

@@ -12,7 +12,6 @@
       "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
       "input_default": {
         "name": "Product",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "What you sell, in a sentence.",
@@ -45,7 +44,6 @@
       "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
       "input_default": {
         "name": "Audience",
-        "value": "",
         "secret": false,
         "advanced": false,
         "description": "Who receives these emails, and the situation they are in.",
@@ -111,7 +109,7 @@
       "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
       "input_default": {
         "name": "Voice and Constraints",
-        "value": "",
+        "value": "Clear and direct. No jargon, no exclamation marks, and never \"we're excited to announce\".",
         "secret": false,
         "advanced": false,
         "description": "How it should sound, plus anything it must not say or promise.",
@@ -290,15 +288,13 @@
         "advanced": false,
         "secret": false,
         "title": "Product",
-        "description": "What you sell, in a sentence.",
-        "default": ""
+        "description": "What you sell, in a sentence."
       },
       "Audience": {
         "advanced": false,
         "secret": false,
         "title": "Audience",
-        "description": "Who receives these emails, and the situation they are in.",
-        "default": ""
+        "description": "Who receives these emails, and the situation they are in."
       },
       "Sequence Type": {
         "advanced": false,
@@ -312,10 +308,13 @@
         "secret": false,
         "title": "Voice and Constraints",
         "description": "How it should sound, plus anything it must not say or promise.",
-        "default": ""
+        "default": "Clear and direct. No jargon, no exclamation marks, and never \"we're excited to announce\"."
       }
     },
-    "required": []
+    "required": [
+      "Product",
+      "Audience"
+    ]
   },
   "output_schema": {
     "type": "object",
