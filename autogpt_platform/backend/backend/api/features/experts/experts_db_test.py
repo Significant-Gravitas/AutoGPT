@@ -88,9 +88,11 @@ async def delete_rows_this_test_seeded():
     """
     yield
     template_ids, user_ids = list(_seeded_template_ids), list(_seeded_user_ids)
+    # Clear only once the deletion succeeded: a raise here keeps the ids so the
+    # next teardown retries them, and re-deleting a gone row is a no-op.
+    await _delete_seeded_rows(template_ids, user_ids)
     _seeded_template_ids.clear()
     _seeded_user_ids.clear()
-    await _delete_seeded_rows(template_ids, user_ids)
 
 
 async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> None:
