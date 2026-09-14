@@ -16,7 +16,7 @@ import pydantic
 import pytest
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db, scheduling, seed
+from backend.api.features.experts import experts_db, raise_attachments, scheduling, seed
 from backend.api.features.experts.models import (
     ExpertBundledSkill,
     ExpertDayOneItem,
@@ -97,8 +97,8 @@ def _library_skill(slug: str) -> list[RaiseAttachment]:
     return [RaiseAttachment(kind="skill", source="library", id=slug)]
 
 
-def _marketplace_skill(listing_id: str) -> list[RaiseAttachment]:
-    return [RaiseAttachment(kind="skill", source="marketplace", id=listing_id)]
+def _marketplace_skill(slug: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="skill", source="marketplace", id=slug)]
 
 
 async def _create_seed_user():
@@ -1005,23 +1005,68 @@ async def test_raise_expert_rejects_missing_library_skill(server: SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_attaches_marketplace_skill_name(server: SpinTestServer):
+async def test_raise_expert_installs_a_marketplace_skill(
+    server: SpinTestServer, hub_listing
+):
     owner = await _create_seed_user()
-    slv_id = await _seed_store_listing(server)
-    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": slv_id}
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug),
+        )
+        installed = await read_user_skill_with_body(
+            owner.id, hub_listing.slug, expert_id=raised.expert.id
+        )
+
+    assert raised.expert.skills == [hub_listing.slug]
+    assert raised.expert.workflows == []
+    assert raised.failed_attachments == []
+    assert installed is not None
+    assert installed.description == f"{hub_listing.slug} description"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_a_marketplace_skill_that_is_not_listed(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill("no-such-skill"),
+        )
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_marketplace_skill_install_leaves_no_name_on_the_row(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    owner = await _create_seed_user()
+    install = AsyncMock(side_effect=RuntimeError("storage down"))
+    monkeypatch.setattr(
+        raise_attachments.skill_db, "install_marketplace_skill", install
     )
-    assert listing is not None
 
     raised = await experts_db.create_raised_expert(
         owner.id,
         name="Nova",
         role=None,
         voice_preferences=None,
-        attachments=_marketplace_skill(slv_id),
+        attachments=_marketplace_skill(hub_listing.slug),
     )
-    assert raised.expert.skills == [listing.name]
-    assert raised.expert.workflows == []
+
+    install.assert_awaited_once()
+    assert raised.expert.skills == []
+    assert [f.reason for f in raised.failed_attachments] == ["installation_failed"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import {
   combineSearchHits,
@@ -23,6 +24,16 @@ const storeAgent = {
   rating: 5,
   agent_graph_id: "graph-1",
 } as StoreAgent;
+
+const marketplaceSkill: MarketplaceSkill = {
+  slug: "seo-playbook",
+  // The Hub pins a seeded listing's name to its slug, as the shelf does.
+  name: "seo-playbook",
+  description: "An SEO playbook",
+  categories: ["content"],
+  required_providers: [],
+  install_count: 3,
+};
 
 describe("kit helpers", () => {
   test("parses dollar amounts into credits and rejects junk", () => {
@@ -50,6 +61,7 @@ describe("kit helpers", () => {
       storeAgents: [storeAgent],
       libraryAgents: [{ id: "lib-1", name: "Local SEO" } as LibraryAgent],
       skills: [{ name: "seo-audit", description: "Audit pages" }],
+      marketplaceSkills: [],
       scope: "marketplace",
     });
 
@@ -59,7 +71,7 @@ describe("kit helpers", () => {
     ]);
   });
 
-  test("combines marketplace-as-skill and library skills", () => {
+  test("combines marketplace and library skills, ignoring store agents", () => {
     const hits = combineSearchHits({
       query: "seo",
       storeAgents: [storeAgent],
@@ -68,6 +80,7 @@ describe("kit helpers", () => {
         { name: "seo-audit", description: "Audit pages" },
         { name: "unrelated", description: "Something else" },
       ],
+      marketplaceSkills: [marketplaceSkill],
       scope: "skills",
     });
 
@@ -75,9 +88,26 @@ describe("kit helpers", () => {
       "Marketplace skill",
       "Library skill",
     ]);
+    expect(hits.map((hit) => hit.name)).not.toContain("SEO Blog Writer");
     expect(
       hits.find((hit) => hit.kind === "skill" && hit.source === "library")?.id,
     ).toBe("seo-audit");
+  });
+
+  test("addresses a marketplace skill by its slug, not a listing id", () => {
+    const [hit] = combineSearchHits({
+      query: "",
+      storeAgents: [],
+      libraryAgents: [],
+      skills: [],
+      marketplaceSkills: [marketplaceSkill],
+      scope: "skills",
+    });
+
+    expect(hit.id).toBe("seo-playbook");
+    expect(hit.name).toBe("Seo playbook");
+    expect(hit.kind).toBe("skill");
+    expect(hit.source).toBe("marketplace");
   });
 
   test("limits default marketplace results to three items", () => {
@@ -94,6 +124,7 @@ describe("kit helpers", () => {
         { id: "lib-2", name: "Library 2" } as LibraryAgent,
       ],
       skills: [],
+      marketplaceSkills: [],
       scope: "marketplace",
     });
 
@@ -116,6 +147,7 @@ describe("kit helpers", () => {
         { name: "skill-c", description: "C" },
         { name: "skill-d", description: "D" },
       ],
+      marketplaceSkills: [],
       scope: "skills",
     });
 

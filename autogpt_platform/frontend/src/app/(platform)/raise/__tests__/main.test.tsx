@@ -67,6 +67,8 @@ const raisedExpert = {
   workflows: [],
 } as Expert;
 
+const LIBRARY_SKILL = { name: "seo-audit", description: "Audit landing pages" };
+
 function raiseResult(overrides: Partial<RaiseResult> = {}): RaiseResult {
   return { expert: raisedExpert, failed_attachments: [], ...overrides };
 }
@@ -138,7 +140,9 @@ beforeEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   pushMock.mockClear();
   notFoundMock.mockClear();
-  server.use(getListCopilotSkillsMockHandler([]));
+  // One library skill is enough to keep the skills beat in the flow; with
+  // none and the Hub off, the marketplace beat becomes the last one.
+  server.use(getListCopilotSkillsMockHandler([LIBRARY_SKILL]));
 });
 
 afterEach(() => {
@@ -340,6 +344,39 @@ test("picking a weekly budget advances to marketplace workflows", async () => {
     ),
   ).toBeDefined();
   expect(screen.getByRole("button", { name: "That's it" })).toBeDefined();
+});
+
+test("drops the skills beat and raises from the marketplace step when there is nothing to add", async () => {
+  let captured: unknown = null;
+  server.use(
+    getListCopilotSkillsMockHandler([]),
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return raiseResult();
+    }),
+  );
+
+  seedAtBudget();
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "$5 / week" }),
+  );
+
+  const finish = await screen.findByRole(
+    "button",
+    { name: /Bring Otto to life/ },
+    { timeout: 5000 },
+  );
+  expect(screen.queryByRole("textbox", { name: "Search skills" })).toBeNull();
+  await userEvent.click(finish);
+
+  await waitFor(() => expect(captured).not.toBeNull());
+  expect(captured).toMatchObject({ weekly_budget: 500, attachments: [] });
+  await waitFor(() =>
+    expect(pushMock).toHaveBeenCalledWith(
+      "/copilot?expertId=raised-1&kickoff=1",
+    ),
+  );
 });
 
 test("back returns to the previous step and the draft survives", async () => {

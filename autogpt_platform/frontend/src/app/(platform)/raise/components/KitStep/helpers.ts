@@ -1,8 +1,10 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { RaiseAttachment } from "@/app/api/__generated__/models/raiseAttachment";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { parseUsdToCredits } from "@/lib/credits";
+import { formatSkillTitle } from "../../../marketplace/components/SkillsSection/helpers";
 import type { RaiseAttachmentDraft } from "../../helpers";
 
 export const MAX_ATTACHMENTS = 20;
@@ -67,20 +69,21 @@ export function combineSearchHits({
   storeAgents,
   libraryAgents,
   skills,
+  marketplaceSkills,
   scope,
 }: {
   query: string;
   storeAgents: StoreAgent[];
   libraryAgents: LibraryAgent[];
   skills: CopilotSkillInfo[];
+  marketplaceSkills: MarketplaceSkill[];
   scope: KitSearchScope;
 }): SearchHit[] {
   const hits: SearchHit[] = [];
-  const kind = scope === "marketplace" ? "workflow" : "skill";
-  for (const agent of storeAgents) {
-    hits.push(marketplaceHit(agent, kind));
-  }
   if (scope === "marketplace") {
+    for (const agent of storeAgents) {
+      hits.push(marketplaceWorkflowHit(agent));
+    }
     for (const agent of libraryAgents) {
       hits.push({
         key: `library:workflow:${agent.id}`,
@@ -92,6 +95,9 @@ export function combineSearchHits({
       });
     }
     return limitSearchHits(hits, query);
+  }
+  for (const skill of marketplaceSkills) {
+    hits.push(marketplaceSkillHit(skill));
   }
   const needle = query.trim().toLowerCase();
   for (const skill of skills) {
@@ -174,19 +180,29 @@ export function failedAttachmentMessage(
     .join(". ");
 }
 
-function marketplaceHit(
-  agent: StoreAgent,
-  kind: "workflow" | "skill",
-): SearchHit {
+function marketplaceWorkflowHit(agent: StoreAgent): SearchHit {
   return {
-    key: `marketplace:${kind}:${agent.creator.toLowerCase()}/${agent.slug}`,
+    key: `marketplace:workflow:${agent.creator.toLowerCase()}/${agent.slug}`,
     name: agent.agent_name,
-    subtitle:
-      kind === "workflow" ? "Marketplace workflow" : "Marketplace skill",
-    kind,
+    subtitle: "Marketplace workflow",
+    kind: "workflow",
     source: "marketplace",
+    // Resolved to a store listing version id when the row is added.
     id: "",
     creator: agent.creator,
     slug: agent.slug,
+  };
+}
+
+// A Hub skill listing is addressed by its slug, so nothing needs resolving.
+function marketplaceSkillHit(skill: MarketplaceSkill): SearchHit {
+  return {
+    key: `marketplace:skill:${skill.slug}`,
+    name: formatSkillTitle(skill.name),
+    subtitle: "Marketplace skill",
+    kind: "skill",
+    source: "marketplace",
+    id: skill.slug,
+    description: skill.description,
   };
 }
