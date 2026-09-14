@@ -42,17 +42,21 @@ def package_from_zip(data: bytes) -> SkillPackage:
     with archive:
         members = _unwrapped(_checked_members(archive.infolist()))
         root = members.pop(ROOT_SKILL_MD)
-        package = SkillPackage(
-            skill_md=_decoded(archive.read(root)),
-            files=[
+        # A member's CRC is verified as it decompresses, so a corrupt archive
+        # opens cleanly and fails here.
+        try:
+            skill_md = _decoded(archive.read(root))
+            files = [
                 SkillFile(
                     relative_path=path,
                     content=archive.read(info),
                     is_executable=bool(_mode(info) & 0o111),
                 )
                 for path, info in members.items()
-            ],
-        )
+            ]
+        except (zipfile.BadZipFile, OSError) as exc:
+            raise SkillPackageError(f"archive member could not be read: {exc}")
+    package = SkillPackage(skill_md=skill_md, files=files)
     validate_package(package)
     return package
 

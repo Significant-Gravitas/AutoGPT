@@ -2,6 +2,7 @@
 folder, and what a stored package looks like on the way back out."""
 
 import io
+import struct
 import zipfile
 from unittest.mock import MagicMock
 
@@ -271,6 +272,26 @@ def test_an_archive_without_a_skill_md_is_refused():
 def test_an_empty_archive_is_refused():
     with pytest.raises(SkillPackageError, match="no files"):
         package_from_zip(_zip({}))
+
+
+def test_a_member_with_a_corrupt_crc_is_refused_as_a_bad_upload():
+    """A member's CRC is verified only as it decompresses, so a corrupt archive
+    survives the open and fails on the read — where it must still read as a bad
+    upload rather than an unhandled error the route answers 500 to."""
+    with pytest.raises(SkillPackageError, match="could not be read"):
+        package_from_zip(
+            _with_a_corrupt_member(_zip({"SKILL.md": SKILL_MD, "a.txt": b"x" * 400}))
+        )
+
+
+def _with_a_corrupt_member(data: bytes) -> bytes:
+    """Flip a byte inside the last member's deflate stream, leaving every header
+    intact so the central directory still parses."""
+    out = bytearray(data)
+    header = out.rfind(b"PK\x03\x04")
+    name_len, extra_len = struct.unpack_from("<HH", out, header + 26)
+    out[header + 30 + name_len + extra_len + 2] ^= 0xFF
+    return bytes(out)
 
 
 def test_something_that_is_not_a_zip_is_refused():

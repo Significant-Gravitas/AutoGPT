@@ -1789,6 +1789,71 @@ def test_upload_package_rejects_something_that_is_not_a_zip() -> None:
     assert response.status_code == 400
 
 
+def test_download_refuses_rather_than_serving_a_package_it_cannot_read_whole() -> None:
+    """A download is a backup: a sibling that will not read must fail the
+    request, not quietly produce an archive with the file missing."""
+
+    class _OneUnreadableSibling(_FakeWorkspaceManager):
+        async def read_file(self, path: str) -> bytes:
+            if path.endswith("references/providers.md"):
+                raise RuntimeError("storage unavailable")
+            return await super().read_file(path)
+
+    with _patch_skills_path(_OneUnreadableSibling()):
+        created = client.post(
+            "/skills/package",
+            files={
+                "file": ("pkg.zip", _package_zip(_PACKAGE_FILES), "application/zip")
+            },
+        )
+        assert created.status_code == 201, created.text
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            client.get("/skills/oauth_flow/package")
+
+
+def test_download_does_not_report_a_storage_failure_as_a_missing_skill() -> None:
+    """404 means the user has no such skill. A storage failure reading the
+    SKILL.md is ours, and saying "not found" would send them looking for a
+    skill they still have."""
+
+    class _UnreadableRoot(_FakeWorkspaceManager):
+        async def read_file(self, path: str) -> bytes:
+            if path.endswith("/SKILL.md"):
+                raise RuntimeError("storage unavailable")
+            return await super().read_file(path)
+
+    with _patch_skills_path(_UnreadableRoot()):
+        created = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        )
+        assert created.status_code == 201, created.text
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            client.get("/skills/oauth_flow/package")
+
+
+def test_download_refuses_a_stored_package_over_the_files_cap() -> None:
+    """Only a legacy or hand-made folder can be over the cap, and truncating it
+    to the cap would hand back an archive that silently is not the skill."""
+    manager = _FakeWorkspaceManager()
+    with _patch_skills_path(manager):
+        created = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        )
+        assert created.status_code == 201, created.text
+        # Seed the folder past the cap the way only a pre-cap write could have.
+        for i in range(MAX_PACKAGE_FILES + 1):
+            manager.files[f"/skills/oauth_flow/f{i}.txt"] = b"x"
+
+        response = client.get("/skills/oauth_flow/package")
+
+    assert response.status_code == 413
+    assert str(MAX_PACKAGE_FILES) in response.json()["detail"]
+
+
 def test_download_package_returns_404_for_a_missing_skill(
     mocker: pytest_mock.MockFixture,
 ) -> None:

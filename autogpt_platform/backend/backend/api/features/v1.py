@@ -3083,7 +3083,10 @@ async def download_copilot_skill_package(
     """
     await _require_skill_owner(user_id, expert_id)
     slug = name.strip().lower()
-    package = await read_user_skill_package(user_id, slug, expert_id=expert_id)
+    try:
+        package = await read_user_skill_package(user_id, slug, expert_id=expert_id)
+    except SkillPackageError as exc:
+        raise HTTPException(status_code=413 if exc.over_limit else 400, detail=str(exc))
     if package is None:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"

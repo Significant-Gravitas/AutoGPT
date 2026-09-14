@@ -1247,6 +1247,10 @@ async def read_user_skill_package(
 
     What the zip download hands out, so a downloaded package re-uploads to a
     byte-identical tree. :func:`read_user_skill_with_body` is the root alone.
+
+    Only a missing skill answers ``None``: a storage failure or an undecodable
+    file raises, because a download that quietly omits part of the tree is worse
+    than one that fails.
     """
     slug = name.strip().lower()
     if not slug:
@@ -1254,11 +1258,13 @@ async def read_user_skill_package(
     manager = await _get_user_skill_manager(user_id, scope)
     try:
         raw = await manager.read_file(_skill_md_path(slug, expert_id))
-    except Exception:
+    except FileNotFoundError:
         return None
     return SkillPackage(
-        skill_md=raw.decode("utf-8", errors="replace"),
-        files=await _read_package_files(manager, skill_folder(expert_id), slug),
+        skill_md=raw.decode("utf-8"),
+        files=await _read_package_files(
+            manager, skill_folder(expert_id), slug, complete=True
+        ),
     )
 
 
@@ -1373,19 +1379,29 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
 
 
 async def _read_package_files(
-    manager: WorkspaceManager, folder: str, slug: str
+    manager: WorkspaceManager, folder: str, slug: str, *, complete: bool = False
 ) -> list[SkillFile]:
     """Load a stored package's siblings into memory, ready to be written
     somewhere else.  Reads run concurrently — each is a blob fetch, and a
     60-file package read one at a time is a hire the user waits through.
-    A file that cannot be read is dropped with a warning: an expert with
-    most of a package is worth more than a hire that fails.
+
+    ``complete`` refuses a tree this cannot reproduce whole, which is what a
+    download owes its caller.  Without it a file that cannot be read is dropped
+    with a warning: an expert with most of a package is worth more than a hire
+    that fails.
     """
     prefix = f"{folder}/{slug}/"
     infos = await _list_package_files(manager, folder, slug)
     if len(infos) > MAX_PACKAGE_FILES:
-        # Written before the cap existed, or by hand.  Validating it whole
-        # would fail and take the hire down, so truncate as read_skill does.
+        # Written before the cap existed, or by hand.
+        if complete:
+            raise SkillPackageError(
+                f"stored package has more than {MAX_PACKAGE_FILES} files and "
+                "cannot be served whole",
+                over_limit=True,
+            )
+        # Validating it whole would fail and take the hire down, so truncate
+        # as read_skill does.
         logger.warning(
             "[skills] package %s has more than %s files; copying the first %s",
             slug,
@@ -1400,6 +1416,8 @@ async def _read_package_files(
             try:
                 content = await manager.read_file(info.path)
             except Exception:
+                if complete:
+                    raise
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None
         return SkillFile(
