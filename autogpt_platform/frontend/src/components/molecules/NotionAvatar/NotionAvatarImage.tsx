@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import { notionAvatarUrlFor, type NotionAvatarConfig } from "./helpers";
 
 interface Props {
@@ -16,19 +17,18 @@ export function NotionAvatarImage({
   title,
   className,
 }: Props) {
+  const src = notionAvatarUrlFor(config);
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={notionAvatarUrlFor(config)}
+    <Image
+      src={src}
       alt={title ?? "Avatar"}
       width={size}
       height={size}
-      loading="lazy"
-      decoding="async"
+      unoptimized
       data-testid="notion-avatar-image"
-      data-avatar={notionAvatarUrlFor(config)}
+      data-avatar={src}
       className={cn("shrink-0 rounded-full", className)}
-      style={{ width: size, height: size }}
     />
   );
 }

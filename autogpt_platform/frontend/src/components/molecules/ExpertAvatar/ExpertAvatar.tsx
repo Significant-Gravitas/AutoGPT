@@ -5,12 +5,10 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-  type AvatarStatus,
-} from "@/components/molecules/BotAvatar/helpers";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -26,7 +24,8 @@ interface Props {
 /**
  * Expert avatar shared by the copilot home surfaces (briefing card, team
  * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated shape/colour/accessory face.
+ * else gets the generated Notion-style face — as a flat image unless there
+ * is something to animate.
  */
 export function ExpertAvatar({
   name,
@@ -53,10 +52,19 @@ export function ExpertAvatar({
     );
   }
 
-  if (!isUploadedAvatar(avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
+  const config = expertNotionConfig({ name, avatarUrl, color });
+  if (config) {
+    const isStill = !animated && status === "idle";
+    return isStill ? (
+      <NotionAvatarImage
+        config={config}
+        size={size}
+        title={name}
+        className={className}
+      />
+    ) : (
+      <NotionAvatar
+        config={config}
         status={status}
         size={size}
         animated={animated}

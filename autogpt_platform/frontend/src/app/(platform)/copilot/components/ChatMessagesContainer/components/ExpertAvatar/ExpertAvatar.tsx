@@ -4,11 +4,9 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -45,15 +43,12 @@ export function ExpertAvatar({
     return <AutopilotAvatar size={isSmall ? 24 : 36} />;
   }
 
-  if (!isUploadedAvatar(avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
-        size={isSmall ? 24 : 36}
-        animated={!isSmall}
-        showBadge={false}
-        title={name}
-      />
+  const config = expertNotionConfig({ name, avatarUrl, color });
+  if (config) {
+    return isSmall ? (
+      <NotionAvatarImage config={config} size={24} title={name} />
+    ) : (
+      <NotionAvatar config={config} size={36} showBadge={false} title={name} />
     );
   }
 
