@@ -1893,19 +1893,32 @@ async def _sync_skill_package(
     # and delete_skill followed by store_skill on the same slug is exactly that
     # case.  Prune by what the package HOLDS, not by what was copied: a copy
     # that failed leaves a current file whose earlier copy is still wanted.
+    removed: set[str] = set()
     if complete:
         # The root is not a sibling and is never written here, so it can only
         # reach the manifest by a hand edit; excluding it keeps the prune from
         # acting on a name that does not belong to it.
         current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
-        stale = sorted(set(manifest) - current)
+        removed = set(manifest) - current
         await remove_from_workdir(
-            [f"{package_dir}/{relative}" for relative in stale], session_id
+            [f"{package_dir}/{relative}" for relative in sorted(removed)], session_id
         )
+
+    # RESOLVING A CONFLICT HERE: the manifest may only lose an entry for a file
+    # we know is gone — one we removed, or one a listing we know was complete
+    # did not contain. Several branches narrow `removed` or hold an entry back
+    # for their own reason; each is that one rule applied to a different way of
+    # not knowing. Keep every reason rather than taking one side of the diff.
+    next_manifest = {
+        relative: digest
+        for relative, digest in manifest.items()
+        if relative not in written and relative not in removed
+    }
+    next_manifest.update(written)
     # A single-file skill must not leave an empty package directory behind, so
     # the manifest is written only when there is, or was, something to track.
-    if written or manifest:
-        await _write_package_manifest(package_dir, written, session_id)
+    if next_manifest or manifest:
+        await _write_package_manifest(package_dir, next_manifest, session_id)
 
     if not files:
         return None, None

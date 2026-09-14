@@ -1641,3 +1641,65 @@ async def test_nested_skill_md_files_cannot_hide_a_root_skill():
         slugs = await find_user_skill_slugs("user-1", ["aaa-oldest"])
     assert [s.name for s in skills] == ["aaa-oldest"]
     assert slugs == {"aaa-oldest": "aaa-oldest"}
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_listing_keeps_the_entries_it_could_not_see():
+    """A capped listing proves presence, never absence, so it must not drop
+    the manifest entries for files it never saw: the next complete listing is
+    what decides whether those files are gone, and it can only reach them
+    through the manifest."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/keep.md"] = b"v1"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        keep = os.path.join(patched.workdir, "skills", "big", "references", "keep.md")
+        assert os.path.exists(keep)
+
+        # Past the cap keep.md falls off the newest-first page, so this
+        # activation cannot see it and must leave its entry alone.
+        extra = [
+            f"/skills/big/references/n{i:03d}.md" for i in range(MAX_PACKAGE_FILES + 5)
+        ]
+        for i, path in enumerate(extra):
+            fake.files[path] = f"new {i}".encode()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(keep)
+
+        # Back under the cap, with keep.md gone from the package: now the
+        # listing is complete, so the file is known gone and must be removed.
+        for path in extra:
+            del fake.files[path]
+        del fake.files["/skills/big/references/keep.md"]
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(keep)
+
+
+@pytest.mark.asyncio
+async def test_a_pruned_file_loses_its_manifest_entry():
+    """The other half of the rule: once a file is known gone and removed, its
+    entry goes too, or the manifest keeps describing a file that is not there
+    and every later activation re-prunes it."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/gone.md"] = b"bye"
+    fake.files["/skills/big/references/stays.md"] = b"here"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        manifest_path = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        with open(manifest_path) as f:
+            assert set(json.load(f)) == {"references/gone.md", "references/stays.md"}
+
+        del fake.files["/skills/big/references/gone.md"]
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        with open(manifest_path) as f:
+            assert set(json.load(f)) == {"references/stays.md"}
