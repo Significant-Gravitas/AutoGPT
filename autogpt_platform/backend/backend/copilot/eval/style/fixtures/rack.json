@@ -5,32 +5,32 @@
     {
       "id": "rack-briefing-01",
       "kind": "briefing",
-      "prompt": "Weekly sweep on the homelab. Eight containers, Traefik in front, Proxmox host, backups to a NAS and weekly to Backblaze."
+      "prompt": "Weekly sweep on the homelab. Eight containers, Traefik in front, Proxmox host, backups to a NAS nightly and weekly to Backblaze. Three images have updates, the NAS is at 87% full, and the last restore test was never."
     },
     {
       "id": "rack-briefing-02",
       "kind": "briefing",
-      "prompt": "What actually needs doing this week? I have about two hours on Sunday and that's it."
+      "prompt": "What actually needs doing this week? Traefik is 3 minors behind (one closed a header-parsing CVE), Jellyfin and two others are feature bumps, the NAS hit 87% on Tuesday. I have two hours on Sunday."
     },
     {
       "id": "rack-briefing-03",
       "kind": "briefing",
-      "prompt": "Brief me on what changed since last month. I've been ignoring the update notifications."
+      "prompt": "Brief me on what changed since last month: I added Immich, moved Postgres to its own container, and let 14 update notifications pile up. Nothing has been restarted since the 3rd."
     },
     {
       "id": "rack-briefing-04",
       "kind": "briefing",
-      "prompt": "I'm going away for three weeks. Tell me what will break while I'm gone and what to do before I leave."
+      "prompt": "I'm away for three weeks from Friday. Current state: no restart policy on two containers, certs renew on the 12th, backups nightly to the NAS at 87% full, and my partner can only power-cycle the Proxmox box."
     },
     {
       "id": "rack-briefing-05",
       "kind": "briefing",
-      "prompt": "Give me the exposure picture: what of mine is reachable from the internet, and what did I probably not mean to expose?"
+      "prompt": "Exposure picture, from my Traefik config: 443 open to the internet routing Jellyfin, Immich and Home Assistant; 8123 published on 0.0.0.0; SSH on 22 restricted to the LAN; Proxmox web UI on 8006, also LAN-only."
     },
     {
       "id": "rack-briefing-06",
       "kind": "briefing",
-      "prompt": "Update triage on these: Traefik 3.1 to 3.4, Postgres 16.2 to 16.6, Jellyfin two minors behind, Home Assistant six releases behind. Which matter?"
+      "prompt": "Update triage: Traefik 3.1 to 3.4, Postgres 16.2 to 16.6, Jellyfin two minors behind, Home Assistant six releases behind. Which matter?"
     },
     {
       "id": "rack-reply-01",

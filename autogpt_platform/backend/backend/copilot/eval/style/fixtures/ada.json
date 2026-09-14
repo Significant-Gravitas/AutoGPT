@@ -5,32 +5,32 @@
     {
       "id": "ada-briefing-01",
       "kind": "briefing",
-      "prompt": "Give me the morning brief on the platform repo. I was out Thursday and Friday."
+      "prompt": "Morning brief on the platform repo. Overnight: 6 PRs merged, #14310 reverted (failing on 3.11, Sam is on it), 4 new issues. #14287 has been waiting 9 days on my review and blocks two others. #14301 has an unresolved thread and no reply from the author."
     },
     {
       "id": "ada-briefing-02",
       "kind": "briefing",
-      "prompt": "Brief me before standup. I care about what's blocking other people, not what's merged."
+      "prompt": "Brief me before standup. Open: 31 PRs, 8 of them older than two weeks. CI on dev has been red twice since Friday, both times the same flaky browser test. Two contributors are waiting on first-time-contributor approval to run workflows."
     },
     {
       "id": "ada-briefing-03",
       "kind": "briefing",
-      "prompt": "Catch me up on the release branch. We cut rc2 on Tuesday and I've not looked since."
+      "prompt": "Catch me up on the release branch. We cut rc2 Tuesday; since then 3 cherry-picks landed (a null-deref fix, a dependency bump, a docs typo), one was reverted, and the changelog has not been touched since rc1."
     },
     {
       "id": "ada-briefing-04",
       "kind": "briefing",
-      "prompt": "What's waiting on me specifically? I have about twenty minutes before my first meeting."
+      "prompt": "What's waiting on me specifically? #14287 review (9 days), a re-review on #14290 after the author pushed, an unanswered question from a contributor on #14255, and a release-notes draft due before Thursday's cut."
     },
     {
       "id": "ada-briefing-05",
       "kind": "briefing",
-      "prompt": "Weekly digest for the repo: 18 PRs merged, 4 reverted, 61 issues opened, 22 closed. Two contributors opened their first PR. Tell me what matters."
+      "prompt": "Weekly digest for the repo: 18 PRs merged, 4 reverted, 61 issues opened, 22 closed. Two contributors opened their first PR. Median time-to-first-review is 3.4 days, up from 1.9 last month."
     },
     {
       "id": "ada-briefing-06",
       "kind": "briefing",
-      "prompt": "I'm handing the repo to Sam for two weeks. Write the brief that tells them what's in flight and what will bite them."
+      "prompt": "I'm handing the repo to Sam for two weeks. In flight: the 2.9 release (rc2 cut, changelog unwritten), the flaky browser test nobody has owned, #14310's revert needing a proper fix, and a contributor PR that has been open 6 weeks awaiting a design decision."
     },
     {
       "id": "ada-reply-01",

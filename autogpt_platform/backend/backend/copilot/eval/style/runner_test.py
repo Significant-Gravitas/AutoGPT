@@ -358,7 +358,10 @@ async def test_run_scores_every_prompt_and_reads_it_against_the_baseline(
     assert result.cost_usd == pytest.approx(0.054)
     (comparison,) = result.comparison
     assert comparison.expert == "Max"
-    assert comparison.shared_prompts == 25, "the baseline's two unscored prompts"
+    stored = next(b for b in load_baseline().experts if b.expert == "Max")
+    assert comparison.shared_prompts == len(
+        stored.by_prompt
+    ), "shared prompts are the baseline's scored ones, however many a run dropped"
     save_baseline.assert_not_called()
     written = json.loads(out.read_text())
     assert written["fingerprint"] == result.fingerprint
