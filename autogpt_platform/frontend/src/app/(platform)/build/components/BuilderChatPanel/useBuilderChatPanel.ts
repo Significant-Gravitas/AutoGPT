@@ -22,6 +22,8 @@ import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { isKey } from "@/lib/keyboard";
+import { retryUnlessClientError } from "../../helpers/graphLoadError";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -90,6 +92,7 @@ export function useBuilderChatPanel({
       query: {
         select: okData,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );
@@ -134,7 +137,6 @@ export function useBuilderChatPanel({
       hydratedMessages,
       hasActiveStream,
       refetchSession: sessionQuery.refetch,
-      copilotMode: "fast",
       copilotModel: undefined,
     });
 
@@ -404,7 +406,7 @@ export function useBuilderChatPanel({
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (!isKey(e, "Escape")) return;
       if (
         panelRef &&
         panelRef.current &&

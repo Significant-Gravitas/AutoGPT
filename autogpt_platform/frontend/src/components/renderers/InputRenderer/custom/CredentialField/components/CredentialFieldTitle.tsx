@@ -19,8 +19,16 @@ export const CredentialFieldTitle = (props: {
   schema: RJSFSchema;
   fieldPathId: FieldPathId;
   required?: boolean;
+  selectedProvider?: string;
 }) => {
-  const { registry, uiOptions, schema, fieldPathId, required = false } = props;
+  const {
+    registry,
+    uiOptions,
+    schema,
+    fieldPathId,
+    required = false,
+    selectedProvider,
+  } = props;
   const { nodeId } = registry.formContext;
 
   const TitleFieldTemplate = getTemplate(
@@ -38,6 +46,7 @@ export const CredentialFieldTitle = (props: {
   const provider = getCredentialProviderFromSchema(
     useNodeStore.getState().getHardCodedValues(nodeId),
     schema as BlockIOCredentialsSubSchema,
+    selectedProvider,
   );
   const credentialProvider = provider
     ? `${toDisplayName(provider)} credential`

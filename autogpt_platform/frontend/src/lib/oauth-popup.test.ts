@@ -23,7 +23,7 @@ function setupPopup(stub: ReturnType<typeof makePopupStub> | null) {
     .mockImplementation(() => stub as unknown as Window);
 }
 
-describe("openOAuthPopup popup-close grace window", () => {
+describe("openOAuthPopup popup-close handling", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
@@ -32,9 +32,10 @@ describe("openOAuthPopup popup-close grace window", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  test("rejects with WINDOW_CLOSED after grace if no result arrives", async () => {
+  test("cross-origin flow survives a COOP-severed handle reporting closed", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
 
@@ -42,30 +43,40 @@ describe("openOAuthPopup popup-close grace window", () => {
       stateToken: "tok-1",
       useCrossOriginListeners: true,
     });
+    const onResolve = vi.fn();
     const onReject = vi.fn();
-    promise.catch(onReject);
+    promise.then(onResolve, onReject);
 
-    // User closes the popup.
+    // Providers serving COOP: same-origin (e.g. Stripe) trigger a
+    // browsing-context-group swap when the popup navigates to them — the
+    // parent's handle is severed and ``closed`` flips to true while the
+    // window is still open and the user hasn't signed in yet.
     popup.closed = true;
 
-    // First closed-poll tick (500ms) observes closed and starts the 3s grace.
-    await vi.advanceTimersByTimeAsync(500);
+    // The user takes far longer than any close-based deadline to authorize.
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(onReject).not.toHaveBeenCalled();
 
-    // Mid-grace: still pending.
-    await vi.advanceTimersByTimeAsync(1500);
-    expect(onReject).not.toHaveBeenCalled();
-
-    // Grace expires (total +3000ms after close-detect) → reject fires.
-    await vi.advanceTimersByTimeAsync(1600);
-    expect(onReject).toHaveBeenCalledTimes(1);
-    expect(onReject.mock.calls[0][0]).toBeInstanceOf(Error);
-    expect((onReject.mock.calls[0][0] as Error).message).toBe(
-      OAUTH_ERROR_WINDOW_CLOSED,
+    // The callback page finally lands the result via localStorage.
+    localStorage.setItem(
+      "oauth_popup_result_tok-1",
+      JSON.stringify({
+        message_type: "mcp_oauth_result",
+        success: true,
+        code: "late-auth-code",
+        state: "tok-1",
+      }),
     );
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(onReject).not.toHaveBeenCalled();
+    expect(onResolve).toHaveBeenCalledWith({
+      code: "late-auth-code",
+      state: "tok-1",
+    });
   });
 
-  test("final localStorage sweep resolves when result lands after close", async () => {
+  test("cross-origin localStorage poll resolves the flow", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
 
@@ -77,9 +88,8 @@ describe("openOAuthPopup popup-close grace window", () => {
     const onReject = vi.fn();
     promise.then(onResolve, onReject);
 
-    // Result lands in scoped localStorage just before the user closes the
-    // popup — the BroadcastChannel listener never fired (storage partitioning)
-    // and the periodic poll hasn't ticked yet.
+    // The BroadcastChannel listener never fires, so the callback page leaves
+    // the result in scoped localStorage for the periodic poll to read.
     localStorage.setItem(
       "oauth_popup_result_tok-2",
       JSON.stringify({
@@ -89,10 +99,8 @@ describe("openOAuthPopup popup-close grace window", () => {
         state: "tok-2",
       }),
     );
-    popup.closed = true;
 
-    // First closed-poll tick runs the synchronous final-storage check,
-    // which resolves the promise before the grace timer even arms.
+    // The next periodic localStorage poll resolves the flow.
     await vi.advanceTimersByTimeAsync(500);
 
     expect(onReject).not.toHaveBeenCalled();
@@ -104,7 +112,7 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect(localStorage.getItem("oauth_popup_result_tok-2")).toBeNull();
   });
 
-  test("result arriving during grace window cancels the WINDOW_CLOSED reject", async () => {
+  test("result arriving after the handle reports closed still resolves", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
 
@@ -116,11 +124,11 @@ describe("openOAuthPopup popup-close grace window", () => {
     const onReject = vi.fn();
     promise.then(onResolve, onReject);
 
-    // User closes popup before the result lands.
+    // Handle reports closed before the result lands.
     popup.closed = true;
-    await vi.advanceTimersByTimeAsync(500); // close-detect fires, grace armed
+    await vi.advanceTimersByTimeAsync(500);
 
-    // Result lands ~1s into the grace via localStorage (polled every 500ms).
+    // Result lands ~1s later via localStorage (polled every 500ms).
     localStorage.setItem(
       "oauth_popup_result_tok-3",
       JSON.stringify({
@@ -137,12 +145,12 @@ describe("openOAuthPopup popup-close grace window", () => {
       state: "tok-3",
     });
 
-    // Run out the rest of the grace window — must NOT reject after the fact.
+    // Keep advancing — must NOT reject after the fact.
     await vi.advanceTimersByTimeAsync(3000);
     expect(onReject).not.toHaveBeenCalled();
   });
 
-  test("abort during grace window tears down the grace timer", async () => {
+  test("abort after the handle reports closed rejects with CANCELED", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
 
@@ -154,9 +162,9 @@ describe("openOAuthPopup popup-close grace window", () => {
     promise.catch(onReject);
 
     popup.closed = true;
-    await vi.advanceTimersByTimeAsync(500); // grace armed
+    await vi.advanceTimersByTimeAsync(500);
 
-    // Caller aborts (e.g. component unmount) before grace expires.
+    // Caller aborts (e.g. component unmount).
     cleanup.abort();
     await vi.advanceTimersByTimeAsync(10);
 
@@ -166,8 +174,7 @@ describe("openOAuthPopup popup-close grace window", () => {
       OAUTH_ERROR_FLOW_CANCELED,
     );
 
-    // Advancing past the original grace deadline must not produce a second
-    // reject — the grace setTimeout was cleared by the abort listener.
+    // Advancing further must not produce a second reject.
     await vi.advanceTimersByTimeAsync(5000);
     expect(onReject).toHaveBeenCalledTimes(1);
   });
@@ -214,6 +221,101 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect((onReject.mock.calls[0][0] as Error).message).toMatch(/timed out/i);
   });
 
+  test("timeout cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-timeout",
+      cancelUrl: "/api/oauth/pending/cancel",
+      timeout: 1000,
+    });
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1100);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/oauth/pending/cancel"),
+      expect.objectContaining({ method: "POST", keepalive: true }),
+    );
+  });
+
+  test("manual abort cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-abort",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    cleanup.abort();
+    cleanup.abort();
+    await vi.runAllTicks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(popup.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("popup close cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-close",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    popup.closed = true;
+    await vi.advanceTimersByTimeAsync(500);
+    cleanup.abort();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("successful result does not cancel provider-side state", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-success",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          message_type: "oauth_popup_result",
+          success: true,
+          code: "auth-code",
+          state: "tok-success",
+        },
+      }),
+    );
+
+    await expect(promise).resolves.toEqual({
+      code: "auth-code",
+      state: "tok-success",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("state-mismatch message is ignored and does not resolve the promise", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
@@ -255,6 +357,7 @@ describe("preOpenedWindow option", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("navigates the pre-opened window instead of calling window.open again", () => {
@@ -304,7 +407,8 @@ describe("preOpenedWindow option", () => {
   });
 
   test("null preOpenedWindow goes straight to the new-tab fallback", () => {
-    const openSpy = setupPopup(makePopupStub());
+    const fallback = makePopupStub();
+    const openSpy = setupPopup(fallback);
 
     const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
@@ -322,6 +426,7 @@ describe("preOpenedWindow option", () => {
     expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
 
     cleanup.abort();
+    expect(fallback.close).toHaveBeenCalledOnce();
   });
 
   test("preOpenOAuthPopup opens a blank popup window", () => {
@@ -358,6 +463,26 @@ describe("preOpenedWindow option", () => {
     expect((onReject.mock.calls[0][0] as Error).message).toBe(
       OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
     );
+  });
+
+  test("blocked popup and fallback cancel provider-side state exactly once", async () => {
+    setupPopup(null);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-blocked",
+      preOpenedWindow: null,
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    cleanup.abort();
+    await vi.runAllTicks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("rejects immediately when window.open is blocked for both attempts", async () => {

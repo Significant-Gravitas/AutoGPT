@@ -35,6 +35,8 @@ from prisma.types import (
     UserCreateInput,
 )
 
+from backend.data.onboarding import OnboardingStep
+
 faker = Faker()
 
 # Constants for data generation limits
@@ -706,7 +708,7 @@ async def main():
         users, k=int(NUM_USERS * 0.7)
     ):  # 70% of users have onboarding data
         completed_steps = []
-        possible_steps = list(prisma.enums.OnboardingStep)
+        possible_steps = [step.value for step in OnboardingStep]
         # Randomly complete some steps
         if random.random() < 0.8:
             num_steps = random.randint(1, len(possible_steps))

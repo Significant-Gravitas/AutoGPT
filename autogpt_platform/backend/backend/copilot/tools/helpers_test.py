@@ -1,17 +1,22 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.blocks._base import BlockType
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_block_provider,
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    is_picker_field,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -22,11 +27,75 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    CredentialsType,
+)
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
+
+
+class TestGetBlockProvider:
+    def test_returns_only_provider(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) == "google"
+
+    def test_returns_none_for_multiple_providers(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE, ProviderName.GITHUB}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_without_providers(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {}
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_for_invalid_schema_info_shape(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = []
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_when_schema_introspection_fails(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.side_effect = RuntimeError
+
+        assert get_block_provider(block) is None
+
+    def test_retries_schema_introspection_after_transient_failure(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.side_effect = [
+            RuntimeError,
+            {"credentials": info},
+        ]
+
+        assert get_block_provider(block) is None
+        assert get_block_provider(block) == "google"
 
 
 def _make_block(
@@ -58,6 +127,13 @@ def _patch_workspace():
     mock_ws_db = MagicMock()
     mock_ws_db.get_or_create_workspace = AsyncMock(return_value=mock_workspace)
     return patch("backend.copilot.tools.helpers.workspace_db", return_value=mock_ws_db)
+
+
+def _patch_user_db():
+    user = MagicMock(timezone="UTC")
+    client = MagicMock()
+    client.get_user_by_id = AsyncMock(return_value=user)
+    return patch("backend.copilot.tools.helpers.user_db", return_value=client)
 
 
 def _patch_credit_db(
@@ -1471,6 +1547,225 @@ class TestExecuteBlockAutoCredentials:
         mock_lock.release.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+class TestExecuteBlockCredentialLeases:
+    async def test_regular_credentials_are_leased_and_released(self):
+        block = _make_block()
+        captured: dict[str, Any] = {}
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+
+        async def execute(_input_data: dict, **kwargs: Any):
+            captured.update(kwargs)
+            yield "result", "ok"
+
+        block.execute = execute
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-lease-1",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert captured["credentials"] is credentials
+        assert captured["credential_leases"] == {"credentials": lease}
+        manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
+        manager.get.assert_not_awaited()
+        lease.release.assert_awaited_once()
+
+    async def test_codex_entitlement_is_checked_against_acquired_credentials(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+        gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-entitlement",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Max plan required" in result.message
+        gate.assert_awaited_once_with(_USER)
+        manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
+        lease.release.assert_awaited_once()
+
+    async def test_credential_metadata_cannot_hide_authoritative_codex_provider(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        manager = MagicMock()
+        manager.get = AsyncMock(return_value=credentials)
+        manager.acquire_lease = AsyncMock()
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.OPENAI, ProviderName.CODEX],
+            Literal["api_key", "oauth2"],
+        ](id="cred-1", provider=ProviderName.OPENAI, type="oauth2")
+        gate = AsyncMock()
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-disguised-codex",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Failed to retrieve credentials" in result.message
+        gate.assert_not_awaited()
+        manager.acquire_lease.assert_not_awaited()
+
+    async def test_ordinary_credentials_keep_nonlocking_lookup(self):
+        block = _make_block()
+        captured: dict[str, Any] = {}
+        credentials = MagicMock(id="cred-1", provider="openai", type="api_key")
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock()
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+
+        async def execute(_input_data: dict, **kwargs: Any):
+            captured.update(kwargs)
+            yield "result", "ok"
+
+        block.execute = execute
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.OPENAI], Literal["api_key"]
+        ](id="cred-1", provider=ProviderName.OPENAI, type="api_key")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-api-key",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert captured["credentials"] is credentials
+        assert "credential_leases" not in captured
+        manager.get.assert_awaited_once_with(_USER, "cred-1", lock=False)
+        manager.acquire_lease.assert_not_awaited()
+
+    async def test_regular_lease_is_released_when_input_coercion_fails(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.coerce_inputs_to_schema",
+                side_effect=RuntimeError("coercion failed"),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-lease-2",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        lease.release.assert_awaited_once()
+
+
 class TestRequireLibraryCheck:
     """Tests for the library-similarity gate. The gate is turn-scoped:
     only the current turn's in-flight find_library_agent calls satisfy
@@ -1548,3 +1843,110 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestPickerInputs:
+    """Setup cards carry only picker-backed inputs; the rest is asked in chat."""
+
+    _schema: ClassVar[dict[str, Any]] = {
+        "properties": {
+            "term": {"type": "string"},
+            "limit": {"type": "integer", "default": 10, "advanced": True},
+            "spreadsheet": {
+                "type": "object",
+                "format": "google-drive-picker",
+            },
+            "doc": {
+                "type": "object",
+                "auto_credentials": {"provider": "google", "kwarg_name": "creds"},
+            },
+            "credentials": {"type": "object"},
+        },
+        "required": ["term", "spreadsheet", "credentials"],
+    }
+
+    def test_is_picker_field(self):
+        assert is_picker_field({"format": "google-drive-picker"})
+        assert is_picker_field({"auto_credentials": {"provider": "google"}})
+        assert not is_picker_field({"type": "string"})
+        assert not is_picker_field(None)
+
+    def test_only_picker_fields_survive(self):
+        inputs = get_picker_inputs_from_schema(
+            self._schema, exclude_fields={"credentials"}
+        )
+        assert [i["name"] for i in inputs] == ["spreadsheet", "doc"]
+
+    def test_plain_inputs_yield_empty_list(self):
+        schema = {
+            "properties": {"term": {"type": "string"}},
+            "required": ["term"],
+        }
+        assert get_picker_inputs_from_schema(schema) == []
+        assert len(get_inputs_from_schema(schema)) == 1
+
+    def test_provided_values_are_kept_on_picker_fields(self):
+        picked = {"id": "file-1", "name": "Sheet"}
+        inputs = get_picker_inputs_from_schema(
+            self._schema,
+            exclude_fields={"credentials"},
+            input_data={"term": "bug", "spreadsheet": picked},
+        )
+        by_name = {i["name"]: i for i in inputs}
+        assert by_name["spreadsheet"]["value"] == picked
+        assert "term" not in by_name
+
+
+class TestExecuteBlockExpertFileScope:
+    """A ``workspace://`` block input is a second door into the workspace, so
+    the run it belongs to must carry the session's expert."""
+
+    async def test_expert_block_run_cannot_read_another_sessions_file(self):
+        result = await _store_workspace_file("/sessions/personal/private.txt")
+        assert isinstance(result, ErrorResponse)
+        assert "outside this expert's scope" in result.message
+
+    async def test_expert_block_run_reads_its_own_session_file(self):
+        result = await _store_workspace_file(f"/sessions/{_SESSION}/notes.txt")
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+async def _store_workspace_file(path: str):
+    """Run FileStoreBlock on ``workspace://<path>`` in an expert session."""
+    from backend.blocks.basic import FileStoreBlock
+    from backend.data.workspace_scope import WorkspaceScope
+    from backend.util.workspace_test import _make_workspace_file
+
+    scope_db = MagicMock()
+    scope_db.resolve_expert_workspace_scope = AsyncMock(
+        return_value=WorkspaceScope(expert_id="expert-a")
+    )
+    files = MagicMock()
+    files.get_workspace_file_by_path = AsyncMock(
+        return_value=_make_workspace_file(path=path)
+    )
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"secret"
+    credit_patch, _ = _patch_credit_db()
+
+    with (
+        _patch_workspace(),
+        credit_patch,
+        patch("backend.data.db_accessors.workspace_db", return_value=scope_db),
+        patch("backend.util.workspace.workspace_db", return_value=files),
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.get_cloud_storage_handler", AsyncMock()),
+    ):
+        return await execute_block(
+            block=FileStoreBlock(),
+            block_id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            input_data={"file_in": f"workspace://{path}", "base_64": True},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-scope",
+            matched_credentials={},
+            dry_run=False,
+            expert_id="expert-a",
+        )

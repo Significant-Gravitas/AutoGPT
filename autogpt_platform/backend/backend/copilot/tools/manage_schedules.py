@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -15,6 +16,12 @@ from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+
+def _is_in_session_scope(
+    job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
+) -> bool:
+    return job.expert_id == session.expert_id
 
 
 class ScheduleSummary(BaseModel):
@@ -156,7 +163,9 @@ class ListSchedulesTool(BaseTool):
             user_id=user_id,
         )
 
-        schedules = [_to_summary(job) for job in jobs]
+        schedules = [
+            _to_summary(job) for job in jobs if _is_in_session_scope(job, session)
+        ]
 
         message = (
             f"Found {len(schedules)} schedule(s)."
@@ -205,6 +214,21 @@ class DeleteScheduleTool(BaseTool):
             "required": ["schedule_id"],
         }
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, ScheduleDeletedResponse):
+            return None
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.deleted",
+            title="Removed a schedule",
+            schedule_id=result.schedule_id,
+        )
+
     async def _execute(
         self,
         user_id: str | None,
@@ -227,8 +251,29 @@ class DeleteScheduleTool(BaseTool):
                 session_id=session_id,
             )
 
+        scheduler = get_scheduler_client()
+        # include_paused: a paused expert schedule or fired one-shot must
+        # still be deletable — the default listing hides them.
+        jobs = await scheduler.get_execution_schedules(
+            user_id=user_id, include_paused=True
+        )
+        current = next(
+            (
+                job
+                for job in jobs
+                if job.id == schedule_id and _is_in_session_scope(job, session)
+            ),
+            None,
+        )
+        if current is None:
+            return ErrorResponse(
+                message=f"Schedule '{schedule_id}' not found.",
+                error="schedule_not_found",
+                session_id=session_id,
+            )
+
         try:
-            await get_scheduler_client().delete_schedule(
+            await scheduler.delete_schedule(
                 schedule_id=schedule_id,
                 user_id=user_id,
             )

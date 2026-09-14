@@ -4,6 +4,7 @@ import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import {
   completeOnboardingWizard,
+  advanceToRoleStep,
   skipOnboardingIfPresent,
 } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
@@ -15,7 +16,8 @@ test("auth happy path: user can sign up with a fresh account", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
-  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+  await advanceToRoleStep(page);
+  await expect(page.getByText("What best describes you")).toBeVisible();
 });
 
 test("auth happy path: user can sign up, enter the app, and log out", async ({
@@ -25,7 +27,8 @@ test("auth happy path: user can sign up, enter the app, and log out", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
-  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+  await advanceToRoleStep(page);
+  await expect(page.getByText("What best describes you")).toBeVisible();
 
   await skipOnboardingIfPresent(page, "/marketplace");
   await expect(page).toHaveURL(/\/marketplace/);
@@ -83,7 +86,6 @@ test("auth happy path: user can complete onboarding and land in the app", async 
   await expect(page).toHaveURL(/\/onboarding/);
 
   await completeOnboardingWizard(page, {
-    name: "Smoke User",
     role: "Engineering",
     painPoints: ["Research", "Reports & data"],
   });

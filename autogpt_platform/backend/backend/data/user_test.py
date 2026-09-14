@@ -9,7 +9,7 @@ import pytest
 
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 
 def _application_user(user_id: str, email: str) -> user_module.User:
@@ -84,6 +84,7 @@ class TestUpdateUserTimezone:
         time. A profile-page timezone change MUST eagerly re-register
         the dream-system crons so they fire at the right local time
         without waiting for the 7-day Redis dedup-key TTL to expire."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
         from backend.copilot.dream import scheduling as dream_scheduling
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
@@ -101,6 +102,19 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_or_create_user, "cache_clear"),
             patch.object(
                 dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
+            ),
+            # This test isolates the dream-system re-registration contract;
+            # the sibling morning-briefing re-registration (also wired here)
+            # is covered separately by scheduling_test.py.
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=AsyncMock(),
             ),
         ):
             mock_prisma_user.prisma.return_value.update = AsyncMock(
@@ -120,6 +134,7 @@ class TestUpdateUserTimezone:
         exception never observed. The spawn must keep a strong ref in
         ``_background_tasks`` until done and log failures via the
         done-callback instead of dropping them."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
         from backend.copilot.dream import scheduling as dream_scheduling
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
@@ -135,6 +150,21 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_or_create_user, "cache_clear"),
             patch.object(
                 dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
+            ),
+            # Isolate the dream-system task-retention contract under test
+            # from the sibling morning-briefing re-registration (also wired
+            # here) — real Redis/flag I/O in that path would otherwise give
+            # the event loop extra turns and let the dream task above
+            # complete (and get discarded) before the assertion below runs.
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=AsyncMock(),
             ),
             patch.object(user_module.logger, "warning") as warn_mock,
         ):
@@ -158,6 +188,60 @@ class TestUpdateUserTimezone:
         assert not user_module._background_tasks & set(spawned)
         warn_mock.assert_called_once()
         assert isinstance(warn_mock.call_args.kwargs["exc_info"], RuntimeError)
+
+    @pytest.mark.asyncio
+    async def test_briefing_re_register_runs_in_background_clear_first(self):
+        """The briefing re-register must not block the profile update
+        (it's a spawned task, like the dream sibling) and must clear the
+        stored marker before re-ensuring, or the drift check would read
+        the just-superseded timezone and skip the re-register."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
+        from backend.copilot.dream import scheduling as dream_scheduling
+
+        prisma_user = MagicMock(id="user-tz", email="user@example.com")
+        calls: list[str] = []
+
+        async def fake_clear(user_id: str):
+            calls.append("clear")
+
+        async def fake_ensure(user_id: str):
+            calls.append("ensure")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+            patch.object(user_module.get_user_by_email, "cache_delete"),
+            patch.object(user_module.get_or_create_user, "cache_clear"),
+            patch.object(
+                dream_scheduling, "ensure_dream_system_scheduled", new=AsyncMock()
+            ),
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=fake_clear,
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=fake_ensure,
+            ),
+        ):
+            mock_prisma_user.prisma.return_value.update = AsyncMock(
+                return_value=prisma_user
+            )
+            await update_user_timezone("user-tz", "Europe/Paris")
+            assert calls == []  # nothing ran inline — it's a background task
+
+            spawned = [
+                t
+                for t in user_module._background_tasks
+                if t.get_name() == "briefing-tz-reregister-user-tz"
+            ]
+            assert spawned, "briefing re-register task must be spawned + retained"
+            await asyncio.gather(*spawned)
+
+        assert calls == ["clear", "ensure"]
 
 
 class TestTableBackedCredentials:
@@ -530,3 +614,89 @@ class TestGetAuthUserFlagFields:
             fields = await user_module.get_auth_user_flag_fields("ghost")
 
         assert fields is None
+
+
+class TestGetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_returns_the_saved_route(self):
+        user = _application_user("user-1", "user@example.com")
+        user.default_chat_auth_provider = "codex"
+        user.default_chat_credential_id = "cred-1"
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == ("codex", "cred-1")
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_platform_row_yet_reads_as_nothing_saved(self):
+        """Sign-up leaves a window before ``POST /auth/user`` creates the row.
+
+        Transport discovery and session creation both read this on paths that
+        never touched the user table before the setting existed, so raising
+        here would take them down for a freshly signed-up account.
+        """
+        with patch.object(
+            user_module,
+            "get_user_by_id",
+            AsyncMock(side_effect=ValueError("User not found with ID: user-1")),
+        ):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_an_old_cached_user_without_route_fields_reads_as_nothing_saved(self):
+        user = _application_user("user-1", "user@example.com")
+        user.__dict__.pop("default_chat_auth_provider", None)
+        user.__dict__.pop("default_chat_credential_id", None)
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
+
+
+class TestSetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_missing_user_is_reported_as_not_found(self):
+        with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+            prisma_user = mock_prisma_user.prisma.return_value
+            prisma_user.find_unique = AsyncMock(return_value=None)
+            prisma_user.update_many = AsyncMock()
+
+            with pytest.raises(NotFoundError, match="User user-1 not found"):
+                await user_module.set_user_default_chat_route(
+                    "user-1", "platform", None
+                )
+
+        prisma_user.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clearing_provider_also_clears_stale_credential_id(self):
+        prisma_user = MagicMock(id="user-1", email="user@example.com")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.get_user_by_id, "cache_delete") as by_id_del,
+            patch.object(user_module.get_user_by_email, "cache_delete") as by_email_del,
+            patch.object(user_module.get_or_create_user, "cache_clear") as goc_clear,
+        ):
+            prisma = mock_prisma_user.prisma.return_value
+            prisma.find_unique = AsyncMock(return_value=prisma_user)
+            prisma.update_many = AsyncMock(return_value=1)
+
+            await user_module.set_user_default_chat_route(
+                "user-1", None, "stale-credential"
+            )
+
+        prisma.update_many.assert_awaited_once_with(
+            where={"id": "user-1"},
+            data={
+                "defaultChatAuthProvider": None,
+                "defaultChatCredentialId": None,
+            },
+        )
+        by_id_del.assert_called_once_with("user-1")
+        by_email_del.assert_called_once_with("user@example.com")
+        goc_clear.assert_called_once_with()

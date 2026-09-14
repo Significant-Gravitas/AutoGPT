@@ -1,4 +1,10 @@
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRef } from "../../../store";
 import {
@@ -40,6 +46,12 @@ function getPanel(): HTMLElement {
   const panel = document.querySelector("[data-artifact-panel]");
   if (!(panel instanceof HTMLElement)) throw new Error("panel not rendered");
   return panel;
+}
+
+/** The panel tweens its width open, so the inline style passes through
+ *  intermediate values before settling on the clamped result. */
+async function expectPanelWidth(px: number) {
+  await waitFor(() => expect(getPanel().style.width).toBe(`${px}px`));
 }
 
 describe("ArtifactPanel (desktop) width clamping", () => {
@@ -91,7 +103,7 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     render(<ArtifactPanel />);
 
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(getPanel().style.width).toBe(`${1000 - PANEL_RESERVED_WIDTH}px`);
+    await expectPanelWidth(1000 - PANEL_RESERVED_WIDTH);
   });
 
   it("keeps the stored width when the row leaves enough space", async () => {
@@ -102,7 +114,7 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     render(<ArtifactPanel />);
 
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(getPanel().style.width).toBe(`${DEFAULT_ARTIFACT_PANEL_WIDTH}px`);
+    await expectPanelWidth(DEFAULT_ARTIFACT_PANEL_WIDTH);
   });
 
   it("re-clamps when the row is resized", async () => {
@@ -112,11 +124,33 @@ describe("ArtifactPanel (desktop) width clamping", () => {
 
     render(<ArtifactPanel />);
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(getPanel().style.width).toBe(`${DEFAULT_ARTIFACT_PANEL_WIDTH}px`);
+    await expectPanelWidth(DEFAULT_ARTIFACT_PANEL_WIDTH);
 
     offsetWidthSpy.mockReturnValue(900);
     act(() => ResizeObserverMock.instances[0].trigger());
 
-    expect(getPanel().style.width).toBe(`${900 - PANEL_RESERVED_WIDTH}px`);
+    await expectPanelWidth(900 - PANEL_RESERVED_WIDTH);
+  });
+
+  it("keeps the header Close button for standalone hosts", async () => {
+    offsetWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(2000);
+
+    render(<ArtifactPanel />);
+
+    expect(await screen.findByText("notes.txt")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
+  });
+
+  it("drops the header Close button when the host closes it externally", async () => {
+    offsetWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(2000);
+
+    render(<ArtifactPanel hasExternalClose />);
+
+    expect(await screen.findByText("notes.txt")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ on:
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   merge_group:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha }}
@@ -24,6 +25,9 @@ defaults:
   run:
     shell: bash
     working-directory: autogpt_platform/frontend
+
+permissions:
+  contents: read
 
 jobs:
   setup:
@@ -164,6 +168,7 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "CHAT_TEST_MODE=true" >> ../backend/.env
           echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
@@ -327,7 +332,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: autogpt_platform/frontend/playwright-report
@@ -336,7 +341,7 @@ jobs:
 
       - name: Upload Playwright test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-test-results
           path: autogpt_platform/frontend/test-results

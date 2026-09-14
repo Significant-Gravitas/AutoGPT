@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildClarificationAnswersMessage,
+  extractClarifyingQuestions,
   normalizeClarifyingQuestions,
 } from "../clarifying-questions";
 
@@ -58,6 +59,140 @@ describe("normalizeClarifyingQuestions", () => {
 
   it("returns an empty array for empty input", () => {
     expect(normalizeClarifyingQuestions([])).toEqual([]);
+  });
+
+  it("keeps string options and drops blank or non-string entries", () => {
+    const result = normalizeClarifyingQuestions([
+      { question: "Q1", keyword: "k1", options: ["Email", "  ", 42, "Slack"] },
+      { question: "Q2", keyword: "k2", options: [] },
+      { question: "Q3", keyword: "k3", options: "Email" },
+    ]);
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toBeUndefined();
+    expect(result[2].options).toBeUndefined();
+  });
+
+  it("trims padded options and drops duplicates", () => {
+    const result = normalizeClarifyingQuestions([
+      { question: "Q1", keyword: "k1", options: [" Email ", "Slack", "Email"] },
+    ]);
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
+});
+
+describe("extractClarifyingQuestions", () => {
+  it("reads options straight from the output when present", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
+
+  it("recovers options from the input when the output collapsed them", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+      output: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            example: "Email, Slack",
+          },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[0].example).toBe("Email, Slack");
+  });
+
+  it("keeps same-worded questions apart when recovering from the input", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "source",
+            options: ["Email", "Slack"],
+          },
+          {
+            question: "Which channel?",
+            keyword: "destination",
+            options: ["Notion", "Drive"],
+          },
+        ],
+      },
+      output: {
+        questions: [
+          { question: "Which channel?", keyword: "source" },
+          { question: "Which channel?", keyword: "destination" },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toEqual(["Notion", "Drive"]);
+  });
+
+  it("keeps a keyword/question pair that a space separator would collide", () => {
+    // "a" + "b c" and "a b" + "c" join to the same string under a space, so
+    // the recovery key has to use a separator neither half can contain.
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          { question: "b c", keyword: "a", options: ["Email", "Slack"] },
+          { question: "c", keyword: "a b", options: ["Notion", "Drive"] },
+        ],
+      },
+      output: {
+        questions: [
+          { question: "b c", keyword: "a" },
+          { question: "c", keyword: "a b" },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toEqual(["Notion", "Drive"]);
+  });
+
+  it("falls back to the input while the call is still in flight", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].question).toBe("Which channel?");
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
+
+  it("leaves options unset when neither side carries them", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [{ question: "Which channel?", keyword: "channel" }],
+      },
+    });
+    expect(result[0].options).toBeUndefined();
   });
 });
 
