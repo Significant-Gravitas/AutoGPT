@@ -42,11 +42,17 @@ def _message(body: str = "{}") -> MagicMock:
 
 class _FakeIterator:
     """Stands in for `queue.iterator()`: yields the given messages, then
-    behaves on exit however the test says."""
+    either ends, waits for more like a live queue, or fails on exit."""
 
-    def __init__(self, messages: list[Any], exit_error: BaseException | None = None):
+    def __init__(
+        self,
+        messages: list[Any],
+        exit_error: BaseException | None = None,
+        then_wait: bool = False,
+    ):
         self._messages = list(messages)
         self._exit_error = exit_error
+        self._then_wait = then_wait
 
     async def __aenter__(self):
         return self
@@ -60,13 +66,19 @@ class _FakeIterator:
         return self
 
     async def __anext__(self):
-        if not self._messages:
-            raise StopAsyncIteration
-        return self._messages.pop(0)
+        if self._messages:
+            return self._messages.pop(0)
+        if self._then_wait:
+            await asyncio.Event().wait()
+        raise StopAsyncIteration
 
 
-def _queue(messages: list[Any], exit_error: BaseException | None = None) -> MagicMock:
-    return MagicMock(iterator=lambda: _FakeIterator(messages, exit_error))
+def _queue(
+    messages: list[Any],
+    exit_error: BaseException | None = None,
+    then_wait: bool = False,
+) -> MagicMock:
+    return MagicMock(iterator=lambda: _FakeIterator(messages, exit_error, then_wait))
 
 
 # ── throughput ─────────────────────────────────────────────────────────────
@@ -234,40 +246,91 @@ async def test_a_hung_handler_is_a_transient_failure_not_a_channel_loss(monkeypa
     message.ack.assert_not_awaited()
 
 
+# ── the handlers are supervised ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_settle_failure_is_not_mistaken_for_a_handler_failure():
+    """The work succeeded; only the ack failed. Retrying the handler would
+    repeat the work, and the retry loop's own DLQ reject would then hide the
+    broken channel behind a "sent to DLQ" line."""
+    manager = _manager()
+    handler = AsyncMock(return_value=True)
+    message = _message()
+    message.ack.side_effect = RuntimeError("channel is in a bad way")
+
+    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
+        with pytest.raises(RuntimeError, match="bad way"):
+            await manager._process_message_with_retry(message, handler, "q")
+
+    assert handler.await_count == 1
+    sleep.assert_not_awaited()
+    message.reject.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_handler_that_cannot_settle_takes_the_consumer_down():
+    """An ack that fails for a reason `_settle` does not absorb leaves the
+    delivery unacked at the broker. Left running, enough of those pin the
+    prefetch and the consumer looks alive while delivering nothing; failing
+    it is what triggers the reconnect."""
+    manager = _manager()
+    broken = _message("0")
+    broken.ack.side_effect = RuntimeError("channel is in a bad way")
+    never = _message("1")
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await manager._consume_queue(
+            _queue([broken, never], then_wait=True), AsyncMock(return_value=True), "q"
+        )
+
+    assert raised.value.subgroup(RuntimeError) is not None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_lets_in_flight_handlers_settle_before_cancelling_them():
+    """A handler cancelled between its send and its ack leaves an email
+    delivered and the message unacked, which the broker then redelivers."""
+    manager = _manager()
+    message = _message()
+
+    async def slow(_: str) -> bool:
+        await asyncio.sleep(0.05)
+        return True
+
+    consumer = asyncio.create_task(
+        manager._consume_queue(_queue([message], then_wait=True), slow, "q")
+    )
+    await asyncio.sleep(0.01)
+    consumer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await consumer
+
+    message.ack.assert_awaited_once()
+
+
 # ── permanent delivery failures ────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
-    ("code", "expect_dlq"),
-    [(406, True), (300, True), (10, False)],
+    ("code", "attempts"),
+    [(406, 1), (300, 1), (10, delivery.MAX_CONSUMER_RETRY_ATTEMPTS)],
     ids=["inactive-recipient", "invalid-request", "bad-token-is-transient"],
 )
 @pytest.mark.asyncio
 async def test_postmark_rejections_that_cannot_succeed_go_straight_to_the_dlq(
-    code: int, expect_dlq: bool
+    code: int, attempts: int
 ):
+    """Classified at the retry boundary, so every consumer that sends mail
+    gets it, not only the user-notification one."""
     manager = _manager()
-    manager.email_sender = MagicMock(
-        send_notification=AsyncMock(side_effect=ClientError("no", error_code=code))
-    )
-    preference = MagicMock(email="user@example.com", daily_limit=10)
-    db = MagicMock(
-        get_user_notification_preference=AsyncMock(return_value=preference),
-        get_user_email_verification=AsyncMock(return_value=True),
-    )
-    parsed = MagicMock(user_id="user-1", type="ALERT", data=MagicMock())
+    handler = AsyncMock(side_effect=ClientError("no", error_code=code))
+    message = _message()
 
-    with (
-        patch.object(manager, "_parse_message", return_value=parsed),
-        patch.object(delivery, "get_database_manager_async_client", return_value=db),
-        patch.object(delivery, "wants_notification", return_value=True),
-        patch.object(delivery, "claim_daily_send", AsyncMock(return_value=True)),
-        patch.object(delivery, "generate_unsubscribe_link", return_value="u"),
-        patch.object(delivery, "generate_preference_link", return_value="p"),
-        patch.object(delivery, "SERVICE_MESSAGES", frozenset()),
-    ):
-        if expect_dlq:
-            assert await manager._process_user_notification("{}") is False
-        else:
-            with pytest.raises(ClientError):
-                await manager._process_user_notification("{}")
+    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
+        await manager._process_message_with_retry(message, handler, "q")
+
+    assert handler.await_count == attempts
+    assert sleep.await_count == attempts - 1
+    message.reject.assert_awaited_once_with(requeue=False)
+    message.ack.assert_not_awaited()

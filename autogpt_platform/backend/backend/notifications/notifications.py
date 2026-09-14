@@ -71,10 +71,15 @@ def _utc_today() -> date:
 
 
 def _is_channel_loss(error: BaseException) -> bool:
-    """Every member is the queue iterator failing to nack on a dead channel."""
-    if not isinstance(error, ExceptionGroup) or not error.exceptions:
+    """Every leaf is the queue iterator failing to nack on a dead channel.
+
+    `split` walks nested groups too: the TaskGroup wraps whatever the
+    iterator's exit raised, so the nack failures can sit one level down.
+    """
+    if not isinstance(error, BaseExceptionGroup):
         return False
-    return all(isinstance(exc, ChannelInvalidStateError) for exc in error.exceptions)
+    _, rest = error.split(ChannelInvalidStateError)
+    return rest is None
 
 
 def _is_permanent_delivery_failure(error: ClientError) -> bool:
@@ -93,6 +98,11 @@ CONSUMER_CONCURRENCY = 10
 # by default), and every other in-flight ack on that channel then fails too;
 # a bounded wait turns one hung call into one retried message instead.
 MESSAGE_PROCESSING_TIMEOUT_SECONDS = 300
+# On shutdown, how long in-flight handlers get to settle before they are
+# cancelled. A handler cancelled between its send and its ack leaves an
+# email delivered and the message unacked, which the broker then redelivers.
+# Must fit inside SHUTDOWN_TIMEOUT_SECONDS with room for the cancel itself.
+HANDLER_SHUTDOWN_GRACE_SECONDS = 5
 # Postmark error codes that will never succeed on retry: 300 is a malformed
 # request (bad address), 406 an inactive recipient (hard bounce, spam
 # complaint or suppression). Retrying only delays the dead-letter by seconds.
@@ -267,28 +277,15 @@ class NotificationManager(AppService):
             # redelivery today would only be refused again.
             return True
 
-        try:
-            await self.email_sender.send_notification(
-                notification_type=event.type,
-                user_email=preference.email,
-                data=event.data,
-                unsubscribe_link=generate_unsubscribe_link(event.user_id),
-                volume_links={
-                    c: generate_preference_link(event.user_id, c)
-                    for c in FOOTER_CHOICES
-                },
-            )
-        except ClientError as e:
-            if not _is_permanent_delivery_failure(e):
-                raise
-            # A suppressed or malformed address does not become deliverable
-            # by waiting six seconds; three retries only put the dead-letter
-            # off and left three warnings per message in the log.
-            logger.warning(
-                f"Permanent delivery failure for {event.type} to user "
-                f"{event.user_id} (Postmark {e.error_code}), sending to DLQ"
-            )
-            return False
+        await self.email_sender.send_notification(
+            notification_type=event.type,
+            user_email=preference.email,
+            data=event.data,
+            unsubscribe_link=generate_unsubscribe_link(event.user_id),
+            volume_links={
+                c: generate_preference_link(event.user_id, c) for c in FOOTER_CHOICES
+            },
+        )
         return True
 
     async def _process_ops_notification(self, message: str) -> bool:
@@ -423,45 +420,51 @@ class NotificationManager(AppService):
                 await self._process_message_with_retry(
                     message, process_func, queue_name
                 )
-            except Exception as e:
-                # The retry loop settles every outcome it knows about; this
-                # is an ack or reject that failed for a reason other than a
-                # lost channel. The message is still unacked at the broker.
-                logger.exception(f"Unsettled message in {queue_name}: {e}")
             finally:
                 slots.release()
 
+        # The TaskGroup is the supervisor: a handler that fails to settle its
+        # message (an ack or reject failing for a reason other than a lost
+        # channel, which `_settle` absorbs) cancels the loop and surfaces
+        # here, so the consumer reconnects instead of sitting alive with
+        # unacked deliveries slowly pinning the prefetch. On cancellation it
+        # cancels and awaits every handler before returning.
         try:
-            async with queue.iterator() as queue_iter:
-                async for message in queue_iter:
-                    if not self.running:
-                        break
-                    await slots.acquire()
-                    task = asyncio.create_task(handle(message))
-                    in_flight.add(task)
-                    task.add_done_callback(in_flight.discard)
+            async with asyncio.TaskGroup() as group:
+                try:
+                    async with queue.iterator() as queue_iter:
+                        async for message in queue_iter:
+                            if not self.running:
+                                break
+                            await slots.acquire()
+                            task = group.create_task(handle(message))
+                            in_flight.add(task)
+                            task.add_done_callback(in_flight.discard)
+                except asyncio.CancelledError:
+                    # Shutdown. Let in-flight handlers settle before the
+                    # TaskGroup cancels them, or a send that has already
+                    # gone out is redelivered because its ack never went.
+                    if in_flight:
+                        await asyncio.wait(
+                            in_flight, timeout=HANDLER_SHUTDOWN_GRACE_SECONDS
+                        )
+                    raise
         except asyncio.CancelledError:
             logger.info(f"Consumer for {queue_name} cancelled")
             raise
-        except ExceptionGroup as group:
+        except ExceptionGroup as failures:
             # The iterator's exit nacks whatever it still buffered; when the
             # channel has been swapped out under it (a robust reconnect), every
             # one of those fails the same way. The broker requeues unacked
             # deliveries on its own, so this is a reconnect, not a data loss.
-            if not _is_channel_loss(group):
+            if not _is_channel_loss(failures):
                 logger.exception(f"Fatal error in consumer for {queue_name}")
                 raise
-            logger.warning(
-                f"Consumer for {queue_name} lost its channel with "
-                f"{len(group.exceptions)} buffered messages; reconnecting"
-            )
+            logger.warning(f"Consumer for {queue_name} lost its channel; reconnecting")
             raise ConnectionError(f"RabbitMQ channel lost for {queue_name}") from None
         except Exception as e:
             logger.exception(f"Fatal error in consumer for {queue_name}: {e}")
             raise
-        finally:
-            if in_flight:
-                await asyncio.gather(*in_flight, return_exceptions=True)
 
     async def _process_message_with_retry(
         self,
@@ -476,20 +479,17 @@ class NotificationManager(AppService):
         attempt, so a partial success (Postmark accepted the email but a later
         write failed) re-runs on retry.
         """
+        # Only the handler runs inside the retried block. Settling happens in
+        # the `else` and after the loop, so an ack or reject that fails for a
+        # reason `_settle` does not absorb propagates to the consumer instead
+        # of being mistaken for a handler failure and re-running the work.
         last_error: Exception | None = None
         for attempt in range(MAX_CONSUMER_RETRY_ATTEMPTS):
             try:
                 body = message.body.decode()
-                if await asyncio.wait_for(
+                processed = await asyncio.wait_for(
                     process_func(body), timeout=MESSAGE_PROCESSING_TIMEOUT_SECONDS
-                ):
-                    await self._settle(message, "ack", queue_name)
-                    return
-                logger.warning(
-                    f"Message in {queue_name} rejected (process_func returned False)"
                 )
-                await self._settle(message, "reject", queue_name)
-                return
             except UnicodeDecodeError as e:
                 logger.warning(
                     f"Undecodable message in {queue_name}, sending to DLQ: {e}"
@@ -500,8 +500,30 @@ class NotificationManager(AppService):
                 last_error = TimeoutError(
                     f"processing exceeded {MESSAGE_PROCESSING_TIMEOUT_SECONDS}s"
                 )
+            except ClientError as e:
+                if not _is_permanent_delivery_failure(e):
+                    last_error = e
+                else:
+                    # A suppressed or malformed address does not become
+                    # deliverable by waiting six seconds; retrying only puts
+                    # the dead-letter off and logs three warnings for one.
+                    logger.warning(
+                        f"Permanent delivery failure in {queue_name} "
+                        f"(Postmark {e.error_code}), sending to DLQ"
+                    )
+                    await self._settle(message, "reject", queue_name)
+                    return
             except Exception as e:
                 last_error = e
+            else:
+                if processed:
+                    await self._settle(message, "ack", queue_name)
+                    return
+                logger.warning(
+                    f"Message in {queue_name} rejected (process_func returned False)"
+                )
+                await self._settle(message, "reject", queue_name)
+                return
             if attempt == MAX_CONSUMER_RETRY_ATTEMPTS - 1:
                 break
             delay = CONSUMER_RETRY_BACKOFF_SECONDS * (2**attempt)
