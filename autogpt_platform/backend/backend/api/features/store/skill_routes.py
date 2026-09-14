@@ -203,8 +203,10 @@ def _is_text_type(mime_type: str | None) -> bool:
     return mime_type.startswith("text/") or mime_type in _TEXT_APPLICATION_TYPES
 
 
-# `mimetypes` names these `application/…` though a package ships them as source
-# a reviewer reads; every other non-`text/` type is a binary this will not serve.
+# `application/…` types a package ships as source a reviewer reads; every other
+# non-`text/` type is a binary this will not serve. Listed rather than derived
+# from `mimetypes`, which reads the publishing host's /etc/mime.types, so a row
+# can carry a spelling this machine never produces.
 _TEXT_APPLICATION_TYPES = frozenset(
     {
         "application/javascript",

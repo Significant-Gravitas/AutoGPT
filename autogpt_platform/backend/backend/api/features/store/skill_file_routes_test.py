@@ -187,19 +187,29 @@ async def test_a_pending_submission_lists_its_files_for_the_reviewer(creator: st
     ]
     assert submission.files[0].mime_type == "image/png"
     assert submission.files[1].size_bytes == len(SCRIPT.content)
+    # Not a literal: `.sh` is `application/x-sh` here and `text/x-sh` on CI.
+    assert submission.files[1].mime_type is not None
 
 
 async def test_the_detail_response_names_each_file_type_and_mode(
     creator: str, setup_admin_user: str
 ):
+    """Against the stored rows, never a literal type: publish derives the type
+    with ``mimetypes``, which reads the host's /etc/mime.types, so `.sh` is
+    ``application/x-sh`` on this machine and ``text/x-sh`` on CI."""
     await _publish(creator, [SCRIPT, PNG], approved_by=setup_admin_user)
 
     details = await skill_db.get_marketplace_skill(SLUG)
 
+    stored = {
+        row.relativePath: row
+        for row in await prisma.models.SkillListingFile.prisma().find_many()
+    }
     assert [(f.path, f.mime_type, f.is_executable) for f in details.files] == [
-        (PNG.relative_path, "image/png", False),
-        (SCRIPT.relative_path, "application/x-sh", True),
+        (PNG.relative_path, stored[PNG.relative_path].mimeType, False),
+        (SCRIPT.relative_path, stored[SCRIPT.relative_path].mimeType, True),
     ]
+    assert stored[PNG.relative_path].mimeType == "image/png"
 
 
 async def _publish(
