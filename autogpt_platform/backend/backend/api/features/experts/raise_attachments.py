@@ -4,6 +4,7 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 from pydantic import BaseModel
 
 from backend.api.features.experts.models import (
@@ -14,9 +15,6 @@ from backend.api.features.experts.models import (
     RaiseAttachmentSource,
 )
 from backend.api.features.library import db as library_db
-from backend.api.features.store.store_listing_versions import (
-    installable_store_version_where,
-)
 from backend.copilot.tools.skills import (
     get_default_skill_with_body,
     read_user_skill_with_body,
@@ -26,7 +24,10 @@ from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
-_WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
+_WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
+    "LibraryAgent": True,
+    "StoreListingVersion": True,
+}
 
 
 class RaiseAttachmentUnavailableError(Exception):
@@ -173,7 +174,7 @@ async def _resolve_workflow(
     row = await _library_agent_row(user_id, attachment.id)
     return ResolvedWorkflow(
         attachment=attachment,
-        store_listing_version_id=await _matching_store_listing_version_id(row),
+        store_listing_version_id=None,
         library_agent_id=row.id,
     )
 
@@ -212,42 +213,28 @@ async def _validate_marketplace_listing(
 async def _install_resolved_workflow(
     user_id: str, expert_id: str, resolved: ResolvedWorkflow
 ) -> None:
-    if resolved.store_listing_version_id and resolved.library_agent_id is None:
-        await install_marketplace_workflow(
-            user_id, expert_id, resolved.store_listing_version_id
-        )
+    if resolved.library_agent_id is not None:
+        await _link_library_workflow(expert_id, resolved.library_agent_id)
         return
-    if resolved.library_agent_id is None:
+    if resolved.store_listing_version_id is None:
         raise RaiseAttachmentUnavailableError(
-            "workflow", "library", resolved.attachment.id
+            "workflow", resolved.attachment.source, resolved.attachment.id
         )
-    await _link_library_workflow(
-        expert_id, resolved.library_agent_id, resolved.store_listing_version_id
+    await install_marketplace_workflow(
+        user_id, expert_id, resolved.store_listing_version_id
     )
 
 
-async def _link_library_workflow(
-    expert_id: str,
-    library_agent_id: str,
-    store_listing_version_id: str | None,
-) -> None:
-    existing = await _existing_workflow(
-        expert_id, library_agent_id, store_listing_version_id
-    )
+async def _link_library_workflow(expert_id: str, library_agent_id: str) -> None:
+    existing = await _existing_library_workflow(expert_id, library_agent_id)
     if existing is not None:
         return
     try:
         await prisma.models.ExpertWorkflow.prisma().create(
-            data={
-                "expertId": expert_id,
-                "libraryAgentId": library_agent_id,
-                "storeListingVersionId": store_listing_version_id,
-            }
+            data={"expertId": expert_id, "libraryAgentId": library_agent_id}
         )
     except prisma.errors.UniqueViolationError:
-        raced = await _existing_workflow(
-            expert_id, library_agent_id, store_listing_version_id
-        )
+        raced = await _existing_library_workflow(expert_id, library_agent_id)
         if raced is None:
             raise
 
@@ -267,30 +254,10 @@ async def _library_agent_row(
     return row
 
 
-async def _matching_store_listing_version_id(
-    row: prisma.models.LibraryAgent,
-) -> str | None:
-    listing = await prisma.models.StoreListingVersion.prisma().find_first(
-        where={
-            "agentGraphId": row.agentGraphId,
-            "agentGraphVersion": row.agentGraphVersion,
-            **installable_store_version_where(),
-        }
-    )
-    return listing.id if listing else None
-
-
-async def _existing_workflow(
+async def _existing_library_workflow(
     expert_id: str,
     library_agent_id: str,
-    store_listing_version_id: str | None,
 ) -> prisma.models.ExpertWorkflow | None:
-    if store_listing_version_id is not None:
-        by_listing = await _existing_listing_workflow(
-            expert_id, store_listing_version_id
-        )
-        if by_listing is not None:
-            return by_listing
     return await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"expertId": expert_id, "libraryAgentId": library_agent_id},
         include=_WORKFLOW_ROW_INCLUDE,

@@ -19,7 +19,6 @@ import {
 } from "../../tokenDevtool/tokenMath";
 import { BreakdownSection } from "./components/BreakdownSection";
 import { ContextBar } from "./components/ContextBar";
-import { MiniBar } from "./components/MiniBar";
 import { TurnRow } from "./components/TurnRow";
 
 interface Props {
@@ -63,13 +62,14 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
             context === null ? "unknown" : formatTokenCount(context)
           }`}
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-xs text-zinc-500 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700",
+            "flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
             className,
           )}
         >
-          <Icon icon={DashboardSpeed02Icon} size={14} />
-          {context === null ? "ctx —" : `ctx ~${formatTokenCount(context)}`}
-          {context !== null && <MiniBar context={context} />}
+          <Icon icon={DashboardSpeed02Icon} size={16} />
+          <span className="sr-only">
+            {context === null ? "ctx —" : `ctx ~${formatTokenCount(context)}`}
+          </span>
         </button>
       </PopoverTrigger>
 

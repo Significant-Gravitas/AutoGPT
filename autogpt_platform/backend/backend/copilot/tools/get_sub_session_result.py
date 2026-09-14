@@ -1,4 +1,4 @@
-"""Poll / wait on / cancel a sub-AutoPilot started by ``run_sub_session``.
+"""Poll / wait on / cancel a sub-Otto started by ``run_sub_session``.
 
 Companion to :mod:`run_sub_session`. Operates on the sub's
 ``ChatSession`` directly — there is no separate registry. Ownership is
@@ -57,7 +57,7 @@ _PROGRESS_CONTENT_PREVIEW_CHARS = 400
 
 
 class GetSubSessionResultTool(BaseTool):
-    """Wait for, inspect, or cancel a sub-AutoPilot."""
+    """Wait for, inspect, or cancel a sub-Otto."""
 
     @property
     def name(self) -> str:
@@ -70,7 +70,7 @@ class GetSubSessionResultTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Poll / wait / cancel a sub-AutoPilot from run_sub_session. "
+            "Poll / wait / cancel a child session from run_sub_session. "
             f"Waits up to wait_if_running sec (max {MAX_SUB_SESSION_WAIT_SECONDS}); "
             "cancel=true aborts; include_progress=true returns recent messages "
             "from the still-running sub. Works across turns."
@@ -154,6 +154,7 @@ class GetSubSessionResultTool(BaseTool):
 
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
+        actor = delegate.name if delegate is not None else "Subtask"
         borrowed = _is_borrowed_thread(sub, session)
 
         if cancel:
@@ -175,7 +176,7 @@ class GetSubSessionResultTool(BaseTool):
             await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
-                    message="Sub-AutoPilot cancel requested.",
+                    message=f"{actor} cancellation requested.",
                     session_id=session.session_id,
                     status="cancelled",
                     sub_session_id=inner_session_id,
@@ -223,7 +224,7 @@ class GetSubSessionResultTool(BaseTool):
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=(
-                        f"Sub-AutoPilot still running after {elapsed:.0f}s."
+                        f"{actor} still running after {elapsed:.0f}s."
                         f"{f' Watch live at {link}.' if link else ''} "
                         "Call again to keep waiting, or cancel=true to abort."
                     ),
@@ -255,6 +256,7 @@ class GetSubSessionResultTool(BaseTool):
                 parent_session_id=session.session_id,
                 elapsed=elapsed,
                 workspace_files=workspace_files,
+                actor=actor,
             ),
             delegate,
         )
@@ -270,6 +272,12 @@ def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
     and nobody else — poll across the boundary. A hand-off transfers
     ownership for good (the caller gets no result back), so it grants no
     such capability: only the receiving expert's own scope can read it.
+
+    Subs carry the same provenance, but scope equality stays the first
+    test: a same-scope sub is the caller's own assistant, and the
+    receiving expert must be able to read a task handed to it. The creator
+    restriction that stops a session steering a sub it did not open lives on
+    the resume path in ``run_sub_session``, where the prompt is written.
     """
     if sub.expert_id == session.expert_id:
         return True
@@ -298,7 +306,7 @@ async def _delegated_expert_info(
     """Identity of the teammate running a delegated sub, for the ToolChain card.
 
     Only cross-scope subs carry one; a same-scope sub is the caller itself and
-    renders as a plain Sub-AutoPilot.
+    renders as a plain Sub-Otto.
     """
     if sub.expert_id is None or sub.expert_id == session.expert_id:
         return None

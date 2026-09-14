@@ -7,6 +7,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from .models import (
+    AUTOPILOT_BRIEFING_AUTHOR,
     HomeAction,
     HomeAttentionItem,
     HomeBriefing,
@@ -50,6 +51,7 @@ def _dashboard() -> HomeDashboardResponse:
             )
         ],
         briefing=HomeBriefing(
+            author=AUTOPILOT_BRIEFING_AUTHOR,
             generated_at=NOW,
             window_started_at=NOW,
             completed_count=0,

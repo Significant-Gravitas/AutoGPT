@@ -134,6 +134,88 @@ class TestEmptyMessage:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_skipped_attachments_only_dm_gets_problem_report(self):
+        # A DM whose only content was a too-large file must not be silently
+        # dropped — the user gets the problem note instead.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        target, note = adapter.send_message.await_args.args
+        assert target == "dm-1" and "huge.zip" in note
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_channel_mention_replies_in_place(self):
+        # The note replaces the misleading "didn't say anything" nudge and is
+        # sent as an in-channel reply: opening a thread (real and visible on
+        # Discord) just to hold it would leave an orphan behind.
+        api = _api()
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                text="",
+                bot_mentioned=True,
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.create_thread.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+        _channel, note, reply_to = adapter.send_reply.await_args.args
+        assert "huge.zip" in note and reply_to == "msg-1"
+        # These messages still count as received in analytics.
+        assert api.track_event.called
+        assert api.track_event.call_args.kwargs["event_type"] == "message_received"
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_dm_from_unlinked_user_still_gets_the_link_prompt(self):
+        # The note sits behind the link gate like every other message: an
+        # unlinked user gets the Link Account button, not a file complaint.
+        handler = MessageHandler(_api(user_linked=False))
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_reply_in_unowned_thread_still_needs_a_mention(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-9",
+                    text="",
+                    skipped_attachments=(("huge.zip", "is too large"),),
+                ),
+                adapter,
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_reply.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_empty_dm_is_silently_dropped(self):
         handler = MessageHandler(_api())
         adapter = _adapter()

@@ -12,34 +12,23 @@ function diffInDays(iso: string): number {
   return Math.round((startOfDay(new Date()) - startOfDay(date)) / dayMs);
 }
 
-function ordinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return "th";
-  switch (day % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-}
-
-// e.g. "26th June" (current year) or "26th June 2024" (older).
-function formatDayLabel(date: Date): string {
-  const day = date.getDate();
-  const month = date.toLocaleDateString(undefined, { month: "long" });
-  const label = `${day}${ordinalSuffix(day)} ${month}`;
+// e.g. "June 26" (current year) or "December 1, 2024" (older), in the user's
+// locale. A single Intl.DateTimeFormat options set keeps the format valid for
+// every locale instead of hand-assembling English-style date parts.
+function formatDayLabel(date: Date, locale?: string): string {
   const sameYear = date.getFullYear() === new Date().getFullYear();
-  return sameYear ? label : `${label} ${date.getFullYear()}`;
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
 }
 
-export function getDateGroupLabel(iso: string): string {
+export function getDateGroupLabel(iso: string, locale?: string): string {
   const diffDays = diffInDays(iso);
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return formatDayLabel(new Date(iso));
+  return formatDayLabel(new Date(iso), locale);
 }
 
 // Buckets sessions by calendar day and orders groups most-recent-first. Doesn't
@@ -47,6 +36,7 @@ export function getDateGroupLabel(iso: string): string {
 // duplicate day groups; within a group, input order is preserved.
 export function groupSessionsByDate<T extends { updated_at: string }>(
   sessions: T[],
+  locale?: string,
 ): { label: string; sessions: T[] }[] {
   const buckets = new Map<number, { label: string; sessions: T[] }>();
 
@@ -57,7 +47,7 @@ export function groupSessionsByDate<T extends { updated_at: string }>(
       bucket.sessions.push(session);
     } else {
       buckets.set(dayKey, {
-        label: getDateGroupLabel(session.updated_at),
+        label: getDateGroupLabel(session.updated_at, locale),
         sessions: [session],
       });
     }
@@ -66,4 +56,15 @@ export function groupSessionsByDate<T extends { updated_at: string }>(
   return [...buckets.entries()]
     .sort((a, b) => b[0] - a[0])
     .map(([, group]) => group);
+}
+
+// Fired experts can't be addressed, so their group gets no new-chat entry:
+// the deep link would only fall back to Otto.
+export function getNewChatHref(
+  expertId: string | null,
+  activeExpertIds: ReadonlySet<string>,
+) {
+  if (!expertId) return "/copilot";
+  if (!activeExpertIds.has(expertId)) return null;
+  return `/copilot?expertId=${encodeURIComponent(expertId)}`;
 }

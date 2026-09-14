@@ -8,13 +8,18 @@ import {
   Mic01Icon,
 } from "@hugeicons/core-free-icons";
 
+const LABELS = {
+  rest: "Start talking",
+  failed: "Try again",
+} as const;
+
 interface Props {
-  screen: "rest" | "failed";
+  screen: keyof typeof LABELS;
   onClick?: () => void;
 }
 
 export function OrbControlButton({ screen, onClick }: Props) {
-  const ariaLabel = screen === "failed" ? "Try again" : "Start talking";
+  const ariaLabel = LABELS[screen];
 
   return (
     <Button
@@ -22,7 +27,7 @@ export function OrbControlButton({ screen, onClick }: Props) {
       size="icon"
       onClick={onClick}
       aria-label={ariaLabel}
-      className="mt-4 border border-black/5 bg-white shadow-sm hover:border-black/5 hover:bg-zinc-50"
+      className="mt-4 border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
     >
       <SwapFade swapKey={screen} className="flex items-center justify-center">
         {screen === "failed" ? (
