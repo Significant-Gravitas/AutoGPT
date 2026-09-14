@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampPart,
   colorForToken,
+  NOTION_COLORS,
   OPTIONAL_CATEGORIES,
   PICKABLE_CATEGORIES,
   decodeNotionConfig,
@@ -17,6 +18,8 @@ import {
   hashSeed,
 } from "../helpers";
 import { NOTION_CATEGORIES, NOTION_PART_COUNTS } from "../metadata.generated";
+
+const COLOR_FAMILIES = NOTION_COLORS.map((color) => color.id);
 
 describe("config encoding", () => {
   it("round-trips a config through its URL", () => {
@@ -139,7 +142,7 @@ describe("what to draw for an expert", () => {
       color: "violet-300",
     });
 
-    expect(drawn?.color).toBe("lavender");
+    expect(drawn?.color).toBe("violet");
   });
 
   it("returns nothing for a real picture, so the caller shows the image", () => {
@@ -176,14 +179,23 @@ describe("what to draw for an expert", () => {
         name: "Maria",
         avatarUrl: "/avatars/round.mint.glasses.svg",
       })?.color,
-    ).toBe("mint");
+    ).toBe("emerald");
   });
 });
 
 describe("colour tokens", () => {
   it("maps a token family onto an avatar colour", () => {
-    expect(colorForToken("violet-300")).toBe("lavender");
+    expect(colorForToken("violet-300")).toBe("violet");
     expect(colorForToken("sky-500")).toBe("sky");
+  });
+
+  it("gives every accent its own disc, so no two swatches look the same", () => {
+    const discs = COLOR_FAMILIES.map((family) =>
+      colorForToken(`${family}-300`),
+    );
+
+    expect(new Set(discs).size).toBe(COLOR_FAMILIES.length);
+    expect(discs.every(Boolean)).toBe(true);
   });
 
   it("has no opinion about a family it does not know", () => {

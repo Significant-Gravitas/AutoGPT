@@ -236,7 +236,7 @@ class TestPreviewNeverWrites:
         assert resp.preview.color == _CHARTER["color"]
         assert (
             resp.preview.avatar_url
-            == "/avatars/notion/11-12-11-10-7-4-32-0-0-0.lavender.svg"
+            == "/avatars/notion/11-12-11-10-7-4-32-0-0-0.violet.svg"
         )
         db.create_raised_expert.assert_not_called()
 
@@ -253,7 +253,7 @@ class TestPreviewNeverWrites:
         # here instead of comparing the implementation to itself.
         assert (
             resp.preview.avatar_url
-            == "/avatars/notion/11-12-11-10-7-0-32-5-0-0.lavender.svg"
+            == "/avatars/notion/11-12-11-10-7-0-32-5-0-0.violet.svg"
         )
 
     @pytest.mark.asyncio(loop_scope="session")

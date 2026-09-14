@@ -66,41 +66,30 @@ AVATAR_HAT = {
 }
 
 AVATAR_COLORS = [
-    "lavender",
-    "plum",
+    "rose",
+    "red",
+    "orange",
     "amber",
+    "yellow",
+    "lime",
+    "green",
+    "emerald",
+    "teal",
+    "cyan",
     "sky",
-    "mint",
-    "coral",
+    "blue",
     "indigo",
-    "butter",
+    "violet",
+    "fuchsia",
 ]
-
-# Accent colour token family -> avatar colour, tuned so the accent and the
-# face agree without the model having to pick twice.
-_TOKEN_COLORS = {
-    "rose": "plum",
-    "red": "coral",
-    "orange": "coral",
-    "amber": "amber",
-    "yellow": "butter",
-    "lime": "mint",
-    "green": "mint",
-    "emerald": "mint",
-    "teal": "sky",
-    "cyan": "sky",
-    "sky": "sky",
-    "blue": "sky",
-    "indigo": "indigo",
-    "violet": "lavender",
-    "fuchsia": "plum",
-}
 
 
 def avatar_color_for_token(token: str | None) -> str | None:
+    """The accent family is the avatar colour, so no two accents share a face."""
     if not token:
         return None
-    return _TOKEN_COLORS.get(token.split("-", 1)[0])
+    family = token.split("-", 1)[0]
+    return family if family in AVATAR_COLORS else None
 
 
 def _hash_seed(value: str) -> int:

@@ -15,14 +15,14 @@ from backend.copilot.tools.expert_avatar import (
 # FNV/LCG constants, the draw order or the "none" odds fails here rather than
 # letting the two sides diverge silently.
 FRONTEND_SEEDED = {
-    "Maria": "/avatars/notion/10-2-5-6-13-6-1-0-0-0.sky.svg",
-    "Frankie": "/avatars/notion/3-3-6-4-5-12-31-0-0-0.plum.svg",
-    "Max": "/avatars/notion/4-1-10-0-2-0-48-0-0-0.lavender.svg",
-    "Ana": "/avatars/notion/11-12-17-2-6-0-11-6-0-0.sky.svg",
-    "Otto": "/avatars/notion/11-12-11-10-7-0-32-5-0-0.mint.svg",
-    "Jules": "/avatars/notion/12-5-13-13-3-9-2-0-4-2.amber.svg",
+    "Maria": "/avatars/notion/10-2-5-6-13-6-1-0-0-0.green.svg",
+    "Frankie": "/avatars/notion/3-3-6-4-5-12-31-0-0-0.orange.svg",
+    "Max": "/avatars/notion/4-1-10-0-2-0-48-0-0-0.red.svg",
+    "Ana": "/avatars/notion/11-12-17-2-6-0-11-6-0-0.green.svg",
+    "Otto": "/avatars/notion/11-12-11-10-7-0-32-5-0-0.teal.svg",
+    "Jules": "/avatars/notion/12-5-13-13-3-9-2-0-4-2.yellow.svg",
     "Priya": "/avatars/notion/2-12-18-1-15-2-55-11-0-11.indigo.svg",
-    "Sam": "/avatars/notion/4-11-0-1-13-0-0-6-0-16.plum.svg",
+    "Sam": "/avatars/notion/4-11-0-1-13-0-0-6-0-16.red.svg",
 }
 
 
@@ -72,8 +72,11 @@ def test_an_unknown_named_look_falls_back_to_the_seeded_part():
 
 
 def test_color_token_maps_to_an_avatar_color():
-    assert avatar_color_for_token("violet-300") == "lavender"
+    assert avatar_color_for_token("violet-300") == "violet"
     assert avatar_color_for_token("sky-500") == "sky"
+    # Families that used to collapse onto one disc now each keep their own.
+    assert avatar_color_for_token("emerald-300") == "emerald"
+    assert avatar_color_for_token("teal-300") == "teal"
     assert avatar_color_for_token("chartreuse-300") is None
     assert avatar_color_for_token(None) is None
-    assert build_avatar_url("Maria", color_token="violet-300").endswith(".lavender.svg")
+    assert build_avatar_url("Maria", color_token="violet-300").endswith(".violet.svg")

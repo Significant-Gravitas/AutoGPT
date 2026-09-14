@@ -32,7 +32,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Ops",
-    color: "mint",
+    color: "emerald",
     status: "working",
     size: 84,
     x: 105,
@@ -50,7 +50,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Marketing",
-    color: "coral",
+    color: "orange",
     status: "done",
     size: 84,
     x: 315,
@@ -68,7 +68,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Support",
-    color: "plum",
+    color: "rose",
     status: "working",
     size: 72,
     x: 158,
@@ -86,7 +86,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Design",
-    color: "butter",
+    color: "yellow",
     status: "thinking",
     size: 72,
     x: 368,

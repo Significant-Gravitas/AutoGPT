@@ -15,74 +15,47 @@ export interface NotionAvatarConfig {
 }
 
 export type NotionColorId =
-  | "lavender"
-  | "plum"
+  | "rose"
+  | "red"
+  | "orange"
   | "amber"
+  | "yellow"
+  | "lime"
+  | "green"
+  | "emerald"
+  | "teal"
+  | "cyan"
   | "sky"
-  | "mint"
-  | "coral"
+  | "blue"
   | "indigo"
-  | "butter";
+  | "violet"
+  | "fuchsia";
 
 export interface NotionColorOption {
   id: NotionColorId;
   label: string;
-  role: string;
   disc: string;
-  ring: string;
 }
 
+// One disc per accent family, so every swatch in the picker visibly changes
+// the face. Halfway between Tailwind's 100 and 200: paler than a 200, while
+// still telling rose from red and teal from cyan, which a 100 cannot.
 export const NOTION_COLORS: NotionColorOption[] = [
-  {
-    id: "lavender",
-    label: "Lavender",
-    role: "Otto",
-    disc: "#ddd6fe",
-    ring: "#a78bfa",
-  },
-  {
-    id: "plum",
-    label: "Plum",
-    role: "Marketing",
-    disc: "#fbcfe8",
-    ring: "#f472b6",
-  },
-  {
-    id: "amber",
-    label: "Amber",
-    role: "Sales",
-    disc: "#fde68a",
-    ring: "#fbbf24",
-  },
-  { id: "sky", label: "Sky", role: "Ops", disc: "#bae6fd", ring: "#38bdf8" },
-  {
-    id: "mint",
-    label: "Mint",
-    role: "Finance",
-    disc: "#a7f3d0",
-    ring: "#34d399",
-  },
-  {
-    id: "coral",
-    label: "Coral",
-    role: "Support",
-    disc: "#fed7aa",
-    ring: "#fb923c",
-  },
-  {
-    id: "indigo",
-    label: "Indigo",
-    role: "Research",
-    disc: "#c7d2fe",
-    ring: "#818cf8",
-  },
-  {
-    id: "butter",
-    label: "Butter",
-    role: "Content",
-    disc: "#fef08a",
-    ring: "#facc15",
-  },
+  { id: "rose", label: "Rose", disc: "#fed8dc" },
+  { id: "red", label: "Red", disc: "#fed6d6" },
+  { id: "orange", label: "Orange", disc: "#fee2c0" },
+  { id: "amber", label: "Amber", disc: "#feeca8" },
+  { id: "yellow", label: "Yellow", disc: "#fef4a6" },
+  { id: "lime", label: "Lime", disc: "#e2fab4" },
+  { id: "green", label: "Green", disc: "#ccfadc" },
+  { id: "emerald", label: "Emerald", disc: "#bcf6da" },
+  { id: "teal", label: "Teal", disc: "#b2f8ea" },
+  { id: "cyan", label: "Cyan", disc: "#baf6fd" },
+  { id: "sky", label: "Sky", disc: "#cdecfe" },
+  { id: "blue", label: "Blue", disc: "#cde2fe" },
+  { id: "indigo", label: "Indigo", disc: "#d4dcfe" },
+  { id: "violet", label: "Violet", disc: "#e5e0fe" },
+  { id: "fuchsia", label: "Fuchsia", disc: "#f8dcfe" },
 ];
 
 // Rows the picker offers, in the order they appear: the face itself, then the
@@ -129,7 +102,7 @@ export const DEFAULT_NOTION_CONFIG: NotionAvatarConfig = {
     details: 0,
     beard: 0,
   },
-  color: "lavender",
+  color: "violet",
 };
 
 export function findNotionColor(id: NotionColorId) {
@@ -241,29 +214,12 @@ export function notionConfigForName(name: string): NotionAvatarConfig {
   return randomNotionConfig(seededRandom(hashSeed(name.toLowerCase())));
 }
 
-const TOKEN_COLORS: Record<string, NotionColorId> = {
-  rose: "plum",
-  red: "coral",
-  orange: "coral",
-  amber: "amber",
-  yellow: "butter",
-  lime: "mint",
-  green: "mint",
-  emerald: "mint",
-  teal: "sky",
-  cyan: "sky",
-  sky: "sky",
-  blue: "sky",
-  indigo: "indigo",
-  violet: "lavender",
-  fuchsia: "plum",
-};
-
+// One family, one disc, so no two swatches land on the same face.
 export function colorForToken(
   token: string | null | undefined,
 ): NotionColorId | null {
   const family = token?.split("-")[0];
-  return family ? (TOKEN_COLORS[family] ?? null) : null;
+  return family && isNotionColorId(family) ? family : null;
 }
 
 // Avatars raised before the Notion art landed are stored as
@@ -279,6 +235,19 @@ export function isLegacyAvatarUrl(url: string | null | undefined): boolean {
 /** Seeds from the old triple rather than the expert's name, so the route and
  *  the component resolve a legacy URL to the same face — and two experts who
  *  were raised with different shapes stay different. */
+// The palette a legacy URL was written against, mapped onto the family that
+// replaced it, so an expert raised under the old names keeps its colour.
+const LEGACY_COLORS: Record<string, NotionColorId> = {
+  lavender: "violet",
+  plum: "fuchsia",
+  mint: "emerald",
+  coral: "orange",
+  butter: "yellow",
+  amber: "amber",
+  sky: "sky",
+  indigo: "indigo",
+};
+
 export function notionConfigForLegacyUrl(
   url: string | null | undefined,
 ): NotionAvatarConfig | null {
@@ -286,7 +255,8 @@ export function notionConfigForLegacyUrl(
   if (!match) return null;
   const [, shape, color, accessory] = match;
   const seeded = notionConfigForName(`${shape}.${color}.${accessory}`);
-  return isNotionColorId(color) ? { ...seeded, color } : seeded;
+  const mapped = LEGACY_COLORS[color];
+  return mapped ? { ...seeded, color: mapped } : seeded;
 }
 
 export interface ExpertLike {

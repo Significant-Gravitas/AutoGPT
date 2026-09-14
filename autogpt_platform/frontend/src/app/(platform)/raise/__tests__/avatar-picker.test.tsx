@@ -122,7 +122,7 @@ test("opens on the face the expert's name seeds, in the colour they were given",
     ].join("-"),
   );
   // The colour was answered a beat earlier, so it carries into the face.
-  expect(drawnAvatar()).toContain(".lavender");
+  expect(drawnAvatar()).toContain(".violet");
 });
 
 function slotOf(feature: "details" | "hair") {
@@ -157,7 +157,7 @@ test("shuffle changes the face but keeps the chosen colour", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Shuffle" }));
 
   await waitFor(() => expect(drawnAvatar()).not.toBe(before));
-  expect(drawnAvatar()).toContain(".lavender");
+  expect(drawnAvatar()).toContain(".violet");
 });
 
 test("cycling a feature moves only that feature", async () => {
@@ -213,13 +213,11 @@ test("the cycle arrows carry no tooltip, which would cover the row above", async
 
 test("the colour is chosen in the picker and recolours the face", async () => {
   await openGenerator();
-  expect(drawnAvatar()).toContain(".lavender");
+  expect(drawnAvatar()).toContain(".violet");
 
-  // The accent tokens are a wider set than the disc colours: emerald, green
-  // and lime all read as the mint disc.
   await userEvent.click(screen.getByRole("button", { name: "Emerald" }));
 
-  await waitFor(() => expect(drawnAvatar()).toContain(".mint"));
+  await waitFor(() => expect(drawnAvatar()).toContain(".emerald"));
 
   await userEvent.click(screen.getByRole("button", { name: "Use this face" }));
   await waitFor(() => expect(loadDraft().color).toBe("emerald-300"));
