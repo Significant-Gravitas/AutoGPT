@@ -50,6 +50,7 @@ from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -107,6 +108,7 @@ from backend.copilot.response_model import (
     ToolDisplayData,
 )
 from backend.copilot.service import (
+    SKILLS_CONTEXT_TAG,
     _build_system_prompt,
     _get_main_client,
     _update_title_async,
@@ -129,7 +131,10 @@ from backend.copilot.tools import (
     kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
-from backend.copilot.tools.skills import build_skills_context
+from backend.copilot.tools.skills import (
+    build_skills_context,
+    build_skills_refresh_context,
+)
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -1989,7 +1994,7 @@ async def stream_chat_completion_baseline(
         skills_ctx = ""
         try:
             skills_ctx = await build_skills_context(
-                user_id, expert_id=session.expert_id
+                user_id, expert_id=session.expert_id, session_id=session_id
             )
         except Exception:
             logger.exception(
@@ -2016,6 +2021,21 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+    elif is_user_message and user_id:
+        # Skill-index freshness for existing conversations (mirrors the SDK
+        # path): a compact refresh when the index changed since this session
+        # last saw it. Prepended to the live prompt only, never persisted.
+        skills_refresh = await build_skills_refresh_context(
+            user_id, session.expert_id, session_id
+        )
+        if skills_refresh:
+            for msg in reversed(openai_messages):
+                if msg["role"] == "user" and isinstance(msg.get("content"), str):
+                    msg["content"] = (
+                        f"<{SKILLS_CONTEXT_TAG}>\n{skills_refresh}\n"
+                        f"</{SKILLS_CONTEXT_TAG}>\n\n{msg['content']}"
+                    )
+                    break
 
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
@@ -2724,6 +2744,20 @@ async def stream_chat_completion_baseline(
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti; flag-gated and never raises.
+        if user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(state.session_messages) if state else [],
+                    message,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the

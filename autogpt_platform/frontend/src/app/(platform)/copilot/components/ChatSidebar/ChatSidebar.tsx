@@ -4,6 +4,8 @@ import {
   usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useExcludeSkillLearningSource } from "@/app/api/__generated__/endpoints/skill-learning/skill-learning";
+import { CHAT_SOURCE_KIND } from "@/services/skill-learning/helpers";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -96,6 +98,29 @@ export function ChatSidebar() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const isPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
+  const { mutate: excludeFromLearning } = useExcludeSkillLearningSource({
+    mutation: {
+      onSuccess: () => {
+        toast({
+          title: "Excluded from learning",
+          description:
+            "This chat will not be used for future skill learning. Skills " +
+            "that depended on it were restored or paused.",
+        });
+      },
+      onError: (error) => {
+        toast({
+          title: "Could not exclude this chat",
+          description:
+            error instanceof ApiError
+              ? error.message
+              : "Nothing has been recorded for this chat yet.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
   const { expertsById } = useExpertMap();
   const [, setExpertIdParam] = useQueryState("expertId", parseAsString);
 
@@ -213,6 +238,11 @@ export function ChatSidebar() {
     requestDelete(id, title);
   }
 
+  function handleExcludeClick(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    excludeFromLearning({ sourceKind: CHAT_SOURCE_KIND, sourceRef: id });
+  }
+
   function handlePinClick(e: React.MouseEvent, id: string, isPinned: boolean) {
     e.stopPropagation();
     setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
@@ -272,6 +302,7 @@ export function ChatSidebar() {
         isDeleting={isDeleting}
         isPinningEnabled={isPinningEnabled}
         isSharingEnabled={chatSharingEnabled}
+        isLearningEnabled={isLearningEnabled}
         showProcessing={
           !!session.is_processing &&
           shouldShowSessionProcessingIndicator({
@@ -307,6 +338,7 @@ export function ChatSidebar() {
           e.stopPropagation();
           setSharingSessionId(session.id);
         }}
+        onExcludeFromLearning={(e) => handleExcludeClick(e, session.id)}
         onDelete={(e) => handleDeleteClick(e, session.id, session.title)}
       />
     );

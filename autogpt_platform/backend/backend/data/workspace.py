@@ -442,9 +442,13 @@ async def soft_delete_workspace_file(
         return None
 
     deleted_at = datetime.now(timezone.utc)
-    # Modify path to free up the unique constraint for new files at original path
-    # Format: {original_path}__deleted__{timestamp}
-    deleted_path = f"{file.path}__deleted__{int(deleted_at.timestamp())}"
+    # Modify path to free up the unique constraint for new files at original path.
+    # Format: {original_path}__deleted__{timestamp}__{file_id}. The file id
+    # keeps the tombstone path unique when the same path is overwritten twice
+    # within one second (a repeated skill update or a restore); a
+    # seconds-only suffix collided on the (workspaceId, path) constraint
+    # after the active blob had already been removed from storage.
+    deleted_path = f"{file.path}__deleted__{int(deleted_at.timestamp())}__{file.id}"
 
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},

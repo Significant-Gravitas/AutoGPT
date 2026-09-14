@@ -156,6 +156,12 @@ model User {
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
+  SkillLearningSources SkillLearningSource[]
+  SkillLearningReviews SkillLearningReview[]
+  SkillHeads           SkillHead[]
+  SkillVersions        SkillVersion[]
+  SkillSuppressions    SkillSuppression[]
+  SkillUseEvents       SkillUseEvent[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -1104,6 +1110,11 @@ model Expert {
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
 
+  // Set when the owner paused nightly skill learning for this expert. Only
+  // future learning stops; existing skills stay usable and ordinary work is
+  // unaffected. Cleared by the resume-learning endpoint.
+  learningPausedAt DateTime?
+
   // Null until the credential allow-list has been seeded from the expert's
   // installed workflows. Distinguishes "never curated" from "deliberately
   // empty": without it, revoking an expert's last credential would look
@@ -1224,6 +1235,245 @@ model ExpertPauseEvent {
   clearedAt DateTime?
 
   @@index([expertId, createdAt])
+}
+
+////////////////////////////////////////////////////////////
+////////////   SKILL LEARNING (nightly stage)   ////////////
+////////////////////////////////////////////////////////////
+
+// One revision of a learning source (an ordinary chat session today; other
+// adapters register their own sourceKind). The row is the durable half of
+// the generic approval-aware source contract: it carries the owner/scope,
+// the immutable revision, bounded evidence references, outcome signals,
+// the eligibility state, and an approval checkpoint when the source kind
+// requires one. Eligibility is re-checked live by the adapter before any
+// publication — this row alone never authorises a change.
+model SkillLearningSource {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Scope owner: an expert id, or null for the personal (AutoPilot) scope.
+  expertId String?
+  // "personal" or the expert id — makes the owner part of unique keys.
+  ownerKey String
+
+  sourceKind String // e.g. "chat_session"
+  sourceId   String // adapter-specific id (session id)
+  // Latest observed immutable revision (message sequence for chats).
+  revision   String
+  // Last revision with a durable review disposition; the learner only
+  // considers revisions newer than this cursor.
+  processedRevision String?
+
+  // "ordinary" | "requested" (an explicit "learn this" request)
+  origin String @default("ordinary")
+
+  // "eligible" | "waiting_approval" | "excluded" | "inaccessible"
+  eligibility String @default("eligible")
+  // Bumped on exclusion / revocation so a queued review can detect that
+  // its eligibility snapshot is stale.
+  epoch Int @default(0)
+
+  // Approval checkpoint (adapters with a review lifecycle only).
+  approvalEventId String?
+  approvalActorId String?
+  approvedRevision String?
+
+  // Bounded evidence references and deterministic outcome signals
+  // (lists of small JSON objects; never full transcripts).
+  evidenceRefs   Json @default("[]")
+  outcomeSignals Json @default("[]")
+
+  excludedAt       DateTime?
+  excludedByUserId String?
+
+  Reviews SkillLearningReview[]
+
+  @@unique([userId, sourceKind, sourceId])
+  @@index([userId, ownerKey, eligibility, updatedAt])
+}
+
+// Durable review ledger: one row per (source, revision, policy version).
+// A retryable failure updates the same row instead of inserting another
+// so a crashed worker never re-applies a completed change.
+model SkillLearningReview {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  completedAt DateTime?
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+
+  sourceId       String
+  Source         SkillLearningSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRevision String
+  policyVersion  Int
+  // Correlates every review of one nightly (or requested) run.
+  runId String
+
+  // "applied" | "skipped" | "deferred" | "conflict" | "needs_decision" |
+  // "blocked_content" | "provider_error" | "budget_exhausted" |
+  // "stale_eligibility" | "inaccessible_evidence" | "no_novel_procedure" |
+  // "suppressed" | "paused"
+  disposition String
+  reason      String @default("")
+  attempts    Int    @default(1)
+  // Normalised fingerprint of the proposed behaviour (see fingerprint.py).
+  changeFingerprint String?
+  skillName         String?
+  appliedVersionId  String?
+
+  model            String?
+  inputTokens      Int     @default(0)
+  outputTokens     Int     @default(0)
+  costMicrodollars BigInt?
+
+  @@unique([sourceId, sourceRevision, policyVersion])
+  @@index([userId, ownerKey, createdAt])
+  @@index([runId])
+}
+
+// Current-version pointer and per-skill learning policy. The workspace
+// SKILL.md stays the content surface; this row is what compare-and-swap
+// publication races against.
+model SkillHead {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  currentVersion   Int     @default(0)
+  currentVersionId String?
+  // sha256 of the SKILL.md the head last wrote; a differing workspace file
+  // means a write bypassed version tracking and is treated as a human edit.
+  contentHash String?
+
+  // "Automatic improvements": when false, automated changes become
+  // proposals that need the owner's decision.
+  autoImprove Boolean @default(true)
+  // "Pause learning" for this skill (future automated changes stop).
+  learningPausedAt DateTime?
+  // "Stop using this skill" (excluded from retrieval; history kept).
+  usePausedAt DateTime?
+
+  Versions SkillVersion[]
+
+  @@unique([userId, ownerKey, skillName])
+  @@index([userId, ownerKey])
+}
+
+// Immutable skill versions. Every write to a skill (overnight, during
+// work, human edit, restore, import) appends one; version numbers are
+// monotonic per skill and restoration creates a new version that refers
+// to the prior content.
+model SkillVersion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  headId String
+  Head   SkillHead @relation(fields: [headId], references: [id], onDelete: Cascade)
+
+  version Int
+  // Full rendered SKILL.md for this version (frontmatter + body).
+  content     String
+  contentHash String
+  description String
+  triggers    String[] @default([])
+
+  // "saved_overnight" | "saved_during_work" | "requested" | "edited" |
+  // "restored" | "imported"
+  origin      String
+  actorUserId String?
+  // Plain explanation of what changed and why.
+  summary String @default("")
+
+  baseVersionId         String?
+  restoredFromVersionId String?
+  reviewId              String?
+
+  // [{source_id, source_kind, source_ref, revision}] — contributing source
+  // revisions (inherited by descendants until independently re-authored).
+  sources Json @default("[]")
+  // [{kind, label, ref}] — concrete evidence labels and limits.
+  evidence Json @default("[]")
+  limits   String[] @default([])
+
+  // "ready" | "pending_write" | "candidate" | "needs_decision" |
+  // "blocked_content" | "paused" | "archived" | "invalidated" | "stale"
+  state       String @default("ready")
+  stateReason String @default("")
+  // Content-check outcome for blocked versions: pattern class + step only.
+  blockedPatternClass String?
+  blockedStep         String?
+
+  @@unique([headId, version])
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([userId, state, createdAt])
+}
+
+// Suppression record for an undone learned change: identifies the
+// normalised proposed behaviour so a paraphrase cannot silently
+// re-apply it. Evidence fingerprints are kept for audit only.
+model SkillSuppression {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  behaviorFingerprint  String
+  // Normalised step tokens behind the fingerprint so a near-identical
+  // proposal can be routed to review instead of silently reapplied.
+  behaviorTokens       String[] @default([])
+  evidenceFingerprints String[] @default([])
+  actorUserId          String?
+  reason               String   @default("")
+
+  @@unique([userId, ownerKey, skillName, behaviorFingerprint])
+}
+
+// Load / outcome events attached to the exact version used. A load is
+// never a success claim; only a concrete check or an explicit user
+// report can record an outcome.
+model SkillUseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+  versionId String?
+  sessionId String?
+
+  // "loaded" | "succeeded" | "failed" | "stopped_mid_use" | "outcome_unknown"
+  kind        String
+  detail      String  @default("")
+  actorUserId String?
+
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([versionId, kind])
 }
 
 // A user-owned named group of the user's own experts. Distinct from the

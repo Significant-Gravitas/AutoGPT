@@ -34,10 +34,27 @@ import yaml
 from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.learning.content_checks import (
+    ContentCheckFailure,
+    check_skill_bundle,
+)
+from backend.copilot.learning.history import record_registry_write
+from backend.copilot.learning.retrieval import (
+    IndexEntry,
+    index_revision,
+    mark_index_revision_seen,
+    origin_label,
+    paused_skill_names,
+    read_seen_index_revision,
+    record_skill_loaded,
+    resolve_current_version,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.service import strip_server_injected_tags
-from backend.data.db_accessors import experts_db, workspace_db
+from backend.data.db_accessors import experts_db, skill_versions_db, workspace_db
 from backend.data.redis_client import get_redis_async
+from backend.data.skill_learning import owner_key_for
+from backend.data.skill_versions import content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -234,6 +251,30 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
     return f"---\n{frontmatter}\n---\n\n{skill.body.rstrip()}\n"
 
 
+def canonicalize_skill(skill: ParsedSkill) -> ParsedSkill:
+    """The one normalisation every write path applies before rendering.
+
+    ``store_user_skill`` strips server-injected tags and surrounding
+    whitespace and lower-cases the slug; the learning engine renders a
+    version's content with the same function so the bytes it hashes are
+    exactly the bytes the registry writes. The authored ``version``
+    frontmatter is preserved verbatim — internal version numbers never
+    change a file's content.
+    """
+    triggers = tuple(
+        t
+        for t in (strip_server_injected_tags(str(x).strip()) for x in skill.triggers)
+        if t
+    )
+    return ParsedSkill(
+        name=skill.name.strip().lower(),
+        description=strip_server_injected_tags(skill.description.strip()),
+        body=strip_server_injected_tags(skill.body.strip()),
+        triggers=triggers,
+        version=skill.version,
+    )
+
+
 def _validate_name(name: str) -> str | None:
     if not _NAME_RE.match(name):
         return (
@@ -365,6 +406,56 @@ class SkillLimitError(Exception):
     """Raised by :func:`store_user_skill` when the per-user cap is reached."""
 
 
+class SkillContentBlockedError(ValueError):
+    """Raised by :func:`store_user_skill` when a content check fails.
+
+    Carries the pattern class and ordinal location only — never the
+    matched value — so the message is safe to show and to persist.
+    """
+
+    def __init__(self, failure: ContentCheckFailure) -> None:
+        super().__init__(failure.describe())
+        self.failure = failure
+
+
+class SkillUsePausedError(Exception):
+    """Raised when a skill the owner stopped using is loaded."""
+
+
+@dataclass(frozen=True)
+class ExpectedHead:
+    """The tracked version a versioned write expects to still be current.
+
+    ``version_id`` is ``None`` for a skill that has no tracked current
+    version yet (never written since history began). The check runs inside
+    the per-owner write lock, after the lock is held, so a writer that was
+    delayed past a newer write (an overnight publication resumed after a
+    human correction, or an editor submitting a stale base) can never put
+    older bytes on top of a newer version.
+    """
+
+    version_id: str | None
+
+
+class SkillVersionConflictError(Exception):
+    """Raised by :func:`store_user_skill` when ``expected_head`` no longer
+    matches the skill's current version. Nothing was written."""
+
+    def __init__(self, expected: str | None, actual: str | None) -> None:
+        super().__init__("the skill changed since this write was prepared")
+        self.expected = expected
+        self.actual = actual
+
+
+class SkillWriteLockError(Exception):
+    """Raised when a versioned write cannot take the per-owner write lock.
+
+    An ordinary ``store_skill`` falls back to a best-effort unlocked write;
+    a write that carries ``expected_head`` must not, because only the lock
+    makes the version check and the write one step.
+    """
+
+
 async def delete_user_skill(
     user_id: str,
     name: str,
@@ -461,8 +552,27 @@ async def store_user_skill(
     version: str | None = None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    version_origin: str | None = "saved_during_work",
+    actor_user_id: str | None = None,
+    summary: str = "",
+    keep_auto_improve: bool | None = None,
+    allowed_pattern_classes: list[str] | None = None,
+    seeded_secret_values: list[str] | None = None,
+    expected_head: ExpectedHead | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
+
+    Every write runs the deterministic content checks over the whole bundle
+    (raising :class:`SkillContentBlockedError`) and, unless
+    ``version_origin`` is ``None`` (a caller that manages history itself),
+    appends an immutable version with that origin.
+
+    ``expected_head`` makes the write conditional: inside the per-owner
+    write lock the skill's current tracked version must still be the one
+    given, otherwise :class:`SkillVersionConflictError` is raised and
+    nothing is written. Such a write also requires the lock itself
+    (:class:`SkillWriteLockError` when it cannot be taken) — there is no
+    unlocked fallback for a versioned write.
 
     The skill lands in *expert_id*'s folder (personal Otto's when
     ``None``) and becomes that owner's skill. Shared by the ``store_skill``
@@ -472,19 +582,23 @@ async def store_user_skill(
     propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
     workspace write error) to the caller.
     """
-    name = name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
     # ``<env_context>``, etc.) from the persisted fields *before* storage —
     # when the skill is later loaded that text lands in conversation history
     # and could otherwise appear alongside the real server-injected versions.
-    description = strip_server_injected_tags(description.strip())
-    body = strip_server_injected_tags(body.strip())
-    triggers = [
-        strip_server_injected_tags(t.strip())
-        for t in (triggers or [])
-        if str(t).strip()
-    ]
-    triggers = [t for t in triggers if t]
+    canonical = canonicalize_skill(
+        ParsedSkill(
+            name=name,
+            description=description,
+            body=body,
+            triggers=tuple(triggers or ()),
+            version=version,
+        )
+    )
+    name = canonical.name
+    description = canonical.description
+    body = canonical.body
+    triggers = list(canonical.triggers)
 
     name_err = _validate_name(name)
     if name_err:
@@ -542,6 +656,12 @@ async def store_user_skill(
             exc_info=True,
         )
     try:
+        if expected_head is not None:
+            if not lock_held:
+                raise SkillWriteLockError(
+                    "could not serialise the versioned write; try again"
+                )
+            await _require_current_head(user_id, expert_id, name, expected_head)
         manager = await _get_user_skill_manager(user_id, scope)
         # Enforce the per-owner cap *before* we write.  When the lock IS held
         # this is a true atomic check-then-write — an upsert at-cap is safe
@@ -576,6 +696,17 @@ async def store_user_skill(
             version=version,
         )
         rendered = render_skill_markdown(parsed)
+        bundle = await read_skill_bundle_files(
+            user_id, name, expert_id=expert_id, scope=scope, manager=manager
+        )
+        bundle["SKILL.md"] = rendered
+        failure = check_skill_bundle(
+            bundle,
+            seeded_values=seeded_secret_values or (),
+            allowed_pattern_classes=allowed_pattern_classes or (),
+        )
+        if failure is not None:
+            raise SkillContentBlockedError(failure)
         metadata: dict[str, Any] = {
             _META_KIND: _META_KIND_VALUE,
             _META_DESCRIPTION: description,
@@ -594,6 +725,19 @@ async def store_user_skill(
         await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None:
             await experts_db().add_expert_skill_name(user_id, expert_id, name)
+        if version_origin is not None:
+            await record_registry_write(
+                user_id,
+                expert_id=expert_id,
+                skill_name=name,
+                rendered=rendered,
+                description=description,
+                triggers=list(triggers),
+                origin=version_origin,
+                actor_user_id=actor_user_id,
+                summary=summary,
+                keep_auto_improve=keep_auto_improve,
+            )
         return parsed
     finally:
         if lock is not None and lock_held:
@@ -605,6 +749,18 @@ async def store_user_skill(
                     user_id,
                     exc_info=True,
                 )
+
+
+async def _require_current_head(
+    user_id: str, expert_id: str | None, name: str, expected: ExpectedHead
+) -> None:
+    """The version check of a versioned write. Runs with the write lock held
+    so no other registry write (which records its version inside the same
+    lock) can land between this read and the file write."""
+    head = await skill_versions_db().get_head(user_id, owner_key_for(expert_id), name)
+    actual = head.current_version_id if head is not None else None
+    if actual != expected.version_id:
+        raise SkillVersionConflictError(expected.version_id, actual)
 
 
 async def _parse_skill_from_workspace(
@@ -937,6 +1093,25 @@ async def read_user_skill_with_body(
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
 
 
+async def read_user_skill_markdown(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> str | None:
+    """Raw ``SKILL.md`` text as stored — the bytes a version hash refers to."""
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id, scope)
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return raw.decode("utf-8")
+    except (FileNotFoundError, UnicodeDecodeError):
+        return None
+
+
 async def list_user_skill_sibling_paths(
     user_id: str,
     name: str,
@@ -969,6 +1144,49 @@ async def list_user_skill_sibling_paths(
             "[skills] failed to list sibling files for %s", slug, exc_info=True
         )
         return []
+
+
+MAX_BUNDLE_FILE_BYTES = 256 * 1024
+
+
+async def read_skill_bundle_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> dict[str, str]:
+    """Text of every sibling file in a skill folder, keyed by relative path.
+
+    Used by the content checks so references and snippets are validated
+    with the main body. Binary or oversized files are skipped; a listing
+    failure yields ``{}`` (the SKILL.md itself is always checked).
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return {}
+    try:
+        manager = manager or await _get_user_skill_manager(user_id, scope)
+        files = await manager.list_files(
+            path=f"{skill_folder(expert_id)}/{slug}/",
+            limit=50,
+            include_all_sessions=True,
+        )
+    except Exception:
+        logger.warning("[skills] failed to list bundle for %s", slug, exc_info=True)
+        return {}
+    prefix = f"{skill_folder(expert_id)}/{slug}/"
+    out: dict[str, str] = {}
+    for f in files:
+        if f.path.endswith("/SKILL.md") or f.size_bytes > MAX_BUNDLE_FILE_BYTES:
+            continue
+        try:
+            raw = await manager.read_file(f.path)
+            out[f.path[len(prefix) :]] = raw.decode("utf-8")
+        except (UnicodeDecodeError, Exception):
+            continue
+    return out
 
 
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
@@ -1045,6 +1263,8 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         triggers=list(source.triggers),
         version=source.version,
         expert_id=expert_id,
+        version_origin="imported",
+        summary="Copied from the personal skill library",
     )
     for path in await list_user_skill_sibling_paths(user_id, slug):
         relative = path[len(f"{SKILL_FOLDER}/{slug}/") :]
@@ -1126,7 +1346,14 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        skills.extend(await list_user_skills(user_id, expert_id, scope))
+        owned = await list_user_skills(user_id, expert_id, scope)
+        paused = await paused_skill_names(user_id, expert_id)
+        # Retrieval invariant: a skill the owner stopped using is never an
+        # active procedure. When the registry cannot answer, the owner's
+        # skills are withheld rather than served with unknown eligibility;
+        # built-in defaults and every ordinary tool stay available.
+        if paused is not None:
+            skills.extend(s for s in owned if s.name not in paused)
     return skills
 
 
@@ -1163,7 +1390,10 @@ async def is_skills_feature_enabled(user_id: str | None) -> bool:
 
 
 async def build_skills_context(
-    user_id: str | None, expert_id: str | None = None
+    user_id: str | None,
+    expert_id: str | None = None,
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Build the body of the ``<available_skills>`` block injected into
     the first user message.  Returns ``""`` if there are no skills to
@@ -1180,6 +1410,8 @@ async def build_skills_context(
     if not await is_skills_feature_enabled(user_id):
         return ""
     skills = await list_all_skills(user_id, expert_id)
+    if session_id:
+        await mark_index_revision_seen(session_id, skills_index_revision(skills))
     index = render_skills_index(skills)
     if not index:
         return ""
@@ -1191,6 +1423,50 @@ async def build_skills_context(
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
     )
+
+
+async def build_skills_refresh_context(
+    user_id: str | None, expert_id: str | None, session_id: str
+) -> str:
+    """Freshness for an existing conversation.
+
+    The first turn injects the full index (``build_skills_context``); later
+    turns call this. It returns a compact ``<available_skills>`` refresh
+    when the index revision changed since this session last saw it — an
+    overnight update is discovered at the next user turn without a new
+    chat — and ``""`` otherwise. Not persisted: a stale-by-definition
+    snapshot. Never raises.
+    """
+    if not user_id:
+        return ""
+    try:
+        if not await is_skills_feature_enabled(user_id):
+            return ""
+        skills = await list_all_skills(user_id, expert_id)
+        revision = skills_index_revision(skills)
+        seen = await read_seen_index_revision(session_id)
+        if seen == revision:
+            return ""
+        await mark_index_revision_seen(session_id, revision)
+        if seen is None:
+            # First time this session is tracked: nothing to compare with.
+            return ""
+        index = render_skills_index(skills)
+        if not index:
+            return ""
+        return (
+            "The skill index changed since this conversation last saw it "
+            "(a skill was added, updated, restored, or paused). Current index; "
+            "load a relevant skill with `read_skill(name=...)` before new work:\n"
+            f"{index}"
+        )
+    except Exception:
+        logger.warning("[skills] refresh context failed", exc_info=True)
+        return ""
+
+
+def skills_index_revision(skills: list[ParsedSkill]) -> str:
+    return index_revision([IndexEntry(name=s.name, version=s.version) for s in skills])
 
 
 # ---------------------------------------------------------------------------
@@ -1221,6 +1497,12 @@ class ReadSkillResponse(ToolResponseBase):
     sibling_files: list[str] = []
     is_default: bool = False
     expert_id: str | None = None
+    # Exact learned version that was loaded (None for unversioned skills).
+    # A load is recorded as a load event only — never as a success claim.
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
 
 
 class DeleteSkillResponse(ToolResponseBase):
@@ -1367,6 +1649,49 @@ def _owner_label(expert_id: str | None) -> str:
     return "personal Otto" if expert_id is None else f"expert {expert_id}"
 
 
+class LoadedSkillVersion(BaseModel):
+    """Which learned version a ``read_skill`` call handed to the model."""
+
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
+
+    def message(self, name: str) -> str:
+        if self.version is None:
+            return f"Loaded skill '{name}'."
+        return (
+            f"Loaded skill '{name}' v{self.version} ({self.origin_label}). "
+            "Loading is not a success record; report the real outcome."
+        )
+
+
+async def resolve_loaded_skill_version(
+    user_id: str, expert_id: str | None, name: str, text: str
+) -> LoadedSkillVersion:
+    """Pin the loaded content to its exact version, refusing paused skills.
+
+    Raises :class:`SkillUsePausedError` when the owner stopped this skill
+    and propagates registry errors so the caller fails closed. A body whose
+    hash differs from the head's current version (a write that bypassed
+    version tracking, or a pending write) is reported unversioned.
+    """
+    resolved = await resolve_current_version(user_id, expert_id, name)
+    if resolved is None:
+        return LoadedSkillVersion()
+    head, current = resolved
+    if head.use_paused_at is not None:
+        raise SkillUsePausedError(name)
+    if current is None or current.content_hash != content_hash(text):
+        return LoadedSkillVersion()
+    return LoadedSkillVersion(
+        version=current.version,
+        version_id=current.id,
+        origin=current.origin,
+        origin_label=origin_label(current.origin),
+    )
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill's body + sibling-file listing by name."""
 
@@ -1495,6 +1820,36 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
+        try:
+            loaded = await resolve_loaded_skill_version(
+                user_id, owner.expert_id, name, text
+            )
+        except SkillUsePausedError:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' was stopped by its owner and is not "
+                    "available. Continue with your normal tools."
+                ),
+                error="skill_use_paused",
+                session_id=session_id,
+            )
+        except Exception:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' cannot be checked against the skill "
+                    "registry right now; continue with your normal tools."
+                ),
+                error="skill_registry_unavailable",
+                session_id=session_id,
+            )
+        await record_skill_loaded(
+            user_id,
+            owner.expert_id,
+            name,
+            version_id=loaded.version_id,
+            session_id=session_id,
+        )
+
         # List sibling files (references/, scripts/, assets/, etc.) so
         # the model knows what else lives in the bundle.
         try:
@@ -1520,7 +1875,11 @@ class ReadSkillTool(BaseTool):
             sibling_files=sibling_paths,
             is_default=False,
             expert_id=owner.expert_id,
-            message=f"Loaded skill '{name}'.",
+            version=loaded.version,
+            version_id=loaded.version_id,
+            origin=loaded.origin,
+            origin_label=loaded.origin_label,
+            message=loaded.message(name),
             session_id=session_id,
         )
 

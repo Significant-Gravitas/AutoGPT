@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -254,8 +254,32 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        learning_paused_at=row.learningPausedAt,
         pod_id=row.podId,
     )
+
+
+async def set_expert_learning_paused(
+    user_id: str, expert_id: str, paused: bool
+) -> Expert | None:
+    """Pause or resume nightly skill learning for one owned expert.
+
+    Only future automated learning is affected: existing skills stay
+    available and ordinary work continues. Returns ``None`` when the caller
+    does not own an active expert with this id.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data={"learningPausedAt": datetime.now(timezone.utc) if paused else None},
+    )
+    if updated == 0:
+        return None
+    return await get_expert(user_id, expert_id, include_workflows=False)
 
 
 async def _latest_runs(

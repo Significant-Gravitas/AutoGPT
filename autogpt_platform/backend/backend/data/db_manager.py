@@ -54,6 +54,11 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import skill_learning as skill_learning_data
+from backend.data import skill_publication as skill_publication_data
+from backend.data import skill_reviews as skill_reviews_data
+from backend.data import skill_use as skill_use_data
+from backend.data import skill_versions as skill_versions_data
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -545,6 +550,48 @@ class DatabaseManager(AppService):
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
+    set_expert_learning_paused = _(experts_db.set_expert_learning_paused)
+
+    # ============ Skill learning ============ #
+    # Exposed so the Prisma-less copilot executor + scheduler can capture
+    # sources, keep the review ledger, and read/write skill versions via
+    # db_accessors.skill_learning_db() / skill_versions_db().
+    upsert_source_revision = _(skill_learning_data.upsert_source_revision)
+    get_source = _(skill_learning_data.get_source)
+    get_source_by_ref = _(skill_learning_data.get_source_by_ref)
+    list_pending_sources = _(skill_learning_data.list_pending_sources)
+    list_pending_owner_keys = _(skill_learning_data.list_pending_owner_keys)
+    get_review_for_revision = _(skill_reviews_data.get_review_for_revision)
+    require_owned_source = _(skill_learning_data.require_owned_source)
+    set_source_eligibility = _(skill_learning_data.set_source_eligibility)
+    set_source_approval = _(skill_learning_data.set_source_approval)
+    advance_source_cursor = _(skill_learning_data.advance_source_cursor)
+    upsert_review = _(skill_reviews_data.upsert_review)
+    get_review = _(skill_reviews_data.get_review)
+    list_reviews = _(skill_reviews_data.list_reviews)
+    summarize_learning = _(skill_reviews_data.summarize_learning)
+    get_head = _(skill_versions_data.get_head)
+    ensure_head = _(skill_versions_data.ensure_head)
+    list_heads = _(skill_versions_data.list_heads)
+    list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
+    update_head_policy = _(skill_versions_data.update_head_policy)
+    publish_version_if_current = _(skill_versions_data.publish_version_if_current)
+    commit_version_safe = _(skill_publication_data.commit_version_safe)
+    complete_publication = _(skill_publication_data.complete_publication)
+    abandon_publication = _(skill_publication_data.abandon_publication)
+    list_pending_publications = _(skill_publication_data.list_pending_publications)
+    create_version = _(skill_versions_data.create_version)
+    set_version_state = _(skill_versions_data.set_version_state)
+    get_version = _(skill_versions_data.get_version)
+    list_versions = _(skill_versions_data.list_versions)
+    list_recent_versions = _(skill_versions_data.list_recent_versions)
+    list_open_decisions = _(skill_versions_data.list_open_decisions)
+    list_versions_in_states = _(skill_versions_data.list_versions_in_states)
+    add_suppression = _(skill_use_data.add_suppression)
+    find_suppression = _(skill_use_data.find_suppression)
+    list_suppressions = _(skill_use_data.list_suppressions)
+    record_use_event = _(skill_use_data.record_use_event)
+    list_use_events = _(skill_use_data.list_use_events)
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
@@ -936,6 +983,45 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_soul_fields_if_current = d.update_soul_fields_if_current
     add_expert_skill_name = d.add_expert_skill_name
     remove_expert_skill_name = d.remove_expert_skill_name
+    set_expert_learning_paused = d.set_expert_learning_paused
+
+    # ============ Skill learning ============ #
+    upsert_source_revision = d.upsert_source_revision
+    get_source = d.get_source
+    get_source_by_ref = d.get_source_by_ref
+    list_pending_sources = d.list_pending_sources
+    list_pending_owner_keys = d.list_pending_owner_keys
+    get_review_for_revision = d.get_review_for_revision
+    require_owned_source = d.require_owned_source
+    set_source_eligibility = d.set_source_eligibility
+    set_source_approval = d.set_source_approval
+    advance_source_cursor = d.advance_source_cursor
+    upsert_review = d.upsert_review
+    get_review = d.get_review
+    list_reviews = d.list_reviews
+    summarize_learning = d.summarize_learning
+    get_head = d.get_head
+    ensure_head = d.ensure_head
+    list_heads = d.list_heads
+    list_use_paused_skill_names = d.list_use_paused_skill_names
+    update_head_policy = d.update_head_policy
+    publish_version_if_current = d.publish_version_if_current
+    commit_version_safe = d.commit_version_safe
+    complete_publication = d.complete_publication
+    abandon_publication = d.abandon_publication
+    list_pending_publications = d.list_pending_publications
+    create_version = d.create_version
+    set_version_state = d.set_version_state
+    get_version = d.get_version
+    list_versions = d.list_versions
+    list_recent_versions = d.list_recent_versions
+    list_open_decisions = d.list_open_decisions
+    list_versions_in_states = d.list_versions_in_states
+    add_suppression = d.add_suppression
+    find_suppression = d.find_suppression
+    list_suppressions = d.list_suppressions
+    record_use_event = d.record_use_event
+    list_use_events = d.list_use_events
     list_templates = d.list_templates
     hire_expert = d.hire_expert
     create_raised_expert = d.create_raised_expert

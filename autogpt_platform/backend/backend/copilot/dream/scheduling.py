@@ -73,6 +73,7 @@ REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
 # with the registry rows below — pinned by a test.
 COMMUNITY_REBUILD_REGISTRATION_PREFIX = "community_rebuild_registered"
 NIGHTLY_BATCH_REGISTRATION_PREFIX = "dream_nightly_batch_registered"
+SKILL_LEARNING_REGISTRATION_PREFIX = "skill_learning_nightly_registered"
 
 
 # A SchedulerClient is the caller's handle to the scheduler service.
@@ -134,6 +135,14 @@ def _register_nightly_batch(
     )
 
 
+def _register_skill_learning(
+    client: SchedulerLike, user_id: str, user_timezone: str
+) -> Awaitable[dict]:
+    return client.add_skill_learning_schedule(
+        user_id=user_id, user_timezone=user_timezone
+    )
+
+
 # The registry. Listed in cron-frequency order (rarest first) so the
 # log trail when a new user lands reads "weekly → daily" — the
 # narrative matches how the schedules build up over time. The future
@@ -162,6 +171,17 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
         flag=Flag.DREAM_PASS_ENABLED,
         skip_reason="dream_pass_disabled",
         register=_register_nightly_batch,
+    ),
+    DreamSystemJob(
+        name="Skill learning nightly",
+        job_id_prefix="skill_learning_nightly",
+        registration_key_prefix=SKILL_LEARNING_REGISTRATION_PREFIX,
+        # Its own gate: skill learning can run with the dream pass off and
+        # the dream pass never implies skill learning. Same 03:00
+        # user-local cadence, separate lease, separate cost rows.
+        flag=Flag.DREAM_SKILL_LEARNING_ENABLED,
+        skip_reason="skill_learning_disabled",
+        register=_register_skill_learning,
     ),
 ]
 

@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
@@ -90,6 +91,30 @@ def expose(func: C) -> C:
     func = getattr(func, "__func__", func)
     setattr(func, EXPOSED_FLAG, True)
     return func
+
+
+def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
+    """Type hints of ``func`` evaluated in its *defining* module.
+
+    Exposed service functions are plain functions from other modules (or
+    stubs wrapping them via ``update_wrapper``), and those modules may use
+    ``from __future__ import annotations``. ``inspect.signature`` then yields
+    string annotations such as ``"SomeRecord | None"`` that neither
+    ``create_model`` nor ``TypeAdapter`` can resolve from here — the request
+    model would reject model-valued arguments and the client would hand
+    back raw dicts. Unwrapping to the original function and using
+    ``typing.get_type_hints`` evaluates the strings where the names live.
+    Falls back to the raw annotations when evaluation is impossible.
+    """
+    target = inspect.unwrap(func)
+    target = getattr(target, "__func__", target)
+    try:
+        return typing.get_type_hints(target)
+    except Exception:
+        try:
+            return typing.get_type_hints(func)
+        except Exception:
+            return {}
 
 
 # --------------------------------------------------
@@ -315,6 +340,7 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+        hints = resolve_type_hints(func)
         fields = {}
 
         is_bound_method = False
@@ -323,9 +349,18 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Use the resolved annotation or fallback to str if not specified.
+            # ``resolve_type_hints`` evaluates string annotations (modules
+            # using ``from __future__ import annotations``) in the defining
+            # module's namespace; the raw signature would leave model names
+            # as strings that a dynamic model created here cannot resolve.
+            annotation = hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -831,7 +866,9 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
+            ret_ann = resolve_type_hints(original_func).get(
+                "return", sig.return_annotation
+            )
             expected_return = (
                 None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
             )

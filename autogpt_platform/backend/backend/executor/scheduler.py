@@ -32,6 +32,7 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
+    SKILL_LEARNING_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
 from backend.copilot.executor.utils import schedule_turn
@@ -940,6 +941,55 @@ def execute_nightly_batch_sync(user_id: str):
             dream_proposals,
             rat_ratified,
             rat_superseded,
+        )
+    return result
+
+
+def execute_skill_learning_sync(user_id: str):
+    """Per-user nightly skill-learning cron body (independent of the dream pass).
+
+    Runtime flag gate (layer 3): if ``DREAM_SKILL_LEARNING_ENABLED`` flipped
+    off after the cron was registered, the body returns before any work.
+    The pass itself never raises; its outcome is logged here and kept in
+    the per-source review ledger.
+    """
+    from backend.copilot.learning.nightly import run_skill_learning_pass
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    if not run_async(is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)):
+        logger.info(
+            "Skill learning skipped for user %s — flag flipped off", user_id[:12]
+        )
+        return None
+
+    result = run_async(
+        run_skill_learning_pass(user_id, trigger="nightly"),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
+    if result.error:
+        logger.warning(
+            "Skill learning errored for user %s (run %s): %s",
+            user_id[:12],
+            result.run_id,
+            result.error,
+        )
+    elif result.skipped:
+        logger.info(
+            "Skill learning skipped for user %s (run %s): %s",
+            user_id[:12],
+            result.run_id,
+            result.skip_reason,
+        )
+    else:
+        logger.info(
+            "Skill learning completed for user %s in %.1fs (run %s): "
+            "reviewed=%d applied=%d proposed=%d",
+            user_id[:12],
+            result.elapsed_seconds or 0.0,
+            result.run_id,
+            result.reviewed,
+            result.applied,
+            result.proposed,
         )
     return result
 
@@ -2715,6 +2765,93 @@ class Scheduler(AppService):
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 
+    @expose
+    def add_skill_learning_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly skill-learning cron for one user.
+
+        Gated by ``Flag.DREAM_SKILL_LEARNING_ENABLED`` — independent of the
+        dream pass gate. Fires at 03:00 user-local. ``coalesce`` plus a
+        six-hour misfire grace give a capped catch-up after downtime: at
+        most one run, and only if the scheduler is back the same morning;
+        the pass itself re-checks every source's eligibility, so a stale
+        proposal is never applied by a catch-up run.
+        """
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not run_async(
+            is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)
+        ):
+            logger.info(
+                "Skill learning registration skipped for user %s — flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "skill_learning_disabled",
+            }
+
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"skill_learning_nightly_{user_id}"
+        job = self.scheduler.add_job(
+            execute_skill_learning_sync,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
+            id=job_id,
+            name=f"Skill learning nightly for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=6 * 3600,
+        )
+        logger.info(
+            "Registered skill learning job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_skill_learning_schedule(self, user_id: str) -> bool:
+        """Remove the nightly skill-learning cron for one user."""
+        job_id = f"skill_learning_nightly_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        _clear_dream_registration_marker(user_id, SKILL_LEARNING_REGISTRATION_PREFIX)
+        logger.info("Removed skill learning job for user %s", user_id[:12])
+        return True
+
+    @expose
+    def execute_skill_learning_now(self, user_id: str) -> dict:
+        """Run one skill-learning pass synchronously (owner/admin trigger)."""
+        from backend.copilot.learning.nightly import run_skill_learning_pass
+
+        result = run_async(
+            run_skill_learning_pass(user_id, trigger="admin"),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+        return result.model_dump(mode="json")
+
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
     # The ``schedule_immediate_*`` methods schedule the matching
@@ -2852,6 +2989,13 @@ class SchedulerClient(AppServiceClient):
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )
+    add_skill_learning_schedule = endpoint_to_async(
+        Scheduler.add_skill_learning_schedule
+    )
+    delete_skill_learning_schedule = endpoint_to_async(
+        Scheduler.delete_skill_learning_schedule
+    )
+    execute_skill_learning_now = endpoint_to_async(Scheduler.execute_skill_learning_now)
 
     # Ratification stays synchronous — Cypher-only, finishes in seconds.
     # The admin viz "Ratification" button still calls this directly.

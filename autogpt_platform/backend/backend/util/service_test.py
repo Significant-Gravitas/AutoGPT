@@ -15,6 +15,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import TypeAdapter
 
 from backend.data.model import User
+from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -97,6 +98,11 @@ class ServiceTest(AppService):
         """Method that always fails - for testing no retry when disabled"""
         raise RuntimeError("Intended error for testing")
 
+    # Exposed functions defined in another module that uses
+    # ``from __future__ import annotations`` (string annotations).
+    echo_record = expose(rpc_models.echo_record)
+    list_records = expose(rpc_models.list_records)
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -110,6 +116,24 @@ class ServiceTestClient(AppServiceClient):
     always_failing_add = ServiceTest.always_failing_add
     add_async = endpoint_to_async(ServiceTest.add)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
+    echo_record = endpoint_to_async(ServiceTest.echo_record)
+    list_records = endpoint_to_async(ServiceTest.list_records)
+
+
+@pytest.mark.asyncio
+async def test_rpc_resolves_future_annotations_for_request_and_return(server):
+    """A model-valued argument and a ``Model | None`` return declared with
+    string annotations in another module must round-trip as models, not
+    raw dicts, and ``None`` must survive."""
+    with ServiceTest():
+        client = get_service_client(ServiceTestClient)
+        echoed = await client.echo_record(rpc_models.SampleRecord(id="r1", count=2))
+        assert isinstance(echoed, rpc_models.SampleRecord)
+        assert echoed.count == 3
+        assert await client.echo_record(rpc_models.SampleRecord(id="missing")) is None
+        listed = await client.list_records(["a", "b"])
+        assert [r.id for r in listed] == ["a", "b"]
+        assert all(isinstance(r, rpc_models.SampleRecord) for r in listed)
 
 
 @pytest.mark.asyncio

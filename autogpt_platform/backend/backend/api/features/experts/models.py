@@ -237,6 +237,9 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # Set while the owner has paused nightly skill learning for this expert.
+    # Existing skills stay usable; only future automated learning stops.
+    learning_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
 
