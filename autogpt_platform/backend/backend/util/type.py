@@ -82,7 +82,7 @@ def __convert_set(value: Any) -> set:
         if value.startswith("[") and value.endswith("]"):
             try:
                 return set(json.loads(value))
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 return {value}
         else:
             return {value}
@@ -180,7 +180,7 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
                 return [convert(v, args[0]) for v in value]
             elif origin is tuple:
                 # Tuples can have multiple types
-                if len(args) == 1:
+                if len(args) == 1 or (len(args) == 2 and args[1] is Ellipsis):
                     return tuple(convert(v, args[0]) for v in value)
                 else:
                     return tuple(convert(v, t) for v, t in zip(value, args))
@@ -214,7 +214,7 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
         elif _is_type_or_subclass(origin, tuple):
             converted_tuple = __convert_tuple(value)
             if args:
-                if len(args) == 1:
+                if len(args) == 1 or (len(args) == 2 and args[1] is Ellipsis):
                     converted_tuple = tuple(
                         convert(v, args[0]) for v in converted_tuple
                     )
