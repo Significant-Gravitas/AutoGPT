@@ -1,6 +1,7 @@
 """Tests for the skill registry (frontmatter parsing + rendering + the
 ``<available_skills>`` index builder)."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -39,6 +40,7 @@ from backend.copilot.tools.skills import (
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
+    copy_skill_to_expert,
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skills,
@@ -1660,8 +1662,10 @@ def test_validate_package_accepts_a_nested_skill_md_as_a_file():
                     relative_path="big.bin", content=b"x" * (MAX_PACKAGE_FILE_BYTES + 1)
                 )
             ],
-            f"file 'big.bin' is {MAX_PACKAGE_FILE_BYTES + 1} bytes; "
-            f"the limit is {MAX_PACKAGE_FILE_BYTES}",
+            (
+                f"file 'big.bin' is {MAX_PACKAGE_FILE_BYTES + 1} bytes; "
+                f"the limit is {MAX_PACKAGE_FILE_BYTES}"
+            ),
         ),
         (
             [
@@ -1827,3 +1831,95 @@ async def test_delete_removes_a_tree_bigger_than_the_cap():
     with _patch_skills_path(fake):
         await delete_user_skill("user-1", "big")
     assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_mode_only_change_is_re_applied_in_the_sandbox():
+    """A file whose executable bit flips without its bytes changing hashes the
+    same, so a digest-only manifest skips it and leaves a tool unrunnable."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        for executable in (False, True, False):
+            await store_user_skill(
+                "user-1",
+                name="pkg",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(
+                        relative_path="bin/tool",
+                        content=b"#!/bin/sh\n",
+                        is_executable=executable,
+                    )
+                ],
+            )
+            result = await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+            assert isinstance(result, ReadSkillResponse)
+            tool = os.path.join(patched.workdir, "skills", "pkg", "bin", "tool")
+            assert bool(os.stat(tool).st_mode & 0o111) is executable
+
+
+@pytest.mark.asyncio
+async def test_a_manifest_from_before_executable_tracking_is_still_honoured():
+    """T233.1's manifest maps a path to a bare digest. Discarding it would
+    re-copy every file of every package once, so it is read as
+    non-executable — the safe direction, costing at most a redundant chmod.
+
+    The skip is what is asserted: a sentinel written over the materialised
+    file survives only if the manifest hit stopped the re-copy."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="references/a.md", content=b"alpha")],
+        )
+        package_dir = os.path.join(patched.workdir, "skills", "pkg")
+        os.makedirs(os.path.join(package_dir, "references"), exist_ok=True)
+        digest = hashlib.sha256(b"alpha").hexdigest()
+        with open(os.path.join(package_dir, ".package.json"), "w") as f:
+            json.dump({"references/a.md": digest}, f)
+        materialised = os.path.join(package_dir, "references", "a.md")
+        with open(materialised, "wb") as f:
+            f.write(b"sentinel")
+
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        assert isinstance(result, ReadSkillResponse)
+        with open(materialised, "rb") as f:
+            assert f.read() == b"sentinel"
+        with open(os.path.join(package_dir, ".package.json")) as f:
+            assert json.load(f) == {
+                "references/a.md": {"sha256": digest, "executable": False}
+            }
+
+
+@pytest.mark.asyncio
+async def test_a_copy_that_cannot_read_a_file_writes_nothing():
+    """The copy is idempotent on the root, so an expert given a package with a
+    file missing would never get the missing one — the next call sees the root
+    and returns early. Refusing the copy is what keeps that repairable."""
+    fake = _FakeWorkspaceManager()
+    fake.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="d", body="steps")
+    ).encode()
+    fake.files["/skills/mine/references/a.md"] = b"alpha"
+    fake.files["/skills/mine/references/b.md"] = b"beta"
+
+    real_read = fake.read_file
+
+    async def read(path: str) -> bytes:
+        if path.endswith("references/b.md"):
+            raise RuntimeError("blob store unavailable")
+        return await real_read(path)
+
+    fake.read_file = read
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="blob store unavailable"):
+            await copy_skill_to_expert("user-1", "expert-a", "mine")
+    assert not [p for p in fake.files if p.startswith("/experts/")]

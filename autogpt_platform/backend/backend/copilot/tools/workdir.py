@@ -93,23 +93,26 @@ async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
         return None
 
 
-async def make_executable(paths: list[str], session_id: str) -> None:
-    """Best-effort ``chmod +x``. A package whose scripts are not executable is
-    still usable through ``python script.py``, so a failure here is logged and
-    never surfaced."""
+async def set_executable(paths: list[str], executable: bool, session_id: str) -> None:
+    """Best-effort ``chmod +x`` / ``-x``. Rewriting a file does not change an
+    existing mode, so clearing the bit needs its own call. A package whose
+    scripts are not executable is still usable through ``python script.py``, so
+    a failure here is logged and never surfaced."""
     if not paths:
         return
     sandbox = get_current_sandbox()
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
-            await sandbox.commands.run(f"chmod +x {quoted}")
+            await sandbox.commands.run(f"chmod {'+' if executable else '-'}x {quoted}")
             return
         for path in paths:
-            os.chmod(path, os.stat(path).st_mode | 0o111)
+            mode = os.stat(path).st_mode
+            os.chmod(path, mode | 0o111 if executable else mode & ~0o111)
     except Exception:
         logger.warning(
-            "[workdir] failed to mark %d file(s) executable in session %s",
+            "[workdir] failed to set executable=%s on %d file(s) in session %s",
+            executable,
             len(paths),
             session_id,
             exc_info=True,
