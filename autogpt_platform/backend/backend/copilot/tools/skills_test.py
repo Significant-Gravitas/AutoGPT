@@ -1480,3 +1480,59 @@ async def test_read_skill_says_when_a_package_exceeds_the_cap():
     assert isinstance(result, ReadSkillResponse)
     assert len(result.files) == MAX_PACKAGE_FILES
     assert f"first {MAX_PACKAGE_FILES} package files" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_file_dropped_from_a_package_leaves_the_workdir():
+    """delete_skill then store_skill under the same slug is reachable in one
+    session, and a script left behind is one bash_exec can still run."""
+    fake = _package_manager()
+    fake.files["/skills/big/scripts/old.sh"] = b"#!/bin/bash\necho stale\n"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        stale = os.path.join(patched.workdir, "skills", "big", "scripts", "old.sh")
+        assert os.path.exists(stale)
+
+        del fake.files["/skills/big/scripts/old.sh"]
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(stale)
+    assert isinstance(result, ReadSkillResponse)
+    assert result.package_dir is None
+    assert result.files == []
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_listing_prunes_nothing():
+    """Past the cap a listing cannot tell a removed file from an unlisted one,
+    so pruning on it would delete files the package still has."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/keep.md"] = b"keep me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        keep = os.path.join(patched.workdir, "skills", "big", "references", "keep.md")
+        assert os.path.exists(keep)
+
+        # keep.md is now pushed off the end of a capped, newest-first page.
+        for i in range(MAX_PACKAGE_FILES + 1):
+            fake.files[f"/skills/big/references/n{i:03d}.md"] = f"new {i}".encode()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(keep)
+
+
+@pytest.mark.asyncio
+async def test_delete_drains_a_folder_bigger_than_one_page():
+    """One page is capped, so a bigger folder needs more passes; what is left
+    behind keeps consuming quota and is inherited by the next skill at this
+    slug."""
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES * 2 + 5)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}

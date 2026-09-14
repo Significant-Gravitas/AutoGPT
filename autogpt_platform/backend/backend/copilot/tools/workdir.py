@@ -93,6 +93,32 @@ async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
         return None
 
 
+async def remove_from_workdir(paths: list[str], session_id: str) -> None:
+    """Best-effort delete. A file left behind is one the model can still read
+    or run after it has left the package, so a failure here is logged loudly
+    rather than swallowed."""
+    if not paths:
+        return
+    sandbox = get_current_sandbox()
+    try:
+        if sandbox is not None:
+            quoted = " ".join(shlex.quote(p) for p in paths)
+            await sandbox.commands.run(f"rm -f {quoted}")
+            return
+        for path in paths:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    except Exception:
+        logger.warning(
+            "[workdir] failed to remove %d stale file(s) in session %s",
+            len(paths),
+            session_id,
+            exc_info=True,
+        )
+
+
 async def make_executable(paths: list[str], session_id: str) -> None:
     """Best-effort ``chmod +x``. A package whose scripts are not executable is
     still usable through ``python script.py``, so a failure here is logged and
