@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
+import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { MicrosoftCopilotProviderBox } from "./MicrosoftCopilotProviderBox";
 import { ManageConnectionDialog } from "./ManageConnectionDialog";
 import { isSelectable, tierSummary } from "./helpers";
 import { useAIConnectionsSection } from "./useAIConnectionsSection";
@@ -27,6 +29,7 @@ export function AIConnectionsSection() {
     isSaving,
     isLoading,
     isError,
+    refetch,
   } = useAIConnectionsSection();
   const [managing, setManaging] = useState<AIConnectionOffer | null>(null);
 
@@ -90,6 +93,17 @@ export function AIConnectionsSection() {
         </div>
       )}
 
+      {!isLoading &&
+        !connections.some(
+          (connection) =>
+            connection.auth_provider === "microsoft_365_copilot" &&
+            connection.credential_id,
+        ) && (
+          <div className="mt-4 w-full max-w-48">
+            <MicrosoftCopilotProviderBox isLinked={false} onSuccess={refetch} />
+          </div>
+        )}
+
       <UpcomingConnections />
 
       <ManageConnectionDialog
@@ -138,6 +152,14 @@ function ConnectionRow({
         </span>
       )}
 
+      {connection.auth_provider === "microsoft_365_copilot" && (
+        <IntegrationLogo
+          provider="microsoft_365_copilot"
+          alt=""
+          size={32}
+          className="shrink-0"
+        />
+      )}
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
           <Text variant="body-medium" as="span" className="text-black">

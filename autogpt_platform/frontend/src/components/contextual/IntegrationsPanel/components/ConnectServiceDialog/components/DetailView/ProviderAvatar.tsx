@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 import { useState } from "react";
 
 interface Props {
@@ -9,9 +10,9 @@ interface Props {
 }
 
 export function ProviderAvatar({ id, name }: Props) {
-  const src = `/integrations/${id}.png`;
+  const src = integrationIconSrc(id);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-  if (brokenSrc === src) {
+  if (!src || brokenSrc === src) {
     return (
       <div
         aria-hidden

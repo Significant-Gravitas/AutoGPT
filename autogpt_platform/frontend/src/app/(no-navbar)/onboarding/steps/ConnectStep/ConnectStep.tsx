@@ -3,10 +3,10 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
-import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
-import { ProviderBox } from "./components/ProviderBox";
+import { MicrosoftCopilotProviderBox } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/MicrosoftCopilotProviderBox";
+import { ProviderBox } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/ProviderBox";
 import { useConnectStep } from "./useConnectStep";
 
 const UPCOMING = [
@@ -51,7 +51,7 @@ export function ConnectStep() {
         </div>
 
         <div
-          className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3"
+          className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4"
           aria-label="Subscriptions"
         >
           <ProviderBox
@@ -60,6 +60,10 @@ export function ConnectStep() {
             state={isChatGPTLinked ? "connected" : "available"}
             isBusy={isConnecting}
             onClick={connect}
+          />
+          <MicrosoftCopilotProviderBox
+            isLinked={isMicrosoftLinked}
+            onSuccess={finishConnection}
           />
           {UPCOMING.map((provider) => (
             <ProviderBox
@@ -70,28 +74,12 @@ export function ConnectStep() {
           ))}
         </div>
 
-        <div className="w-full rounded-2xl border border-zinc-200 bg-white p-4">
-          {isMicrosoftLinked ? (
-            <Text variant="body" as="p">
-              Your Microsoft 365 Copilot is connected. It can answer chats but
-              does not run AutoGPT tools.
-            </Text>
-          ) : (
-            <>
-              <DeviceAuthConnectButton
-                provider="microsoft_365_copilot"
-                providerName="Microsoft 365 Copilot"
-                onSuccess={finishConnection}
-              />
-              <Text variant="small" as="p" tone="muted" className="mt-3">
-                Requires a paid Microsoft Copilot or Copilot Business add-on
-                from your work or school organization. The included Microsoft
-                365 Copilot Chat does not qualify. This connection answers chats
-                but does not run AutoGPT tools.
-              </Text>
-            </>
-          )}
-        </div>
+        {isMicrosoftLinked && (
+          <Text variant="small" as="p" tone="muted" className="text-center">
+            Your Microsoft 365 Copilot is connected. It can answer chats but
+            does not run AutoGPT tools.
+          </Text>
+        )}
 
         <Button size="small" onClick={skip} className="h-10 w-56 rounded-xl">
           Next
