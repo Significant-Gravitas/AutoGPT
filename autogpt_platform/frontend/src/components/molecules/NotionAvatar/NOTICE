@@ -1,0 +1,18 @@
+Notion-style avatar artwork
+===========================
+
+The avatar layers in parts.generated.ts are derived from the "Notion-style
+avatar" illustration pack by Felix Wong, released under CC0 1.0 (public
+domain dedication).
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+They were vendored from the notion-avatar project by Mayandev, which is
+licensed under the MIT License:
+
+    https://github.com/Mayandev/notion-avatar
+
+Only the `public/avatar/preview` layers are vendored, and the seasonal
+`festival` pack is excluded. Regenerate with:
+
+    node scripts/vendor-notion-avatar.mjs /path/to/notion-avatar
