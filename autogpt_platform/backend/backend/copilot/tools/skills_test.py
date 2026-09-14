@@ -1573,3 +1573,71 @@ def test_package_paths_that_leave_the_package_are_refused(path: str):
 @pytest.mark.parametrize("path", ["SKILL.md", "refs/a.md", "scripts/run.sh"])
 def test_package_paths_inside_the_package_are_accepted(path: str):
     assert _is_safe_relative(path) is True
+
+
+@pytest.mark.asyncio
+async def test_delete_drains_a_folder_no_fixed_number_of_passes_could_clear(
+    monkeypatch,
+):
+    """The loop ends when a pass deletes nothing new, not after a set number
+    of passes: any fixed limit leaves files behind on a folder big enough."""
+    monkeypatch.setattr("backend.copilot.tools.skills.MAX_PACKAGE_FILES", 2)
+    fake = _package_manager(siblings=100)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_cannot_be_deleted_ends_the_drain():
+    fake = _package_manager(siblings=3)
+    stuck = "/skills/big/references/r001.md"
+
+    async def refuse(file_id):
+        if file_id == f"id-{stuck}":
+            raise RuntimeError("storage says no")
+        return await _FakeWorkspaceManager.delete_file(fake, file_id)
+
+    fake.delete_file = refuse
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert list(fake.files) == [stuck]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_package_listing_prunes_nothing():
+    """An enumeration that raised is not an empty package — pruning on it
+    would delete every file the last activation wrote."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        guide = os.path.join(patched.workdir, "skills", "big", "references", "guide.md")
+        assert os.path.exists(guide)
+
+        with patch(
+            "backend.copilot.tools.skills._list_package_files",
+            new=AsyncMock(side_effect=RuntimeError("workspace unavailable")),
+        ):
+            result = await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="big"
+            )
+        assert os.path.exists(guide)
+    assert isinstance(result, ReadSkillResponse)
+    assert result.body.strip() == "steps"
+
+
+@pytest.mark.asyncio
+async def test_nested_skill_md_files_cannot_hide_a_root_skill():
+    """A package shipping its own example SKILL.md files fills the capped,
+    newest-first page; the listing must page past them to the real roots."""
+    fake = _package_manager(slug="aaa-oldest")
+    for i in range(MAX_USER_SKILLS * 4 + 10):
+        fake.files[f"/skills/aaa-oldest/references/e{i:04d}/SKILL.md"] = b"example"
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+        slugs = await find_user_skill_slugs("user-1", ["aaa-oldest"])
+    assert [s.name for s in skills] == ["aaa-oldest"]
+    assert slugs == {"aaa-oldest": "aaa-oldest"}

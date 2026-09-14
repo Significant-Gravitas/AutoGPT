@@ -90,9 +90,6 @@ MAX_TRIGGER_CHARS = 64
 # bounded.  Enumeration fetches one more than this so a folder that exceeds
 # it is reported rather than silently truncated.
 MAX_PACKAGE_FILES = 100
-# Passes delete_user_skill will make over a folder, each one page deep.
-# Bounded so a file that cannot be deleted can never spin the loop.
-_DELETE_PASSES = 20
 SKILL_FOLDER = "/skills"
 
 
@@ -446,27 +443,28 @@ async def delete_user_skill(
     await manager.delete_file(info.id)
     # One page is capped at MAX_PACKAGE_FILES, so a larger folder needs more
     # than one pass; anything left behind keeps consuming the user's quota and
-    # is inherited by the next skill stored under this slug.
-    for _ in range(_DELETE_PASSES):
+    # is inherited by the next skill stored under this slug.  A pass that
+    # deletes nothing new ends the loop, so a file that cannot be deleted stops
+    # it rather than spinning it.
+    attempted: set[str] = set()
+    while True:
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
             break
-        if not siblings:
+        fresh = [s for s in siblings if s.file_id not in attempted]
+        if not fresh:
             break
-        deleted = 0
-        for sibling in siblings:
+        for sibling in fresh:
+            attempted.add(sibling.file_id)
             try:
                 await manager.delete_file(sibling.file_id)
-                deleted += 1
             except Exception:
                 logger.warning(
                     "[skills] failed to delete sibling %s",
                     sibling.path,
                     exc_info=True,
                 )
-        if not deleted:
-            break
     await invalidate_skills_index_cache(user_id, expert_id)
     if expert_id is not None:
         await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
@@ -695,19 +693,10 @@ async def _list_user_skills_from_workspace(
     """
     manager = await _get_user_skill_manager(user_id, scope)
     folder = skill_folder(expert_id)
-    files = await manager.list_files(
-        path=f"{folder}/",
-        limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
-        include_all_sessions=True,
-        name_contains="SKILL.md",
-    )
 
     skills: list[ParsedSkill] = []
     needs_read: list[Any] = []
-    for f in files:
-        slug = _root_skill_slug(f.path, folder)
-        if slug is None:
-            continue
+    for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
@@ -1013,18 +1002,9 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
     if not wanted:
         return {}
     manager = await _get_user_skill_manager(user_id)
-    files = await manager.list_files(
-        path=f"{SKILL_FOLDER}/",
-        limit=MAX_USER_SKILLS * 4,
-        include_all_sessions=True,
-        name_contains="SKILL.md",
-    )
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f in files:
-        slug = _root_skill_slug(f.path, SKILL_FOLDER)
-        if slug is None:
-            continue
+    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
         if slug.strip().lower() in wanted:
             found[slug.strip().lower()] = slug
             continue
@@ -1540,6 +1520,7 @@ class ReadSkillTool(BaseTool):
         # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
         folder = skill_folder(owner.expert_id)
+        listed = True
         try:
             package_files = await _list_package_files(manager, folder, name)
         except Exception:
@@ -1547,10 +1528,13 @@ class ReadSkillTool(BaseTool):
                 "[skills] failed to list package files for %s", name, exc_info=True
             )
             package_files = []
+            listed = False
 
         notes: list[str] = []
-        complete = len(package_files) <= MAX_PACKAGE_FILES
-        if not complete:
+        # A listing that failed is not an empty package: treating it as one
+        # would prune every file the last activation wrote.
+        complete = listed and len(package_files) <= MAX_PACKAGE_FILES
+        if listed and not complete:
             package_files = package_files[:MAX_PACKAGE_FILES]
             notes.append(
                 f"Only the first {MAX_PACKAGE_FILES} package files are listed."
@@ -1744,6 +1728,44 @@ class ListSkillsTool(BaseTool):
 # Package files — enumerating a skill's folder, and keeping the model's
 # working directory in step with it.
 # ---------------------------------------------------------------------------
+
+
+# Rows a listing will scan before giving up. The SKILL.md name filter runs in
+# the query but depth cannot, so a page of newest-first rows can be entirely
+# nested SKILL.md files and yield no roots at all; the bound is the most a
+# compliant folder can hold, every allowed skill carrying a full package.
+_MAX_ROOT_SCAN = MAX_USER_SKILLS * (MAX_PACKAGE_FILES + 1)
+
+
+async def _list_skill_roots(
+    manager: WorkspaceManager, folder: str
+) -> list[tuple[Any, str]]:
+    """``(file, slug)`` for every package root directly under *folder*.
+
+    Pages until the roots run out rather than filtering one capped page: a
+    package shipping its own example ``SKILL.md`` files would otherwise fill
+    the page and hide older skills, which is the defect this listing exists
+    to avoid.
+    """
+    page = MAX_USER_SKILLS * 4  # over-fetch in case of strays
+    roots: list[tuple[Any, str]] = []
+    offset = 0
+    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_USER_SKILLS:
+        rows = await manager.list_files(
+            path=f"{folder}/",
+            limit=page,
+            offset=offset,
+            include_all_sessions=True,
+            name_contains="SKILL.md",
+        )
+        for row in rows:
+            slug = _root_skill_slug(row.path, folder)
+            if slug is not None:
+                roots.append((row, slug))
+        if len(rows) < page:
+            break
+        offset += page
+    return roots
 
 
 def _root_skill_slug(path: str, folder: str) -> str | None:
