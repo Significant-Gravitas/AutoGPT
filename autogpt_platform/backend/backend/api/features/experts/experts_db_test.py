@@ -29,6 +29,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store import skill_seed
 from backend.api.features.store.categories import StoreCategory
 from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
@@ -46,21 +47,29 @@ from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
+    "ai-shortform-video-generator-create-viral-ready-content",
     "ai-webpage-copy-improver",
+    "ai-youtube-to-blog-converter",
     "automated-blog-writer",
     "automated-support-ai",
     "business-ownerceo-finder",
     "email-address-finder",
     "lead-finder-local-businesses",
+    "lifecycle-email-sequence-builder",
     "linkedin-post-generator",
     "personalized-morning-coffee-newsletter",
     "smart-meeting-brief",
+    "winback-email-writer",
+    "youtube-to-linkedin-post-converter",
+    "youtube-transcription-scraper",
 }
-EXPECTED_ROSTER_SCHEDULE = (
-    "Frankie",
-    "personalized-morning-coffee-newsletter",
-    "40 7 * * *",
-)
+# Both roster cadences, keyed by expert. Research-only workflows are the only
+# ones allowed to fire unattended from the day of hire (see PreloadSeed.cron),
+# so this set is also the list of personas whose schedules need attribution.
+EXPECTED_ROSTER_SCHEDULES = {
+    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
+    ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -2972,24 +2981,33 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
+def test_roster_assigns_two_to_four_workflows_with_scheduled_cadences():
     """Launch invariant, checked without a DB: every persona ships 2-4
-    preloads, and exactly one scheduled cadence exists across the whole
-    roster (Frankie's daily ops digest), so schedule attribution has a
-    single unambiguous real case."""
+    preloads, and every scheduled cadence on the roster is one we declared —
+    so a cron added to a persona that acts outside the platform fails here
+    rather than firing unattended on someone's account."""
     for entry in seed.ROSTER:
         assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
     } == EXPECTED_ROSTER_PRELOAD_SLUGS
-    scheduled = [
+    scheduled = {
         (entry["name"], preload["slug"], preload["cron"])
         for entry in seed.ROSTER
         for preload in entry["preloads"]
         if preload["cron"] is not None
-    ]
-    assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
+    }
+    assert scheduled == EXPECTED_ROSTER_SCHEDULES
+
+
+def test_roster_bundled_skills_are_seeded_starter_skills():
+    """Every bundled slug must exist in skill_seed.STARTER_SKILLS, or
+    seed_roster raises at _resolve_roster_skills against a real database."""
+    available = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
+    for entry in seed.ROSTER:
+        for slug in entry["bundled_skills"]:
+            assert slug in available, (entry["name"], slug)
 
 
 def test_roster_bundled_skills_are_hub_slugs():
