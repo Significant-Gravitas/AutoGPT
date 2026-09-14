@@ -179,6 +179,17 @@ configure_environment() {
   # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
   export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
 
+  # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
+  # tiers. Without LaunchDarkly every account resolves to NO_TIER, which
+  # falls back to the BASIC multiplier and would inherit the cloud ceilings
+  # from ChatConfig. A self-hosted operator pays the model provider directly,
+  # so both caps are off unless the operator sets them. -1 is the "no cap"
+  # sentinel; a positive microdollar amount (1 USD = 1000000) re-enables a
+  # spend guard for that window. An empty value also means "unset" so a
+  # blank template field never reaches Pydantic as a non-integer.
+  export CHAT_DAILY_COST_LIMIT_MICRODOLLARS="${CHAT_DAILY_COST_LIMIT_MICRODOLLARS:--1}"
+  export CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="${CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS:--1}"
+
   export BETTER_AUTH_URL="${AUTOGPT_PUBLIC_URL}"
   export BETTER_AUTH_INTERNAL_URL=http://127.0.0.1:3001
   export JWT_JWKS_URL=http://127.0.0.1:3001/api/auth/jwks

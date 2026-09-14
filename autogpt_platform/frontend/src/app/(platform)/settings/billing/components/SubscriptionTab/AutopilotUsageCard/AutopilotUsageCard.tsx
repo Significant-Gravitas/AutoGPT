@@ -16,7 +16,7 @@ interface Props {
 }
 
 const USAGE_EXPLAINER =
-  "Each Autopilot request consumes a share of your plan's allowance based on the work performed. Simple requests use little; complex workflows use more. No surprise overages.";
+  "Each Otto request consumes a share of your plan's allowance based on the work performed. Simple requests use little; complex workflows use more. No surprise overages.";
 
 export function AutopilotUsageCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
@@ -31,7 +31,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
     >
       <div className="flex items-center gap-1 px-4">
         <Text variant="body-medium" as="span" className="text-textBlack">
-          Autopilot usage
+          Otto usage
         </Text>
         <InformationTooltip description={USAGE_EXPLAINER} iconSize={22} />
       </div>

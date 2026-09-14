@@ -71,8 +71,10 @@ export function useTeamPage({ enabled }: Args) {
     hiredExperts,
     schedules,
     schedulesForExpert,
-    isLoading: enabled && (expertsQuery.isLoading || schedulesQuery.isLoading),
-    isError: expertsQuery.isError || schedulesQuery.isError,
+    // Only the roster decides the page's loading and error states: a slow or
+    // failing schedules fetch must not hide experts that loaded fine.
+    isLoading: enabled && expertsQuery.isPending,
+    isError: expertsQuery.isError,
     refetch,
     installWorkflow,
     pickerExpertId,

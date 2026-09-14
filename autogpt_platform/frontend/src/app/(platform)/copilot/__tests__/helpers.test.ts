@@ -37,7 +37,7 @@ describe("formatNotificationTitle", () => {
 
   it("returns formatted title with count", () => {
     expect(formatNotificationTitle(3)).toBe(
-      `(3) AutoPilot is ready - ${ORIGINAL_TITLE}`,
+      `(3) Otto is ready - ${ORIGINAL_TITLE}`,
     );
   });
 
@@ -51,7 +51,7 @@ describe("formatNotificationTitle", () => {
 
   it("returns formatted title for count of 1", () => {
     expect(formatNotificationTitle(1)).toBe(
-      `(1) AutoPilot is ready - ${ORIGINAL_TITLE}`,
+      `(1) Otto is ready - ${ORIGINAL_TITLE}`,
     );
   });
 });

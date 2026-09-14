@@ -65,7 +65,7 @@ export function PaywallModal() {
               </span>
             </Text>
             <Text variant="body" className="!text-zinc-500">
-              Pick a plan to unlock AutoPilot and start running agents.
+              Pick a plan to unlock Otto and start running agents.
             </Text>
             <Link
               href="/tour/chat?utm_source=platform_paywall"

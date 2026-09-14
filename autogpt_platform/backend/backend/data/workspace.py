@@ -491,7 +491,7 @@ async def resolve_attachable_workspace_files(
 ) -> list[UserWorkspaceFile]:
     """Resolve attachment IDs for a message sent in ``session_id``.
 
-    Personal AutoPilot sessions may attach any file in the owner's workspace.
+    Personal Otto sessions may attach any file in the owner's workspace.
     Expert sessions are confined to the expert's resolved scope: attaching a
     file from another expert's conversations raises
     ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface

@@ -1,4 +1,4 @@
-"""The copilot home's onboarding greeting: what AutoPilot says it heard.
+"""The copilot home's onboarding greeting: what Otto says it heard.
 
 Generated while the onboarding loading screen is still up, then stored —
 landing on ``/copilot`` must never wait on a model. If generation fails the
@@ -77,7 +77,7 @@ DEFAULT_PROMPT_ICON = "sparkle"
 # diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are AutoPilot, this user's built-in Head of AI. \
+_LOCAL_PROMPT = """You are Otto, this user's built-in Head of AI. \
 You are theirs alone, never shared, and you run a team for them: you can \
 build real recurring automations (watch sources, draft content, send \
 digests, run agents while they sleep) and you can bring in experts to own \

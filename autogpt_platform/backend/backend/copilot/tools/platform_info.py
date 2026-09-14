@@ -1,4 +1,4 @@
-"""Platform info tool — on-demand subscription and billing data for AutoPilot."""
+"""Platform info tool — on-demand subscription and billing data for Otto."""
 
 import logging
 from typing import Any
@@ -93,7 +93,7 @@ class PlatformInfoTool(BaseTool):
                 message=(
                     "Billing is not enabled on this deployment. "
                     "You have open access to the platform. "
-                    "You are AutoPilot, running on the AutoGPT platform. "
+                    "You are Otto, running on the AutoGPT platform. "
                     "Under the hood you may use models via OpenRouter or Claude SDK, "
                     "but only mention the AutoGPT platform to the user — "
                     "that is the only thing they can manage or change. "
@@ -121,7 +121,7 @@ class PlatformInfoTool(BaseTool):
             message=(
                 f"You are on the {display_name} plan. "
                 "You can manage your billing and subscription at Settings → Billing. "
-                "You are AutoPilot, running on the AutoGPT platform. "
+                "You are Otto, running on the AutoGPT platform. "
                 "Under the hood you may use models via OpenRouter or Claude SDK, "
                 "but only mention the AutoGPT platform to the user — "
                 "that is the only thing they can manage or change. "

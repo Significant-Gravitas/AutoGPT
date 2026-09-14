@@ -26,7 +26,7 @@ export function CopilotModals() {
       <Dialog
         controlled={{ isOpen: modal === "skills", set: handleOpenChange }}
         styling={{ maxWidth: "44rem" }}
-        title="AutoPilot skills"
+        title="Otto skills"
       >
         <Dialog.Content>
           <SkillsPanel

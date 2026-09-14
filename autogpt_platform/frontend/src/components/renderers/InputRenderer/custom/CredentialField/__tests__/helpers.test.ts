@@ -5,7 +5,7 @@ import {
   getCredentialProviderFromSchema,
 } from "../helpers";
 
-// AutoPilot's shape: one provider, but a discriminator whose `platform` value
+// Otto's shape: one provider, but a discriminator whose `platform` value
 // is deliberately unmapped because that transport needs no credential.
 const autopilotSchema: BlockIOCredentialsSubSchema = {
   type: "object",
@@ -91,7 +91,7 @@ describe("getCredentialProviderFromSchema", () => {
 
 describe("credentialNotApplicable", () => {
   it("is true when the selection maps to no provider", () => {
-    // AutoPilot's `platform`: needs no credential, so the row should not
+    // Otto's `platform`: needs no credential, so the row should not
     // render at all — distinct from "unavailable" and from "still loading",
     // which a bare null could not express.
     expect(

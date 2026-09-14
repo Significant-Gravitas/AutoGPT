@@ -41,7 +41,7 @@ interface CapabilityCard {
 
 const CARDS: CapabilityCard[] = [
   {
-    title: "Meet AutoPilot.",
+    title: "Meet Otto.",
     body: "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
     icon: SparklesIcon,
   },
@@ -63,13 +63,13 @@ const CARDS: CapabilityCard[] = [
   },
 ];
 
-// With the team feature on the deck stops being about AutoPilot's own
-// abilities: AutoPilot is the Head of AI, and what the user is about to
+// With the team feature on the deck stops being about Otto's own
+// abilities: Otto is the Head of AI, and what the user is about to
 // meet on the greeting page is a team.
 const TEAM_CARDS: CapabilityCard[] = [
   {
     title: "Meet your Head of AI.",
-    body: "AutoPilot is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
+    body: "Otto is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
     icon: SparklesIcon,
   },
   {
@@ -173,7 +173,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           data-testid="onboarding-welcome-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Welcome to AutoPilot"
+          aria-label="Welcome to Otto"
         >
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.97, maxWidth: "20rem" }}
@@ -308,7 +308,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                                 ? "Next"
                                 : isTeamEnabled
                                   ? "Meet your team"
-                                  : "Meet AutoPilot"}
+                                  : "Meet Otto"}
                             </Button>
                           </div>
                         </div>

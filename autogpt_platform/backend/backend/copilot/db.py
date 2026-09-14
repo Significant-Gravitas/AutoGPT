@@ -73,7 +73,7 @@ async def get_chat_session_expert_ids(
     user_id: str, session_ids: list[str]
 ) -> dict[str, str | None]:
     """Map each of *user_id*'s sessions in *session_ids* to the expert it is
-    scoped to (``None`` for a personal AutoPilot session). Sessions that do
+    scoped to (``None`` for a personal Otto session). Sessions that do
     not belong to the user are left out."""
     if not session_ids:
         return {}
@@ -348,7 +348,7 @@ async def create_chat_session(
                 # Fail closed: the expert vanished (archived/deleted/shared)
                 # between the caller's tenancy pre-check and this locked
                 # re-check. Creating an unattributed session would silently
-                # land the chat in AutoPilot memory scope — the opposite of
+                # land the chat in Otto memory scope — the opposite of
                 # what the caller asked for.
                 raise ExpertNotFoundError(requested_expert_id)
             prisma_session = await PrismaChatSession.prisma(tx).create(
@@ -1514,7 +1514,7 @@ async def append_plain_session_message(
     metadata: dict[str, Any] | None = None,
 ) -> str | None:
     """Post an assistant message into the user's latest non-expert (plain
-    Autopilot) session, creating one when none exists — this is the user's
+    Otto) session, creating one when none exists — this is the user's
     "primary thread", e.g. where a morning briefing lands.
 
     Deduplicates on *message_id* (deterministic per event at the caller), so

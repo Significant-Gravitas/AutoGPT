@@ -229,7 +229,7 @@ async def get_brain_dump_recommended_providers(
 async def get_brain_dump_recommended_experts(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> RecommendedExpertsResponse:
-    """The team AutoPilot proposes: who to hire first, and the raise door.
+    """The team Otto proposes: who to hire first, and the raise door.
 
     Written by a background job beside the greeting one; a plain read
     here, with the deterministic fallback filled in for takes the job

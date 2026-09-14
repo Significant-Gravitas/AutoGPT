@@ -239,7 +239,7 @@ describe("SubSessionLive", () => {
       />,
     );
 
-    expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
+    expect(screen.getByText("Sub-Otto")).toBeDefined();
     expect(screen.getByText("running")).toBeDefined();
     // A teammate's thread is their own workspace: the delegated card is
     // status-only, so the prompt preview stays out of the parent chain.

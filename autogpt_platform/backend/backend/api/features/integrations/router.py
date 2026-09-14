@@ -22,6 +22,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.db_accessors import experts_db
+from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -75,6 +76,7 @@ from backend.integrations.oauth import (
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
+from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
@@ -412,6 +414,12 @@ async def callback(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
     )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="oauth",
+    )
 
     return to_meta_response(credentials)
 
@@ -745,6 +753,12 @@ async def device_auth_poll(
         logger.debug(
             f"Device auth approved for user {user_id} and provider {provider.value}"
         )
+        product_analytics.track_integration_connected(
+            user_id=user_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            method="device_code",
+        )
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -980,6 +994,12 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store credentials",
         )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="manual",
+    )
     return to_meta_response(credentials)
 
 
@@ -1232,7 +1252,7 @@ async def _execute_webhook_node_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
@@ -1240,6 +1260,14 @@ async def _execute_webhook_node_trigger(
             organization_id=org_id,
             team_id=ws_id,
             webhook_id=webhook_id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=node.graph_id,
+            graph_exec_id=graph_exec.id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1338,7 +1366,7 @@ async def _execute_webhook_preset_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
@@ -1349,6 +1377,16 @@ async def _execute_webhook_preset_trigger(
             team_id=ws_id,
             expert_id=preset.expert_id,
             webhook_id=webhook.id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=preset.graph_id,
+            graph_exec_id=graph_exec.id,
+            expert_id=preset.expert_id,
+            preset_id=preset.id,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
@@ -1451,9 +1489,9 @@ async def _merge_or_create_credential(
     advertises.  Without that guard a narrowed re-auth would overwrite the
     stored ``access_token`` with a token whose grant is smaller than the
     ``scopes`` list — the record would claim authorizations the token does
-    not grant, the credential matcher would happily route AutoPilot tools
+    not grant, the credential matcher would happily route Otto tools
     to that "more capable" credential, and the tool would fail with opaque
-    401/403s on the missing scopes ("AutoPilot keeps picking the old
+    401/403s on the missing scopes ("Otto keeps picking the old
     creds" symptom).  On a narrowing re-auth we keep the existing
     credential intact and persist the new one alongside it instead.
     """
@@ -1736,6 +1774,20 @@ def _get_provider_oauth_handler(
     key = provider_key(provider_name)
 
     if key not in HANDLERS_BY_NAME:
+        if key in DEVICE_HANDLERS_BY_NAME:
+            # A device-code provider is a public client with no client secret,
+            # so there is no authorization-code flow to start. Point the caller
+            # at the device-auth endpoint rather than reporting "does not
+            # support OAuth". The detail is shown to end users verbatim.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Provider '{key}' connects with a device code, not an "
+                    "OAuth redirect. Connect it through the device-code flow "
+                    f"instead (API: POST /api/integrations/{key}"
+                    "/device-auth/initiate)."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",

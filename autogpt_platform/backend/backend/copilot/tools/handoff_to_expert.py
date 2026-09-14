@@ -265,7 +265,7 @@ class HandoffToExpertTool(BaseTool):
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
         if caller_expert_id is None:
-            return "AutoPilot"
+            return "Otto"
         try:
             caller = await experts_db().get_expert(
                 user_id, caller_expert_id, include_workflows=False
@@ -286,7 +286,7 @@ def _request_refusal(
         return "prompt is required"
     if caller_expert_id is None:
         # The ``experts`` tool group already hides and refuses this tool for a
-        # plain Autopilot session, so this is defence in depth — but the
+        # plain Otto session, so this is defence in depth — but the
         # failure it prevents is silent rather than loud: ``_transfer`` would
         # persist ``handed_off_from_expert_id`` as JSON null while still
         # setting ``delegated_by_session_id``, and the Home pending-question

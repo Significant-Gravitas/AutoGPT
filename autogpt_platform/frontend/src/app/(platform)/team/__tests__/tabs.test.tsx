@@ -128,8 +128,8 @@ describe("TeamRoster toolbar", () => {
     // Matches Lee on role, not name.
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
-    // Autopilot is pinned, but steps aside once the roster is narrowed.
-    expect(screen.queryByText("Autopilot")).toBeNull();
+    // Otto is pinned, but steps aside once the roster is narrowed.
+    expect(screen.queryByText("Otto")).toBeNull();
   });
 
   test("says so when nothing matches the search", async () => {
@@ -214,7 +214,7 @@ describe("AutopilotCard", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Lee")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
+    const autopilot = screen.getByRole("region", { name: "Otto" });
     expect(getStatValue(autopilot, "Skills")).toBe("3");
     expect(getStatValue(autopilot, "Schedules")).toBe("1");
     expect(getStatValue(autopilot, "Workflows")).toBe("1");
@@ -226,12 +226,12 @@ describe("AutopilotCard", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
+    const autopilot = screen.getByRole("region", { name: "Otto" });
     // A zero total is left out of the meta line rather than shown as "0".
     expect(within(autopilot).queryByText("Skills")).toBeNull();
     expect(within(autopilot).queryByText("Schedules")).toBeNull();
     expect(within(autopilot).queryByText("Workflows")).toBeNull();
-    expect(within(autopilot).getByText("Built in")).toBeDefined();
+    expect(within(autopilot).queryByText("Built in")).toBeNull();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(
       within(autopilot).getByRole("button", { name: "Chat" }),
@@ -239,16 +239,16 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  test("links its body to the Autopilot page", async () => {
+  test("links its body to the Otto page", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
+    const autopilot = screen.getByRole("region", { name: "Otto" });
     expect(
       within(autopilot)
-        .getByRole("link", { name: "View Autopilot" })
+        .getByRole("link", { name: "View Otto" })
         .getAttribute("href"),
     ).toBe("/team/autopilot");
   });

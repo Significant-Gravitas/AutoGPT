@@ -12,7 +12,7 @@ export const INTRO_SLIDES: Record<IntroSlideId, IntroSlide> = {
     title: "Your own team of AI experts.",
     body: "Go beyond chat. Get experts that research, create, and handle work for you.",
   },
-  autopilot: { title: "Meet AutoPilot, your Head of AI." },
+  autopilot: { title: "Meet Otto, your Head of AI." },
 };
 
 export function facing(yawDeg: number, pitchDeg = 0): Partial<Pose> {

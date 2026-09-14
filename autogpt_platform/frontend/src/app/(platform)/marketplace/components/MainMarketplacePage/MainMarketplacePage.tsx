@@ -67,8 +67,13 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {showExperts ? <ExpertsSection /> : null}
-        {skillsHub.ready && skillsHub.enabled ? <SkillsSection /> : null}
+        {/* Above all three shelves because it narrows all three: a filter
+            below its content changes what the reader has scrolled past. */}
+        <CategoryFilter selected={category} onSelect={setCategory} />
+        {showExperts ? <ExpertsSection category={category} /> : null}
+        {skillsHub.ready && skillsHub.enabled ? (
+          <SkillsSection category={category} />
+        ) : null}
         {topAgents && (
           <div className="mb-20" id={AGENTS_SECTION_ID}>
             <AgentsSection
@@ -81,7 +86,6 @@ export const MainMarkeplacePage = () => {
               }
               agents={topAgents.agents}
             >
-              <CategoryFilter selected={category} onSelect={setCategory} />
               {/* Featured is a whole-marketplace shelf; under a category filter
                   it would show workflows the filter excludes. */}
               {!category &&

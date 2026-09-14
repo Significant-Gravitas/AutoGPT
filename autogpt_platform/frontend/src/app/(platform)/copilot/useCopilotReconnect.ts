@@ -99,7 +99,7 @@ export function useCopilotReconnect({
         toast({
           title: "Connection timed out",
           description:
-            "AutoPilot may still be working. Refresh to check for updates.",
+            "Otto may still be working. Refresh to check for updates.",
           variant: "destructive",
         });
       }, RECONNECT_MAX_DURATION_MS);

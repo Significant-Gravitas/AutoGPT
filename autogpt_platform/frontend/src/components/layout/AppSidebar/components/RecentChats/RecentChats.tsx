@@ -112,9 +112,7 @@ export function RecentChats() {
                 // survives the session list's periodic refetch.
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
-                  label={
-                    group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
-                  }
+                  label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
                   avatarUrl={expert?.avatarUrl ?? null}
                   color={expert?.color ?? null}
                   newChatHref={getNewChatHref(group.expertId, activeExpertIds)}

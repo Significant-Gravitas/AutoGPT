@@ -344,6 +344,33 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
+  test("shows the expert's integrations as logos after the role pill", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        credential_providers: ["github", "openai"],
+      })),
+    );
+
+    render(<ExpertDetailPage />);
+
+    const header = (await screen.findByRole("heading", { name: "Maria" }))
+      .parentElement as HTMLElement;
+    const integrations = within(header).getByRole("list", {
+      name: "Integrations",
+    });
+    expect(
+      within(integrations)
+        .getAllByRole("img")
+        .map((logo) => logo.getAttribute("alt")),
+    ).toEqual(["GitHub", "OpenAI"]);
+    const pill = within(header).getByText("Marketing Strategist");
+    expect(
+      pill.compareDocumentPosition(integrations) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test("keeps the budget above the tabs and the summary in Basics", async () => {
     render(<ExpertDetailPage />);
 

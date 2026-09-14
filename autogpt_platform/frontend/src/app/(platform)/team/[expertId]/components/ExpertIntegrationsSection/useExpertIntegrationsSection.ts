@@ -39,6 +39,7 @@ export function useExpertIntegrationsSection(expertId: string) {
     (credential) => !grantedIds.has(credential.id),
   );
 
+  // The expert and the roster carry the provider logos, so they go stale too.
   function invalidate() {
     invalidateExpertGrantQueries(queryClient, expertId);
   }

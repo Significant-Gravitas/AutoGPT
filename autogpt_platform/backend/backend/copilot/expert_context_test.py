@@ -61,10 +61,11 @@ def hire_experts_flag_on():
         yield
 
 
-# SHA-256 of _CACHEABLE_SYSTEM_PROMPT captured before the Task 6 change.
-# The prompt cache contract requires this constant to stay byte-identical.
+# SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
+# constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
+# Last re-pinned when the assistant was renamed AutoPilot -> Otto.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "22d1897a44ec751b36e4938f087dc49ad9dcae6c452842ed057ba7ebe3de4545"
+    "572493d92b08c0b1f4abfcdd8339790c0f0d504401403ea57d5c1fe155217323"
 )
 
 
@@ -156,7 +157,9 @@ class TestBuildExpertIdentitySuffix:
         assert "Maria" in result
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
-        assert "never present yourself as AutoPilot" in result
+        assert "never present yourself as Otto" in result
+        assert "call `expert_onboarding` exactly once" in result
+        assert "Do not use `ask_question` for it" in result
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):
@@ -653,7 +656,7 @@ class TestBuildExpertContextPlainSession:
 
     @pytest.mark.asyncio
     async def test_no_experts_with_team_flag_renders_head_of_ai_block(self):
-        """Flag-on, nothing hired: AutoPilot gets the roster and its
+        """Flag-on, nothing hired: Otto gets the roster and its
         Head-of-AI brief instead of silence, so a recurring-work request can
         turn into a hire proposal."""
         from backend.copilot.expert_context import build_expert_context

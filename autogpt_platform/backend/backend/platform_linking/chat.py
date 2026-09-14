@@ -61,7 +61,7 @@ def _unavailable_denial() -> TurnDenial:
     mirrors the web route's 503-on-lookup-failure behaviour."""
     return TurnDenial(
         reason="unavailable",
-        message="AutoPilot is temporarily unavailable — please try again in a moment.",
+        message="Otto is temporarily unavailable — please try again in a moment.",
     )
 
 
@@ -84,7 +84,7 @@ async def _check_paywall(user_id: str) -> TurnDenial | None:
     return TurnDenial(
         reason="paywalled",
         message=(
-            "AutoPilot needs an active subscription. "
+            "Otto needs an active subscription. "
             "Upgrade your plan to start chatting with it."
         ),
         button_label="Subscribe" if billing else None,
@@ -177,7 +177,7 @@ async def upload_workspace_file(
     """Store a user-attached file in the conversation owner's workspace.
 
     Runs the same machinery as the web upload endpoint
-    (``WorkspaceManager.write_file`` → ClamAV scan → storage), so AutoPilot can
+    (``WorkspaceManager.write_file`` → ClamAV scan → storage), so Otto can
     read the file during the turn. Failures map to a stable ``error`` code
     rather than raising, so one bad file doesn't sink the whole message.
     """
@@ -205,7 +205,7 @@ async def upload_workspace_file(
     try:
         workspace = await workspace_db().get_or_create_workspace(owner_user_id)
         # Session-scoped, exactly like the web upload endpoint: the file lands
-        # at /sessions/<session_id>/<name> so AutoPilot reads it during the
+        # at /sessions/<session_id>/<name> so Otto reads it during the
         # turn. The caller resolves the session before uploading (see
         # ensure_chat_session).
         manager = WorkspaceManager(owner_user_id, workspace.id, request.session_id)
@@ -288,7 +288,7 @@ async def ensure_chat_session(
 
     Called before uploading attachments so they can be written into the
     session folder — mirroring the web UI, which uploads into an already-open
-    session so files land at /sessions/<id>/ where AutoPilot reads them.
+    session so files land at /sessions/<id>/ where Otto reads them.
 
     Evaluates the turn gate first: a capped/paywalled user gets the denial
     back *before* any file is scanned or stored (the caller renders it and

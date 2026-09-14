@@ -421,7 +421,7 @@ class TestDelegation:
             prompt="hi",
             wait_for_result=0,
         )
-        assert "AutoPilot" in mock_turn.await_args.kwargs["message"]
+        assert "Otto" in mock_turn.await_args.kwargs["message"]
         assert mock_sessions[0].metadata.delegated_by_expert_id is None
 
     @pytest.mark.asyncio
@@ -439,7 +439,7 @@ class TestDelegation:
         assert r.expert is not None
         assert r.expert.id == "expert-b"
         assert r.expert.name == "Bea"
-        assert "Sub-AutoPilot" not in r.message
+        assert "Sub-Otto" not in r.message
         assert "Bea" in r.message
 
     @pytest.mark.asyncio

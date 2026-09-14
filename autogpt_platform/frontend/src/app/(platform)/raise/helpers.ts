@@ -60,7 +60,7 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
   nameQuestion: "Good pick. What do you want to call them?",
   colorQuestion: "Nice. Now choose a color for them.",

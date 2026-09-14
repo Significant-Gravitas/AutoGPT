@@ -116,7 +116,7 @@ def _to_item(row: _HistoryRow, user_id: str) -> CreditTransactionItem:
         if row.usage_execution_id and row.usage_execution_id.startswith(
             "copilot-session-"
         ):
-            activity_type, description = "copilot_tools", "Autopilot tool use"
+            activity_type, description = "copilot_tools", "Otto tool use"
         elif row.usage_execution_id:
             activity_type, description = "agent_run", "Agent run"
         elif row.usage_has_block:

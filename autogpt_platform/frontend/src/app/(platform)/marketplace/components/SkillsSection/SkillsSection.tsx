@@ -12,7 +12,11 @@ import { useSkillsSection } from "./useSkillsSection";
 
 const HEADING_ID = "skills-heading";
 
-export function SkillsSection() {
+interface Props {
+  category?: string | null;
+}
+
+export function SkillsSection({ category }: Props) {
   const {
     isLoggedIn,
     skills,
@@ -21,8 +25,11 @@ export function SkillsSection() {
     isLoading,
     isError,
     refetch,
-  } = useSkillsSection();
+  } = useSkillsSection({ category });
 
+  // Under a category filter an empty shelf means "no skills in this
+  // category", so the whole section goes rather than offering an empty state.
+  if (!isLoading && !isError && skills.length === 0 && category) return null;
   // Visitors get nothing when there is nothing to show, as Experts does.
   if (!isLoading && !isError && skills.length === 0 && !isLoggedIn) return null;
 
@@ -34,9 +41,9 @@ export function SkillsSection() {
     >
       <SectionHeader
         titleIcon={<Icon icon={BookOpen01Icon} size={30} aria-hidden />}
-        title="AutoPilot Skills"
+        title="Otto Skills"
         titleId={HEADING_ID}
-        subtitle="Playbooks your AutoPilot follows — from brand voice to cold outreach. Install one and it knows how."
+        subtitle="Playbooks your Otto follows — from brand voice to cold outreach. Install one and it knows how."
         action={sectionAction({ isLoggedIn, total })}
       />
       {isLoggedIn ? (
@@ -129,7 +136,7 @@ function EmptyShelf() {
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-600">
         Skills from the community will show up here. In the meantime you can
-        teach your AutoPilot one of your own.
+        teach your Otto one of your own.
       </Text>
       <Link
         href="/library/skills"

@@ -360,6 +360,34 @@ class TestCheckRateLimit:
                 await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
             assert exc_info.value.window == "daily"
 
+    @pytest.mark.asyncio
+    async def test_negative_limit_disables_the_window(self):
+        """A negative limit is the explicit "no cap" sentinel that self-hosted
+        distributions export (the single-container image sets -1 for both
+        windows). Unlike 0 it must never raise, however much was spent."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "999000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await check_rate_limit(_USER, daily_cost_limit=-1, weekly_cost_limit=-1)
+
+    @pytest.mark.asyncio
+    async def test_negative_daily_limit_still_enforces_weekly(self):
+        """Disabling one window must not disable the other."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "5000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(
+                    _USER, daily_cost_limit=-1, weekly_cost_limit=5_000_000
+                )
+            assert exc_info.value.window == "weekly"
+
 
 class TestCoPilotUsagePublicFromStatus:
     """Public-shape projection must surface a 0-limit window as fully
@@ -392,6 +420,14 @@ class TestCoPilotUsagePublicFromStatus:
         assert public.daily.percent_used == 100.0
         assert public.weekly is not None
         assert public.weekly.percent_used == 100.0
+
+    def test_negative_limit_hides_the_window(self):
+        """A negative limit means "no cap configured" (the self-hosted
+        default) and must project to ``None`` so the UI hides the meter
+        instead of rendering a negative percentage."""
+        public = CoPilotUsagePublic.from_status(self._status(-1, -1))
+        assert public.daily is None
+        assert public.weekly is None
 
     def test_positive_limit_renders_normally(self):
         # daily limit $10, used $0 → 0% used
@@ -2765,6 +2801,35 @@ class TestGetRemainingUsdBudget:
                 _USER, daily_cost_limit=0, weekly_cost_limit=0, floor_usd=0.5
             )
         assert result == 0.5
+
+    @pytest.mark.asyncio
+    async def test_negative_limits_mean_unlimited_budget(self):
+        """Self-hosted installs export -1 for both windows; SDK budget sizing
+        must see an unbounded budget rather than the floor."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "999000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=-1, weekly_cost_limit=-1
+            )
+        assert result == float("inf")
+
+    @pytest.mark.asyncio
+    async def test_negative_daily_limit_defers_to_weekly_remaining(self):
+        # daily uncapped; weekly=$50 used $48 → $2 remaining drives the result.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["999000000", "48000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=-1, weekly_cost_limit=50_000_000
+            )
+        assert result == pytest.approx(2.0)
 
     @pytest.mark.asyncio
     async def test_smaller_of_daily_and_weekly_remaining(self):

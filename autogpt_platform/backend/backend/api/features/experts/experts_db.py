@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from backend.api.features.experts import raise_attachments, scheduling
 
 # Re-exported so `db_accessors.experts_db()` resolves the same attribute name
 # on both branches: the module here, and the RPC client stub in db_manager.
-from backend.api.features.experts.credential_counts import count_expert_credentials
+from backend.api.features.experts.credential_counts import expert_credential_providers
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
@@ -36,6 +37,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertActivityDay,
+    ExpertBundledSkill,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -43,17 +45,23 @@ from backend.api.features.experts.models import (
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
     RaiseResult,
+    decode_day_one,
     decode_voice_preferences,
 )
-from backend.api.features.experts.roster_skills import skills_for_template
-from backend.api.features.experts.workflow_chain import build_workflow_chain
+from backend.api.features.experts.workflow_chain import (
+    build_workflow_chain,
+    integration_providers,
+)
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.store import skill_db
+from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -63,9 +71,8 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
-    store_user_skill,
+    skill_name_key,
 )
-from backend.data.db import execute_raw_with_schema
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
@@ -81,11 +88,13 @@ from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.exceptions import (
+    ConflictError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     ExpertWriteNotReadableError,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -97,19 +106,40 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
+# Postgres promises no row order without this, so the profile's workflow grid
+# could reshuffle between loads; createdAt keeps the roster's authored order.
+_WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
+
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     # AgentGraph carries the name/description of a user-created library agent;
     # LibraryAgent.name is only populated from a marketplace snapshot.
     "LibraryAgent": {"include": {"AgentGraph": {"include": {"Nodes": True}}}},
     "StoreListingVersion": True,
 }
-_WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_WORKFLOW_INCLUDE = {
+    "Workflows": {"include": _WORKFLOW_ROW_INCLUDE, "order_by": _WORKFLOW_ORDER}
+}
 _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
         "include": {
             "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": True,
-        }
+        },
+        "order_by": _WORKFLOW_ORDER,
+    }
+}
+# A template workflow has no LibraryAgent — that row is created at hire time —
+# so its chain has to come from the listing's own graph. Without it the
+# marketplace profile cannot say what a workflow connects to.
+_TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
+    "Workflows": {
+        "include": {
+            "LibraryAgent": {"include": {"AgentGraph": True}},
+            "StoreListingVersion": {
+                "include": {"AgentGraph": {"include": {"Nodes": True}}}
+            },
+        },
+        "order_by": _WORKFLOW_ORDER,
     }
 }
 _MAX_EXPERT_RUNS = 20
@@ -131,6 +161,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         name, description = _library_agent_labels(library_agent)
     else:
         name, description = None, None
+    nodes = _chain_nodes(row)
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
@@ -140,12 +171,25 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
-        chain=build_workflow_chain(
-            library_agent.AgentGraph.Nodes or []
-            if library_agent and library_agent.AgentGraph
-            else []
-        ),
+        chain=build_workflow_chain(nodes),
+        integration_providers=integration_providers(nodes),
     )
+
+
+def _chain_nodes(
+    row: prisma.models.ExpertWorkflow,
+) -> Sequence[prisma.models.AgentNode]:
+    """The graph whose blocks the chain summarises: the hire's own library
+    agent, or the marketplace listing behind a template that has none yet."""
+    library_graph = row.LibraryAgent.AgentGraph if row.LibraryAgent else None
+    if library_graph and library_graph.Nodes:
+        return library_graph.Nodes
+    listing_graph = (
+        row.StoreListingVersion.AgentGraph if row.StoreListingVersion else None
+    )
+    if listing_graph and listing_graph.Nodes:
+        return listing_graph.Nodes
+    return []
 
 
 def _library_agent_labels(
@@ -194,9 +238,11 @@ def _to_model(
         tagline=row.tagline,
         bio=row.bio,
         skills=row.skills or [],
+        categories=row.categories or [],
         identity=row.identity,
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
+        day_one=decode_day_one(row.dayOne),
         boundaries=row.boundaries,
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=row.isTemplate,
@@ -226,12 +272,73 @@ async def _latest_runs(
     return {row.expertId: row for row in rows if row.expertId is not None}
 
 
-async def list_templates() -> list[Expert]:
+async def list_templates(
+    search_query: str | None = None,
+    category: str | None = None,
+) -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
-        where={"isTemplate": True, "isArchived": False},
-        include=_WORKFLOW_INCLUDE,
+        where=_template_where(search_query, category),
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+def _template_where(
+    search_query: str | None, category: str | None
+) -> prisma.types.ExpertWhereInput:
+    where: prisma.types.ExpertWhereInput = {"isTemplate": True, "isArchived": False}
+    if category:
+        # Not `category_filter_values`: with the canonical-category setting
+        # on, that one hides uncategorised experts from the unfiltered roster.
+        where["categories"] = {"has_some": category_match_values(category)}
+    if search_query and (needle := search_query.strip()):
+        where["OR"] = [
+            {"name": {"contains": needle, "mode": "insensitive"}},
+            {"role": {"contains": needle, "mode": "insensitive"}},
+            {"tagline": {"contains": needle, "mode": "insensitive"}},
+            {"bio": {"contains": needle, "mode": "insensitive"}},
+        ]
+    return where
+
+
+async def with_bundled_skills(
+    templates: list[Expert], user_id: str | None
+) -> list[ExpertTemplate]:
+    """Attach to each template the live Skills Hub listings it bundles —
+    exactly what ``hire_expert`` installs."""
+    bundled = await _live_bundled_skills(user_id, [t.id for t in templates])
+    return [
+        ExpertTemplate(
+            **template.model_dump(), bundled_skills=bundled.get(template.id, [])
+        )
+        for template in templates
+    ]
+
+
+async def _live_bundled_skills(
+    user_id: str | None, template_ids: list[str]
+) -> dict[str, list[ExpertBundledSkill]]:
+    """Per template id, the live Hub listings it bundles, in roster order."""
+    # The Hub routes' key, so nothing is linked or installed that would 404.
+    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
+        return {}
+    rows = await prisma.models.ExpertSkillListing.prisma().find_many(
+        where={"expertId": {"in": template_ids}}, order={"position": "asc"}
+    )
+    live = await skill_db.get_live_skills(sorted({r.skillListingId for r in rows}))
+    return {
+        template_id: [
+            ExpertBundledSkill(
+                id=row.skillListingId,
+                slug=skill.slug,
+                name=skill.name,
+                description=skill.description,
+            )
+            for row in rows
+            if row.expertId == template_id and (skill := live.get(row.skillListingId))
+        ]
+        for template_id in template_ids
+    }
 
 
 # Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
@@ -285,17 +392,37 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
         return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
-    try:
-        credential_counts = await count_expert_credentials(user_id, rows)
-    except Exception:
-        logger.exception("Failed to read credential counts for expert roster")
-        credential_counts = {}
+    credential_providers = await _credential_providers(user_id, rows)
     return [
         _to_model(
             row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
-        ).model_copy(update={"credential_count": credential_counts.get(row.id, 0)})
+        ).model_copy(update=_credential_fields(credential_providers.get(row.id, [])))
         for row in rows
     ]
+
+
+async def _credential_providers(
+    user_id: str, rows: list[prisma.models.Expert]
+) -> dict[str, list[str]]:
+    """Each expert's live grants, or nothing when the read fails.
+
+    The logos are decoration on the roster and the expert page; a credential
+    outage must not take the whole expert with it.
+    """
+    try:
+        return await expert_credential_providers(user_id, rows)
+    except Exception:
+        logger.exception("Failed to read credential providers for experts")
+        return {}
+
+
+def _credential_fields(providers: list[str]) -> dict[str, object]:
+    """The count is every grant; the logos show each provider once, in the
+    order it was first granted."""
+    return {
+        "credential_count": len(providers),
+        "credential_providers": list(dict.fromkeys(providers)),
+    }
 
 
 async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
@@ -358,6 +485,7 @@ async def get_expert(
     *,
     include_workflows: bool = True,
     include_archived: bool = False,
+    include_credentials: bool = False,
 ) -> Expert | None:
     """Fetch a hired expert owned by *user_id*.
 
@@ -365,6 +493,11 @@ async def get_expert(
     + StoreListingVersion joins when the caller only needs the expert's own
     columns. The returned model then always carries an empty ``workflows``
     list — never use that flag to decide whether workflows are installed.
+
+    Set ``include_credentials=True`` to fill ``credential_count`` and
+    ``credential_providers`` the way the roster does. Off by default because
+    the read seeds the expert's allow-list on first touch, and most callers
+    (hire, raise, the scheduler's scope gate) only need the expert's columns.
 
     Archived experts are hidden by default so product surfaces treat them as
     gone. Set ``include_archived=True`` when the caller must distinguish
@@ -387,7 +520,13 @@ async def get_expert(
     if row is None:
         return None
     latest_runs = await _latest_runs([row.id])
-    return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+    expert = _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+    if not include_credentials:
+        return expert
+    credential_providers = await _credential_providers(user_id, [row])
+    return expert.model_copy(
+        update=_credential_fields(credential_providers.get(row.id, []))
+    )
 
 
 async def list_expert_runs(
@@ -719,7 +858,11 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "role": template.role,
         "tagline": template.tagline,
         "bio": template.bio,
-        "skills": template.skills or [],
+        # The bundled installs below record each name, so the row lists only
+        # skills the hire actually owns.
+        "skills": [],
+        "categories": template.categories or [],
+        # No dayOne: it is the template's pre-hire promise, not the hire's.
         "identity": template.identity,
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,
@@ -744,7 +887,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
-    await _install_roster_skills(expert.id, user_id, template.name)
+    await _install_bundled_skills(user_id, expert.id, template.id)
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -949,7 +1092,7 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the AutoPilot skills it
+    """Give a freshly raised expert its own copies of the Otto skills it
     was raised with. Defaults and marketplace names have nothing to copy.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
@@ -1038,7 +1181,7 @@ async def update_skills(
     """Replace an expert's skill list.
 
     Names the expert does not already carry must resolve to a library skill.
-    A personal-AutoPilot skill is copied into the expert's own folder so the
+    A personal-Otto skill is copied into the expert's own folder so the
     expert owns it from then on; names dropped from the list delete the
     expert's copy. The stored name is the skill's canonical one so display
     and lookup agree."""
@@ -1091,9 +1234,9 @@ async def update_skills(
         # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
         await remove_expert_skill_name(user_id, expert_id, dropped)
-    # Per-name atomic writes, not one full-array set: the expert can append to
-    # its own row with store_skill while the copies above run, and a blind
-    # overwrite computed from the pre-copy read would silently drop that.
+    # Per-name writes that each re-read the row, not one set computed up front:
+    # the expert can append to its own row with store_skill while the copies
+    # above run, and an overwrite from the pre-copy read would silently drop it.
     for name in resolved:
         await add_expert_skill_name(user_id, expert_id, name)
     expert = await get_expert(user_id, expert_id)
@@ -1118,11 +1261,11 @@ async def _resolve_marketplace_skill_name(store_listing_version_id: str) -> str:
 def _plan_skill(
     kept_name: str | None, name: str, folders: dict[str, str]
 ) -> tuple[str, str | None]:
-    """Decide the stored name and which AutoPilot folder, if any, to copy.
+    """Decide the stored name and which Otto folder, if any, to copy.
 
     A name the expert already carries is kept as is; its folder is looked up
     so a legacy assignment without a copy gets one. A new name must be a
-    default skill or one of AutoPilot's skills, resolved to its folder (a
+    default skill or one of Otto's skills, resolved to its folder (a
     hand-written skill may be listed under a frontmatter name that differs
     from the folder). Raises ``NotFoundError`` before anything is written.
     """
@@ -1146,30 +1289,56 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 
 
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Record a skill the expert now owns.
-
-    A single atomic array update, so concurrent stores never overwrite each
-    other's names; idempotent and case-insensitive."""
-    await execute_raw_with_schema(
-        'UPDATE {schema_prefix}"Expert" SET "skills" = array_append("skills", $1) '
-        'WHERE "id" = $2 AND "ownerUserId" = $3 AND "isTemplate" = false '
-        'AND "isArchived" = false '
-        'AND NOT EXISTS (SELECT 1 FROM unnest("skills") s WHERE lower(s) = lower($1))',
-        name,
-        expert_id,
-        user_id,
+    """Record a skill the expert now owns; idempotent, and a display name and
+    its slug count as one name."""
+    await _rewrite_skill_names(
+        {
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        lambda names: (
+            names
+            if skill_name_key(name) in {skill_name_key(n) for n in names}
+            else [*names, name]
+        ),
     )
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Forget a skill the expert no longer owns (atomic, case-insensitive)."""
-    await execute_raw_with_schema(
-        'UPDATE {schema_prefix}"Expert" SET "skills" = '
-        'ARRAY(SELECT s FROM unnest("skills") s WHERE lower(s) <> lower($1)) '
-        'WHERE "id" = $2 AND "ownerUserId" = $3',
-        name,
-        expert_id,
-        user_id,
+    """Forget a skill the expert no longer owns, in any spelling of its name."""
+    await _rewrite_skill_names(
+        {"id": expert_id, "ownerUserId": user_id},
+        lambda names: [n for n in names if skill_name_key(n) != skill_name_key(name)],
+    )
+
+
+_SKILL_NAME_WRITE_ATTEMPTS = 5
+
+
+async def _rewrite_skill_names(
+    where: prisma.types.ExpertWhereInput,
+    rewrite: Callable[[list[str]], list[str]],
+) -> None:
+    """Compare-and-swap the row's skill list. store_skill can append to it
+    while update_skills runs, so a write that lands after the read fails the
+    ``equals`` guard and is re-read rather than overwritten."""
+    for _ in range(_SKILL_NAME_WRITE_ATTEMPTS):
+        row = await prisma.models.Expert.prisma().find_first(where=where)
+        if row is None:
+            return
+        names = rewrite(row.skills)
+        if names == row.skills:
+            return
+        if await prisma.models.Expert.prisma().update_many(
+            where={**where, "skills": {"equals": row.skills}},
+            data={"skills": {"set": names}},
+        ):
+            return
+    raise ConflictError(
+        "This expert's skills were changed by another update at the same time. "
+        "Try again."
     )
 
 
@@ -1408,42 +1577,6 @@ async def update_soul_fields_if_current(
     return updated == 1
 
 
-async def _install_roster_skills(
-    expert_id: str, user_id: str, template_name: str
-) -> list[str]:
-    """Give a freshly hired roster expert its own copy of the skills the
-    template ships with. Returns the names that failed.
-
-    A template cannot hold skill content itself (no owner, so no
-    workspace), so the files are checked in beside the roster and copied
-    here. Without this a marketplace hire arrives with its personality and
-    none of its capability.
-
-    Never fatal to the hire, matching `_install_preloads`: an expert with
-    two of its three skills is worth more than a failed hire, and the
-    missing one is logged and can be added by hand.
-    """
-    failed: list[str] = []
-    for skill in skills_for_template(template_name):
-        try:
-            await store_user_skill(
-                user_id,
-                name=skill.name,
-                description=skill.description,
-                body=skill.body,
-                triggers=list(skill.triggers),
-                version=skill.version,
-                expert_id=expert_id,
-            )
-        except Exception:
-            logger.exception(
-                f"Failed to install roster skill {skill.name!r} "
-                f"on expert #{expert_id}"
-            )
-            failed.append(skill.name)
-    return failed
-
-
 async def _install_preloads(
     expert_id: str, user_id: str, preloads: list[prisma.models.ExpertWorkflow]
 ) -> list[str]:
@@ -1510,6 +1643,26 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _install_bundled_skills(
+    user_id: str, expert_id: str, template_id: str
+) -> None:
+    """Install the Hub skills the template bundles into the new expert's folder.
+
+    Each install records its name on the row; a failed one is logged and
+    leaves no name, so the hire never lists a skill it does not have.
+    """
+    bundled = await _live_bundled_skills(user_id, [template_id])
+    for skill in bundled.get(template_id, []):
+        try:
+            await skill_db.install_marketplace_skill(
+                user_id, skill.slug, expert_id=expert_id
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+            )
 
 
 async def install_workflow(

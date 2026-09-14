@@ -317,9 +317,9 @@ class DelegateToExpertTool(BaseTool):
         return delegated_session_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
-        """Who to introduce the hand-off as. Plain sessions are AutoPilot."""
+        """Who to introduce the hand-off as. Plain sessions are Otto."""
         if caller_expert_id is None:
-            return "AutoPilot"
+            return "Otto"
         try:
             caller = await experts_db().get_expert(
                 user_id, caller_expert_id, include_workflows=False

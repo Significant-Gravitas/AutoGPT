@@ -1,5 +1,5 @@
 """Skill ownership: every skill belongs to one expert or to personal
-AutoPilot. Experts see and manage only their own; AutoPilot runs only its own
+Otto. Experts see and manage only their own; Otto runs only its own
 but may manage any expert's."""
 
 from contextlib import contextmanager
@@ -29,6 +29,7 @@ from backend.copilot.tools.skills import (
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.workspace_scope import WorkspaceScope
+from backend.util.exceptions import ConflictError
 
 AUTOPILOT = "/skills/mine/SKILL.md"
 EXPERT_A = "/experts/expert-a/skills/own/SKILL.md"
@@ -116,7 +117,7 @@ async def test_library_lookup_skips_the_read_for_a_folder_carrying_metadata(worl
 
 async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(world):
     """An expert hired before ownership existed lists names that live only in
-    AutoPilot's folder; without a copy it would drop to the defaults."""
+    Otto's folder; without a copy it would drop to the defaults."""
     fake, experts = world
     experts.get_expert = AsyncMock(
         side_effect=lambda user_id, expert_id, **_: MagicMock(
@@ -128,7 +129,7 @@ async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(worl
 
     assert "name: mine" in ctx
     assert "/experts/expert-a/skills/mine/SKILL.md" in fake.files
-    # AutoPilot keeps its own copy; ownership is a copy, never a move.
+    # Otto keeps its own copy; ownership is a copy, never a move.
     assert AUTOPILOT in fake.files
 
 
@@ -176,7 +177,7 @@ async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(worl
 
 async def test_a_name_that_can_never_resolve_is_scanned_for_once(world):
     """A marketplace attachment resolves to no folder on any turn, so without
-    a memo every cache-cold turn re-scans AutoPilot's whole library for it."""
+    a memo every cache-cold turn re-scans Otto's whole library for it."""
     _, experts = world
     experts.get_expert = AsyncMock(
         side_effect=lambda user_id, expert_id, **_: MagicMock(
@@ -216,6 +217,52 @@ async def test_a_folder_change_lets_the_heal_retry_a_remembered_name(world):
 
     assert len(scans) == 2
     assert "/experts/expert-a/skills/late-arrival/SKILL.md" in fake.files
+
+
+@pytest.mark.parametrize("tool", ["store", "delete"])
+async def test_a_row_conflict_reaches_the_expert_as_a_retryable_error(world, tool):
+    """A lost compare-and-swap is a retryable conflict, not a failure: the tool
+    passes its message through and must not log it as an exception."""
+    _, experts = world
+    conflict = ConflictError("Changed at the same time. Try again.")
+    experts.add_expert_skill_name = AsyncMock(side_effect=conflict)
+    experts.remove_expert_skill_name = AsyncMock(side_effect=conflict)
+
+    with patch.object(skills.logger, "exception") as logged:
+        if tool == "store":
+            result = await StoreSkillTool()._execute(
+                "user-1", _expert_session(), name="fresh", description="d", body="b"
+            )
+        else:
+            result = await DeleteSkillTool()._execute(
+                "user-1", _expert_session(), name="own"
+            )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.message == str(conflict)
+    logged.assert_not_called()
+
+
+async def test_the_heal_sees_a_display_name_as_owned_once_its_copy_exists(world):
+    """A row can carry a skill's display name ("Deep Research") while its copy
+    is stored as "deep-research"; after the first copy the heal must stop."""
+    fake, experts = world
+    fake.files["/skills/deep-research/SKILL.md"] = _skill("Deep Research")
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["Deep Research"]
+        )
+    )
+    scans, counted = _counting_slug_lookup()
+
+    with _cold_turns(_FakeRedis()), patch.object(
+        skills, "find_user_skill_slugs", counted
+    ):
+        await list_user_skills("user-1", "expert-a")
+        await list_user_skills("user-1", "expert-a")
+
+    assert "/experts/expert-a/skills/deep-research/SKILL.md" in fake.files
+    assert len(scans) == 1
 
 
 class _FakeRedis:

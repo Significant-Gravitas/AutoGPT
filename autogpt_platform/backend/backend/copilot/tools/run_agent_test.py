@@ -814,7 +814,7 @@ async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
 async def test_run_agent_schedule_in_plain_session_has_no_expert_id(
     setup_test_data,
 ):
-    """A schedule created from a plain Autopilot session (no expert) must not
+    """A schedule created from a plain Otto session (no expert) must not
     be expert-attributed — expert_id stays None."""
     user = setup_test_data["user"]
     store_submission = setup_test_data["store_submission"]
@@ -909,7 +909,7 @@ async def test_run_agent_schedule_structural_error_returns_error_response(
 async def test_schedule_prefers_explicit_timezone_over_stored_preference(
     setup_test_data,
 ):
-    """The QA repro: AutoPilot asks for a timezone, confirms it back to the
+    """The QA repro: Otto asks for a timezone, confirms it back to the
     user, and the schedule must be created in that one — not the profile's."""
     _, fake_scheduler, _ = await _schedule_with_timezone(
         setup_test_data,
@@ -1272,7 +1272,7 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
 
 async def test_run_agent_redirects_webhook_trigger_agent():
     """A webhook-trigger agent can't be run/scheduled — run_agent returns an
-    AgentDetailsResponse (carrying trigger_info) that points AutoPilot to
+    AgentDetailsResponse (carrying trigger_info) that points Otto to
     setup_agent_webhook_trigger instead of attempting to execute it."""
     from backend.data.graph import GraphTriggerInfo
 

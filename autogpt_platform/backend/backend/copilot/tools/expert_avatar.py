@@ -1,7 +1,7 @@
 """Generated expert avatars: a shape, a colour and one accessory.
 
 The frontend draws these from a site-relative ``/avatars/<shape>.<color>.<accessory>.svg``
-URL, so an expert raised by AutoPilot gets a face without an upload. The id
+URL, so an expert raised by Otto gets a face without an upload. The id
 lists and the name hash mirror ``components/molecules/BotAvatar/helpers.ts``
 so a name seeds the same look on both sides.
 """

@@ -88,7 +88,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
   it("renders the first card with no way back", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
 
-    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+    expect(await screen.findByText("Meet Otto.")).toBeDefined();
     expect(
       screen.getByText(
         "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
@@ -113,7 +113,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
 
-    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+    expect(await screen.findByText("Meet Otto.")).toBeDefined();
   });
 
   it("renders nothing and completes no step while closed", async () => {
@@ -122,7 +122,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
     render(<OnboardingWelcomeDialog isOpen={false} onClose={vi.fn()} />);
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText("Meet AutoPilot.")).toBeNull();
+    expect(screen.queryByText("Meet Otto.")).toBeNull();
     expect(steps).toEqual([]);
   });
 });
@@ -136,7 +136,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const user = await advanceToCard(3);
 
     expect(await screen.findByText("It remembers everything.")).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Meet AutoPilot" }));
+    await user.click(screen.getByRole("button", { name: "Meet Otto" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
@@ -169,7 +169,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    await screen.findByText("Meet AutoPilot.");
+    await screen.findByText("Meet Otto.");
 
     await userEvent.keyboard("{Escape}");
 
@@ -185,7 +185,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     recordCompletedSteps(500);
 
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    await screen.findByText("Meet AutoPilot.");
+    await screen.findByText("Meet Otto.");
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -284,16 +284,16 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
     };
   });
 
-  it("frames AutoPilot as the Head of AI that builds a team", async () => {
+  it("frames Otto as the Head of AI that builds a team", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
 
     expect(await screen.findByText("Meet your Head of AI.")).toBeDefined();
     expect(
       screen.getByText(
-        "AutoPilot is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
+        "Otto is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
       ),
     ).toBeDefined();
-    expect(screen.queryByText("Meet AutoPilot.")).toBeNull();
+    expect(screen.queryByText("Meet Otto.")).toBeNull();
 
     const user = await advanceToCard(1);
     expect(
@@ -322,7 +322,7 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
 
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
 
-    expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
+    expect(await screen.findByText("Meet Otto.")).toBeDefined();
   });
 });
 

@@ -944,7 +944,7 @@ class TestGetSubSessionResult:
 class TestHollowResponseRepro:
     """Deterministic repro for SECRT-2377.
 
-    A sub-AutoPilot that does its real work into workspace files and then
+    A sub-Otto that does its real work into workspace files and then
     returns a short "delivered in three docs, what's next?" message finishes
     ``COMPLETED`` with a hollow body. ``response_from_outcome`` surfaces only
     ``response_text`` plus a raw tool-call log to the parent — it carries no
@@ -1082,7 +1082,7 @@ class TestActorParameter:
             parent_session_id="parent-1",
             elapsed=1.0,
         )
-        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+        assert r.message is not None and r.message.startswith("Sub-Otto completed")
 
     @pytest.mark.parametrize(
         "outcome,expected_prefix",
@@ -1107,7 +1107,7 @@ class TestActorParameter:
 
     def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
         """When the caller already passed the delegate's name as ``actor``,
-        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
+        apply_delegated_expert's message.replace("Sub-Otto", ...) must
         find nothing to substitute — the message was already built correctly
         by response_from_outcome, not patched up afterwards."""
         response = response_from_outcome(
@@ -1123,7 +1123,7 @@ class TestActorParameter:
         )
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
-        assert "Sub-AutoPilot" not in (result.message or "")
+        assert "Sub-Otto" not in (result.message or "")
 
 
 class TestSpawnEnvelopeArguments:

@@ -509,7 +509,7 @@ class TestUploadWorkspaceFile:
         ):
             await upload_workspace_file(self._req(session_id="sess-1"))
         # Session-scoped manager (like the web upload) plus a flat filename —
-        # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
+        # write_file defaults the path to /sessions/<id>/<name> where Otto
         # reads it. No explicit uploads/<uuid> path.
         mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
         kwargs = write.await_args.kwargs

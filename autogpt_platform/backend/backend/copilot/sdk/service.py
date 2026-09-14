@@ -155,6 +155,7 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
+from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -164,7 +165,12 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
+from ..tools import (
+    ToolGroup,
+    expert_tool_disabled_groups,
+    kickoff_turn_disabled_tools,
+    tool_names_in_groups,
+)
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -244,7 +250,7 @@ _EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
-    "AutoPilot was unable to complete the tool call "
+    "Otto was unable to complete the tool call "
     "— this usually happens when the response is "
     "too large to fit in a single tool call. "
     "Try breaking your request into smaller parts."
@@ -439,7 +445,7 @@ async def _consume_sdk_until_done(
                     else ""
                 )
                 loop_state.stream_error_msg = (
-                    f"AutoPilot stopped responding{tool_phrase}. "
+                    f"Otto stopped responding{tool_phrase}. "
                     "This usually means a tool got stuck. Please try again."
                 )
                 _append_error_marker(
@@ -4567,6 +4573,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             session_id=session_id,
             message_length=len(message or ""),
+            expert_id=session.expert_id,
+            origin=session.metadata.origin,
+            surface=session.metadata.source_platform,
         )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
@@ -4876,10 +4885,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # into the system prompt. Hiding it removes the tempting-but-worse
         # fallback; read_skill("agent_building_guide") remains as escape
         # hatch. The baseline path (no prompt machinery) keeps the tool.
+
+        # A hire's kickoff turn is a server-sent control message, so nothing
+        # on it was asked for: narrow it to the onboarding card and nothing
+        # else. Hiding is the enforcement here — an unregistered MCP tool
+        # does not exist for the CLI, so there is no call left to deny.
+        kickoff_hidden = (
+            kickoff_turn_disabled_tools()
+            if is_expert_kickoff_turn(session)
+            else frozenset()
+        )
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
+            | kickoff_hidden
         )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
@@ -4951,6 +4971,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        if kickoff_hidden:
+            kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
+            allowed = [n for n in allowed if n not in kickoff_hidden_mcp]
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""

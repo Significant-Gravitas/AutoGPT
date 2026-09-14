@@ -52,7 +52,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -895,7 +895,7 @@ class ExecutionProcessor:
             )
 
             # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
-            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # the default cap; coordination blocks (AgentExecutor, Otto)
             # opt out by overriding `execution_timeout_seconds = None`. Their
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
@@ -1087,6 +1087,7 @@ class ExecutionProcessor:
             activity_events.handle_run_completed(
                 db_client, graph_exec, exec_meta, exec_stats
             )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,

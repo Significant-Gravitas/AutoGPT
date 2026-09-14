@@ -1,4 +1,4 @@
-"""Start a sub-AutoPilot conversation via the copilot_executor queue.
+"""Start a sub-Otto conversation via the copilot_executor queue.
 
 Mirror-image of ``run_agent`` + ``view_agent_output`` for copilot turns:
 
@@ -68,7 +68,7 @@ _WORKSPACE_FILE_MANIFEST_LIMIT = 50
 
 
 class RunSubSessionTool(BaseTool):
-    """Delegate a task to a fresh sub-AutoPilot via the copilot_executor queue."""
+    """Delegate a task to a fresh sub-Otto via the copilot_executor queue."""
 
     @property
     def name(self) -> str:
@@ -81,7 +81,7 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh sub-AutoPilot. Runs on the copilot "
+            "Delegate a task to a fresh sub-Otto. Runs on the copilot "
             "executor queue — survives tab-close AND worker restarts. Waits "
             f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
             "If not done, returns status=running + sub_session_id — poll via "
@@ -95,7 +95,7 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the sub-AutoPilot to execute.",
+                    "description": "The task for the sub-Otto to execute.",
                 },
                 "system_context": {
                     "type": "string",
@@ -306,7 +306,7 @@ def apply_delegated_expert(
     Only sets the ``expert`` field for the ToolChain card; the message text
     is already correct when the caller passed ``actor=expert.name`` into
     ``response_from_outcome`` up front. The ``replace`` below is a fallback
-    for callers that built the message with the default "Sub-AutoPilot"
+    for callers that built the message with the default "Sub-Otto"
     wording and only learn the delegate's identity afterwards — it is a
     no-op once the message was built with the right actor. No-op entirely
     for same-scope subs.
@@ -315,14 +315,14 @@ def apply_delegated_expert(
         return response
     return response.model_copy(
         update={
-            "message": response.message.replace("Sub-AutoPilot", expert.name),
+            "message": response.message.replace("Sub-Otto", expert.name),
             "expert": expert,
         }
     )
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:
-    """Build the CoPilot UI URL for a sub-AutoPilot session.
+    """Build the CoPilot UI URL for a sub-Otto session.
 
     Kept in one place so the format stays consistent across the
     running/completed/error paths, and so the frontend only has one
@@ -483,13 +483,13 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
-    actor: str = "Sub-AutoPilot",
+    actor: str = "Sub-Otto",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
     ``actor`` names who ran the turn in the human-readable message — the
-    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    default ``"Sub-Otto"`` for a same-scope sub, or the delegate's name
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
