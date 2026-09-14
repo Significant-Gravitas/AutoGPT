@@ -12,6 +12,7 @@ export interface ConsentPreferences {
   timestamp: number;
   analytics: boolean;
   monitoring: boolean;
+  advertising: boolean;
 }
 
 export const DEFAULT_CONSENT: ConsentPreferences = {
@@ -19,6 +20,7 @@ export const DEFAULT_CONSENT: ConsentPreferences = {
   timestamp: Date.now(),
   analytics: false,
   monitoring: false,
+  advertising: false,
 };
 
 export const COOKIE_CATEGORIES = {
@@ -37,6 +39,12 @@ export const COOKIE_CATEGORIES = {
     name: "Error Monitoring & Session Replay",
     description:
       "Record errors and user sessions to help us fix bugs faster (Sentry - includes screen recording)",
+    alwaysActive: false,
+  },
+  advertising: {
+    name: "Advertising",
+    description:
+      "Measure which ads bring people to AutoGPT so we only pay for the ones that work (Google Ads conversion tracking)",
     alwaysActive: false,
   },
 } as const;
@@ -64,8 +72,18 @@ function load(): ConsentPreferences {
       return DEFAULT_CONSENT;
     }
 
-    syncAnalyticsConsentCookie(parsed.hasConsented && parsed.analytics);
-    return parsed;
+    // Answers stored before the advertising category existed count as a no
+    // for it rather than being thrown away and asked again.
+    const preferences: ConsentPreferences = {
+      ...parsed,
+      advertising:
+        typeof parsed.advertising === "boolean" ? parsed.advertising : false,
+    };
+
+    syncAnalyticsConsentCookie(
+      preferences.hasConsented && preferences.analytics,
+    );
+    return preferences;
   } catch (error) {
     syncAnalyticsConsentCookie(false);
     Sentry.captureException(error);

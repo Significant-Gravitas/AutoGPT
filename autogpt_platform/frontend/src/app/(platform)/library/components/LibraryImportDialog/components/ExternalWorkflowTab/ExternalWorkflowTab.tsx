@@ -22,7 +22,7 @@ export default function ExternalWorkflowTab({
     <TabsLineContent value="platform">
       <p className="mb-4 text-sm text-neutral-500">
         Upload a workflow exported from n8n, Make.com, Zapier, or any other
-        platform. AutoPilot will convert it into an AutoGPT agent for you.
+        platform. Otto will convert it into an AutoGPT agent for you.
       </p>
       <FileInput
         mode="base64"
@@ -47,7 +47,7 @@ export default function ExternalWorkflowTab({
             <span>Importing...</span>
           </div>
         ) : (
-          "Import to AutoPilot"
+          "Import to Otto"
         )}
       </Button>
 

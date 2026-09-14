@@ -271,25 +271,15 @@ export function NewAgentLibraryView() {
             />
           </div>
 
-          {/* The tabs panel inside SidebarRunsList is flex-1 with basis 0, so
-              it collapses (clipping the cards) unless its root is stretched to
-              fill the column height. */}
-          <div
-            className={cn(
-              isNewLayoutActive &&
-                "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:[&>div]:min-h-0 lg:[&>div]:flex-1",
-            )}
-          >
-            <SidebarRunsList
-              agent={agent}
-              selectedRunId={activeItemId ?? undefined}
-              onSelectRun={handleSelectRun}
-              onClearSelectedRun={handleClearSelectedRun}
-              onScheduleDeleted={handleScheduleDeleted}
-              onTabChange={setActiveTab}
-              onCountsChange={handleCountsChange}
-            />
-          </div>
+          <SidebarRunsList
+            agent={agent}
+            selectedRunId={activeItemId ?? undefined}
+            onSelectRun={handleSelectRun}
+            onClearSelectedRun={handleClearSelectedRun}
+            onScheduleDeleted={handleScheduleDeleted}
+            onTabChange={setActiveTab}
+            onCountsChange={handleCountsChange}
+          />
         </SectionWrap>
 
         {activeItemId ? (

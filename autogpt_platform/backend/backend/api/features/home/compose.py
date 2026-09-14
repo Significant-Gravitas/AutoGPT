@@ -4,6 +4,8 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
+from backend.copilot.model import ChatSessionInfo
+from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -12,8 +14,14 @@ from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week
 from .agents import compose_agent_statuses, compose_team_summary
 from .attention import compose_attention_items
 from .briefing import compose_briefing
-from .helpers import agent_refs_by_graph, experts_by_schedule, next_runs_by_expert
+from .helpers import (
+    agent_refs_by_graph,
+    experts_by_graph,
+    experts_by_schedule,
+    next_runs_by_expert,
+)
 from .models import HomeDashboardResponse
+from .recent_work import compose_recent_work
 
 
 def compose_home_dashboard(
@@ -27,7 +35,10 @@ def compose_home_dashboard(
     cost_summary: UserExecutionCostSummary,
     credits_balance: int | None,
     timezone_name: str,
+    questions: list[ChatSessionInfo] | None = None,
     persisted_briefing: BriefingContent | None = None,
+    work_events: list[ActivityEvent] | None = None,
+    session_titles: dict[str, str | None] | None = None,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -66,6 +77,7 @@ def compose_home_dashboard(
             reviews=reviews,
             schedules=schedules,
             credits_balance=credits_balance,
+            questions=questions,
         ),
         briefing=compose_briefing(
             now=now,
@@ -74,9 +86,21 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
             persisted=persisted_briefing,
         ),
-        active_tasks=compose_active_tasks(executions, expert_by_id, agent_by_graph),
-        upcoming_tasks=compose_upcoming_tasks(schedules, expert_by_schedule),
+        active_tasks=compose_active_tasks(
+            executions, expert_by_id, agent_by_graph, experts_by_graph(hired)
+        ),
+        upcoming_tasks=compose_upcoming_tasks(
+            schedules, expert_by_schedule, agent_by_graph
+        ),
         team=compose_team_summary(agents),
         agents=agents,
         week=compose_week_summary(cost_summary, credits_balance),
+        recent_work=compose_recent_work(
+            now=now,
+            executions=executions,
+            events=work_events or [],
+            expert_by_id=expert_by_id,
+            agent_by_graph=agent_by_graph,
+            session_titles=session_titles or {},
+        ),
     )

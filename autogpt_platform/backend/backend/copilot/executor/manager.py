@@ -674,7 +674,9 @@ def _dispatch_engine_switch_continuation(
             turn_id=str(uuid.uuid4()),
             message=engine_switch.CONTINUATION_MESSAGE,
             is_user_message=False,
-            mode="extended_thinking",
+            # No engine is named here: the processor pins a building-mode
+            # session to the SDK from its message history, which is what made
+            # this argument redundant even while it existed.
             organization_id=switch.organization_id,
             team_id=switch.team_id,
             llm_auth_provider=session.metadata.llm_auth_provider,

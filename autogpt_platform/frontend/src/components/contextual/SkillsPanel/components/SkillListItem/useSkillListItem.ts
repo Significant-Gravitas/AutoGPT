@@ -35,7 +35,7 @@ export function useSkillListItem({ skill }: Args) {
     data: detailRes,
     isLoading: isDetailLoading,
     error: detailError,
-  } = useReadCopilotSkill(skill.name, {
+  } = useReadCopilotSkill(skill.name, undefined, {
     query: {
       enabled: isViewOpen,
       staleTime: 60_000,

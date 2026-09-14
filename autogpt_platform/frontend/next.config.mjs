@@ -6,8 +6,21 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
+  // tag preview deployments as previews rather than as production.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  async rewrites() {
+    return [
+      {
+        source: "/api/store/media/:path*",
+        destination: "/api/proxy/api/store/media/:path*",
+      },
+    ];
+  },
   productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
@@ -155,11 +168,6 @@ export default skipSentryPlugin
 
       org: "significant-gravitas",
       project: "builder",
-
-      // Expose Vercel env to the client
-      env: {
-        NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
-      },
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,

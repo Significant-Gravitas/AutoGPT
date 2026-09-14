@@ -4,12 +4,19 @@
 import pytest
 
 from scripts.generate_block_docs import (
+    BlockDoc,
+    OrphanedManualContentError,
     class_name_to_display_name,
+    collect_orphaned_manual_sections,
     extract_manual_content,
     file_path_to_title,
+    find_block_manual_content,
+    find_orphaned_manual_sections,
     generate_anchor,
     generate_overview_table,
+    parse_rekey_args,
     type_to_readable,
+    write_block_docs,
 )
 
 
@@ -233,6 +240,175 @@ class TestOverviewGuideLinks:
         overview = generate_overview_table([])
         assert "(https://agpt.co/docs/platform/new-blocks)" in overview
         assert "(https://agpt.co/docs/platform/block-sdk-guide)" in overview
+
+
+class TestOrphanedManualSections:
+    """A block rename must not let the generator overwrite prose (OPEN-3458)."""
+
+    def test_renamed_block_orphans_its_prose(self):
+        orphans = find_orphaned_manual_sections(
+            RENAMED_DOC, ["AllQuiet Create Incident"]
+        )
+        assert orphans == [("All Quiet Create Incident", ["how_it_works", "use_case"])]
+
+    def test_matching_heading_is_not_orphaned(self):
+        orphans = find_orphaned_manual_sections(
+            RENAMED_DOC, ["All Quiet Create Incident"]
+        )
+        assert orphans == []
+
+    def test_rekey_rescues_the_prose(self):
+        orphans = find_orphaned_manual_sections(
+            RENAMED_DOC,
+            ["AllQuiet Create Incident"],
+            {"All Quiet Create Incident": "AllQuiet Create Incident"},
+        )
+        assert orphans == []
+
+    def test_placeholders_are_not_worth_saving(self):
+        doc = RENAMED_DOC.replace(
+            "Posts to the incident endpoint.", "_Add technical explanation here._"
+        ).replace(
+            "A triage agent pages the responder.",
+            "_Add practical use case examples here._",
+        )
+        assert find_orphaned_manual_sections(doc, ["AllQuiet Create Incident"]) == []
+
+    def test_file_level_sections_belong_to_no_block(self):
+        doc = RENAMED_DOC + (
+            "\n<!-- MANUAL: additional_content -->\nFile-level notes.\n<!-- END MANUAL -->\n"
+        )
+        orphans = find_orphaned_manual_sections(doc, ["AllQuiet Create Incident"])
+        assert orphans == [("All Quiet Create Incident", ["how_it_works", "use_case"])]
+
+    def test_collect_reports_the_file(self, tmp_path):
+        doc_path = tmp_path / "allquiet" / "incidents.md"
+        doc_path.parent.mkdir()
+        doc_path.write_text(RENAMED_DOC)
+
+        orphans = collect_orphaned_manual_sections(
+            tmp_path,
+            {"allquiet/incidents.md": [make_block("AllQuiet Create Incident")]},
+        )
+        assert orphans == {
+            "allquiet/incidents.md": [
+                ("All Quiet Create Incident", ["how_it_works", "use_case"])
+            ]
+        }
+
+
+class TestFindBlockManualContent:
+    def test_reads_prose_under_the_current_heading(self):
+        manual = find_block_manual_content(RENAMED_DOC, "All Quiet Create Incident")
+        assert manual["how_it_works"] == "Posts to the incident endpoint."
+
+    def test_falls_back_to_a_rekeyed_heading(self):
+        manual = find_block_manual_content(
+            RENAMED_DOC,
+            "AllQuiet Create Incident",
+            {"All Quiet Create Incident": "AllQuiet Create Incident"},
+        )
+        assert manual["how_it_works"] == "Posts to the incident endpoint."
+
+    def test_unknown_heading_yields_nothing(self):
+        assert find_block_manual_content(RENAMED_DOC, "AllQuiet Create Incident") == {}
+
+
+class TestWriteRefusesToDropProse:
+    def test_raises_and_leaves_the_file_untouched(self, tmp_path):
+        doc_path = tmp_path / "allquiet" / "incidents.md"
+        doc_path.parent.mkdir()
+        doc_path.write_text(RENAMED_DOC)
+
+        with pytest.raises(OrphanedManualContentError) as excinfo:
+            write_block_docs(tmp_path, [make_block("AllQuiet Create Incident")])
+
+        assert "All Quiet Create Incident" in str(excinfo.value)
+        assert "--rekey" in str(excinfo.value)
+        assert doc_path.read_text() == RENAMED_DOC
+
+    def test_rekey_carries_the_prose_over(self, tmp_path):
+        doc_path = tmp_path / "allquiet" / "incidents.md"
+        doc_path.parent.mkdir()
+        doc_path.write_text(RENAMED_DOC)
+
+        write_block_docs(
+            tmp_path,
+            [make_block("AllQuiet Create Incident")],
+            rename_map={"All Quiet Create Incident": "AllQuiet Create Incident"},
+        )
+
+        written = doc_path.read_text()
+        assert "## AllQuiet Create Incident" in written
+        assert "Posts to the incident endpoint." in written
+        assert "_Add technical explanation here._" not in written
+
+    def test_allow_orphaned_manual_is_an_explicit_opt_in(self, tmp_path):
+        doc_path = tmp_path / "allquiet" / "incidents.md"
+        doc_path.parent.mkdir()
+        doc_path.write_text(RENAMED_DOC)
+
+        write_block_docs(
+            tmp_path,
+            [make_block("AllQuiet Create Incident")],
+            allow_orphaned_manual=True,
+        )
+
+        assert "_Add technical explanation here._" in doc_path.read_text()
+
+
+class TestParseRekeyArgs:
+    def test_parses_pairs(self):
+        assert parse_rekey_args(["All Quiet Foo=AllQuiet Foo"]) == {
+            "All Quiet Foo": "AllQuiet Foo"
+        }
+
+    def test_strips_surrounding_whitespace(self):
+        assert parse_rekey_args([" Old Name = New Name "]) == {"Old Name": "New Name"}
+
+    @pytest.mark.parametrize("arg", ["no separator", "=New Name", "Old Name="])
+    def test_rejects_malformed_pairs(self, arg: str):
+        with pytest.raises(ValueError):
+            parse_rekey_args([arg])
+
+
+RENAMED_DOC = """# All Quiet Incidents
+<!-- MANUAL: file_description -->
+Blocks that create All Quiet incidents.
+<!-- END MANUAL -->
+
+## All Quiet Create Incident
+
+### What it is
+Creates an incident.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Posts to the incident endpoint.
+<!-- END MANUAL -->
+
+### Possible use case
+<!-- MANUAL: use_case -->
+A triage agent pages the responder.
+<!-- END MANUAL -->
+
+---
+"""
+
+
+def make_block(name: str) -> BlockDoc:
+    return BlockDoc(
+        id="test-block-id",
+        name=name,
+        class_name="AllQuietCreateIncidentBlock",
+        description="Creates an incident.",
+        categories=["COMMUNICATION"],
+        category_descriptions={},
+        inputs=[],
+        outputs=[],
+        block_type="Standard",
+        source_file="blocks/allquiet/incidents.py",
+    )
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
 from .base import BaseTool, ToolResponseBase
+from .helpers import get_block_provider
 from .models import (
     BlockInfoSummary,
     BlockListResponse,
@@ -47,7 +48,7 @@ COPILOT_EXCLUDED_BLOCK_IDS = {
     "3b191d9f-356f-482d-8238-ba04b6d18381",
     # AutoPilotBlock - has dedicated run_sub_session tool with async start +
     # poll lifecycle. Calling it via run_block would block the parent stream
-    # for the sub-AutoPilot's entire runtime (15-45+ min typical).
+    # for the sub-Otto's entire runtime (15-45+ min typical).
     "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
 }
 
@@ -186,6 +187,7 @@ class FindBlockTool(BaseTool):
                             block.optimized_description or block.description or ""
                         ),
                         categories=[c.value for c in block.categories],
+                        provider=get_block_provider(block),
                     )
                     return BlockListResponse(
                         message=(
@@ -260,6 +262,7 @@ class FindBlockTool(BaseTool):
                     name=block.name,
                     description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
+                    provider=get_block_provider(block),
                 )
 
                 blocks.append(summary)

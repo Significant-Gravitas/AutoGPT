@@ -8,6 +8,42 @@ import {
 const SESSION_ID = "sess-test";
 
 describe("convertChatSessionMessagesToUiMessages", () => {
+  it("keeps a run-post as its own bubble carrying run metadata", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Earlier turn.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "I just finished a run.",
+          sequence: 1,
+          metadata: {
+            kind: "expert_run",
+            execution_id: "exec-1",
+            graph_id: "graph-1",
+            output_type: "table",
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // The run-post is not folded into the preceding assistant bubble.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does not attach metadata to legacy assistant messages", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "assistant", content: "Plain reply.", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].metadata).toBeUndefined();
+  });
+
   it("does not drop user messages with null content", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,
@@ -59,6 +95,21 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].role).toBe("user");
+  });
+
+  it("preserves persisted kickoff metadata on the hydrated UI message", () => {
+    const metadata = {
+      hidden: true,
+      kind: "expert_kickoff",
+      expert_id: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+    };
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "kickoff", sequence: 0, metadata }],
+      { isComplete: true },
+    );
+
+    expect(result.messages[0].metadata).toEqual(metadata);
   });
 
   it("attaches a reasoning row between user/assistant to the surrounding assistant bubble", () => {
@@ -338,6 +389,29 @@ describe("concatWithAssistantMerge", () => {
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe(`${SESSION_ID}-seq-3`);
     expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
+  });
+
+  it("does NOT absorb a run-post WorkCard into the preceding assistant bubble", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "plain reply")];
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 3, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const result = concatWithAssistantMerge(a, [runPost]);
+    expect(result).toHaveLength(2);
+    expect(result[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does NOT let a run-post WorkCard absorb the following assistant bubble", () => {
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 2, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const b = [uiAssistant(SESSION_ID, 3, "plain reply")];
+    const result = concatWithAssistantMerge([runPost], b);
+    expect(result).toHaveLength(2);
+    expect(result[0].metadata).toMatchObject({ kind: "expert_run" });
+    expect(result[1].metadata).toBeUndefined();
   });
 
   it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
