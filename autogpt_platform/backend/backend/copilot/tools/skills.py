@@ -1444,6 +1444,10 @@ def _owner_label(expert_id: str | None) -> str:
 # to, so re-activating a skill in a later turn copies only what changed.
 _PACKAGE_MANIFEST = ".package.json"
 _EXECUTABLE_PREFIX = "scripts/"
+# One E2B ``files.write`` is an HTTP round trip and measured 200 ms, so a
+# 60-file package copied serially would cost 12 s of the turn (0.35 s
+# concurrent).  Bounded, because each copy also reads a blob.
+_COPY_CONCURRENCY = 16
 
 
 async def _materialise_skill_package(
@@ -1463,32 +1467,41 @@ async def _materialise_skill_package(
     package_dir = f"{workdir_root(session_id)}/skills/{slug}"
     prefix = f"{folder}/{slug}/"
     manifest = await _read_package_manifest(package_dir, session_id)
-    written: dict[str, str] = {}
-    executables: list[str] = []
+    limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
-    for info in files:
+    async def copy(info: SkillFileInfo) -> tuple[str, str, str | None] | None:
+        """``(relative path, digest, path to mark executable)`` once the file
+        is in place, or ``None`` when it could not be put there."""
         relative = info.path[len(prefix) :] if info.path.startswith(prefix) else ""
         if not _is_safe_relative(relative):
             logger.warning("[skills] skipping odd package path %s", info.path)
-            continue
-        try:
-            content = await manager.read_file(info.path)
-        except Exception:
-            logger.warning("[skills] failed to read %s", info.path, exc_info=True)
-            continue
-        digest = hashlib.sha256(content).hexdigest()
-        written[relative] = digest
-        if manifest.get(relative) == digest:
-            continue
-        target = await save_to_workdir(f"{package_dir}/{relative}", content, session_id)
+            return None
+        async with limit:
+            try:
+                content = await manager.read_file(info.path)
+            except Exception:
+                logger.warning("[skills] failed to read %s", info.path, exc_info=True)
+                return None
+            digest = hashlib.sha256(content).hexdigest()
+            if manifest.get(relative) == digest:
+                return relative, digest, None
+            target = await save_to_workdir(
+                f"{package_dir}/{relative}", content, session_id
+            )
         if isinstance(target, ErrorResponse):
             logger.warning(
                 "[skills] failed to materialise %s: %s", info.path, target.message
             )
-            del written[relative]
-            continue
-        if relative.startswith(_EXECUTABLE_PREFIX):
-            executables.append(target)
+            return None
+        return (
+            relative,
+            digest,
+            target if relative.startswith(_EXECUTABLE_PREFIX) else None,
+        )
+
+    copied = await asyncio.gather(*(copy(info) for info in files))
+    written = {relative: digest for relative, digest, _ in filter(None, copied)}
+    executables = [path for _, _, path in filter(None, copied) if path]
 
     await make_executable(executables, session_id)
     await _write_package_manifest(package_dir, written, session_id)
