@@ -2187,3 +2187,37 @@ async def test_a_stale_file_that_would_not_go_stays_in_the_manifest():
         assert [c for c in asked if c] == [[gone], [gone]]
         with open(os.path.join(patched.workdir, "skills", "pkg", ".package.json")) as f:
             assert "gone.md" in json.load(f)
+
+
+@pytest.mark.asyncio
+async def test_an_emptied_package_still_records_a_deletion_that_failed():
+    """The manifest write is guarded so a single-file skill leaves no empty
+    package directory behind. When every file goes and the deletion fails,
+    nothing this pass copied is left to carry the retry — the entry has to
+    survive inside the guarded value, not around it."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="gone.md", content=b"g")],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        # The package now has no files at all.
+        await store_user_skill(
+            "user-1", name="pkg", description="d", body="b", files=[]
+        )
+
+        async def dead_rm(paths, session_id):
+            return list(paths)
+
+        with patch.object(skills, "remove_from_workdir", dead_rm):
+            await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+        with open(os.path.join(patched.workdir, "skills", "pkg", ".package.json")) as f:
+            assert "gone.md" in json.load(f)
