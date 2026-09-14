@@ -788,4 +788,4 @@ class CoPilotProcessor:
                     # nothing else ever stops; state is already persisted, so
                     # the next turn restores it wherever it lands.
                     if await close_browser_daemon(entry.session_id):
-                        log.info("Closed browser daemon for this turn")
+                        log.info("Browser daemon teardown attempted for this turn")

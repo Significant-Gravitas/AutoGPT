@@ -410,7 +410,8 @@ async def close_browser_daemon(session_name: str) -> bool:
         return False
     _closing_sessions.add(session_name)
     _alive_sessions.discard(session_name)
-    _session_locks.pop(session_name, None)
+    async with _session_locks_mutex:
+        _session_locks.pop(session_name, None)
     try:
         # The last tool call's save may still be running. It has to finish
         # first: it reads the daemon this is about to close, and if it ran
