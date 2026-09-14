@@ -92,6 +92,8 @@ async function openGenerator() {
       { timeout: 5000 },
     ),
   );
+  // The artwork is a lazy chunk, so the face arrives a tick after the picker.
+  await screen.findByTestId("notion-avatar");
 }
 
 beforeEach(() => {

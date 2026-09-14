@@ -1,13 +1,25 @@
 "use client";
 
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useId, useRef } from "react";
 import type { AvatarStatus, Expression } from "./expressions";
-import type { NotionAvatarConfig } from "./helpers";
-import { NotionAvatarSvg } from "./NotionAvatarSvg";
+import { findNotionColor, type NotionAvatarConfig } from "./helpers";
 import type { Pose } from "./pose";
 import { useExpression } from "./useExpression";
 import { usePose } from "./usePose";
+
+// The artwork is a few hundred kilobytes of paths. Loading it with the route
+// would put it on every page that shows an avatar, including the ones that
+// only ever draw a resting face — so it arrives as its own chunk when an
+// animated avatar actually mounts. Until it lands, the disc stands in.
+const NotionAvatarSvg = dynamic(
+  () => import("./NotionAvatarSvg").then((module) => module.NotionAvatarSvg),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 interface Props {
   config: NotionAvatarConfig;
@@ -52,20 +64,32 @@ export function NotionAvatar({
   });
 
   return (
-    <NotionAvatarSvg
-      svgRef={svgRef}
-      config={config}
-      status={status}
-      expression={expression}
-      pose={pose}
-      isLive={isLive}
-      els={motion}
-      idPrefix={idPrefix}
-      size={size}
-      showBadge={showBadge}
-      transparent={transparent}
-      title={title}
-      className={className}
-    />
+    <span
+      data-testid="notion-avatar-host"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: transparent
+          ? undefined
+          : findNotionColor(config.color).disc,
+      }}
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full"
+    >
+      <NotionAvatarSvg
+        svgRef={svgRef}
+        config={config}
+        status={status}
+        expression={expression}
+        pose={pose}
+        isLive={isLive}
+        els={motion}
+        idPrefix={idPrefix}
+        size={size}
+        showBadge={showBadge}
+        transparent
+        title={title}
+        className={className}
+      />
+    </span>
   );
 }
