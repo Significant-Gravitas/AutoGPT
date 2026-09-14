@@ -53,7 +53,9 @@ def main() -> None:
         sys.exit(78)
 
     if args.command == "auth":
-        _cmd_auth(config)
+        exit_code = _cmd_auth(config)
+        if exit_code:
+            sys.exit(exit_code)
     elif args.command == "start":
         exit_code = asyncio.run(_cmd_start(config))
         if exit_code:
@@ -230,11 +232,22 @@ def _build_config(args):
     return load_config(config_path=args.config, overrides=overrides)
 
 
-def _cmd_auth(config) -> None:
-    from .auth import KeychainTokenStore, OAuthFlow
+def _cmd_auth(config) -> int:
+    from .auth import CredentialScopeError, KeychainTokenStore, OAuthFlow
 
-    flow = OAuthFlow(config=config, token_store=KeychainTokenStore())
-    flow.run()
+    try:
+        flow = OAuthFlow(config=config, token_store=KeychainTokenStore(config))
+        flow.run()
+    except CredentialScopeError as exc:
+        print(f"Authentication failed: {exc}")
+        return 1
+    except Exception:
+        print(
+            "Authentication did not complete. Check the deployment configuration, "
+            "network connection, and OS keychain, then run `autogpt-shim auth` again."
+        )
+        return 1
+    return 0
 
 
 async def _cmd_start(config) -> int:
@@ -252,7 +265,7 @@ async def _cmd_start(config) -> int:
     print("Press Ctrl+C to stop.\n")
     daemon = None
     try:
-        daemon = ShimDaemon(config=config, token_store=KeychainTokenStore())
+        daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
     except DaemonPreflightError as exc:
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
@@ -283,16 +296,21 @@ def _cmd_status(config, args) -> None:
 
 
 async def _cmd_revoke(config) -> int:
-    from .auth import KeychainTokenStore, OAuthFlow
+    from .auth import CredentialScopeError, KeychainTokenStore, OAuthFlow
 
-    store = KeychainTokenStore()
+    store = KeychainTokenStore(config)
     flow = OAuthFlow(config=config, token_store=store)
     try:
         await flow.revoke_tokens()
     except Exception as exc:
+        detail = (
+            str(exc)
+            if isinstance(exc, CredentialScopeError)
+            else "Check the deployment configuration, network connection, and OS keychain."
+        )
         print(
             "Token revocation did not complete; local credentials were left in place "
-            f"where possible so you can retry: {exc}"
+            f"where possible so you can retry. {detail}"
         )
         return 1
     print("Tokens revoked. Run `autogpt-shim auth` to re-authenticate.")

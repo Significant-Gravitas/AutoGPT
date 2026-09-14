@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +13,7 @@ from autogpt_local_executor.path_jail import (
     PathJailError,
     assert_inside_jail,
     is_inside_jail,
+    open_jail_file,
 )
 
 # ── Happy path ───────────────────────────────────────────────────────────────
@@ -144,3 +146,69 @@ def test_null_byte_in_path_rejected(tmp_path: Path) -> None:
     with pytest.raises(PathJailError) as exc:
         assert_inside_jail(bad, tmp_path)
     assert exc.value.code in ("PATH_INVALID_CHARS", "PATH_OUTSIDE_ALLOWED_ROOT")
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_content_open_rejects_directory_before_opening(tmp_path: Path, write: bool) -> None:
+    with patch("autogpt_local_executor.path_jail.os.open", wraps=os.open) as open_file:
+        with pytest.raises(PathJailError) as error:
+            with open_jail_file(tmp_path, tmp_path, write=write):
+                pytest.fail("Directory was opened for content access")
+
+    assert error.value.code == "CAPABILITY_NOT_GRANTED"
+    assert all(Path(call.args[0]) != tmp_path for call in open_file.call_args_list)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="Named pipes require POSIX")
+@pytest.mark.parametrize("write", [False, True])
+def test_content_open_rejects_fifo_before_opening(tmp_path: Path, write: bool) -> None:
+    fifo = tmp_path / "pipe"
+    os.mkfifo(fifo)
+    with patch("autogpt_local_executor.path_jail.os.open", wraps=os.open) as open_file:
+        with pytest.raises(PathJailError) as error:
+            with open_jail_file(fifo, tmp_path, write=write):
+                pytest.fail("FIFO was opened for content access")
+
+    assert error.value.code == "CAPABILITY_NOT_GRANTED"
+    assert all(Path(call.args[0]) != fifo for call in open_file.call_args_list)
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_content_open_conservatively_rejects_inside_hard_links(tmp_path: Path, write: bool) -> None:
+    first = tmp_path / "first.txt"
+    first.write_text("original")
+    second = tmp_path / "second.txt"
+    os.link(first, second)
+
+    with pytest.raises(PathJailError) as error:
+        with open_jail_file(second, tmp_path, write=write):
+            pytest.fail("Multi-linked file was opened for content access")
+
+    assert error.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
+    assert first.read_text() == second.read_text() == "original"
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_content_descriptor_is_closed_after_rejection(tmp_path: Path, write: bool) -> None:
+    target = tmp_path / "single.txt"
+    target.write_text("original")
+    opened = []
+    original_open = os.open
+
+    def link_on_open(*args, **kwargs):
+        if Path(args[0]) != target:
+            return original_open(*args, **kwargs)
+        os.link(target, tmp_path / "linked.txt")
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    with patch("autogpt_local_executor.path_jail.os.open", side_effect=link_on_open):
+        with pytest.raises(PathJailError):
+            with open_jail_file(target, tmp_path, write=write):
+                pytest.fail("Newly linked file was opened for content access")
+
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        os.fstat(opened[0])
+    assert target.read_text() == "original"

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import errno
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -115,6 +117,97 @@ async def test_read_range_larger_than_limit_is_rejected(tmp_path: Path) -> None:
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.FILE_TOO_LARGE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_file_content_rejects_existing_hard_link(tmp_path: Path, operation: str) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside secret")
+    target = root / "linked.txt"
+    os.link(outside, target)
+    handler = FileHandler(make_config(root))
+
+    response = (
+        await handler.handle_read(_read_msg(target))
+        if operation == "read"
+        else await handler.handle_write(_write_msg(target, "overwrite"))
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert outside.read_text() == "outside secret"
+    assert target.read_text() == "outside secret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_file_content_checks_opened_descriptor_before_access(
+    tmp_path: Path, operation: str
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "single.txt"
+    target.write_text("must remain intact")
+    outside = tmp_path / "outside.txt"
+    original_open = os.open
+
+    def link_before_open(*args, **kwargs):
+        if Path(args[0]) == target:
+            os.link(target, outside)
+        return original_open(*args, **kwargs)
+
+    handler = FileHandler(make_config(root))
+    with patch("autogpt_local_executor.path_jail.os.open", side_effect=link_before_open):
+        response = (
+            await handler.handle_read(_read_msg(target))
+            if operation == "read"
+            else await handler.handle_write(_write_msg(target, "overwrite"))
+        )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert target.read_text() == "must remain intact"
+    assert outside.read_text() == "must remain intact"
+
+
+@pytest.mark.asyncio
+async def test_write_existing_single_link_truncates_after_validation(tmp_path: Path) -> None:
+    target = tmp_path / "single.txt"
+    target.write_text("a long original value")
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_file_content_allows_symlink_to_single_link_inside_root(
+    tmp_path: Path, operation: str
+) -> None:
+    target = tmp_path / "single.txt"
+    target.write_text("original")
+    link = tmp_path / "symlink.txt"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks unavailable on this platform/account")
+    handler = FileHandler(make_config(tmp_path))
+
+    if operation == "read":
+        response = await handler.handle_read(_read_msg(link))
+        assert isinstance(response, FileContentsMessage)
+        assert response.payload.content == "original"
+    else:
+        response = await handler.handle_write(_write_msg(link, "new"))
+        assert isinstance(response, AckMessage)
+        assert target.read_text() == "new"
+
+    assert link.is_symlink()
 
 
 @pytest.mark.asyncio
@@ -493,6 +586,115 @@ async def test_move_overwrite(tmp_path: Path) -> None:
     resp = await h.handle_move(msg)
     assert isinstance(resp, AckMessage)
     assert dst.read_text() == "new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("directory", [False, True])
+async def test_move_cross_device_does_not_copy_or_remove_destination(
+    tmp_path: Path, directory: bool
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    if directory:
+        source.mkdir()
+        destination.mkdir()
+        (source / "source.txt").write_text("source")
+        (destination / "destination.txt").write_text("destination")
+    else:
+        source.write_text("source")
+        destination.write_text("destination")
+    message = FileMoveMessage(
+        id=new_id(),
+        ts=now_ts(),
+        payload=FileMovePayload(src=str(source), dst=str(destination), overwrite=True),
+    )
+    with (
+        patch("os.rename", side_effect=OSError(errno.EXDEV, "cross-device move")),
+        patch("os.replace", side_effect=OSError(errno.EXDEV, "cross-device move")),
+    ):
+        response = await FileHandler(make_config(tmp_path)).handle_move(message)
+
+    assert isinstance(response, ErrorMessage)
+    if directory:
+        assert (source / "source.txt").read_text() == "source"
+        assert (destination / "destination.txt").read_text() == "destination"
+    else:
+        assert source.read_text() == "source"
+        assert destination.read_text() == "destination"
+
+
+@pytest.mark.asyncio
+async def test_move_overwrite_hard_link_does_not_change_outside_content(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside secret")
+    destination = root / "linked.txt"
+    os.link(outside, destination)
+    source = root / "source.txt"
+    source.write_text("workspace content")
+
+    response = await FileHandler(make_config(root)).handle_move(
+        FileMoveMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileMovePayload(src=str(source), dst=str(destination), overwrite=True),
+        )
+    )
+
+    assert isinstance(response, AckMessage)
+    assert outside.read_text() == "outside secret"
+    assert destination.read_text() == "workspace content"
+    assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_move_hard_link_does_not_grant_content_access(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside secret")
+    source = root / "linked.txt"
+    os.link(outside, source)
+    destination = root / "moved.txt"
+    handler = FileHandler(make_config(root))
+
+    response = await handler.handle_move(
+        FileMoveMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileMovePayload(src=str(source), dst=str(destination)),
+        )
+    )
+    read_response = await handler.handle_read(_read_msg(destination))
+
+    assert isinstance(response, AckMessage)
+    assert isinstance(read_response, ErrorMessage)
+    assert read_response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert outside.read_text() == "outside secret"
+    assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_move_cannot_overwrite_nonempty_directory(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    (source / "source.txt").write_text("source")
+    (destination / "destination.txt").write_text("destination")
+
+    response = await FileHandler(make_config(tmp_path)).handle_move(
+        FileMoveMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileMovePayload(src=str(source), dst=str(destination), overwrite=True),
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert (source / "source.txt").read_text() == "source"
+    assert (destination / "destination.txt").read_text() == "destination"
 
 
 # ── EXECUTE_COMMAND (mocked) ─────────────────────────────────────────────────

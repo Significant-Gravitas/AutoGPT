@@ -114,8 +114,13 @@ use copied configuration and immutable session-bound audit contexts.
 | All | Path-jail TOCTOU: attacker swaps a file or ancestor between check and open | **Not contained.** Descriptor-based traversal and Windows reparse-safe handles are not implemented. Do not share the workspace with untrusted concurrent local processes. |
 | All | Long-path attacks (`a/../a/../a/...` repeated) to exhaust normalization | Cap path length at OS-appropriate max (4096 Linux, 1024 macOS, 32767 Windows with `\\?\`) before normalization. |
 
-The path jail is not a filesystem sandbox. Bind mounts and hard links can
-expose data whose names lie inside the selected tree. Selecting a broad root
+The path jail is not a filesystem sandbox. Bind mounts can expose data whose
+names lie inside the selected tree. Content reads/writes conservatively reject
+multi-linked regular files, including hard links entirely inside the workspace,
+and non-regular files. The opened descriptor is checked before reading or
+truncating; this does not contain concurrent same-user changes to links or path
+ancestors. Moves never fall back to copying contents across filesystems.
+Selecting a broad root
 also exposes credentials and executor configuration stored there. Avoid
 selecting your home, filesystem root, or executor state/configuration folders.
 
@@ -186,9 +191,18 @@ normal network access. OS isolation and destination approval are future work.
 - Tokens stored in OS keychain (never in dotfiles or env vars)
 - Access-token lifetime and refresh rotation are controlled by the platform
 - Refresh token stored encrypted in keychain
+- Token pairs and checked endpoint metadata are stored in a deployment-specific
+  keychain record, bound to the backend path, OAuth client, authorization and
+  token/revocation endpoints, and WebSocket base. Changing an endpoint requires
+  explicit authentication instead of forwarding another deployment's tokens.
+  Legacy unscoped tokens are never forwarded, migrated, or deleted automatically;
+  see [OAuth migration guidance](OAUTH_FLOW.md#deployment-bound-credentials).
+- Authenticated WebSocket redirects are rejected, including same-origin path
+  changes. OAuth HTTP requests do not follow redirects.
 - `autogpt-shim revoke` posts both access and refresh tokens to
   `POST /api/oauth/revoke` as the public client, and only then clears the OS
-  keychain. A network/server error preserves local tokens so revocation can be
+  deployment's keychain record. Other deployments and legacy credentials are
+  untouched. A network/server error preserves local tokens so revocation can be
   retried instead of falsely reporting success.
 - A successful platform revocation also pushes session revocation to connected shims.
 - Tokens carry `USE_TOOLS`; the WebSocket additionally checks session ownership,
@@ -220,7 +234,8 @@ valid-length ciphertext corruption. Prefer a supported OS keyring.
 If you believe your shim was compromised:
 
 1. Stop the foreground daemon with Ctrl+C, or stop its launchd/systemd/Task Scheduler entry.
-2. `autogpt-shim revoke` — revokes all OAuth tokens
+2. `autogpt-shim revoke` — revokes the configured deployment's saved OAuth tokens;
+   repeat with each deployment's configuration as needed
 3. Review the audit log at the per-OS location (see [AUDIT_LOG.md](AUDIT_LOG.md)) with `autogpt-shim audit tail` / `verify`
 4. Change your AutoGPT account password and re-enable 2FA
 5. Report to security@autogpt.net with the audit log

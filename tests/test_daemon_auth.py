@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from websockets.asyncio.server import serve
 from websockets.exceptions import InvalidStatus
 
 import autogpt_local_executor.daemon as daemon_module
 from autogpt_local_executor.audit import AuditWriter
+from autogpt_local_executor.auth import KeychainTokenStore
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.daemon import (
     MAX_WEBSOCKET_MESSAGE_BYTES,
@@ -73,7 +76,7 @@ def _install_auth_doubles(
     connect = _ScriptedConnect(statuses)
     monkeypatch.setattr(daemon, "_get_access_token", get_token)
     monkeypatch.setattr(daemon, "_run_session", run_session)
-    monkeypatch.setattr(daemon_module.websockets, "connect", connect)
+    monkeypatch.setattr(daemon_module, "CredentialBoundConnect", connect)
     return token_calls, connect
 
 
@@ -122,6 +125,142 @@ async def test_initial_403_is_terminal_without_refresh(
 
     assert token_calls == [False]
     assert len(connect.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["platform_url", "platform_ws_url", "platform_oauth_url"])
+async def test_changed_destination_does_not_send_saved_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    daemon = _daemon(tmp_path)
+    value = (
+        "wss://other.example.com/ws" if field == "platform_ws_url" else "https://other.example.com"
+    )
+    setattr(daemon.config, field, value)
+    _, connect = _install_auth_doubles(daemon, monkeypatch, [None])
+
+    with pytest.raises(DaemonAuthenticationError, match="configuration.*changed"):
+        await daemon._session()
+
+    assert connect.calls == []
+
+
+@pytest.mark.asyncio
+async def test_legacy_credentials_stop_before_websocket_connect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads: list[str] = []
+
+    def get_password(_service: str, key: str) -> str | None:
+        reads.append(key)
+        return "legacy-secret" if key == "access_token" else None
+
+    monkeypatch.setattr("autogpt_local_executor.auth.keyring.get_password", get_password)
+    daemon = _daemon(tmp_path)
+    daemon.token_store = KeychainTokenStore(daemon.config)
+    connect = _ScriptedConnect([None])
+    monkeypatch.setattr(daemon_module, "CredentialBoundConnect", connect)
+
+    with pytest.raises(DaemonAuthenticationError, match="legacy.*autogpt-shim.*auth") as exc:
+        await daemon._session()
+
+    assert "secret" not in str(exc.value)
+    assert "access_token" in reads
+    assert connect.calls == []
+
+
+@pytest.mark.asyncio
+async def test_missing_current_deployment_credentials_require_auth_before_connect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    daemon = _daemon(tmp_path)
+    daemon.token_store = KeychainTokenStore(daemon.config)
+    monkeypatch.setattr("autogpt_local_executor.auth.keyring.get_password", lambda *_args: None)
+    connect = _ScriptedConnect([None])
+    monkeypatch.setattr(daemon_module, "CredentialBoundConnect", connect)
+
+    with pytest.raises(DaemonAuthenticationError, match="this deployment.*autogpt-shim.*auth"):
+        await daemon._session()
+
+    assert connect.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("same_origin", [True, False])
+async def test_websocket_redirect_never_reaches_an_unapproved_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, same_origin: bool
+) -> None:
+    received: list[str | None] = []
+    original_requests: list[str | None] = []
+
+    async def handler(ws) -> None:
+        await ws.close()
+
+    async def destination_request(_connection, request):
+        received.append(request.headers.get("Authorization"))
+
+    async with serve(handler, "127.0.0.1", 0, process_request=destination_request) as destination:
+        target_port = destination.sockets[0].getsockname()[1]
+
+        async def origin_request(connection, request):
+            if request.path != "/ws/local-executor":
+                received.append(request.headers.get("Authorization"))
+                return None
+            original_requests.append(request.headers.get("Authorization"))
+            response = connection.respond(HTTPStatus.FOUND, "redirect")
+            response.headers["Location"] = (
+                "/unapproved" if same_origin else f"ws://127.0.0.1:{target_port}/unapproved"
+            )
+            return response
+
+        async with serve(handler, "127.0.0.1", 0, process_request=origin_request) as origin:
+            config = ShimConfig(
+                platform_url=f"http://127.0.0.1:{origin.sockets[0].getsockname()[1]}",
+                allowed_root=tmp_path,
+                audit_log_path=tmp_path / "audit.log",
+            )
+            store = SimpleNamespace(get_access_token=AsyncMock(return_value="access-secret"))
+            daemon = ShimDaemon(config, token_store=store, audit=MagicMock())
+            monkeypatch.setattr(daemon, "_run_session", AsyncMock())
+
+            with pytest.raises(DaemonAuthenticationError, match="redirect"):
+                await daemon_module.asyncio.wait_for(daemon._session(), timeout=5)
+
+    assert original_requests == ["Bearer access-secret"]
+    assert received == []
+
+
+@pytest.mark.asyncio
+async def test_keychain_read_error_is_terminal_and_does_not_disclose_tokens(tmp_path: Path) -> None:
+    daemon = _daemon(tmp_path)
+    daemon.token_store = SimpleNamespace(
+        get_access_token=AsyncMock(side_effect=RuntimeError("access-secret"))
+    )
+
+    with pytest.raises(DaemonAuthenticationError, match="OS keychain") as exc:
+        await daemon._get_access_token(refresh_on_fail=False)
+
+    assert "access-secret" not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_refresh_failure_does_not_log_token_bearing_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from autogpt_local_executor.auth import OAuthFlow
+
+    daemon = _daemon(tmp_path)
+    daemon.token_store = SimpleNamespace(get_access_token=AsyncMock(return_value="access-secret"))
+
+    async def failed_refresh(_flow):
+        raise RuntimeError("refresh failed: refresh-secret")
+
+    monkeypatch.setattr(OAuthFlow, "refresh_token", failed_refresh)
+
+    assert await daemon._get_access_token(refresh_on_fail=True) is None
+    assert "Token refresh failed" in caplog.text
+    assert "access-secret" not in caplog.text
+    assert "refresh-secret" not in caplog.text
 
 
 @pytest.mark.asyncio

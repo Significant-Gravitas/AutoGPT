@@ -89,7 +89,8 @@ Introspect (`/api/oauth/introspect`) remains confidential-auth-only. Revoke
 (`/api/oauth/revoke`) accepts this registered public client without a secret,
 binds each token to the client before revoking it, and returns the RFC 7009
 non-disclosing success response. `autogpt-shim revoke` revokes the access and
-refresh tokens before clearing the keychain. The platform also pushes a
+refresh tokens for the configured deployment before clearing that deployment's
+keychain record. Other deployments' records are not removed. The platform also pushes a
 `SESSION_REVOKED` frame to a connected shim (see `PROTOCOL.md`).
 
 ---
@@ -167,6 +168,44 @@ Tokens stored in OS keychain:
 - macOS: Keychain Services via `keyring` library
 - Linux: Secret Service (GNOME Keyring / KWallet) via `keyring`
 - Windows: Windows Credential Manager via `keyring`
+
+### Deployment-bound credentials
+
+Access and refresh tokens are stored together in a versioned keychain record.
+Its key is derived from the configured backend base, OAuth client ID, browser
+authorization URL, token/revocation endpoints, and WebSocket base. The same
+endpoint metadata is checked when reading the record. Backend path prefixes
+such as `/backend` remain part of the identity. Host casing, default ports,
+equivalent HTTP/WebSocket base schemes, and trailing base slashes do not create
+duplicate identities; different hosts, non-default ports, clients, and endpoint
+paths do. The per-chat session ID is not part of this shared machine credential.
+
+Split frontend/backend deployments are supported: `--platform-oauth-url` selects
+the browser authorization base while `--platform-url` selects the backend.
+Explicit OAuth or WebSocket overrides are bound when authenticating. Changing
+one does not authorize sending previously saved tokens to the new destination:
+authenticate again with the intended configuration. OAuth requests do not follow
+HTTP redirects; WebSocket redirects, including same-origin path changes, are
+rejected. A destination change while the daemon or OAuth flow is running is a
+terminal authentication error, not a refresh attempt against the new endpoint.
+
+Use the same persistent configuration for every command:
+
+```bash
+autogpt-shim --config /path/to/config.toml auth
+autogpt-shim --config /path/to/config.toml start
+autogpt-shim --config /path/to/config.toml revoke
+```
+
+Older releases used global `access_token` and `refresh_token` keychain entries
+without deployment metadata. Their origin cannot be inferred safely. The shim
+never forwards, migrates, or deletes those legacy entries automatically. Startup,
+refresh, and revocation fail closed if only legacy credentials are available,
+with instructions to authenticate explicitly. Successful `auth` creates a new
+scoped record and leaves legacy entries untouched. Revoke the legacy authorization
+at its original platform deployment; after doing so, remove the old entries using
+the OS credential manager if desired. A corrupt or mismatched scoped record also
+requires explicit authentication rather than falling back to legacy credentials.
 
 ---
 

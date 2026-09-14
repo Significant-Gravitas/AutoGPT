@@ -305,9 +305,27 @@ Key invariants:
 - **Always check with a separator boundary.** `/foo` must not match `/foobar`.
 - **Per-volume case-sensitivity probe.** Don't hardcode "macOS = insensitive";
   modern users can have case-sensitive APFS or per-dir case-sensitive NTFS.
-- **Refuse paths that don't exist when STRICT mode is required.** FILE_WRITE
-  with `create_parents: true` is the only op that may target a non-existent
-  path; even then, the *parent* must exist and be inside the jail.
+- **Validate complete destinations before creation.** FILE_WRITE may create
+  a new file under an existing in-root parent; `create_parents: true` also
+  allows missing in-root parents. FILE_MOVE may target a new in-root name.
+  Every destination still passes complete canonical-path validation.
+
+Content access has an additional check beyond canonical paths. FILE_READ and
+FILE_WRITE reject non-regular files and regular files whose link count is not
+exactly one. Hard links have no canonical "original" path, so this deliberately
+also rejects multiple links entirely inside the workspace. The content opener
+checks existing metadata before opening, opens without truncating, and checks
+the opened descriptor with `fstat` before reading or truncating/writing. Where
+available, nonblocking and no-follow open flags avoid FIFO waits and reject
+replacement final-component symlinks. These are additional defenses, not
+descriptor-based traversal of every ancestor or a same-user race guarantee.
+
+FILE_MOVE uses filesystem rename/replace only, without a copy-and-delete
+fallback. Cross-device moves fail without pre-deleting the destination;
+overwriting a nonempty directory also fails. This prevents a move from reading
+linked or special-file content indirectly during a cross-device copy. An
+in-root hard-link entry may still be listed, statted, unlinked, or renamed;
+these operations do not grant content access, and its content remains blocked.
 
 ### What the algorithm catches
 

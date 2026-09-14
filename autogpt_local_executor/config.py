@@ -178,7 +178,11 @@ class ShimConfig(BaseSettings):
         "does not constrain shell commands.",
     )
     enable_computer_use: bool = Field(default=False)
-    enable_local_llm: bool = Field(default=False)
+    enable_local_llm: bool = Field(
+        default=False,
+        description="Reserved local-model preview. Startup rejects this option until "
+        "end-to-end routing and cancellation are supported.",
+    )
     enable_hardware: bool = Field(default=False)
 
     # ── Limits (also negotiated via HELLO_ACK) ─────────────────────────────

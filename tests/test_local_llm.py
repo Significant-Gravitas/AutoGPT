@@ -81,6 +81,10 @@ class FakeStreamResponse:
         for line in self._lines:
             yield line
 
+    async def aiter_bytes(self, **kwargs):
+        for line in self._lines:
+            yield (line + "\n").encode()
+
     async def aread(self) -> bytes:
         return self._body
 
@@ -241,7 +245,7 @@ async def test_streaming_dispatch_emits_chunks_and_terminal_response(tmp_path: P
 
     response = await handler.handle(_completion_msg(), send=send)
     assert isinstance(response, LocalLLMCompletionResponseMessage)
-    assert response.payload.content == "Hello, world!"
+    assert response.payload.content == ""
     assert response.payload.finish_reason == "stop"
     assert response.payload.tokens.prompt == 12
     assert response.payload.tokens.completion == 5
@@ -464,8 +468,8 @@ async def test_audit_records_error_codes(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_hello_populates_models_when_probe_succeeds(tmp_path: Path) -> None:
-    """Verifies daemon._build_hello probes Ollama and populates HELLO."""
+async def test_build_hello_omits_unfinished_local_model_preview(tmp_path: Path) -> None:
+    """The unwired capability cannot be enabled by a successful Ollama probe."""
     from autogpt_local_executor.audit import AuditWriter
     from autogpt_local_executor.daemon import ShimDaemon
 
@@ -478,8 +482,9 @@ async def test_build_hello_populates_models_when_probe_succeeds(tmp_path: Path) 
     daemon._local_llm_handler._backend = backend
 
     hello = await daemon._build_hello()
-    assert "local_llm" in hello.payload.capabilities
-    assert hello.payload.local_llm_models == ["llama3.2:3b", "mistral:7b"]
+    assert "local_llm" not in hello.payload.capabilities
+    assert hello.payload.local_llm_models == []
+    backend.list_models.assert_not_awaited()
 
 
 @pytest.mark.asyncio

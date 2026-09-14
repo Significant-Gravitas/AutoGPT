@@ -18,7 +18,7 @@ Once connected, AutoGPT can:
   (per-OS shell selection — bash/zsh/pwsh/cmd)
 - *(Optional)* Take screenshots and control mouse/keyboard via Claude's computer use API
 - *(Optional)* Access local hardware (serial, USB, GPIO)
-- *(Optional)* Route LLM inference to a local Ollama instance
+- Local-model routing is disabled scaffolding; it is not a supported chat mode.
 
 Cross-platform: macOS, Windows, Linux (Tier 1); WSL2 + Windows-on-ARM
 (Tier 2). See [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) for the

@@ -621,10 +621,9 @@ Used in place of shell `mv` / `move`. Also covers renames.
 }
 ```
 
-**Both `src` and `dst` are path-jail checked.** Cross-device moves
-(e.g., source on the home volume, dst on a mounted external drive) are
-allowed if both endpoints are inside `allowed_root`; the shim falls back to
-copy+delete in that case. Responds with `ACK`.
+**Both `src` and `dst` are path-jail checked.** Moves use filesystem rename
+or replacement only. Cross-device moves return an error without copying file
+contents or pre-deleting the destination. Successful moves respond with `ACK`.
 
 ---
 
@@ -632,11 +631,10 @@ copy+delete in that case. Responds with `ACK`.
 
 **For the full local LLM routing feature spec, gating, and backend matrix, see [LOCAL_LLM.md](LOCAL_LLM.md).**
 
-The shim advertises local LLM availability via the `local_llm` capability
-in `HELLO.capabilities` plus the populated `HELLO.local_llm_models` list.
-If the list is empty OR the capability is missing, the platform MUST
-treat local LLM routing as unavailable for this session and fall back to
-cloud-side completion.
+Local-model routing is disabled scaffolding: the companion never advertises
+`local_llm`, leaves `HELLO.local_llm_models` empty, and refuses the enable flag.
+The wire shapes below are retained for tests and future integration, not a
+currently supported chat path. A missing capability must never be overridden.
 
 #### `LOCAL_LLM_COMPLETION` (platform → shim)
 
@@ -664,12 +662,12 @@ cloud-side completion.
   `HELLO.local_llm_models`. Unknown model → `MODEL_NOT_AVAILABLE`.
 - `messages` follows the OpenAI / Anthropic-style chat-completions shape:
   a list of `{role, content}` records where `role` is one of `"system"`,
-  `"user"`, `"assistant"`. Future minor versions MAY add `"tool"` and
-  attachment payloads — receivers MUST ignore unknown roles.
-- `max_tokens` is the upper bound on the response length. Backends MAY
-  cap this further (Ollama defaults to 2048).
-- `temperature` and `top_p` are sampling knobs. Both optional;
-  shim-side defaults are model-dependent.
+  `"user"`, `"assistant"`. Other roles and attachment payloads are rejected.
+- Requests allow 1–256 messages, at most 262,144 characters per message and
+  512 KiB total UTF-8 prompt content. Model names contain 1–256 characters.
+- `max_tokens` must be an integer from 1 through 8192; default 1024.
+- `temperature` is finite in [0, 2] (default 0); `top_p` is finite in (0, 1]
+  (default 1). Unknown roles are rejected, not silently ignored.
 - `stream` (default `true`) selects between chunked and one-shot
   delivery. When `true`, the shim emits one or more
   `LOCAL_LLM_COMPLETION_CHUNK` frames followed by a single
@@ -695,8 +693,11 @@ Multiple frames per request, sharing the request's `id`. Every chunk
 EXCEPT the final one MUST have `finish_reason: null`. The shim emits a
 final chunk with `finish_reason` set to one of `"stop"`, `"length"`, or
 `"content_filter"`, immediately followed by a
-`LOCAL_LLM_COMPLETION_RESPONSE` carrying the assembled output and
-metadata.
+`LOCAL_LLM_COMPLETION_RESPONSE` carrying metadata and empty content.
+Output deltas are limited to 8 KiB each and 256 KiB in aggregate. The dormant
+handler closes its backend stream on 30-second idle/300-second total timeout,
+oversize output, send failure, or task cancellation. End-to-end cancellation
+across the platform protocol is still a prerequisite for activation.
 
 #### `LOCAL_LLM_COMPLETION_RESPONSE` (shim → platform, terminal frame)
 
@@ -715,8 +716,8 @@ metadata.
 }
 ```
 
-`content` is the assembled output (concatenated chunk deltas in the
-streaming case; the whole response in the non-streaming case).
+`content` is empty after streamed deltas, or the bounded assembled output for
+non-streamed requests. The example above represents a non-streamed response.
 `tokens` is best-effort — backends that don't report token counts MAY
 return `null` for any of the three sub-fields. `duration_seconds` is
 wall-clock backend time, not the platform's round-trip.

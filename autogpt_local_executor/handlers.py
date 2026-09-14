@@ -26,7 +26,7 @@ import time
 from collections import OrderedDict, deque
 from typing import Any, Literal, cast
 
-from . import platform_info
+from . import local_llm_limits, platform_info
 from .audit import AuditWriter
 from .computer_use import (
     BackendError,
@@ -34,7 +34,8 @@ from .computer_use import (
     get_backend,
 )
 from .config import ShimConfig
-from .path_jail import PathJailError, assert_inside_jail
+from .local_llm_limits import bounded_chunks, read_json_lines
+from .path_jail import PathJailError, assert_inside_jail, open_jail_file
 from .protocol import (
     MAX_WIRE_BASE64_CONTENT_BYTES,
     MAX_WIRE_TEXT_CONTENT_BYTES,
@@ -668,37 +669,46 @@ class FileHandler:
             "length": payload.length,
         }
 
-        if not path.exists():
-            await self._emit(
-                "FILE_READ",
-                msg.id,
-                {**details_base, "size_bytes_returned": 0},
-                _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
-            )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
-        if path.is_dir():
-            await self._emit(
-                "FILE_READ",
-                msg.id,
-                {**details_base, "size_bytes_returned": 0},
-                _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
-            )
-            return make_error(
-                msg.id,
-                ErrorCode.INTERNAL_ERROR,
-                f"{path} is a directory, not a file",
-            )
-
-        size = path.stat().st_size
         text_mode = payload.format != FileFormat.BYTES and payload.encoding != Encoding.BASE64
         response_limit = self.config.max_file_size_bytes
         if text_mode:
             response_limit = min(response_limit, MAX_WIRE_TEXT_CONTENT_BYTES)
         else:
             response_limit = min(response_limit, MAX_WIRE_BASE64_CONTENT_BYTES)
-        remaining = max(size - payload.offset, 0)
-        requested_size = payload.length if payload.length is not None else remaining
-        if requested_size > response_limit:
+
+        def read_chunk() -> tuple[bytes | None, int]:
+            with open_jail_file(path, self.config.allowed_root) as file:
+                size = os.fstat(file.fileno()).st_size
+                remaining = max(size - payload.offset, 0)
+                requested_size = payload.length if payload.length is not None else remaining
+                if requested_size > response_limit:
+                    return None, size
+                file.seek(payload.offset)
+                return file.read(requested_size), size
+
+        try:
+            chunk, size = await asyncio.to_thread(read_chunk)
+        except PathJailError as exc:
+            await _audit_jail_violation(self.audit, "FILE_READ", payload.path, exc)
+            return _jail_error_to_message(msg.id, exc)
+        except OSError as exc:
+            code = (
+                ErrorCode.PATH_NOT_FOUND
+                if isinstance(exc, FileNotFoundError)
+                else ErrorCode.INTERNAL_ERROR
+            )
+            await self._emit(
+                "FILE_READ",
+                msg.id,
+                {**details_base, "size_bytes_returned": 0},
+                _err_result(_elapsed_ms(start), code.value),
+            )
+            return make_error(msg.id, code, f"Could not read file: {exc}")
+
+        if chunk is None:
+            requested_size = (
+                payload.length if payload.length is not None else max(size - payload.offset, 0)
+            )
             await self._emit(
                 "FILE_READ",
                 msg.id,
@@ -711,12 +721,6 @@ class FileHandler:
                 f"Requested read of {requested_size} bytes exceeds limit {response_limit}",
             )
 
-        def read_chunk() -> bytes:
-            with path.open("rb") as file:
-                file.seek(payload.offset)
-                return file.read(requested_size)
-
-        chunk = await asyncio.to_thread(read_chunk)
         truncated = payload.offset + len(chunk) < size
 
         # encoding ↔ format mapping per PROTOCOL.md FILE_READ table.
@@ -790,11 +794,18 @@ class FileHandler:
                 f"{len(raw)} bytes exceeds limit {self.config.max_file_size_bytes}",
             )
 
-        if payload.create_parents:
-            await asyncio.to_thread(lambda: path.parent.mkdir(parents=True, exist_ok=True))
+        def write_content() -> None:
+            if payload.create_parents:
+                path.parent.mkdir(parents=True, exist_ok=True)
+            with open_jail_file(path, self.config.allowed_root, write=True) as file:
+                file.truncate(0)
+                file.write(raw)
 
         try:
-            await asyncio.to_thread(path.write_bytes, raw)
+            await asyncio.to_thread(write_content)
+        except PathJailError as exc:
+            await _audit_jail_violation(self.audit, "FILE_WRITE", payload.path, exc)
+            return _jail_error_to_message(msg.id, exc)
         except OSError as exc:
             code = (
                 ErrorCode.PATH_NOT_FOUND
@@ -1085,13 +1096,8 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
 
         try:
-            if dst.exists() and payload.overwrite:
-                if dst.is_dir() and not dst.is_symlink():
-                    await asyncio.to_thread(shutil.rmtree, str(dst))
-                else:
-                    await asyncio.to_thread(os.unlink, str(dst))
-            # shutil.move handles cross-device by falling back to copy+delete.
-            await asyncio.to_thread(shutil.move, str(src), str(dst))
+            move = os.replace if payload.overwrite else os.rename
+            await asyncio.to_thread(move, str(src), str(dst))
         except OSError as exc:
             await self._emit(
                 "FILE_MOVE",
@@ -1785,35 +1791,13 @@ class OllamaBackend:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 async with client.stream("POST", f"{self.base_url}/api/chat", json=body) as r:
                     if r.status_code == 404:
-                        # Read body for the model-not-found message.
-                        try:
-                            err_text = (await r.aread()).decode("utf-8", errors="replace")
-                        except Exception:
-                            err_text = "model not found"
-                        raise OllamaBackendError(ErrorCode.MODEL_NOT_AVAILABLE, err_text)
-                    if r.status_code >= 500:
-                        try:
-                            err_text = (await r.aread()).decode("utf-8", errors="replace")
-                        except Exception:
-                            err_text = f"HTTP {r.status_code}"
-                        raise OllamaBackendError(ErrorCode.LOCAL_LLM_FAILED, err_text)
+                        raise OllamaBackendError(ErrorCode.MODEL_NOT_AVAILABLE, "model not found")
                     if r.status_code != 200:
-                        try:
-                            err_text = (await r.aread()).decode("utf-8", errors="replace")
-                        except Exception:
-                            err_text = f"HTTP {r.status_code}"
-                        raise OllamaBackendError(ErrorCode.LOCAL_LLM_FAILED, err_text)
-                    async for line in r.aiter_lines():
-                        if not line.strip():
-                            continue
-                        try:
-                            import json as _json
-
-                            yield _json.loads(line)
-                        except ValueError:
-                            # Skip malformed lines; Ollama shouldn't emit them
-                            # but be defensive.
-                            continue
+                        raise OllamaBackendError(
+                            ErrorCode.LOCAL_LLM_FAILED, f"HTTP {r.status_code}"
+                        )
+                    async for chunk in read_json_lines(r.aiter_bytes(chunk_size=8192)):
+                        yield chunk
         except httpx.RequestError as exc:
             raise OllamaBackendError(ErrorCode.LOCAL_LLM_FAILED, str(exc)) from exc
 
@@ -1926,9 +1910,18 @@ class LocalLLMHandler:
             )
 
         async with self._inflight_lock:
-            return await self._run_completion(
-                msg, send=send, details_base=details_base, start=start
-            )
+            try:
+                return await asyncio.wait_for(
+                    self._run_completion(msg, send=send, details_base=details_base, start=start),
+                    timeout=local_llm_limits.TOTAL_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                await self._emit(
+                    msg.id,
+                    {**details_base, "response_chars": 0, "finish_reason": None},
+                    _err_result(_elapsed_ms(start), ErrorCode.LOCAL_LLM_FAILED.value),
+                )
+                return make_error(msg.id, ErrorCode.LOCAL_LLM_FAILED, "Local model timed out")
 
     async def _run_completion(
         self,
@@ -1945,14 +1938,17 @@ class LocalLLMHandler:
         prompt_tokens: int | None = None
         completion_tokens: int | None = None
 
-        try:
-            async for chunk in self._backend.chat_stream(
+        stream = bounded_chunks(
+            self._backend.chat_stream(
                 model=payload.model,
                 messages=messages_wire,
                 max_tokens=payload.max_tokens,
                 temperature=payload.temperature,
                 top_p=payload.top_p,
-            ):
+            )
+        )
+        try:
+            async for chunk in stream:
                 delta = ""
                 msg_obj = chunk.get("message") or {}
                 if isinstance(msg_obj, dict):
@@ -1985,10 +1981,9 @@ class LocalLLMHandler:
                                 finish_reason=None,
                             ),
                         )
-                        try:
-                            await send(chunk_msg)
-                        except Exception:
-                            logger.debug("Failed to send LLM chunk", exc_info=True)
+                        await asyncio.wait_for(
+                            send(chunk_msg), timeout=local_llm_limits.IDLE_TIMEOUT_SECONDS
+                        )
 
                 if done:
                     # Emit terminal-marker chunk (delta="", finish_reason=stop/length)
@@ -2003,10 +1998,9 @@ class LocalLLMHandler:
                                 finish_reason=finish_reason,
                             ),
                         )
-                        try:
-                            await send(chunk_msg)
-                        except Exception:
-                            logger.debug("Failed to send LLM terminal chunk", exc_info=True)
+                        await asyncio.wait_for(
+                            send(chunk_msg), timeout=local_llm_limits.IDLE_TIMEOUT_SECONDS
+                        )
                     break
         except OllamaBackendError as exc:
             details = {
@@ -2039,6 +2033,9 @@ class LocalLLMHandler:
                 details={"backend_error": str(exc)},
             )
 
+        finally:
+            await stream.aclose()
+
         duration = time.monotonic() - start
         content = "".join(content_buf)
         total_tokens: int | None = None
@@ -2059,7 +2056,7 @@ class LocalLLMHandler:
             id=msg.id,
             ts=now_ts(),
             payload=LocalLLMCompletionResponsePayload(
-                content=content,
+                content="" if payload.stream and send is not None else content,
                 finish_reason=finish_reason,
                 tokens=LocalLLMTokensUsage(
                     prompt=prompt_tokens,

@@ -737,7 +737,7 @@ class LocalLLMMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role: Literal["system", "user", "assistant"]
-    content: str
+    content: str = Field(max_length=262144)
 
 
 # Finish reasons follow the chat-completions vocabulary. v1.x: these three;
@@ -754,12 +754,18 @@ class LocalLLMCompletionPayload(_Payload):
     response.
     """
 
-    model: str
-    messages: list[LocalLLMMessage]
-    max_tokens: int = 1024
-    temperature: float = 0.0
-    top_p: float = 1.0
+    model: str = Field(min_length=1, max_length=256)
+    messages: list[LocalLLMMessage] = Field(min_length=1, max_length=256)
+    max_tokens: int = Field(default=1024, ge=1, le=8192, strict=True)
+    temperature: float = Field(default=0.0, ge=0, le=2, allow_inf_nan=False)
+    top_p: float = Field(default=1.0, gt=0, le=1, allow_inf_nan=False)
     stream: bool = True
+
+    @model_validator(mode="after")
+    def bound_prompt_bytes(self) -> LocalLLMCompletionPayload:
+        if sum(len(message.content.encode("utf-8")) for message in self.messages) > 524288:
+            raise ValueError("Local model prompt exceeds its size limit")
+        return self
 
 
 class LocalLLMCompletionChunkPayload(_Payload):

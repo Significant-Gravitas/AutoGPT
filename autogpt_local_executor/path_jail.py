@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path, PurePath
+from typing import BinaryIO
 
 from .platform_info import detect_platform, is_case_insensitive_fs
 
@@ -206,8 +210,52 @@ def assert_inside_jail(
     )
 
 
+def _assert_safe_content_stat(info: os.stat_result) -> None:
+    if not stat.S_ISREG(info.st_mode):
+        raise PathJailError("CAPABILITY_NOT_GRANTED", "Content access requires a regular file")
+    if info.st_nlink != 1:
+        raise PathJailError(
+            "PATH_OUTSIDE_ALLOWED_ROOT",
+            "Content access requires exactly one file link; hard-link scope cannot be established",
+        )
+
+
+@contextmanager
+def open_jail_file(
+    requested_path: str | os.PathLike[str],
+    allowed_root: str | os.PathLike[str],
+    *,
+    write: bool = False,
+) -> Iterator[BinaryIO]:
+    """Open a single-linked regular file, without truncating before validation.
+
+    This checks the content descriptor but does not pin or traverse ancestor
+    directory descriptors. Concurrent same-user filesystem changes remain out
+    of scope for this path-based preview.
+    """
+    path = assert_inside_jail(requested_path, allowed_root)
+    try:
+        _assert_safe_content_stat(path.stat())
+    except FileNotFoundError:
+        if not write:
+            raise
+
+    flags = (os.O_WRONLY | os.O_CREAT) if write else os.O_RDONLY
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o666)
+    try:
+        _assert_safe_content_stat(os.fstat(descriptor))
+        with os.fdopen(descriptor, "wb" if write else "rb", closefd=False) as file:
+            yield file
+    finally:
+        os.close(descriptor)
+
+
 __all__ = [
     "PathJailError",
     "assert_inside_jail",
     "is_inside_jail",
+    "open_jail_file",
 ]

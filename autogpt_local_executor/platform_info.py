@@ -90,11 +90,6 @@ def detect_capabilities(
     caps.append("files")  # always present
     if enable_computer_use and _can_do_computer_use():
         caps.append("computer_use")
-    if enable_local_llm:
-        # We tentatively add "local_llm" here; the daemon's HELLO builder
-        # strips it if the Ollama probe at handshake time returns no
-        # models. See LOCAL_LLM.md "Activation gate" + daemon._build_hello.
-        caps.append("local_llm")
     if enable_hardware:
         if _module_available("serial"):
             caps.append("hardware_serial")

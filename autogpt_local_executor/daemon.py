@@ -27,10 +27,11 @@ from typing import Any, Never, cast
 
 import websockets
 from pydantic import BaseModel, ValidationError
+from websockets.asyncio.client import connect
 
 from . import platform_info
 from .audit import AuditWriter, SessionAuditWriter, get_or_create_audit_key
-from .auth import KeychainTokenStore
+from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
 from .handlers import (
@@ -150,6 +151,19 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
+class CredentialBoundConnect(connect):
+    def process_redirect(self, exc: Exception) -> Exception:
+        if (
+            isinstance(exc, websockets.exceptions.InvalidStatus)
+            and 300 <= exc.response.status_code < 400
+        ):
+            return DaemonAuthenticationError(
+                "WebSocket redirects are not allowed for saved credentials. "
+                "Configure the intended endpoint and run `autogpt-shim auth` again."
+            )
+        return exc
+
+
 logger = logging.getLogger(__name__)
 
 MAX_ACTIVE_CHILD_SESSIONS = 8
@@ -185,7 +199,8 @@ class ShimDaemon:
         self.config = config
         selected_session_id = (config.session_id or "").strip()
         config.session_id = selected_session_id or None
-        self.token_store = token_store or KeychainTokenStore()
+        self.token_store = token_store or KeychainTokenStore(config)
+        self._credential_scope = CredentialScope.from_config(config)
         self.audit = audit if audit is not None else self._build_audit_writer(config)
         self._manage_audit_lifecycle = manage_audit_lifecycle
         self._control_mode = not bool(selected_session_id)
@@ -369,9 +384,15 @@ class ShimDaemon:
     async def _session(self) -> None:
         url = self._connect_url()
         token = await self._get_access_token(refresh_on_fail=False)
+        self._ensure_credential_scope()
+        if not token:
+            raise DaemonAuthenticationError(
+                "No credentials for this deployment. Run `autogpt-shim auth` "
+                "with the same deployment configuration before starting."
+            )
         headers = self._auth_headers(token)
         try:
-            async with websockets.connect(
+            async with CredentialBoundConnect(
                 url,
                 additional_headers=headers,
                 ping_interval=20,
@@ -394,13 +415,14 @@ class ShimDaemon:
                 refresh_on_fail=True,
                 rejected_token=token,
             )
+            self._ensure_credential_scope()
             if not token:
                 raise DaemonAuthenticationError(
                     "WebSocket authentication failed and the single token refresh failed"
                 ) from exc
             headers = self._auth_headers(token)
             try:
-                async with websockets.connect(
+                async with CredentialBoundConnect(
                     url,
                     additional_headers=headers,
                     ping_interval=20,
@@ -529,12 +551,13 @@ class ShimDaemon:
         refresh_on_fail: bool,
         rejected_token: str | None = None,
     ) -> str | None:
+        self._ensure_credential_scope()
         if not refresh_on_fail:
-            return await self.token_store.get_access_token()
+            return await self._read_access_token()
         async with self._token_refresh_lock:
             # Another machine/session socket may already have rotated the
             # refresh family while this connection was receiving its 401.
-            current_token = await self.token_store.get_access_token()
+            current_token = await self._read_access_token()
             if (
                 rejected_token is not None
                 and current_token is not None
@@ -551,10 +574,45 @@ class ShimDaemon:
                         await self.audit.token_refreshed()
                     except Exception:
                         logger.debug("TOKEN_REFRESHED audit emit failed", exc_info=True)
-                return await self.token_store.get_access_token()
-            except Exception as exc:
-                logger.warning("Token refresh failed: %s", exc)
+                return await self._read_access_token()
+            except DaemonAuthenticationError:
+                raise
+            except CredentialScopeError as exc:
+                raise DaemonAuthenticationError(str(exc)) from None
+            except Exception:
+                logger.warning(
+                    "Token refresh failed. Check the deployment configuration and OS keychain, "
+                    "then run `autogpt-shim auth` again."
+                )
                 return None
+
+    async def _read_access_token(self) -> str | None:
+        self._ensure_credential_scope()
+        try:
+            token = await self.token_store.get_access_token()
+        except CredentialScopeError as exc:
+            raise DaemonAuthenticationError(str(exc)) from None
+        except Exception:
+            raise DaemonAuthenticationError(
+                "Stored credentials are unavailable. Unlock or configure the OS keychain, "
+                "then run `autogpt-shim auth` with the intended deployment configuration."
+            ) from None
+        self._ensure_credential_scope()
+        return token
+
+    def _ensure_credential_scope(self) -> None:
+        try:
+            self._credential_scope.ensure_matches(self.config)
+            if (
+                isinstance(self.token_store, KeychainTokenStore)
+                and self.token_store.scope != self._credential_scope
+            ):
+                raise CredentialScopeError(
+                    "Stored credentials belong to different OAuth configuration. "
+                    "Run `autogpt-shim auth` with the intended deployment configuration."
+                )
+        except CredentialScopeError as exc:
+            raise DaemonAuthenticationError(str(exc)) from None
 
     # ── Handshake ─────────────────────────────────────────────────────────
 
@@ -702,22 +760,9 @@ class ShimDaemon:
                 cu_features_coarse = list(self._computer_handler.backend.coarse_features())
             except Exception:
                 logger.debug("computer-use feature probe failed", exc_info=True)
-        # Per LOCAL_LLM.md: probe Ollama at HELLO time. On any failure we
-        # OMIT the local_llm capability AND leave local_llm_models empty.
+        # Local-model routing is not wired into the platform service yet.
         local_llm_models: list[str] = []
-        if cfg.enable_local_llm:
-            try:
-                local_llm_models = await self._local_llm_handler.probe()
-            except Exception:
-                logger.debug("Local LLM probe raised; treating as unavailable", exc_info=True)
-                local_llm_models = []
-            if local_llm_models:
-                if "local_llm" not in caps:
-                    caps.append("local_llm")
-            else:
-                # Probe failed or returned no models — strip the capability
-                # so the platform doesn't try to route to us.
-                caps = [c for c in caps if c != "local_llm"]
+        caps = [cap for cap in caps if cap != "local_llm"]
         # Recording advertisement: only when the capability is on. Channels are
         # what this shim can offer; routes are what this machine can interpret
         # with right now, so the platform can gate (§6).
@@ -990,10 +1035,8 @@ class ShimDaemon:
         # carry pending_capacity (we're still mid-request) and aren't
         # treated as responses for the backpressure accounting.
         async def _stream_send(frame: Any) -> None:
-            try:
-                await self._send_frame(ws, frame)
-            except Exception:
-                logger.debug("Failed to send streaming frame", exc_info=True)
+            if not await self._send_frame(ws, frame):
+                raise ValueError("Streaming response exceeded its size limit")
 
         try:
             try:
@@ -1663,6 +1706,13 @@ class ShimDaemon:
 
     async def _preflight_or_raise(self) -> None:
         """Reject incomplete previews or unverified required OS permissions."""
+        if self.config.enable_local_llm:
+            await self._fail_preflight(
+                "Local model routing remains disabled until platform routing and "
+                "end-to-end cancellation are supported.",
+                missing_permissions=["local_model_preview_disabled"],
+                error_code=ErrorCode.CAPABILITY_NOT_GRANTED,
+            )
         if self.config.enable_recording:
             await self._fail_preflight(
                 "Workflow recording is a design preview and remains disabled: "
