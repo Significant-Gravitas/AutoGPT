@@ -26,7 +26,12 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
+from .expert_avatar import (
+    AVATAR_BEARD,
+    AVATAR_GLASSES,
+    AVATAR_HAT,
+    build_avatar_url,
+)
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -117,17 +122,22 @@ class RaiseExpertTool(BaseTool):
                     "enum": COLOR_TOKENS,
                     "description": ("Accent token for the avatar and chat theme."),
                 },
-                "avatar_shape": {
+                "avatar_glasses": {
                     "type": "string",
-                    "enum": AVATAR_SHAPES,
-                    "description": ("Avatar silhouette; omit for a name-seeded shape."),
-                },
-                "avatar_accessory": {
-                    "type": "string",
-                    "enum": AVATAR_ACCESSORIES,
+                    "enum": list(AVATAR_GLASSES),
                     "description": (
-                        "One accessory suited to their role or personality; omit for a name-seeded choice."
+                        "Eyewear suited to their role; omit for a name-seeded choice."
                     ),
+                },
+                "avatar_beard": {
+                    "type": "string",
+                    "enum": list(AVATAR_BEARD),
+                    "description": ("Facial hair; omit for a name-seeded choice."),
+                },
+                "avatar_hat": {
+                    "type": "string",
+                    "enum": list(AVATAR_HAT),
+                    "description": ("Headwear; omit for a name-seeded choice."),
                 },
                 "about": {
                     "type": "string",
@@ -163,8 +173,9 @@ class RaiseExpertTool(BaseTool):
         role: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_shape: str = "",
-        avatar_accessory: str = "",
+        avatar_glasses: str = "",
+        avatar_beard: str = "",
+        avatar_hat: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -185,24 +196,22 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        avatar_shape = avatar_shape.strip()
-        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
-            return ErrorResponse(
-                message=(
-                    "Invalid expert charter — avatar_shape must be one of: "
-                    + ", ".join(AVATAR_SHAPES)
-                ),
-                session_id=session_id,
-            )
-        avatar_accessory = avatar_accessory.strip()
-        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
-            return ErrorResponse(
-                message=(
-                    "Invalid expert charter — avatar_accessory must be one of: "
-                    + ", ".join(AVATAR_ACCESSORIES)
-                ),
-                session_id=session_id,
-            )
+        avatar_glasses = avatar_glasses.strip()
+        avatar_beard = avatar_beard.strip()
+        avatar_hat = avatar_hat.strip()
+        for field, value, options in (
+            ("avatar_glasses", avatar_glasses, AVATAR_GLASSES),
+            ("avatar_beard", avatar_beard, AVATAR_BEARD),
+            ("avatar_hat", avatar_hat, AVATAR_HAT),
+        ):
+            if value and value not in options:
+                return ErrorResponse(
+                    message=(
+                        f"Invalid expert charter — {field} must be one of: "
+                        + ", ".join(options)
+                    ),
+                    session_id=session_id,
+                )
         try:
             params = _RaiseParams(
                 # Collapsed, not just stripped: the roster block in
@@ -266,8 +275,9 @@ class RaiseExpertTool(BaseTool):
             color=params.color,
             avatar_url=build_avatar_url(
                 params.name,
-                shape=avatar_shape or None,
-                accessory=avatar_accessory or None,
+                glasses=avatar_glasses or None,
+                beard=avatar_beard or None,
+                hat=avatar_hat or None,
                 color_token=params.color or None,
             ),
             about=soul.identity or "",

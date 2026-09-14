@@ -265,12 +265,17 @@ export function isLegacyAvatarUrl(url: string | null | undefined): boolean {
   return Boolean(url && LEGACY_URL_PATTERN.test(url));
 }
 
-export function legacyAvatarColor(
+/** Seeds from the old triple rather than the expert's name, so the route and
+ *  the component resolve a legacy URL to the same face — and two experts who
+ *  were raised with different shapes stay different. */
+export function notionConfigForLegacyUrl(
   url: string | null | undefined,
-): NotionColorId | null {
+): NotionAvatarConfig | null {
   const match = url?.match(LEGACY_URL_PATTERN);
-  const color = match?.[2];
-  return color && isNotionColorId(color) ? color : null;
+  if (!match) return null;
+  const [, shape, color, accessory] = match;
+  const seeded = notionConfigForName(`${shape}.${color}.${accessory}`);
+  return isNotionColorId(color) ? { ...seeded, color } : seeded;
 }
 
 export interface ExpertLike {
@@ -286,10 +291,13 @@ export function expertNotionConfig(
 ): NotionAvatarConfig | null {
   const parsed = parseNotionAvatarUrl(expert.avatarUrl);
   if (parsed) return parsed;
-  if (expert.avatarUrl && !isLegacyAvatarUrl(expert.avatarUrl)) return null;
+
+  const legacy = notionConfigForLegacyUrl(expert.avatarUrl);
+  if (legacy) return legacy;
+
+  if (expert.avatarUrl) return null;
 
   const seeded = notionConfigForName(expert.name ?? "");
-  const color =
-    legacyAvatarColor(expert.avatarUrl) ?? colorForToken(expert.color);
+  const color = colorForToken(expert.color);
   return color ? { ...seeded, color } : seeded;
 }

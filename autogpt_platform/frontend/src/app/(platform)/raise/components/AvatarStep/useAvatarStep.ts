@@ -14,10 +14,19 @@ interface Args {
 export function useAvatarStep({ onPick }: Args) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const { mutateAsync: uploadMedia } = usePostV2UploadSubmissionMedia();
 
   function openFilePicker() {
     fileInputRef.current?.click();
+  }
+
+  function openGenerator() {
+    setIsGenerating(true);
+  }
+
+  function closeGenerator() {
+    setIsGenerating(false);
   }
 
   async function handleFileChange(file: File | undefined) {
@@ -54,5 +63,13 @@ export function useAvatarStep({ onPick }: Args) {
     }
   }
 
-  return { fileInputRef, isUploading, openFilePicker, handleFileChange };
+  return {
+    fileInputRef,
+    isUploading,
+    isGenerating,
+    openFilePicker,
+    openGenerator,
+    closeGenerator,
+    handleFileChange,
+  };
 }

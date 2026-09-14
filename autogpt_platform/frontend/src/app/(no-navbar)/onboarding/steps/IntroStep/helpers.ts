@@ -1,4 +1,4 @@
-import type { Pose } from "@/components/molecules/BotAvatar/projection";
+import type { Pose } from "@/components/molecules/NotionAvatar/pose";
 
 export type IntroSlideId = "team" | "autopilot";
 

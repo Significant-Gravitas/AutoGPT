@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { bubbleClassFor } from "../ColorStep/helpers";
 import { ACCEPTED_AVATAR_TYPES } from "./helpers";
+import { NotionAvatarPicker } from "./components/NotionAvatarPicker/NotionAvatarPicker";
 import { useAvatarStep } from "./useAvatarStep";
 
 interface Props {
@@ -24,8 +25,15 @@ export function AvatarStep({
   onPick,
   onSkip,
 }: Props) {
-  const { fileInputRef, isUploading, openFilePicker, handleFileChange } =
-    useAvatarStep({ onPick });
+  const {
+    fileInputRef,
+    isUploading,
+    isGenerating,
+    openFilePicker,
+    openGenerator,
+    closeGenerator,
+    handleFileChange,
+  } = useAvatarStep({ onPick });
 
   if (avatarUrl) {
     return (
@@ -63,6 +71,17 @@ export function AvatarStep({
     );
   }
 
+  if (isGenerating) {
+    return (
+      <NotionAvatarPicker
+        name={name}
+        color={color}
+        onPick={onPick}
+        onCancel={closeGenerator}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-wrap justify-end gap-2.5">
       <input
@@ -74,6 +93,15 @@ export function AvatarStep({
         aria-hidden
         onChange={(event) => handleFileChange(event.target.files?.[0])}
       />
+      <Button
+        variant="secondary"
+        size="small"
+        className="rounded-full"
+        onClick={openGenerator}
+        disabled={isUploading}
+      >
+        Generate a face
+      </Button>
       <Button
         variant="secondary"
         size="small"
