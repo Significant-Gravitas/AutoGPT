@@ -29,6 +29,7 @@ import time
 from typing import Any
 
 from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import (
@@ -287,6 +288,7 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+        outcome_response.message += await build_spawn_state_note()
         if discarded:
             # The row is gone, so its id and link would send the model to poll
             # a sub-session that no longer exists. Keep the reason, drop the
