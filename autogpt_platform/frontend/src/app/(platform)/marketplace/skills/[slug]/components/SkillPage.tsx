@@ -45,7 +45,9 @@ export function SkillPage({ slug }: Props) {
     flagReady,
     isAdded,
     isAdding,
+    experts,
     addToAutoPilot,
+    addToExpert,
     pendingConnections,
     moreSkills,
     isConnectOpen,
@@ -116,7 +118,9 @@ export function SkillPage({ slug }: Props) {
             isReady={isReady}
             isAdded={isAdded}
             isAdding={isAdding}
+            experts={experts}
             onAdd={addToAutoPilot}
+            onAddToExpert={addToExpert}
           />
         </div>
 
