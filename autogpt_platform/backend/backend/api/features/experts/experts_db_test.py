@@ -2953,7 +2953,7 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 async def test_seed_roster_round_trip(server: SpinTestServer):
     await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
-    assert len(first_ids) == 3
+    assert len(first_ids) == len(seed.ROSTER)
 
     templates = await experts_db.list_templates()
     seeded = {t.name: t for t in templates if t.id in first_ids}
@@ -2969,7 +2969,7 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
 
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
-    assert len(seeded_after) == 3
+    assert len(seeded_after) == len(seed.ROSTER)
 
 
 @pytest.mark.asyncio(loop_scope="session")
