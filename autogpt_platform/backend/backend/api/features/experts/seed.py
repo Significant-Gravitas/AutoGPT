@@ -321,6 +321,60 @@ REMOVED_TEMPLATE_CADENCES: list[tuple[str, str]] = [
 ]
 
 
+class RescopedTemplate(TypedDict):
+    name: str
+    # The role and identity the template shipped with before it was rescoped.
+    # A hired copy still carrying both verbatim has never been edited by its
+    # owner, so it is safe to move onto the new persona.
+    old_role: str
+    old_identity: str
+
+
+# One-off migrations for personas whose scope changed, not just their copy.
+#
+# ``_backfill_hired_copies`` deliberately leaves ``role`` and ``identity``
+# alone: they drive live behaviour, and owners edit them through the Soul
+# tools. That is right for a cosmetic roster edit, but a rescope leaves
+# existing hires advertising the new bio while still behaving like the old
+# persona — worse than either consistent outcome.
+#
+# So this migrates only the untouched ones: a hire whose role and identity
+# still match what the template shipped with has never been customised, and
+# an owner who edited either no longer matches and is left exactly as they
+# are. Same shape as REMOVED_TEMPLATE_CADENCES, and just as safe to delete
+# once every environment has been seeded past it.
+RESCOPED_TEMPLATES: list[RescopedTemplate] = [
+    {
+        "name": "Maria",
+        "old_role": "Marketing",
+        "old_identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
+
+Your day-to-day work spans content strategy, social copy, email campaigns, and SEO-aware long-form writing. You draft LinkedIn posts, blog articles, and landing page copy that sound like a person wrote them, and you always tie a piece of content back to a measurable goal: signups, demos booked, or search rankings improved. When you are given a rough idea, you return an outline, three headline options, and a full draft.
+
+You are direct about trade-offs. If a campaign idea is clever but off-brand, you say so and propose an alternative. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
+    },
+]
+
+
+async def _migrate_rescoped_hires(template: prisma.models.Expert) -> int:
+    """Move untouched hires onto a rescoped template's role and identity."""
+    rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
+    if rescope is None:
+        return 0
+    moved = await prisma.models.Expert.prisma().update_many(
+        where={
+            "sourceTemplateId": template.id,
+            "isTemplate": False,
+            "role": rescope["old_role"],
+            "identity": rescope["old_identity"],
+        },
+        data={"role": template.role, "identity": template.identity},
+    )
+    if moved:
+        logger.info(f"Moved {moved} untouched '{template.name}' hires onto the rescope")
+    return moved
+
+
 async def _resolve_active_version_id(slug: str) -> str | None:
     # (owningUserId, slug) is the listing's uniqueness, and the username is
     # unique, so this match is deterministic: at most one listing.
@@ -630,10 +684,11 @@ async def seed_roster() -> list[str]:
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
         refreshed = await _backfill_hired_copies(template)
+        rescoped = await _migrate_rescoped_hires(template)
         template_ids.append(template.id)
         logger.info(
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
-            f"refreshed {refreshed} hired copies"
+            f"refreshed {refreshed} hired copies, rescoped {rescoped}"
         )
     await _clear_removed_cadences()
     return template_ids

@@ -3711,6 +3711,78 @@ async def test_sync_preloads_keeps_rows_when_a_slug_does_not_resolve(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
+    server: SpinTestServer, test_user, other_user, monkeypatch
+):
+    """A rescope must reach hires that never diverged, and only those.
+
+    ``_backfill_hired_copies`` leaves role and identity alone because owners
+    edit them through the Soul tools, which would otherwise leave an existing
+    hire advertising the new bio while behaving like the old persona. The
+    migration closes that gap without overwriting anyone's edit."""
+    old_role, old_identity = "Marketing", "You are Maria, a generalist."
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": f"Maria {uuid.uuid4().hex[:8]}",
+            "role": old_role,
+            "identity": old_identity,
+            "isTemplate": True,
+        }
+    )
+    untouched = await experts_db.hire_expert(test_user.id, template.id, None)
+    edited = await experts_db.hire_expert(other_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": edited.expert.id},
+        data={"identity": "You are Maria, and you only do webinars."},
+    )
+
+    monkeypatch.setattr(
+        seed,
+        "RESCOPED_TEMPLATES",
+        [
+            {
+                "name": template.name,
+                "old_role": old_role,
+                "old_identity": old_identity,
+            }
+        ],
+    )
+    rescoped = await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={"role": "SEO & Content", "identity": "You are Maria, an SEO lead."},
+    )
+    assert rescoped is not None
+    assert await seed._migrate_rescoped_hires(rescoped) == 1
+
+    moved = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved is not None
+    assert (moved.role, moved.identity) == (
+        "SEO & Content",
+        "You are Maria, an SEO lead.",
+    )
+
+    spared = await prisma.models.Expert.prisma().find_unique(
+        where={"id": edited.expert.id}
+    )
+    assert spared is not None
+    assert spared.identity == "You are Maria, and you only do webinars."
+    assert spared.role == old_role
+
+
+def test_rescoped_templates_name_real_roster_entries():
+    """A rescope entry whose name drifts from ROSTER silently stops matching,
+    leaving the hires it was written for behind."""
+    names = {entry["name"] for entry in seed.ROSTER}
+    for rescope in seed.RESCOPED_TEMPLATES:
+        assert rescope["name"] in names, rescope["name"]
+        entry = next(e for e in seed.ROSTER if e["name"] == rescope["name"])
+        assert rescope["old_identity"] != entry["identity"], rescope["name"]
+        assert rescope["old_role"] != entry["role"], rescope["name"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_backfills_presentation_fields_onto_hired_copies(
     server: SpinTestServer, test_user
 ):
