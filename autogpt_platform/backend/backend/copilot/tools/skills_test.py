@@ -31,6 +31,7 @@ from backend.copilot.tools.skills import (
     SkillNotFoundError,
     StoreSkillResponse,
     StoreSkillTool,
+    _is_safe_relative,
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
@@ -1536,3 +1537,39 @@ async def test_delete_drains_a_folder_bigger_than_one_page():
     with _patch_skills_path(fake):
         await delete_user_skill("user-1", "big")
     assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_manifest_path_with_a_parent_segment_is_dropped():
+    """The manifest is read back out of the working directory, which the
+    model's own shell can write, so its keys drive a delete only after the
+    same path check every written file passes."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        outside = os.path.join(patched.workdir, "outside.txt")
+        with open(outside, "w") as f:
+            f.write("not the package's")
+        manifest = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        with open(manifest, "w") as f:
+            json.dump({"../../outside.txt": "deadbeef"}, f)
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(outside)
+
+
+@pytest.mark.parametrize(
+    "path", ["../escape", "../../etc/passwd", "..", "ok/../../out", "/abs", ""]
+)
+def test_package_paths_that_leave_the_package_are_refused(path: str):
+    assert _is_safe_relative(path) is False
+
+
+@pytest.mark.parametrize("path", ["SKILL.md", "refs/a.md", "scripts/run.sh"])
+def test_package_paths_inside_the_package_are_accepted(path: str):
+    assert _is_safe_relative(path) is True

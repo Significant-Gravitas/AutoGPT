@@ -1872,7 +1872,10 @@ async def _sync_skill_package(
     # case.  Prune by what the package HOLDS, not by what was copied: a copy
     # that failed leaves a current file whose earlier copy is still wanted.
     if complete:
-        current = {info.path[len(prefix) :] for info in files}
+        # The root is not a sibling and is never written here, so it can only
+        # reach the manifest by a hand edit; excluding it keeps the prune from
+        # acting on a name that does not belong to it.
+        current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
         stale = sorted(set(manifest) - current)
         await remove_from_workdir(
             [f"{package_dir}/{relative}" for relative in stale], session_id
@@ -1897,10 +1900,18 @@ async def _sync_skill_package(
 
 
 def _is_safe_relative(path: str) -> bool:
-    """A package path must stay inside the package directory. Both write
-    branches reject an escape on their own; this keeps a ``..`` from landing
-    elsewhere *inside* the sandbox, which neither would catch."""
-    return bool(path) and not path.startswith("/") and posixpath.normpath(path) == path
+    """A package path must stay inside the package directory.
+
+    ``normpath`` alone does not settle it: it collapses ``ok/../../out`` to
+    ``../out``, but an already-normal ``../escape`` comes back unchanged and
+    compares equal. The parent segment is therefore rejected on its own.
+    """
+    return (
+        bool(path)
+        and not path.startswith("/")
+        and ".." not in path.split("/")
+        and posixpath.normpath(path) == path
+    )
 
 
 async def _read_package_manifest(package_dir: str, session_id: str) -> dict[str, str]:
