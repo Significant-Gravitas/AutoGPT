@@ -226,6 +226,28 @@ class UnittestReporterTests(unittest.TestCase):
             self.assertEqual(suite.attrib["tests"], "1")
             self.assertEqual(suite.attrib["errors"], "1")
 
+    def test_discovery_exception_is_a_machine_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "unittest.xml"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(UNITTEST_REPORTER),
+                    "--start-directory",
+                    str(Path(temp_dir) / "missing"),
+                    "--output",
+                    str(output),
+                ],
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            suite = ET.parse(output).getroot()
+            self.assertEqual(suite.attrib["errors"], "1")
+            case = suite.find("testcase")
+            self.assertEqual(case.attrib["name"], "test_discovery")
+            self.assertIn("ImportError", case.find("error").text)
+
     def test_skip_is_failure_unless_exactly_allowlisted(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             test_directory = Path(temp_dir) / "tests"
