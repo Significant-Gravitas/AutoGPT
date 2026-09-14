@@ -727,7 +727,7 @@ describe("ExpertDetailPage", () => {
     expect(await within(list).findByText("Deep Research")).toBeDefined();
   });
 
-  function hubSkillHandlers(installs: string[]) {
+  function hubSkillHandlers(installs: string[], onInstalled = () => {}) {
     return [
       getListCopilotSkillsMockHandler200([]),
       getGetV2ListMarketplaceSkillsMockHandler200({
@@ -753,6 +753,7 @@ describe("ExpertDetailPage", () => {
       getPostV2InstallMarketplaceSkillMockHandler200(({ request, params }) => {
         const expertId = new URL(request.url).searchParams.get("expert_id");
         installs.push(`${params.slug as string}@${expertId}`);
+        onInstalled();
         return { name: "seo-audit", required_providers: [] };
       }),
     ];
@@ -761,7 +762,15 @@ describe("ExpertDetailPage", () => {
   test("installs a marketplace skill onto the expert being viewed", async () => {
     const user = userEvent.setup();
     const installs: string[] = [];
-    server.use(...hubSkillHandlers(installs));
+    // The install writes the name onto the row server-side, so the expert
+    // read after it is what the list must pick up.
+    let skills: string[] = [];
+    server.use(
+      ...hubSkillHandlers(installs, () => {
+        skills = ["seo-audit"];
+      }),
+      getGetExpertMockHandler(() => ({ ...maria, skills })),
+    );
     render(<ExpertDetailPage />);
 
     await openTab("Skills");
@@ -778,6 +787,8 @@ describe("ExpertDetailPage", () => {
     // The expert's own id, not the caller's library: this is the whole
     // difference from the old tab, which only recorded the listing's name.
     await waitFor(() => expect(installs).toEqual(["seo-audit@expert-maria"]));
+    const attached = await screen.findByRole("list", { name: "Expert skills" });
+    expect(await within(attached).findByText("seo-audit")).toBeDefined();
   });
 
   test("hides the marketplace tab when the skills hub is off", async () => {
