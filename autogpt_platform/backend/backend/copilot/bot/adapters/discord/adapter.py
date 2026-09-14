@@ -28,6 +28,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from ..base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     InboundAttachment,
     MessageCallback,
@@ -146,12 +147,22 @@ class DiscordAdapter(SocketAdapter):
         ``Client.get_channel`` only reads the in-memory cache, so it misses
         threads the bot hasn't seen since its last restart. Fall back to
         ``fetch_channel`` (REST) so long-lived threads keep working.
+
+        ``channel_id`` reaches here as a caller-supplied string (a model-chosen
+        edit target, a raw proactive-post ID) that was never guaranteed to look
+        like a snowflake, so the ``int()`` conversion is inside the guarded
+        block rather than raising ``ValueError`` straight out to the RPC layer.
         """
-        channel = self._client.get_channel(int(channel_id))
+        try:
+            numeric_id = int(channel_id)
+        except ValueError:
+            logger.warning("Channel id %r is not a valid snowflake", channel_id)
+            return None
+        channel = self._client.get_channel(numeric_id)
         if channel is not None:
             return channel
         try:
-            return await self._client.fetch_channel(int(channel_id))
+            return await self._client.fetch_channel(numeric_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None
@@ -321,13 +332,13 @@ class DiscordAdapter(SocketAdapter):
             logger.warning("Cannot post to non-messageable channel %s", channel_id)
             return None
         try:
-            first = await self._send_chunked(channel, text)
+            first, sent = await self._send_chunked(channel, text)
         except discord.HTTPException:
             logger.exception("Failed to post message to channel %s", channel_id)
             return None
         if first is None:
             return None
-        return PostedRef(id=str(first.id), url=first.jump_url)
+        return PostedRef(id=str(first.id), url=first.jump_url, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -347,20 +358,67 @@ class DiscordAdapter(SocketAdapter):
         # The thread now exists on Discord. Surface its ref even if posting the
         # body fails, so the caller reports partial success and doesn't retry
         # into a duplicate thread.
+        first: Optional[discord.Message] = None
+        sent = 0
         try:
-            await self._send_chunked(thread, text)
+            first, sent = await self._send_chunked(thread, text)
         except discord.HTTPException:
             logger.exception(
                 "Thread %s created but posting its content failed", thread.id
             )
-        return PostedRef(id=str(thread.id), url=thread.jump_url)
+        if first is None:
+            # A thread with no body: there is no message to edit, but the
+            # thread id still has to reach the caller.
+            return PostedRef(
+                id=str(thread.id),
+                url=thread.jump_url,
+                channel_id=str(thread.id),
+                editable=False,
+            )
+        # `id` is the body message so it can be edited; `channel_id` is the
+        # thread, both because that is where the message lives and because
+        # follow-up posts belong in the thread rather than its parent.
+        return PostedRef(
+            id=str(first.id),
+            url=first.jump_url,
+            channel_id=str(thread.id),
+            chunk_count=sent,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return EditOutcome.NOT_FOUND
+        try:
+            message = await channel.fetch_message(int(ref_id))
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        except discord.NotFound:
+            return EditOutcome.NOT_FOUND
+        except discord.HTTPException:
+            logger.exception("Failed to fetch message %s for edit", ref_id)
+            return EditOutcome.FAILED
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
+        try:
+            await message.edit(content=rendered, allowed_mentions=allowed)
+        except discord.HTTPException:
+            # Covers both a rejected edit (message too old/foreign author) and
+            # a body over Discord's cap — either way the edit did not land.
+            logger.exception("Failed to edit message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str
-    ) -> Optional[discord.Message]:
+    ) -> tuple[Optional[discord.Message], int]:
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
-        callers permalink to), or ``None`` if there was nothing to send.
+        callers permalink to) and how many chunks actually landed, or
+        ``(None, 0)`` if there was nothing to send.
 
         Raises only if the *first* chunk fails — once anything is delivered, a
         later-chunk failure stops the send and keeps the partial result rather
@@ -370,6 +428,7 @@ class DiscordAdapter(SocketAdapter):
             text, await self._mentionables_for(channel, text, ())
         )
         first: Optional[discord.Message] = None
+        sent = 0
         for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
                 msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
@@ -378,9 +437,10 @@ class DiscordAdapter(SocketAdapter):
                     raise
                 logger.exception("Dropping trailing chunk after partial send")
                 break
+            sent += 1
             if first is None:
                 first = msg
-        return first
+        return first, sent
 
     # -- Internal --
 

@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -417,8 +418,8 @@ class TeamsAdapter(WebhookAdapter):
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
-        first_id = await self._send_chunked(channel_id, text, ())
-        return PostedRef(id=first_id) if first_id else None
+        first_id, sent = await self._send_chunked(channel_id, text, ())
+        return PostedRef(id=first_id, chunk_count=sent) if first_id else None
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -427,6 +428,25 @@ class TeamsAdapter(WebhookAdapter):
         # same degradation Telegram uses for its unnamed topics.
         body = f"**{name}**\n\n{text}" if name else text
         return await self.post_channel_message(channel_id, body)
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        activity = {
+            "type": "message",
+            "text": self.localize_markup(text),
+            "textFormat": "markdown",
+        }
+        try:
+            await self._client.update_activity(
+                self._service_url_for(channel_id), channel_id, ref_id, activity
+            )
+        except TeamsApiError as e:
+            logger.exception("Failed to edit Teams activity %s", ref_id)
+            if e.status_code == 404:
+                return EditOutcome.NOT_FOUND
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         """Create (or fetch) the bot's 1:1 conversation with a user.
@@ -455,13 +475,15 @@ class TeamsAdapter(WebhookAdapter):
         channel_id: str,
         text: str,
         mentionable_users: tuple[tuple[str, str], ...],
-    ) -> Optional[str]:
-        """Post ``text`` in message-sized chunks; return the first activity id.
+    ) -> tuple[Optional[str], int]:
+        """Post ``text`` in message-sized chunks; return the first activity id
+        and how many chunks landed.
 
         Chunks are awaited in sequence: Teams does not guarantee ordering for
         messages posted in quick succession.
         """
         first_id: Optional[str] = None
+        sent = 0
         for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
             rendered, pinged = resolve_mentions(chunk, mentionable_users, mention_token)
             activity: dict[str, Any] = {
@@ -473,8 +495,10 @@ class TeamsAdapter(WebhookAdapter):
             if entities:
                 activity["entities"] = entities
             activity_id = await self._post(channel_id, activity)
+            if activity_id:
+                sent += 1
             first_id = first_id or activity_id
-        return first_id
+        return first_id, sent
 
     async def _post(self, channel_id: str, activity: dict[str, Any]) -> Optional[str]:
         return await self._client.send_activity(

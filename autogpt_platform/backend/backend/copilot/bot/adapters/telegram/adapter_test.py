@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
+from backend.copilot.bot.adapters.base import (
+    EditOutcome,
+    FileAttachment,
+    StreamDraftOutcome,
+)
 from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
 
 from .adapter import (
@@ -461,3 +465,91 @@ class TestProactiveChunking:
             html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
         )
         assert joined.count("Tom") == 200  # nothing dropped across the chunks
+
+
+class TestEditChannelMessage:
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_calls_edit_message_text(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.OK
+        assert a._client.call.call_args.args == ("editMessageText",)
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "123"
+        assert kwargs["message_id"] == 77
+        assert kwargs["text"] == "updated text"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self):
+        a = _adapter()
+        a._client.call = AsyncMock(return_value={})
+
+        await a.edit_channel_message("123", "77", "<b>raw</b> & **bold**")
+
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["text"] == a.localize_markup("<b>raw</b> & **bold**")
+        assert kwargs["parse_mode"] == "HTML"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_modified_is_ok(self):
+        # Telegram answers this when the text is byte-identical. The message
+        # is already in the requested state, so reporting failure only makes
+        # the model retry forever.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message is not modified"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "same")
+
+        assert outcome == EditOutcome.OK
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_too_old_is_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message can't be edited"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message to edit not found"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_on_other_error(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError("editMessageText failed: message is too old")
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.FAILED
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_bad_ref_id(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "not-a-number", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+        a._client.call.assert_not_awaited()
