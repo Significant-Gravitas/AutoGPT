@@ -37,6 +37,7 @@ from backend.copilot.tools.skills import (
     SkillPackageError,
     StoreSkillResponse,
     StoreSkillTool,
+    _is_safe_relative,
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
@@ -1824,10 +1825,56 @@ async def test_a_stored_executable_flag_reaches_the_sandbox_copy():
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_a_tree_bigger_than_the_cap():
-    """A folder written before the cap existed still has to be removable —
-    enumeration that stops at the cap would strand the rest."""
-    fake = _package_manager(siblings=MAX_PACKAGE_FILES + 5)
+async def test_a_file_dropped_from_a_package_leaves_the_workdir():
+    """delete_skill then store_skill under the same slug is reachable in one
+    session, and a script left behind is one bash_exec can still run."""
+    fake = _package_manager()
+    fake.files["/skills/big/scripts/old.sh"] = b"#!/bin/bash\necho stale\n"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        stale = os.path.join(patched.workdir, "skills", "big", "scripts", "old.sh")
+        assert os.path.exists(stale)
+
+        del fake.files["/skills/big/scripts/old.sh"]
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(stale)
+    assert isinstance(result, ReadSkillResponse)
+    assert result.package_dir is None
+    assert result.files == []
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_listing_prunes_nothing():
+    """Past the cap a listing cannot tell a removed file from an unlisted one,
+    so pruning on it would delete files the package still has."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/keep.md"] = b"keep me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        keep = os.path.join(patched.workdir, "skills", "big", "references", "keep.md")
+        assert os.path.exists(keep)
+
+        # keep.md is now pushed off the end of a capped, newest-first page.
+        for i in range(MAX_PACKAGE_FILES + 1):
+            fake.files[f"/skills/big/references/n{i:03d}.md"] = f"new {i}".encode()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(keep)
+
+
+@pytest.mark.asyncio
+async def test_delete_drains_a_folder_bigger_than_one_page():
+    """One page is capped, so a bigger folder needs more passes; what is left
+    behind keeps consuming quota and is inherited by the next skill at this
+    slug."""
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES * 2 + 5)
     with _patch_skills_path(fake):
         await delete_user_skill("user-1", "big")
     assert fake.files == {}
@@ -1923,3 +1970,131 @@ async def test_a_copy_that_cannot_read_a_file_writes_nothing():
         with pytest.raises(RuntimeError, match="blob store unavailable"):
             await copy_skill_to_expert("user-1", "expert-a", "mine")
     assert not [p for p in fake.files if p.startswith("/experts/")]
+
+
+async def test_a_manifest_path_with_a_parent_segment_is_dropped():
+    """The manifest is read back out of the working directory, which the
+    model's own shell can write, so its keys drive a delete only after the
+    same path check every written file passes."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        outside = os.path.join(patched.workdir, "outside.txt")
+        with open(outside, "w") as f:
+            f.write("not the package's")
+        manifest = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        with open(manifest, "w") as f:
+            json.dump({"../../outside.txt": "deadbeef"}, f)
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(outside)
+
+
+@pytest.mark.parametrize(
+    "path", ["../escape", "../../etc/passwd", "..", "ok/../../out", "/abs", ""]
+)
+def test_package_paths_that_leave_the_package_are_refused(path: str):
+    assert _is_safe_relative(path) is False
+
+
+@pytest.mark.parametrize("path", ["SKILL.md", "refs/a.md", "scripts/run.sh"])
+def test_package_paths_inside_the_package_are_accepted(path: str):
+    assert _is_safe_relative(path) is True
+
+
+@pytest.mark.asyncio
+async def test_one_activation_prunes_a_dropped_file_and_re_chmods_a_kept_one():
+    """The two halves of this layer meet here: pruning keys off the manifest
+    (#14544) and carrying a mode in its values. A digest-only manifest leaves
+    the kept file's bit stale; a prune that reads the manifest's values as
+    strings cannot run at all."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path="bin/tool", content=b"#!/bin/sh\n"),
+                SkillFile(relative_path="scripts/gone.sh", content=b"echo stale\n"),
+            ],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        package_dir = os.path.join(patched.workdir, "skills", "pkg")
+        dropped = os.path.join(package_dir, "scripts", "gone.sh")
+        kept = os.path.join(package_dir, "bin", "tool")
+        assert os.path.exists(dropped)
+        assert not os.stat(kept).st_mode & 0o111
+
+        # One re-store: the package loses a file and flips the bit on the file
+        # it keeps, with that file's bytes unchanged.
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(
+                    relative_path="bin/tool",
+                    content=b"#!/bin/sh\n",
+                    is_executable=True,
+                )
+            ],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        assert not os.path.exists(dropped)
+        assert os.stat(kept).st_mode & 0o111
+
+
+@pytest.mark.asyncio
+async def test_the_prune_never_reads_a_root_skill_md_as_a_stale_sibling():
+    """`_package_path_error` refuses a root SKILL.md as a package file while
+    `_is_safe_relative` accepts it, so the manifest — which the model's own
+    shell can write — is filtered by the stricter of the two."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="references/a.md", content=b"alpha")],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        package_dir = os.path.join(patched.workdir, "skills", "pkg")
+        decoy = os.path.join(package_dir, "SKILL.md")
+        with open(decoy, "w") as f:
+            f.write("the model's own note")
+        escape = os.path.join(patched.workdir, "outside.txt")
+        with open(escape, "w") as f:
+            f.write("not the package's")
+        with open(os.path.join(package_dir, ".package.json"), "w") as f:
+            json.dump(
+                {
+                    "SKILL.md": {"sha256": "dead", "executable": False},
+                    "../../outside.txt": {"sha256": "beef", "executable": False},
+                    "references/a.md": {
+                        "sha256": hashlib.sha256(b"alpha").hexdigest(),
+                        "executable": False,
+                    },
+                },
+                f,
+            )
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        assert os.path.exists(decoy)
+        assert os.path.exists(escape)
