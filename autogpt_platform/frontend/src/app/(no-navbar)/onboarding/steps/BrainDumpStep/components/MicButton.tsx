@@ -1,13 +1,11 @@
 "use client";
 
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
 import {
-  AUTOPILOT_AVATAR,
-  type AvatarStatus,
-  findColor,
-  findShape,
-  VIEWBOX,
-} from "@/components/molecules/BotAvatar/helpers";
+  AUTOPILOT_AURA_COLORS,
+  AUTOPILOT_DOT_COLOR,
+} from "@/components/molecules/AutopilotAvatar/helpers";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
 import {
   animate,
   type AnimationPlaybackControls,
@@ -25,14 +23,9 @@ import { DOT, VoiceDots } from "./VoiceDots";
 export type OrbScreen = "rest" | "recording" | "processing" | "failed";
 
 const AVATAR_SIZE = 160;
-const ANCHORS = findShape(AUTOPILOT_AVATAR.shape).anchors;
-const SCALE = AVATAR_SIZE / VIEWBOX;
-// The body collapses into, and grows back out of, its own centre.
-const CENTRE = {
-  x: ANCHORS.cx * SCALE,
-  y: ((ANCHORS.top + ANCHORS.bottom) / 2) * SCALE,
-};
-const DOT_COLOR = findColor(AUTOPILOT_AVATAR.color).body;
+// The body collapses into, and grows back out of, the middle of its disc.
+const CENTRE = { x: AVATAR_SIZE / 2, y: AVATAR_SIZE / 2 };
+const DOT_COLOR = AUTOPILOT_DOT_COLOR;
 // Quick and near-critically damped: fast in, a whisper of settle, no wobble.
 const COLLAPSE = {
   type: "spring",
@@ -64,7 +57,6 @@ const STATUS_BY_SCREEN: Record<OrbScreen, AvatarStatus> = {
 interface Props {
   screen: OrbScreen;
   audioStream: MediaStream | null;
-  outline?: boolean;
   // Fakes a voice so the dots can be seen moving without a microphone.
   simulateVoice?: boolean;
 }
@@ -77,7 +69,6 @@ interface Props {
 export function MicButton({
   screen,
   audioStream,
-  outline = false,
   simulateVoice = false,
 }: Props) {
   const isRecording = screen === "recording";
@@ -158,7 +149,7 @@ export function MicButton({
   return (
     <div data-testid="autopilot-avatar" data-screen={screen}>
       <VoiceAura
-        config={AUTOPILOT_AVATAR}
+        colors={AUTOPILOT_AURA_COLORS}
         size={AVATAR_SIZE}
         levels={levels}
         isActive={isFolding && !reduceMotion}
@@ -171,13 +162,10 @@ export function MicButton({
             willChange: "transform, opacity",
           }}
         >
-          <BotAvatar
-            config={AUTOPILOT_AVATAR}
+          <AnimatedAutopilotAvatar
             status={STATUS_BY_SCREEN[screen]}
             size={AVATAR_SIZE}
             poseOffset={{ pitch: pitchOffset }}
-            outline={outline}
-            showBadge={false}
           />
         </motion.div>
         <VoiceDots

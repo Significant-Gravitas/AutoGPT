@@ -13,7 +13,7 @@ interface Args {
   animated: boolean;
   trackPointer: boolean;
   poseOffset?: Partial<Pose>;
-  svgRef: RefObject<SVGSVGElement | null>;
+  svgRef: RefObject<Element | null>;
 }
 
 const LOOK_WEIGHT: Record<AvatarStatus, number> = {

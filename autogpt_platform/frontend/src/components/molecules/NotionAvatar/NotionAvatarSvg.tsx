@@ -16,7 +16,7 @@ import {
   type NotionAvatarConfig,
 } from "./helpers";
 import { featureTransform, headTransform, type Pose } from "./pose";
-import type { NotionCategory } from "./parts.generated";
+import type { NotionCategory } from "./metadata.generated";
 import type { SvgEls } from "./svgElements";
 
 // Draw order splits into three bands so the features that follow a head turn

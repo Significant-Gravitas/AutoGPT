@@ -18,8 +18,17 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   >()),
   useGetFlag: () => true,
 }));
-vi.mock("@/components/molecules/BotAvatar/BotAvatar", () => ({
-  BotAvatar: ({
+vi.mock("@/components/molecules/NotionAvatar/NotionAvatar", () => ({
+  NotionAvatar: ({
+    config,
+    title,
+  }: {
+    config: { color: string };
+    title: string;
+  }) => <span role="img" aria-label={title} data-color={config.color} />,
+}));
+vi.mock("@/components/molecules/NotionAvatar/NotionAvatarImage", () => ({
+  NotionAvatarImage: ({
     config,
     title,
   }: {

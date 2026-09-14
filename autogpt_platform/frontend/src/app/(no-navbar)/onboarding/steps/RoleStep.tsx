@@ -3,8 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -86,13 +85,7 @@ export function RoleStep() {
     <FadeIn>
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <BotAvatar
-            config={AUTOPILOT_AVATAR}
-            status="idle"
-            size={120}
-            trackPointer
-            showBadge={false}
-          />
+          <AnimatedAutopilotAvatar status="idle" size={120} trackPointer />
           <Text variant="h4">What best describes you?</Text>
         </div>
 

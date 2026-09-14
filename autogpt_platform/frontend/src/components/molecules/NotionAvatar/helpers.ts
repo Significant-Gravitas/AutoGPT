@@ -1,8 +1,11 @@
 import {
   NOTION_CATEGORIES,
   NOTION_PART_COUNTS,
+  VIEWBOX,
   type NotionCategory,
-} from "./parts.generated";
+} from "./metadata.generated";
+
+export { VIEWBOX };
 
 export type NotionParts = Record<NotionCategory, number>;
 
@@ -28,8 +31,6 @@ export interface NotionColorOption {
   disc: string;
   ring: string;
 }
-
-export const VIEWBOX = 1080;
 
 export const NOTION_COLORS: NotionColorOption[] = [
   {

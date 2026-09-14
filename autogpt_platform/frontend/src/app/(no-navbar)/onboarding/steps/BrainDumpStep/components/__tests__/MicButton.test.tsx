@@ -56,21 +56,24 @@ vi.mock("../VoiceAura", () => ({
     </div>
   ),
 }));
-vi.mock("@/components/molecules/BotAvatar/BotAvatar", () => ({
-  BotAvatar: ({
-    status,
-    poseOffset,
-  }: {
-    status: string;
-    poseOffset: { pitch: number };
-  }) => (
-    <span
-      data-testid="face"
-      data-status={status}
-      data-pitch={poseOffset.pitch}
-    />
-  ),
-}));
+vi.mock(
+  "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar",
+  () => ({
+    AnimatedAutopilotAvatar: ({
+      status,
+      poseOffset,
+    }: {
+      status: string;
+      poseOffset: { pitch: number };
+    }) => (
+      <span
+        data-testid="face"
+        data-status={status}
+        data-pitch={poseOffset.pitch}
+      />
+    ),
+  }),
+);
 beforeEach(() => {
   vi.useFakeTimers();
   state.reduced = false;

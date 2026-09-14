@@ -1,3 +1,5 @@
+import { VIEWBOX } from "./metadata.generated";
+
 export interface Pose {
   yaw: number;
   pitch: number;
@@ -32,4 +34,14 @@ export function featureTransform(pose: Pose): string {
   const x = pose.yaw * YAW_SHIFT * PARALLAX;
   const y = pose.pitch * PITCH_SHIFT * PARALLAX;
   return `translate(${x.toFixed(2)} ${y.toFixed(2)})`;
+}
+
+/** The same motion as a CSS transform, for artwork that is not built out of
+ *  swappable layers — Otto, who keeps his own drawing. Percentages so it holds
+ *  at any rendered size. */
+export function cssHeadTransform(pose: Pose): string {
+  const x = ((pose.yaw * YAW_SHIFT) / VIEWBOX) * 100;
+  const y = ((pose.pitch * PITCH_SHIFT - pose.bob * BOB_SHIFT) / VIEWBOX) * 100;
+  const degrees = (pose.roll * 180) / Math.PI;
+  return `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%) rotate(${degrees.toFixed(2)}deg)`;
 }

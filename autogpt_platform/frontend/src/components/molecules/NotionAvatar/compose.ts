@@ -1,9 +1,10 @@
-import { findNotionColor, VIEWBOX, type NotionAvatarConfig } from "./helpers";
+import { findNotionColor, type NotionAvatarConfig } from "./helpers";
 import {
   NOTION_CATEGORIES,
-  NOTION_PARTS,
+  VIEWBOX,
   type NotionCategory,
-} from "./parts.generated";
+} from "./metadata.generated";
+import { NOTION_PARTS } from "./parts.generated";
 
 // The artwork is drawn to the edge of its 1080 box, so a circular crop shears
 // off long hair. Scaling it down inside the disc keeps every hairstyle whole,

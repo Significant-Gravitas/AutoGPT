@@ -1,15 +1,17 @@
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
 import {
-  AUTOPILOT_AVATAR,
-  type AvatarConfig,
-  type AvatarStatus,
-} from "@/components/molecules/BotAvatar/helpers";
+  notionConfigForName,
+  type NotionColorId,
+} from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
 import { motion } from "framer-motion";
 import { facing } from "../helpers";
 
 interface Member {
   name: string;
-  config: AvatarConfig;
+  /** Otto keeps his own drawing; everyone else gets a name-seeded face. */
+  color?: NotionColorId;
   status: AvatarStatus;
   size: number;
   x: number;
@@ -24,7 +26,6 @@ const CORNER = 10;
 const TEAM: Member[] = [
   {
     name: "Otto",
-    config: AUTOPILOT_AVATAR,
     status: "idle",
     size: 104,
     x: 210,
@@ -32,7 +33,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Ops",
-    config: { shape: "squircle", color: "mint", accessory: "headset" },
+    color: "mint",
     status: "working",
     size: 84,
     x: 105,
@@ -41,7 +42,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Research",
-    config: { shape: "round", color: "sky", accessory: "glasses" },
+    color: "sky",
     status: "thinking",
     size: 84,
     x: 210,
@@ -50,7 +51,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Marketing",
-    config: { shape: "bean", color: "coral", accessory: "bow" },
+    color: "coral",
     status: "done",
     size: 84,
     x: 315,
@@ -59,7 +60,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Finance",
-    config: { shape: "wide", color: "amber", accessory: "badge" },
+    color: "amber",
     status: "idle",
     size: 72,
     x: 52,
@@ -68,7 +69,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Support",
-    config: { shape: "dome", color: "plum", accessory: "flower" },
+    color: "plum",
     status: "working",
     size: 72,
     x: 158,
@@ -77,7 +78,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Sales",
-    config: { shape: "round", color: "indigo", accessory: "star" },
+    color: "indigo",
     status: "idle",
     size: 72,
     x: 262,
@@ -86,7 +87,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Design",
-    config: { shape: "squircle", color: "butter", accessory: "headband" },
+    color: "butter",
     status: "thinking",
     size: 72,
     x: 368,
@@ -175,14 +176,25 @@ export function TeamScene() {
                 ease: EASE,
               }}
             >
-              <BotAvatar
-                config={member.config}
-                status={member.status}
-                size={member.size}
-                poseOffset={facing(yawToward(member))}
-                trackPointer={member.name === "Otto"}
-                showBadge={false}
-              />
+              {member.color ? (
+                <NotionAvatar
+                  config={{
+                    ...notionConfigForName(member.name),
+                    color: member.color,
+                  }}
+                  status={member.status}
+                  size={member.size}
+                  poseOffset={facing(yawToward(member))}
+                  showBadge={false}
+                />
+              ) : (
+                <AnimatedAutopilotAvatar
+                  status={member.status}
+                  size={member.size}
+                  poseOffset={facing(yawToward(member))}
+                  trackPointer
+                />
+              )}
             </motion.div>
           </foreignObject>
         ))}
