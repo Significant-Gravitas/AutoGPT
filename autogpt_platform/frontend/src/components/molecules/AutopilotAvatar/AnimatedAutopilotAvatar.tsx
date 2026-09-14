@@ -48,7 +48,7 @@ export function AnimatedAutopilotAvatar({
     <div
       ref={hostRef}
       style={{ width: size, height: size }}
-      data-testid="autopilot-avatar"
+      data-testid="animated-autopilot-avatar"
       data-status={status}
       className={cn(
         "relative shrink-0 overflow-hidden rounded-full border border-stone-500",

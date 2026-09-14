@@ -25,9 +25,7 @@ import { MouseEvent } from "react";
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
 import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
-import {
-  expertNotionConfig,
-} from "@/components/molecules/NotionAvatar/helpers";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {

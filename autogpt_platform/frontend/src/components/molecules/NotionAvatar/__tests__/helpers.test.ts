@@ -1,0 +1,170 @@
+import { describe, expect, it } from "vitest";
+import {
+  clampPart,
+  colorForToken,
+  decodeNotionConfig,
+  encodeNotionConfig,
+  expertNotionConfig,
+  isLegacyAvatarUrl,
+  notionAvatarUrlFor,
+  notionConfigForLegacyUrl,
+  notionConfigForName,
+  parseNotionAvatarUrl,
+  randomNotionConfig,
+  seededRandom,
+  hashSeed,
+} from "../helpers";
+import { NOTION_CATEGORIES, NOTION_PART_COUNTS } from "../metadata.generated";
+
+describe("config encoding", () => {
+  it("round-trips a config through its URL", () => {
+    const config = notionConfigForName("Maria");
+
+    expect(parseNotionAvatarUrl(notionAvatarUrlFor(config))).toEqual(config);
+  });
+
+  it("writes the slots in draw order", () => {
+    const config = notionConfigForName("Maria");
+    const slots = encodeNotionConfig(config).split(".")[0].split("-");
+
+    expect(slots).toEqual(
+      NOTION_CATEGORIES.map((category) => String(config.parts[category])),
+    );
+  });
+
+  it.each([
+    ["too few slots", "1-2-3.sky"],
+    ["a non-numeric slot", "a-2-3-4-5-6-7-8-9-10.sky"],
+    ["an unknown colour", "0-0-0-0-0-0-0-0-0-0.taupe"],
+  ])("rejects %s", (_label, value) => {
+    expect(decodeNotionConfig(value)).toBeNull();
+  });
+
+  it("rejects a URL that is not an avatar", () => {
+    expect(parseNotionAvatarUrl("/experts/maria.svg")).toBeNull();
+    expect(parseNotionAvatarUrl(null)).toBeNull();
+  });
+});
+
+describe("part clamping", () => {
+  it("wraps rather than dropping out of range, so a stale URL still draws", () => {
+    expect(clampPart("hair", NOTION_PART_COUNTS.hair)).toBe(0);
+    expect(clampPart("hair", NOTION_PART_COUNTS.hair + 3)).toBe(3);
+    expect(clampPart("hair", -1)).toBe(NOTION_PART_COUNTS.hair - 1);
+  });
+
+  it("falls back to the first part for values that are not numbers", () => {
+    expect(clampPart("hair", Number.NaN)).toBe(0);
+    expect(clampPart("hair", Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("seeding", () => {
+  it("gives the same name the same face every time", () => {
+    expect(notionConfigForName("Maria")).toEqual(notionConfigForName("Maria"));
+    expect(notionConfigForName("Maria")).toEqual(notionConfigForName("maria"));
+  });
+
+  it("gives different names different faces", () => {
+    expect(notionConfigForName("Maria")).not.toEqual(
+      notionConfigForName("Frankie"),
+    );
+  });
+
+  it("only ever picks parts that exist", () => {
+    for (const name of ["", "a", "Zoë", "a considerably longer expert name"]) {
+      const { parts } = notionConfigForName(name);
+      for (const category of NOTION_CATEGORIES) {
+        expect(parts[category]).toBeGreaterThanOrEqual(0);
+        expect(parts[category]).toBeLessThan(NOTION_PART_COUNTS[category]);
+      }
+    }
+  });
+
+  it("leaves most faces without glasses or a beard", () => {
+    const random = seededRandom(hashSeed("sample"));
+    const faces = Array.from({ length: 400 }, () => randomNotionConfig(random));
+    const bare = (category: "glasses" | "beard") =>
+      faces.filter((face) => face.parts[category] === 0).length / faces.length;
+
+    expect(bare("glasses")).toBeGreaterThan(0.4);
+    expect(bare("beard")).toBeGreaterThan(0.45);
+  });
+});
+
+describe("what to draw for an expert", () => {
+  it("decodes an avatar the expert already has", () => {
+    const config = notionConfigForName("Maria");
+    const drawn = expertNotionConfig({
+      name: "Maria",
+      avatarUrl: notionAvatarUrlFor(config),
+    });
+
+    expect(drawn).toEqual(config);
+  });
+
+  it("seeds from the name when there is no avatar yet", () => {
+    expect(expertNotionConfig({ name: "Maria", avatarUrl: null })).toEqual(
+      notionConfigForName("Maria"),
+    );
+  });
+
+  it("takes the accent colour the expert was given", () => {
+    const drawn = expertNotionConfig({
+      name: "Maria",
+      avatarUrl: null,
+      color: "violet-300",
+    });
+
+    expect(drawn?.color).toBe("lavender");
+  });
+
+  it("returns nothing for a real picture, so the caller shows the image", () => {
+    expect(
+      expertNotionConfig({ name: "Maria", avatarUrl: "/experts/maria.svg" }),
+    ).toBeNull();
+    expect(
+      expertNotionConfig({
+        name: "Maria",
+        avatarUrl: "https://cdn.example.com/maria.png",
+      }),
+    ).toBeNull();
+  });
+
+  it("resolves a legacy avatar from the old URL, not the name", () => {
+    const url = "/avatars/round.sky.glasses.svg";
+
+    expect(isLegacyAvatarUrl(url)).toBe(true);
+    expect(expertNotionConfig({ name: "Maria", avatarUrl: url })).toEqual(
+      notionConfigForLegacyUrl(url),
+    );
+    // Two experts sharing a name but raised with different shapes stay apart.
+    expect(expertNotionConfig({ name: "Maria", avatarUrl: url })).not.toEqual(
+      expertNotionConfig({
+        name: "Maria",
+        avatarUrl: "/avatars/bean.sky.crown.svg",
+      }),
+    );
+  });
+
+  it("keeps the colour a legacy avatar was raised with", () => {
+    expect(
+      expertNotionConfig({
+        name: "Maria",
+        avatarUrl: "/avatars/round.mint.glasses.svg",
+      })?.color,
+    ).toBe("mint");
+  });
+});
+
+describe("colour tokens", () => {
+  it("maps a token family onto an avatar colour", () => {
+    expect(colorForToken("violet-300")).toBe("lavender");
+    expect(colorForToken("sky-500")).toBe("sky");
+  });
+
+  it("has no opinion about a family it does not know", () => {
+    expect(colorForToken("chartreuse-300")).toBeNull();
+    expect(colorForToken(null)).toBeNull();
+  });
+});

@@ -16,9 +16,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
-import {
-  expertNotionConfig,
-} from "@/components/molecules/NotionAvatar/helpers";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 import {
   Collapsible,
   CollapsibleContent,

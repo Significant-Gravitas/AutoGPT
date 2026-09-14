@@ -191,9 +191,9 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(expertGroup.querySelector('svg[data-testid="bot-avatar"]')).not.toBe(
-      null,
-    );
+    expect(
+      expertGroup.querySelector('img[data-testid="notion-avatar-image"]'),
+    ).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
@@ -215,8 +215,10 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Nova chats",
     });
-    const avatar = expertGroup.querySelector('svg[data-testid="bot-avatar"]');
-    expect(avatar?.getAttribute("data-avatar")?.split(".")[1]).toBe("lavender");
+    const avatar = expertGroup.querySelector(
+      'img[data-testid="notion-avatar-image"]',
+    );
+    expect(avatar?.getAttribute("data-avatar")).toMatch(/\.lavender\.svg$/);
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

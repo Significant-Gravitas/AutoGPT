@@ -74,7 +74,7 @@ export function NotionAvatarPicker({ name, color, onPick, onCancel }: Props) {
           className="rounded-full"
           onClick={onCancel}
         >
-          Back
+          Cancel
         </Button>
         <Button
           variant="secondary"
