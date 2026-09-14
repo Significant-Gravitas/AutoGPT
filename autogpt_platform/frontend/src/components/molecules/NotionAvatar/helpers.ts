@@ -85,14 +85,21 @@ export const NOTION_COLORS: NotionColorOption[] = [
   },
 ];
 
-// The features a user can steer in the raise flow: the ones that still read
-// once the avatar is scaled down to a chat row.
+// Rows the picker offers, in the order they appear: the face itself, then the
+// things worn on it.
+//
+// Every category the seeder can switch on MUST have a row — otherwise a user
+// lands on a beard or a pair of blush marks with no way to clear them. That
+// rule is enforced by a test against OPTIONAL_CATEGORIES rather than left to
+// judgement about which features "read" at small sizes.
 export const PICKABLE_CATEGORIES: NotionCategory[] = [
   "hair",
   "eyes",
   "mouth",
+  "beard",
   "glasses",
   "accessories",
+  "details",
 ];
 
 export const CATEGORY_LABELS: Record<NotionCategory, string> = {
@@ -104,7 +111,8 @@ export const CATEGORY_LABELS: Record<NotionCategory, string> = {
   glasses: "Glasses",
   hair: "Hair",
   accessories: "Accessories",
-  details: "Details",
+  // Upstream calls these "details"; they are blush, freckles, moles and lines.
+  details: "Marks",
   beard: "Beard",
 };
 
@@ -201,6 +209,9 @@ const NONE_ODDS: Partial<Record<NotionCategory, number>> = {
   details: 0.65,
   hair: 0.04,
 };
+
+/** Categories that can be seeded on, and so must be clearable in the picker. */
+export const OPTIONAL_CATEGORIES = Object.keys(NONE_ODDS) as NotionCategory[];
 
 export function weightedPart(
   category: NotionCategory,

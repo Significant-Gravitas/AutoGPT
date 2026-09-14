@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   clampPart,
   colorForToken,
+  OPTIONAL_CATEGORIES,
+  PICKABLE_CATEGORIES,
   decodeNotionConfig,
   encodeNotionConfig,
   expertNotionConfig,
@@ -43,6 +45,27 @@ describe("config encoding", () => {
   it("rejects a URL that is not an avatar", () => {
     expect(parseNotionAvatarUrl("/experts/maria.svg")).toBeNull();
     expect(parseNotionAvatarUrl(null)).toBeNull();
+  });
+});
+
+describe("what the picker has to offer", () => {
+  it("gives a row to every feature the seeder can switch on", () => {
+    // Without this, a seeded beard or set of blush marks lands on a face with
+    // no control to clear it.
+    for (const category of OPTIONAL_CATEGORIES) {
+      expect(PICKABLE_CATEGORIES).toContain(category);
+    }
+  });
+
+  it("can clear any optional feature by stepping back to nothing", () => {
+    for (const category of OPTIONAL_CATEGORIES) {
+      expect(clampPart(category, 1 - 1)).toBe(0);
+    }
+  });
+
+  it("offers no row for a feature that is always drawn and has no blank", () => {
+    expect(PICKABLE_CATEGORIES).not.toContain("face");
+    expect(PICKABLE_CATEGORIES).not.toContain("nose");
   });
 });
 
