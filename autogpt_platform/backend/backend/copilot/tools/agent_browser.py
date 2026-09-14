@@ -93,20 +93,31 @@ async def _run(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return proc.returncode or 0, stdout.decode(), stderr.decode()
     except asyncio.TimeoutError:
-        # Kill the orphaned subprocess so it does not linger in the process table.
-        if proc is not None and proc.returncode is None:
-            proc.kill()
-            try:
-                await proc.communicate()
-            except Exception:
-                pass  # Best-effort reap; ignore errors during cleanup.
+        await _reap(proc)
         return 1, "", f"Command timed out after {timeout}s."
+    except asyncio.CancelledError:
+        # Teardown cancels saves that overrun the drain; the CLI process
+        # they were waiting on must not outlive them.
+        await _reap(proc)
+        raise
     except FileNotFoundError:
         return (
             1,
             "",
             "agent-browser is not installed (run: npm install -g agent-browser && agent-browser install).",
         )
+
+
+async def _reap(proc: asyncio.subprocess.Process | None) -> None:
+    """Kill a CLI process we stopped waiting on so it does not linger in the
+    process table. Best-effort: errors during cleanup are ignored."""
+    if proc is None or proc.returncode is not None:
+        return
+    proc.kill()
+    try:
+        await proc.communicate()
+    except Exception:
+        pass
 
 
 async def _snapshot(session_name: str) -> str:

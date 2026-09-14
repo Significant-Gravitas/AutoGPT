@@ -1309,6 +1309,35 @@ class TestCloseBrowserDaemon:
         mock_run.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_a_cancelled_command_kills_its_cli_process(self):
+        """Teardown cancels saves that overrun the drain; the CLI process a
+        save was waiting on must go with it, as it does on a timeout."""
+        from . import agent_browser as _mod
+
+        started = asyncio.Event()
+        killed = asyncio.Event()
+
+        async def communicate():
+            started.set()
+            await killed.wait()
+            return b"", b""
+
+        proc = MagicMock(returncode=None, communicate=communicate)
+        proc.kill = MagicMock(side_effect=killed.set)
+        with patch(
+            "backend.copilot.tools.agent_browser.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=proc,
+        ):
+            task = asyncio.create_task(_mod._run("cancel-sess", "get", "url"))
+            await started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_any_command_marks_the_session_touched(self):
         """A bare probe starts the daemon too, so `_run` itself must record it."""
         from . import agent_browser as _mod
