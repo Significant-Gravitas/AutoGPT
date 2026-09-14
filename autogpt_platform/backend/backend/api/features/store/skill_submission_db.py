@@ -38,9 +38,10 @@ async def submit_skill(
     skill = await read_user_skill_with_body(user_id, slug)
     if skill is None:
         raise NotFoundError(f"Skill '{slug}' is not in your library")
-    # Outside the transaction: these are blob reads, not database work.
-    files = await read_user_skill_files(user_id, slug)
     await _require_profile(user_id)
+    # After the refusals and outside the transaction: these are blob reads of
+    # up to 20 MiB, not database work.
+    files = await read_user_skill_files(user_id, slug)
 
     async with transaction() as tx:
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
