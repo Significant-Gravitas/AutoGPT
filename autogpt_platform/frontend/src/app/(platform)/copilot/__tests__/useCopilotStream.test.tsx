@@ -1,15 +1,17 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
   copilotStreamHandler,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { renderHook, screen, waitFor } from "@testing-library/react";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { useCopilotStream } from "../useCopilotStream";
 import {
   renderHost,
   TEST_BACKEND_BASE_URL,
@@ -179,4 +181,46 @@ describe("useCopilotStream — isFinishProbing lifecycle", () => {
       });
     },
   );
+});
+
+// The guard under test is `if (!chatRuntime) return;` at the top of the
+// wrapped `sendMessage` in useCopilotStream. `chatRuntime` is null exactly
+// when `sessionId` is null (no session created yet) — before this guard
+// existed, calling `sendMessage` in that state reached the AI SDK's real
+// fallback `useChat({ id: "new" })` instance and threw a TypeError reading
+// `this.activeResponse.state`. Exercised directly via `renderHook` (not
+// `renderHost`) because no session/SSE fixture is relevant here — the point
+// is that the call returns instead of throwing.
+describe("useCopilotStream — chatRuntime null guard", () => {
+  function renderWithNullSession() {
+    const queryClient = new QueryClient();
+    return renderHook(
+      () =>
+        useCopilotStream({
+          sessionId: null,
+          hydratedMessages: undefined,
+          rawSessionMessages: [],
+          hasActiveStream: false,
+          refetchSession: async () => ({ data: undefined }),
+          copilotModel: undefined,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+  }
+
+  it("sendMessage resolves without throwing when there is no session yet", async () => {
+    const { result } = renderWithNullSession();
+
+    await expect(
+      result.current.sendMessage({
+        text: "hi",
+      } as Parameters<typeof result.current.sendMessage>[0]),
+    ).resolves.toBeUndefined();
+  });
 });
