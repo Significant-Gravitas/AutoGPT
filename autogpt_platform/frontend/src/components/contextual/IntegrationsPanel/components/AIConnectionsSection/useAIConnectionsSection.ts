@@ -13,6 +13,8 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
+import { useOAuthConnect } from "../ConnectServiceDialog/components/DetailView/useOAuthConnect";
+
 import { routeOf, visibleOffers } from "./helpers";
 
 export function useAIConnectionsSection() {
@@ -95,7 +97,28 @@ export function useAIConnectionsSection() {
     setDefault({ data: routeOf(offer) });
   }
 
+  function refreshConnections() {
+    void connectionsQuery.refetch();
+  }
+
+  const { connect: connectChatGPT, isPending: isConnectingChatGPT } =
+    useOAuthConnect({
+      provider: "codex",
+      onSuccess: refreshConnections,
+    });
+
   return {
+    connectChatGPT,
+    isConnectingChatGPT,
+    isChatGPTLinked: offers.some(
+      (offer) =>
+        offer.auth_provider === "codex" && Boolean(offer.credential_id),
+    ),
+    isMicrosoftLinked: offers.some(
+      (offer) =>
+        offer.auth_provider === "microsoft_365_copilot" &&
+        Boolean(offer.credential_id),
+    ),
     connections: offers,
     accountFor,
     credentialFor,

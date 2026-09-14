@@ -10,9 +10,22 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+
+const connectChatGPT = vi.hoisted(() => vi.fn());
+vi.mock(
+  "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect",
+  () => ({
+    useOAuthConnect: () => ({ connect: connectChatGPT, isPending: false }),
+  }),
+);
 
 import { AIConnectionsSection } from "../AIConnectionsSection";
 
@@ -139,6 +152,36 @@ function mockTransports(
 }
 
 describe("AIConnectionsSection", () => {
+  it("offers ChatGPT first and starts sign-in from its logo card", async () => {
+    mockTransports([platform(true)]);
+    render(<AIConnectionsSection />);
+
+    const cards = await screen.findByRole("group", {
+      name: "Available AI subscriptions",
+    });
+    const buttons = within(cards).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "ChatGPT",
+      "Microsoft 365 Copilot",
+    ]);
+    expect(buttons[0].querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/openai.png",
+    );
+    await userEvent.click(buttons[0]);
+    expect(connectChatGPT).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps only Microsoft sign-in available once ChatGPT is connected", async () => {
+    mockTransports([platform(true), chatgpt(false)]);
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "ChatGPT" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeDefined();
+  });
+
   it("lists every connection with what backs a run on it", async () => {
     mockTransports([platform(true), chatgpt(false)]);
 
@@ -167,7 +210,9 @@ describe("AIConnectionsSection", () => {
 
     render(<AIConnectionsSection />);
 
-    expect(await screen.findByText("ChatGPT")).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "ChatGPT" }),
+    ).toBeDefined();
     expect(screen.queryByText("Connected")).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
   });

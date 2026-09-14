@@ -14,6 +14,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { ProviderBox } from "./ProviderBox";
 import { MicrosoftCopilotProviderBox } from "./MicrosoftCopilotProviderBox";
 import { ManageConnectionDialog } from "./ManageConnectionDialog";
 import { isSelectable, tierSummary } from "./helpers";
@@ -21,6 +22,10 @@ import { useAIConnectionsSection } from "./useAIConnectionsSection";
 
 export function AIConnectionsSection() {
   const {
+    connectChatGPT,
+    isConnectingChatGPT,
+    isChatGPTLinked,
+    isMicrosoftLinked,
     connections,
     accountFor,
     credentialFor,
@@ -93,16 +98,26 @@ export function AIConnectionsSection() {
         </div>
       )}
 
-      {!isLoading &&
-        !connections.some(
-          (connection) =>
-            connection.auth_provider === "microsoft_365_copilot" &&
-            connection.credential_id,
-        ) && (
-          <div className="mt-4 w-full max-w-48">
+      {!isLoading && (!isChatGPTLinked || !isMicrosoftLinked) && (
+        <div
+          role="group"
+          aria-label="Available AI subscriptions"
+          className="mt-4 grid w-full max-w-sm grid-cols-2 gap-3"
+        >
+          {!isChatGPTLinked && (
+            <ProviderBox
+              name="ChatGPT"
+              logoSrc="/integrations/openai.png"
+              state="available"
+              isBusy={isConnectingChatGPT}
+              onClick={connectChatGPT}
+            />
+          )}
+          {!isMicrosoftLinked && (
             <MicrosoftCopilotProviderBox isLinked={false} onSuccess={refetch} />
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
       <UpcomingConnections />
 
@@ -152,9 +167,14 @@ function ConnectionRow({
         </span>
       )}
 
-      {connection.auth_provider === "microsoft_365_copilot" && (
+      {(connection.auth_provider === "codex" ||
+        connection.auth_provider === "microsoft_365_copilot") && (
         <IntegrationLogo
-          provider="microsoft_365_copilot"
+          provider={
+            connection.auth_provider === "codex"
+              ? "openai"
+              : "microsoft_365_copilot"
+          }
           alt=""
           size={32}
           className="shrink-0"
