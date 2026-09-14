@@ -199,4 +199,6 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+# The version CI and the image actually run; py310 flagged 3.11+ builtins
+# such as ExceptionGroup as undefined names.
+target-version = "py312"

@@ -14,6 +14,8 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
+from aio_pika.exceptions import ChannelInvalidStateError
+from postmarker.exceptions import ClientError
 from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
@@ -68,8 +70,33 @@ def _utc_today() -> date:
     return datetime.now(tz=timezone.utc).date()
 
 
+def _is_channel_loss(error: BaseException) -> bool:
+    """Every member is the queue iterator failing to nack on a dead channel."""
+    if not isinstance(error, ExceptionGroup) or not error.exceptions:
+        return False
+    return all(isinstance(exc, ChannelInvalidStateError) for exc in error.exceptions)
+
+
+def _is_permanent_delivery_failure(error: ClientError) -> bool:
+    return error.error_code in PERMANENT_POSTMARK_ERROR_CODES
+
+
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
+# Messages a consumer works on at once, and the broker prefetch to match. The
+# work is I/O bound (DatabaseManager RPCs, Postmark); one at a time left the
+# other prefetched messages waiting in memory, and a large fan-out from one
+# scheduled pass drained at a fraction of the rate the pass published it.
+CONSUMER_CONCURRENCY = 10
+# Hard ceiling on one message's processing. RabbitMQ closes the channel when a
+# delivered message goes unacknowledged for its consumer timeout (30 minutes
+# by default), and every other in-flight ack on that channel then fails too;
+# a bounded wait turns one hung call into one retried message instead.
+MESSAGE_PROCESSING_TIMEOUT_SECONDS = 300
+# Postmark error codes that will never succeed on retry: 300 is a malformed
+# request (bad address), 406 an inactive recipient (hard bounce, spam
+# complaint or suppression). Retrying only delays the dead-letter by seconds.
+PERMANENT_POSTMARK_ERROR_CODES = frozenset({300, 406})
 SHUTDOWN_TIMEOUT_SECONDS = 10
 CLEANUP_TIMEOUT_SECONDS = SHUTDOWN_TIMEOUT_SECONDS * 2 + 5
 
@@ -240,15 +267,28 @@ class NotificationManager(AppService):
             # redelivery today would only be refused again.
             return True
 
-        await self.email_sender.send_notification(
-            notification_type=event.type,
-            user_email=preference.email,
-            data=event.data,
-            unsubscribe_link=generate_unsubscribe_link(event.user_id),
-            volume_links={
-                c: generate_preference_link(event.user_id, c) for c in FOOTER_CHOICES
-            },
-        )
+        try:
+            await self.email_sender.send_notification(
+                notification_type=event.type,
+                user_email=preference.email,
+                data=event.data,
+                unsubscribe_link=generate_unsubscribe_link(event.user_id),
+                volume_links={
+                    c: generate_preference_link(event.user_id, c)
+                    for c in FOOTER_CHOICES
+                },
+            )
+        except ClientError as e:
+            if not _is_permanent_delivery_failure(e):
+                raise
+            # A suppressed or malformed address does not become deliverable
+            # by waiting six seconds; three retries only put the dead-letter
+            # off and left three warnings per message in the log.
+            logger.warning(
+                f"Permanent delivery failure for {event.type} to user "
+                f"{event.user_id} (Postmark {e.error_code}), sending to DLQ"
+            )
+            return False
         return True
 
     async def _process_ops_notification(self, message: str) -> bool:
@@ -334,7 +374,7 @@ class NotificationManager(AppService):
         logger.info(f"[{self.service_name}] Started notification service")
 
         channel = await self.rabbit.get_channel()
-        await channel.set_qos(prefetch_count=10)
+        await channel.set_qos(prefetch_count=CONSUMER_CONCURRENCY)
 
         consumers = {
             USER_NOTIFICATIONS_QUEUE: self._process_user_notification,
@@ -353,10 +393,15 @@ class NotificationManager(AppService):
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("Service shutdown requested")
+            raise
+        finally:
+            # The four consumers share one channel, so they live and die
+            # together. When one fails and `continuous_retry` runs this again,
+            # the other three must not be left consuming beside their
+            # replacements: every message would then be handled twice.
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            raise
 
     async def _consume_queue(
         self,
@@ -364,21 +409,59 @@ class NotificationManager(AppService):
         process_func: Callable[[str], Awaitable[bool]],
         queue_name: str,
     ):
+        """Work up to CONSUMER_CONCURRENCY messages at once.
+
+        The prefetch already delivered that many; handling them one after
+        another only kept the rest waiting in memory.
+        """
         logger.info(f"Starting consumer for queue: {queue_name}")
+        slots = asyncio.Semaphore(CONSUMER_CONCURRENCY)
+        in_flight: set[asyncio.Task[None]] = set()
+
+        async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
+            try:
+                await self._process_message_with_retry(
+                    message, process_func, queue_name
+                )
+            except Exception as e:
+                # The retry loop settles every outcome it knows about; this
+                # is an ack or reject that failed for a reason other than a
+                # lost channel. The message is still unacked at the broker.
+                logger.exception(f"Unsettled message in {queue_name}: {e}")
+            finally:
+                slots.release()
+
         try:
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     if not self.running:
                         break
-                    await self._process_message_with_retry(
-                        message, process_func, queue_name
-                    )
+                    await slots.acquire()
+                    task = asyncio.create_task(handle(message))
+                    in_flight.add(task)
+                    task.add_done_callback(in_flight.discard)
         except asyncio.CancelledError:
             logger.info(f"Consumer for {queue_name} cancelled")
             raise
+        except ExceptionGroup as group:
+            # The iterator's exit nacks whatever it still buffered; when the
+            # channel has been swapped out under it (a robust reconnect), every
+            # one of those fails the same way. The broker requeues unacked
+            # deliveries on its own, so this is a reconnect, not a data loss.
+            if not _is_channel_loss(group):
+                logger.exception(f"Fatal error in consumer for {queue_name}")
+                raise
+            logger.warning(
+                f"Consumer for {queue_name} lost its channel with "
+                f"{len(group.exceptions)} buffered messages; reconnecting"
+            )
+            raise ConnectionError(f"RabbitMQ channel lost for {queue_name}") from None
         except Exception as e:
             logger.exception(f"Fatal error in consumer for {queue_name}: {e}")
             raise
+        finally:
+            if in_flight:
+                await asyncio.gather(*in_flight, return_exceptions=True)
 
     async def _process_message_with_retry(
         self,
@@ -397,37 +480,69 @@ class NotificationManager(AppService):
         for attempt in range(MAX_CONSUMER_RETRY_ATTEMPTS):
             try:
                 body = message.body.decode()
-                if await process_func(body):
-                    await message.ack()
+                if await asyncio.wait_for(
+                    process_func(body), timeout=MESSAGE_PROCESSING_TIMEOUT_SECONDS
+                ):
+                    await self._settle(message, "ack", queue_name)
                     return
                 logger.warning(
                     f"Message in {queue_name} rejected (process_func returned False)"
                 )
-                await message.reject(requeue=False)
+                await self._settle(message, "reject", queue_name)
                 return
             except UnicodeDecodeError as e:
                 logger.warning(
                     f"Undecodable message in {queue_name}, sending to DLQ: {e}"
                 )
-                await message.reject(requeue=False)
+                await self._settle(message, "reject", queue_name)
                 return
+            except asyncio.TimeoutError:
+                last_error = TimeoutError(
+                    f"processing exceeded {MESSAGE_PROCESSING_TIMEOUT_SECONDS}s"
+                )
             except Exception as e:
                 last_error = e
-                if attempt == MAX_CONSUMER_RETRY_ATTEMPTS - 1:
-                    break
-                delay = CONSUMER_RETRY_BACKOFF_SECONDS * (2**attempt)
-                logger.warning(
-                    f"Transient failure on attempt {attempt + 1}/"
-                    f"{MAX_CONSUMER_RETRY_ATTEMPTS} in {queue_name}: {e}. "
-                    f"Retrying in {delay}s.",
-                )
-                await asyncio.sleep(delay)
+            if attempt == MAX_CONSUMER_RETRY_ATTEMPTS - 1:
+                break
+            delay = CONSUMER_RETRY_BACKOFF_SECONDS * (2**attempt)
+            logger.warning(
+                f"Transient failure on attempt {attempt + 1}/"
+                f"{MAX_CONSUMER_RETRY_ATTEMPTS} in {queue_name}: {last_error}. "
+                f"Retrying in {delay}s.",
+            )
+            await asyncio.sleep(delay)
         logger.exception(
             f"Sending message to DLQ from {queue_name} after "
             f"{MAX_CONSUMER_RETRY_ATTEMPTS} attempts. Last error: {last_error}",
             exc_info=last_error,
         )
-        await message.reject(requeue=False)
+        await self._settle(message, "reject", queue_name)
+
+    async def _settle(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        action: str,
+        queue_name: str,
+    ) -> None:
+        """Ack or dead-letter a message, tolerating a channel that has gone.
+
+        The work is already done by the time this runs. If the channel was
+        swapped out underneath (a robust reconnect) the broker has requeued
+        the delivery itself; re-running the handler to "retry" the ack would
+        be a second send for anything not claimed, and the redelivery is what
+        actually settles it. So a lost channel is logged and dropped here,
+        never retried.
+        """
+        try:
+            if action == "ack":
+                await message.ack()
+            else:
+                await message.reject(requeue=False)
+        except ChannelInvalidStateError:
+            logger.warning(
+                f"Could not {action} a message in {queue_name}: channel lost, "
+                "the broker will redeliver it"
+            )
 
     async def _shutdown_service(self) -> None:
         """Stop consumers completely before closing their RabbitMQ connection."""
