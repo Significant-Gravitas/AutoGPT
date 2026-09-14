@@ -171,7 +171,7 @@ export function SkillPage({ slug }: Props) {
           title="Instructions"
           description={
             skill.body.trim()
-              ? "What your Otto follows once this skill is added."
+              ? "Instructions your experts follow when using this skill."
               : "This skill has no instructions yet."
           }
         >
@@ -184,7 +184,7 @@ export function SkillPage({ slug }: Props) {
           <ExpertSection
             title="Triggers"
             count={skill.triggers.length}
-            description="Phrases that make your Otto reach for it."
+            description="Phrases that help your experts find this skill."
           >
             <div className="flex flex-wrap gap-2">
               {skill.triggers.map((trigger) => (

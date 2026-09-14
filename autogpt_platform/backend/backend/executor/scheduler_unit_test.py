@@ -46,6 +46,17 @@ from backend.util.exceptions import (
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
 
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
+
+
 # ---------------------------------------------------------------------------
 # _build_trigger
 # ---------------------------------------------------------------------------

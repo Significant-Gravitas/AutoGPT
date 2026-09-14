@@ -390,7 +390,7 @@ describe("onboarding brain dump — flag gating", () => {
 
     expect(await screen.findByText(PILLBOX_HEADING)).toBeDefined();
     expect(
-      screen.getByText("Pick the tasks you'd love to hand off to Otto"),
+      screen.getByText("Pick the tasks you'd love to hand off to your experts"),
     ).toBeDefined();
     expect(screen.queryByText(DUMP_HEADLINE)).toBeNull();
     expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();

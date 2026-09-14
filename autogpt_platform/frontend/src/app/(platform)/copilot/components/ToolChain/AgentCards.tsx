@@ -189,7 +189,7 @@ export function SubSessionCard({
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
-  const name = (expert && str(expert, "name")) ?? "Sub-Otto";
+  const name = (expert && str(expert, "name")) ?? "Expert";
   return (
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">

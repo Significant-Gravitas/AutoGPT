@@ -31,7 +31,7 @@ export function useAutopilotPage({ enabled }: Args) {
     { page: 1, page_size: 100, is_hidden: false },
     { query: { getNextPageParam: getPaginationNextPageNumber, enabled } },
   );
-  const skillsQuery = useListCopilotSkills({
+  const skillsQuery = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled },
   });
 

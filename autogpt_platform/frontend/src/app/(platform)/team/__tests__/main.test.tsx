@@ -443,6 +443,28 @@ describe("TeamPage", () => {
     expect(getStatValue(card, "Schedules")).toBe("1");
   });
 
+  test("keeps the roster when only the schedules query fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get(
+        "*/api/schedules",
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByRole("link", { name: "View Maria" }),
+    ).toBeDefined();
+    // The roster loaded, so the page must not claim it could not.
+    await waitFor(() =>
+      expect(
+        screen.queryByText("We could not load your hired experts."),
+      ).toBeNull(),
+    );
+  });
+
   test("does not badge a card for a workflow without a schedule", async () => {
     const needsSetupMaria: Expert = {
       ...hiredMaria,
@@ -1142,6 +1164,36 @@ describe("TeamPage - setup needed card", () => {
     ).toBeDefined();
     expect(within(card).getByRole("button", { name: "Connect" })).toBeDefined();
     expect(within(card).getByRole("button", { name: "Allow" })).toBeDefined();
+    expect(
+      within(card)
+        .getByRole("link", { name: "Open workflow" })
+        .getAttribute("href"),
+    ).toBe("/library/agents/lib-1");
+  });
+
+  test("an input only the user can give is named, with the workflow to fill it in", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({
+          workflow_name: "Personal Newsletter",
+          providers: [],
+          resolution: "inputs",
+          missing_inputs: ["Email Address"],
+        }),
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(
+      within(card).getByText("Schedule Personal Newsletter for Maria"),
+    ).toBeDefined();
+    expect(
+      within(card).getByText(
+        "Needs Email Address before it can run on schedule.",
+      ),
+    ).toBeDefined();
     expect(
       within(card)
         .getByRole("link", { name: "Open workflow" })
