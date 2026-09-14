@@ -7,15 +7,56 @@ from typing import Any
 
 
 def _truncate_string_middle(value: str, limit: int) -> str:
-    """Shorten *value* to *limit* chars by removing the **middle** portion."""
+    """Shorten *value* to at most *limit* chars by removing the **middle**.
 
+    The omission marker is budgeted first; any remaining characters are split
+    between a head and a tail (head-only when the budget is tiny).  The result
+    never exceeds ``max(0, limit)``.  When the marker itself cannot fit, the
+    value is hard-prefixed to *limit* (or empty for ``limit <= 0``).
+    """
+
+    if limit <= 0:
+        return ""
     if len(value) <= limit:
         return value
 
-    head_len = max(1, limit // 2)
-    tail_len = limit - head_len  # ensures total == limit
-    omitted = len(value) - (head_len + tail_len)
-    return f"{value[:head_len]}… (omitted {omitted} chars)…{value[-tail_len:]}"
+    n = len(value)
+
+    def marker(omitted: int) -> str:
+        return f"… (omitted {omitted} chars)…"
+
+    def fits(content_budget: int) -> bool:
+        omitted = n - content_budget
+        return omitted >= 1 and content_budget + len(marker(omitted)) <= limit
+
+    # Fitting content budgets form ``[0, T]`` or are empty (marker too large).
+    if not fits(0):
+        return value[:limit]
+
+    lo, hi = 0, min(limit, n - 1)
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if fits(mid):
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    omitted = n - best
+    m = marker(omitted)
+
+    # Head-only for tiny budgets; otherwise split head/tail.
+    # Never slice with tail_len == 0 via ``value[-0:]`` (that yields the full string).
+    if best <= 1:
+        head_len, tail_len = best, 0
+    else:
+        head_len = best // 2
+        tail_len = best - head_len
+
+    if tail_len == 0:
+        return f"{value[:head_len]}{m}"
+    return f"{value[:head_len]}{m}{value[-tail_len:]}"
 
 
 # ---------------------------------------------------------------------------
