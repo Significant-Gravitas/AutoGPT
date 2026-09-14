@@ -23,11 +23,18 @@ describe("GET /avatars/notion/[file]", () => {
 
   it("stacks every layer in draw order", async () => {
     const body = await (await get(VALID)).text();
-    const layers = body.match(/<g( fill="#ffffff")?>/g);
 
-    expect(layers).toHaveLength(10);
-    // Only the face is filled; the rest are line art over it.
-    expect(body.indexOf('<g fill="#ffffff">')).toBeGreaterThan(-1);
+    expect(body.match(/<g>/g)).toHaveLength(10);
+    // No layer paints the skin: it takes the disc's colour, so the face sits
+    // in its circle rather than on a white cut-out.
+    expect(body).not.toContain('fill="#ffffff"');
+  });
+
+  it("clips itself to the disc, since the head overflows the artboard", async () => {
+    const body = await (await get(VALID)).text();
+
+    expect(body).toContain("<clipPath");
+    expect(body).toMatch(/<g clip-path="url\(#[^)]+\)">/);
   });
 
   it("gives each request's ids a prefix so two avatars can share a page", async () => {

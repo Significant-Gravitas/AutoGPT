@@ -12,10 +12,11 @@ import type { AvatarStatus } from "./status";
 // off long hair. Scaling it down inside the disc keeps every hairstyle whole,
 // and the nudge downward stops the crown from crowding the top edge.
 //
-// 0.92 is as large as the face goes before the longest beards and hairstyles
-// start meeting the crop — checked against the worst of them, not guessed.
-export const FRAME_SCALE = 0.92;
-export const FRAME_OFFSET_Y = 14;
+// 1.35 puts the head at roughly 85% of the disc. Past that the crop starts
+// taking ears and cap brims; at this size only long hair reaches the edge,
+// which reads as a portrait crop rather than damage.
+export const FRAME_SCALE = 1.35;
+export const FRAME_OFFSET_Y = 0;
 
 interface Options {
   size?: number;
@@ -35,12 +36,6 @@ export function layerMarkup(
   return markup.replace(/\{\{P\}\}/g, prefix);
 }
 
-/** The face layer is the only one that needs a fill: left transparent, the
- *  tinted disc would show through the skin. */
-export function layerFill(category: NotionCategory): string | undefined {
-  return category === "face" ? "#ffffff" : undefined;
-}
-
 export function composeNotionAvatar(
   config: NotionAvatarConfig,
   {
@@ -54,17 +49,24 @@ export function composeNotionAvatar(
   const disc = transparent
     ? ""
     : `<circle cx="${VIEWBOX / 2}" cy="${VIEWBOX / 2}" r="${VIEWBOX / 2}" fill="${color.disc}"/>`;
-  const layers = NOTION_CATEGORIES.map((category) => {
-    const fill = layerFill(category);
-    return `<g${fill ? ` fill="${fill}"` : ""}>${layerMarkup(category, config.parts[category], idPrefix)}</g>`;
-  }).join("");
+  const layers = NOTION_CATEGORIES.map(
+    (category) =>
+      `<g>${layerMarkup(category, config.parts[category], idPrefix)}</g>`,
+  ).join("");
 
   const inset = (VIEWBOX / 2) * (1 - FRAME_SCALE);
+  const radius = VIEWBOX / 2;
+  // The head is drawn larger than the artboard, so the file clips itself to
+  // the disc rather than relying on whatever rounds it in CSS.
+  const clipId = `${idPrefix}clip`;
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${VIEWBOX} ${VIEWBOX}" fill="none">`,
+    `<defs><clipPath id="${clipId}"><circle cx="${radius}" cy="${radius}" r="${radius}"/></clipPath></defs>`,
+    `<g clip-path="url(#${clipId})">`,
     disc,
     `<g transform="translate(${inset} ${inset + FRAME_OFFSET_Y}) scale(${FRAME_SCALE})">${layers}</g>`,
+    `</g>`,
     badgeMarkup(status, VIEWBOX),
     `</svg>`,
   ].join("");
