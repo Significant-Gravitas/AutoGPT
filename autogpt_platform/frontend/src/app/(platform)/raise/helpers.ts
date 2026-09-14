@@ -13,7 +13,6 @@ import {
 export type RaiseStep =
   | "role"
   | "name"
-  | "color"
   | "avatar"
   | "about"
   | "voice"
@@ -25,7 +24,6 @@ export type RaiseStep =
 export const STEP_ORDER: RaiseStep[] = [
   "role",
   "name",
-  "color",
   "avatar",
   "about",
   "voice",
@@ -63,9 +61,8 @@ export const RAISE_PROMPTS = {
   greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
   nameQuestion: "Good pick. What do you want to call them?",
-  colorQuestion: "Nice. Now choose a color for them.",
   avatarQuestion: (name: string) =>
-    `Want to give ${name || "them"} a face? Upload a picture, let me generate one, or skip it.`,
+    `Now give ${name || "them"} a face and a color. Shuffle until one feels right, or upload a picture.`,
   aboutQuestion: (name: string) =>
     `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
@@ -126,7 +123,7 @@ export function loadDraft(): RaiseDraft {
     const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
       step?: string;
     };
-    const step = parsed.step === "kit" ? "budget" : parsed.step;
+    const step = migrateStep(parsed.step);
     return backfillSkippedVoice({
       ...EMPTY_DRAFT,
       ...parsed,
@@ -141,6 +138,14 @@ export function loadDraft(): RaiseDraft {
 // label. The flow now treats null as "not answered", which would leave a
 // restored session parked on the voice beat with no way forward, so a draft
 // that has already moved past voice gets the sentinel back.
+// Steps that existed in earlier builds map onto the beat that absorbed them,
+// so a restored draft resumes where it left off instead of resetting.
+function migrateStep(step: string | undefined): string | undefined {
+  if (step === "kit") return "budget";
+  if (step === "color") return "avatar";
+  return step;
+}
+
 function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
   if (draft.voiceLabel !== null) return draft;
   if (STEP_ORDER.indexOf(draft.step) <= STEP_ORDER.indexOf("voice")) {

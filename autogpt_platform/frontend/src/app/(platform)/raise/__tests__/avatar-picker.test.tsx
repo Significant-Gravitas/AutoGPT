@@ -56,13 +56,13 @@ function mockReducedMotion() {
   );
 }
 
-function seedAtAvatar(name = "Maria") {
+function seedAtAvatar(name = "Maria", color: string | null = "violet-300") {
   saveDraft({
     step: "avatar",
     hasStarted: true,
     role: "marketer",
     name,
-    color: "violet-300",
+    color,
     avatarUrl: null,
     about: null,
     voicePreferences: "",
@@ -77,23 +77,17 @@ function drawnAvatar() {
   return screen.getByTestId("notion-avatar").getAttribute("data-avatar");
 }
 
-async function openGenerator() {
-  seedAtAvatar();
+async function openGenerator(name = "Maria") {
+  seedAtAvatar(name);
   render(
     <>
       <RaisePage />
       <Toaster />
     </>,
   );
-  await userEvent.click(
-    await screen.findByRole(
-      "button",
-      { name: "Generate a face" },
-      { timeout: 5000 },
-    ),
-  );
-  // The artwork is a lazy chunk, so the face arrives a tick after the picker.
-  await screen.findByTestId("notion-avatar");
+  // The beat opens straight onto the picker; the artwork is a lazy chunk, so
+  // the face itself arrives a tick later.
+  await screen.findByTestId("notion-avatar", undefined, { timeout: 5000 });
 }
 
 beforeEach(() => {
@@ -190,7 +184,7 @@ test("cycling backwards from the first part wraps to the last", async () => {
   expect(eyes).toBeGreaterThan(0);
 });
 
-test("the picked face becomes the draft's avatar and closes the picker", async () => {
+test("the picked face and colour become the draft's answer, and the picker closes", async () => {
   await openGenerator();
   await userEvent.click(screen.getByRole("button", { name: "Next hair" }));
   const picked = drawnAvatar();
@@ -200,16 +194,35 @@ test("the picked face becomes the draft's avatar and closes the picker", async (
   await waitFor(() =>
     expect(loadDraft().avatarUrl).toBe(`/avatars/notion/${picked}.svg`),
   );
+  expect(loadDraft().color).toBe("violet-300");
   expect(screen.queryByRole("button", { name: "Shuffle" })).toBeNull();
 });
 
-test("cancelling the picker leaves the avatar unanswered", async () => {
+test("the colour is chosen in the picker and recolours the face", async () => {
   await openGenerator();
+  expect(drawnAvatar()).toContain(".lavender");
 
-  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  // The accent tokens are a wider set than the disc colours: emerald, green
+  // and lime all read as the mint disc.
+  await userEvent.click(screen.getByRole("button", { name: "Emerald" }));
 
-  expect(
-    await screen.findByRole("button", { name: "Generate a face" }),
-  ).toBeDefined();
-  expect(loadDraft().avatarUrl).toBeNull();
+  await waitFor(() => expect(drawnAvatar()).toContain(".mint"));
+
+  await userEvent.click(screen.getByRole("button", { name: "Use this face" }));
+  await waitFor(() => expect(loadDraft().color).toBe("emerald-300"));
+});
+
+test("an expert with no colour yet still opens on a face", async () => {
+  seedAtAvatar("Nova", null);
+  render(
+    <>
+      <RaisePage />
+      <Toaster />
+    </>,
+  );
+
+  const avatar = await screen.findByTestId("notion-avatar", undefined, {
+    timeout: 5000,
+  });
+  expect(avatar.getAttribute("data-avatar")).toBeTruthy();
 });

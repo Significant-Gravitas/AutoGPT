@@ -8,26 +8,35 @@ import {
   PICKABLE_CATEGORIES,
 } from "@/components/molecules/NotionAvatar/helpers";
 import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   DiceFaces01Icon,
 } from "@hugeicons/core-free-icons";
+import { COLOR_OPTIONS } from "../../../ColorStep/helpers";
+import { ACCEPTED_AVATAR_TYPES } from "../../helpers";
 import { useNotionAvatarPicker } from "./useNotionAvatarPicker";
 
 interface Props {
   name: string;
   color: string | null;
-  onPick: (avatarUrl: string) => void;
-  onCancel: () => void;
+  onPick: (avatarUrl: string, colorId: string) => void;
 }
 
-export function NotionAvatarPicker({ name, color, onPick, onCancel }: Props) {
-  const { config, shuffle, cycle, confirm } = useNotionAvatarPicker({
-    name,
-    color,
-    onPick,
-  });
+export function NotionAvatarPicker({ name, color, onPick }: Props) {
+  const {
+    config,
+    colorId,
+    setColorId,
+    shuffle,
+    cycle,
+    confirm,
+    fileInputRef,
+    isUploading,
+    openFilePicker,
+    handleFileChange,
+  } = useNotionAvatarPicker({ name, color, onPick });
   const who = name || "your expert";
 
   return (
@@ -38,6 +47,28 @@ export function NotionAvatarPicker({ name, color, onPick, onCancel }: Props) {
         showBadge={false}
         title={`${who}'s face`}
       />
+
+      <div
+        role="group"
+        aria-label="Expert color"
+        className="flex flex-wrap justify-center gap-2"
+      >
+        {COLOR_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setColorId(option.id)}
+            aria-label={option.label}
+            aria-pressed={option.id === colorId}
+            className={cn(
+              "size-6 rounded-full transition-transform hover:scale-110",
+              option.swatchClassName,
+              option.id === colorId &&
+                "ring-2 ring-zinc-900 ring-offset-2 ring-offset-white",
+            )}
+          />
+        ))}
+      </div>
 
       <div className="flex w-full flex-col gap-1.5">
         {PICKABLE_CATEGORIES.map((category) => (
@@ -67,25 +98,42 @@ export function NotionAvatarPicker({ name, color, onPick, onCancel }: Props) {
         ))}
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPTED_AVATAR_TYPES}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        onChange={(event) => handleFileChange(event.target.files?.[0])}
+      />
+
       <div className="flex w-full flex-wrap justify-end gap-2">
         <Button
           variant="ghost"
           size="small"
           className="rounded-full"
-          onClick={onCancel}
+          onClick={openFilePicker}
+          loading={isUploading}
         >
-          Cancel
+          Upload a picture
         </Button>
         <Button
           variant="secondary"
           size="small"
           className="rounded-full"
           onClick={shuffle}
+          disabled={isUploading}
         >
           <Icon icon={DiceFaces01Icon} size={16} />
           Shuffle
         </Button>
-        <Button size="small" className="rounded-full" onClick={confirm}>
+        <Button
+          size="small"
+          className="rounded-full"
+          onClick={confirm}
+          disabled={isUploading}
+        >
           Use this face
         </Button>
       </div>
