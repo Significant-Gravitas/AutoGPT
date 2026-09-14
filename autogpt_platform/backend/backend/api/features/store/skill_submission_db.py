@@ -16,9 +16,10 @@ import prisma.enums
 import prisma.models
 
 from backend.copilot.tools.skills import (
+    ParsedSkill,
     SkillFile,
-    read_user_skill_files,
-    read_user_skill_with_body,
+    parse_skill_markdown,
+    read_user_skill_package,
 )
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
@@ -35,12 +36,10 @@ async def submit_skill(
     the live one, so what the marketplace serves only changes on approval.
     """
     slug = request.skill_name.strip().lower()
-    skill = await read_user_skill_with_body(user_id, slug)
-    if skill is None:
-        raise NotFoundError(f"Skill '{slug}' is not in your library")
-    # Outside the transaction: these are blob reads, not database work.
-    files = await read_user_skill_files(user_id, slug)
     await _require_profile(user_id)
+    # One bracketed read, after the refusals: the body and the files must be the
+    # same version of the skill, and these are blob reads of up to 20 MiB.
+    skill, files = await _read_library_package(user_id, slug)
 
     async with transaction() as tx:
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
@@ -114,10 +113,7 @@ async def edit_skill_submission(
             f"This submission publishes '{listing.slug}'. Publish '{slug}' as "
             "its own listing instead."
         )
-    skill = await read_user_skill_with_body(user_id, slug)
-    if skill is None:
-        raise NotFoundError(f"Skill '{slug}' is not in your library")
-    files = await read_user_skill_files(user_id, slug)
+    skill, files = await _read_library_package(user_id, slug)
 
     async with transaction() as tx:
         updated = await prisma.models.SkillListingVersion.prisma(tx).update(
@@ -208,6 +204,23 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
         for v in versions
         if v.SkillListing is not None
     ]
+
+
+async def _read_library_package(
+    user_id: str, slug: str
+) -> tuple[ParsedSkill, list[SkillFile]]:
+    """The creator's skill as one consistent version — its parsed ``SKILL.md``
+    and the files beside it, read together so a store landing between them
+    cannot publish one version's body with another's files."""
+    package = await read_user_skill_package(user_id, slug)
+    skill = (
+        parse_skill_markdown(package.skill_md, fallback_name=slug)
+        if package is not None
+        else None
+    )
+    if package is None or skill is None:
+        raise NotFoundError(f"Skill '{slug}' is not in your library")
+    return skill, package.files
 
 
 async def _snapshot_files(

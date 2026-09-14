@@ -12,18 +12,31 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.skill_zip import package_from_zip, zip_from_package
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
+    MAX_PACKAGE_FILES,
     BuiltInSkillError,
     ParsedSkill,
+    SkillFile,
     SkillLimitError,
     SkillNotFoundError,
+    SkillPackage,
+    parse_skill_markdown,
+    render_skill_markdown,
+)
+
+# The skills layer's own test owns the in-memory workspace these round-trip
+# tests need; a second copy here would drift from the real manager's surface.
+from backend.copilot.tools.skills_test import (  # noqa: E402
+    _FakeWorkspaceManager,
+    _patch_skills_path,
 )
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import ConflictError, InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
@@ -47,6 +60,10 @@ app.include_router(v1_router)
 # Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
 # tests below verify the same behaviour the real app exposes.
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same reason: ConflictError is mapped app-wide, never on the route, so without
+# this a conflict reads here as an unhandled error rather than the 409 a client
+# actually gets.
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1641,6 +1658,232 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
     assert "virus scan" in response.json()["detail"]
 
 
+# Storing a skill re-renders its frontmatter, so the canonical form is what a
+# download hands back and what an upload→download round trip can compare.
+_PARSED_VALID_SKILL = parse_skill_markdown(_VALID_SKILL_MD)
+assert _PARSED_VALID_SKILL is not None
+_CANONICAL_SKILL_MD = render_skill_markdown(_PARSED_VALID_SKILL)
+
+
+def _package_zip(files: list[SkillFile] | None = None) -> bytes:
+    """A valid package archive: the canonical SKILL.md plus *files*."""
+    return zip_from_package(
+        SkillPackage(skill_md=_CANONICAL_SKILL_MD, files=files or [])
+    )
+
+
+_PACKAGE_FILES = [
+    SkillFile(relative_path="references/providers.md", content=b"# Providers\n"),
+    SkillFile(relative_path="references/errors.md", content=b"# Errors\n"),
+    SkillFile(relative_path="assets/logo.svg", content=b"<svg/>"),
+    SkillFile(relative_path="assets/nested/icon.svg", content=b"<svg id=1/>"),
+    SkillFile(
+        relative_path="scripts/exchange_code.py",
+        content=b"#!/usr/bin/env python3\nprint(1)\n",
+        is_executable=True,
+    ),
+    SkillFile(relative_path="scripts/helpers.py", content=b"X = 1\n"),
+]
+
+
+def test_skill_package_round_trips_through_upload_and_download() -> None:
+    """The tree a user uploads is the tree they get back — same paths, same
+    bytes, and a script that arrived executable is still executable."""
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        created = client.post(
+            "/skills/package",
+            files={
+                "file": ("pkg.zip", _package_zip(_PACKAGE_FILES), "application/zip")
+            },
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["name"] == "oauth_flow"
+
+        assert [s["name"] for s in client.get("/skills").json()] == ["oauth_flow"]
+
+        detail = client.get("/skills/oauth_flow")
+        assert detail.status_code == 200
+        assert {f["path"]: f["is_executable"] for f in detail.json()["files"]} == {
+            f.relative_path: f.is_executable for f in _PACKAGE_FILES
+        }
+
+        downloaded = client.get("/skills/oauth_flow/package")
+
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/zip"
+    assert "oauth_flow.zip" in downloaded.headers["content-disposition"]
+    restored = package_from_zip(downloaded.content)
+    assert restored.skill_md == _CANONICAL_SKILL_MD
+    assert sorted(
+        (f.relative_path, f.content, f.is_executable) for f in restored.files
+    ) == sorted((f.relative_path, f.content, f.is_executable) for f in _PACKAGE_FILES)
+
+
+def test_upload_package_over_the_files_cap_is_413_and_writes_nothing() -> None:
+    manager = _FakeWorkspaceManager()
+    oversized = [
+        SkillFile(relative_path=f"f{i}.txt", content=b"x")
+        for i in range(MAX_PACKAGE_FILES + 1)
+    ]
+
+    with _patch_skills_path(manager):
+        response = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(oversized), "application/zip")},
+        )
+
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert "files" in detail and str(MAX_PACKAGE_FILES) in detail
+    assert manager.files == {}
+
+
+def test_upload_package_with_an_escaping_member_is_400_and_writes_nothing() -> None:
+    """Zip slip is refused before the first write, so a rejected archive
+    leaves the workspace exactly as it was."""
+    manager = _FakeWorkspaceManager()
+    escaping = [SkillFile(relative_path="../../etc/passwd", content=b"x")]
+
+    with _patch_skills_path(manager):
+        response = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(escaping), "application/zip")},
+        )
+
+    assert response.status_code == 400
+    assert manager.files == {}
+
+
+def test_upload_package_refuses_an_oversized_body_before_parsing(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The body cap aborts mid-read, so a 20 MiB archive never lands in
+    memory whole."""
+    mocker.patch("backend.api.features.v1.MAX_ZIP_BYTES", 64)
+    parse = mocker.patch("backend.api.features.v1.package_from_zip")
+
+    response = client.post(
+        "/skills/package",
+        files={"file": ("pkg.zip", b"x" * 4096, "application/zip")},
+    )
+
+    assert response.status_code == 413
+    parse.assert_not_called()
+
+
+def test_upload_package_rejects_an_archive_whose_skill_md_is_malformed() -> None:
+    response = client.post(
+        "/skills/package",
+        files={
+            "file": (
+                "pkg.zip",
+                zip_from_package(SkillPackage(skill_md="no frontmatter here")),
+                "application/zip",
+            )
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_upload_package_rejects_something_that_is_not_a_zip() -> None:
+    response = client.post(
+        "/skills/package",
+        files={"file": ("pkg.zip", _VALID_SKILL_MD.encode(), "application/zip")},
+    )
+    assert response.status_code == 400
+
+
+def test_download_refuses_rather_than_serving_a_package_it_cannot_read_whole() -> None:
+    """A download is a backup: a sibling that will not read must fail the
+    request, not quietly produce an archive with the file missing."""
+
+    class _OneUnreadableSibling(_FakeWorkspaceManager):
+        async def read_file(self, path: str) -> bytes:
+            if path.endswith("references/providers.md"):
+                raise RuntimeError("storage unavailable")
+            return await super().read_file(path)
+
+    with _patch_skills_path(_OneUnreadableSibling()):
+        created = client.post(
+            "/skills/package",
+            files={
+                "file": ("pkg.zip", _package_zip(_PACKAGE_FILES), "application/zip")
+            },
+        )
+        assert created.status_code == 201, created.text
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            client.get("/skills/oauth_flow/package")
+
+
+def test_download_does_not_report_a_storage_failure_as_a_missing_skill() -> None:
+    """404 means the user has no such skill. A storage failure reading the
+    SKILL.md is ours, and saying "not found" would send them looking for a
+    skill they still have."""
+
+    class _UnreadableRoot(_FakeWorkspaceManager):
+        async def read_file(self, path: str) -> bytes:
+            if path.endswith("/SKILL.md"):
+                raise RuntimeError("storage unavailable")
+            return await super().read_file(path)
+
+    with _patch_skills_path(_UnreadableRoot()):
+        created = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        )
+        assert created.status_code == 201, created.text
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            client.get("/skills/oauth_flow/package")
+
+
+def test_download_refuses_a_stored_package_over_the_files_cap() -> None:
+    """Only a legacy or hand-made folder can be over the cap, and truncating it
+    to the cap would hand back an archive that silently is not the skill."""
+    manager = _FakeWorkspaceManager()
+    with _patch_skills_path(manager):
+        created = client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        )
+        assert created.status_code == 201, created.text
+        # Seed the folder past the cap the way only a pre-cap write could have.
+        for i in range(MAX_PACKAGE_FILES + 1):
+            manager.files[f"/skills/oauth_flow/f{i}.txt"] = b"x"
+
+        response = client.get("/skills/oauth_flow/package")
+
+    assert response.status_code == 413
+    assert str(MAX_PACKAGE_FILES) in response.json()["detail"]
+
+
+def test_download_of_a_package_being_rewritten_is_409_not_a_bad_request(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A tree that will not hold still is a conflict the caller can retry, not
+    a malformed package: 400 or 413 would blame the user for their own
+    concurrent edit."""
+    mocker.patch(
+        "backend.api.features.v1.read_user_skill_package",
+        AsyncMock(side_effect=ConflictError("changed while it was read")),
+    )
+
+    response = client.get("/skills/oauth_flow/package")
+
+    assert response.status_code == 409, response.text
+
+
+def test_download_package_returns_404_for_a_missing_skill(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.read_user_skill_package",
+        AsyncMock(return_value=None),
+    )
+    assert client.get("/skills/missing/package").status_code == 404
+
+
 _EXPERT_SKILL_ROUTES = {
     "list": lambda expert_id: client.get("/skills", params=_owner(expert_id)),
     "upload": lambda expert_id: client.post(
@@ -1648,6 +1891,14 @@ _EXPERT_SKILL_ROUTES = {
     ),
     "read": lambda expert_id: client.get(
         "/skills/oauth_flow", params=_owner(expert_id)
+    ),
+    "upload_package": lambda expert_id: client.post(
+        "/skills/package",
+        params=_owner(expert_id),
+        files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+    ),
+    "download_package": lambda expert_id: client.get(
+        "/skills/oauth_flow/package", params=_owner(expert_id)
     ),
     "delete": lambda expert_id: client.delete(
         "/skills/oauth_flow", params=_owner(expert_id)
@@ -1661,6 +1912,7 @@ _SKILL_LAYER = {
         name="oauth_flow", description="d", body="b"
     ),
     "delete_user_skill": "oauth_flow",
+    "read_user_skill_package": SkillPackage(skill_md=_CANONICAL_SKILL_MD),
 }
 
 
@@ -1697,6 +1949,8 @@ def test_expert_skill_routes_refuse_an_expert_the_caller_does_not_own(
         ("upload", "store_user_skill"),
         ("read", "read_user_skill_with_body"),
         ("delete", "delete_user_skill"),
+        ("upload_package", "store_user_skill"),
+        ("download_package", "read_user_skill_package"),
     ],
 )
 def test_expert_skill_routes_forward_an_owned_expert(
@@ -1711,7 +1965,7 @@ def test_expert_skill_routes_forward_an_owned_expert(
         AsyncMock(return_value=True),
     )
     mocker.patch(
-        "backend.api.features.v1.list_user_skill_sibling_paths",
+        "backend.api.features.v1.list_user_skill_files",
         AsyncMock(return_value=[]),
     )
     target = mocker.patch(
@@ -1737,7 +1991,7 @@ def test_personal_autopilot_skill_routes_skip_the_expert_gate(
         AsyncMock(return_value=False),
     )
     mocker.patch(
-        "backend.api.features.v1.list_user_skill_sibling_paths",
+        "backend.api.features.v1.list_user_skill_files",
         AsyncMock(return_value=[]),
     )
     for name, value in _SKILL_LAYER.items():
