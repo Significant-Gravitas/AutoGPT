@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
 
 from .agent_browser import (
@@ -1296,7 +1297,7 @@ class TestCloseBrowserSession:
 class TestCloseBrowserDaemon:
     @pytest.mark.asyncio
     async def test_untouched_session_is_left_alone(self):
-        """`close` on a session with no daemon would START one; never do that."""
+        """No daemon to close: skip the subprocess on every non-browser turn."""
         from . import agent_browser as _mod
 
         _mod._touched_sessions.discard("never-sess")
@@ -1335,7 +1336,9 @@ class TestCloseBrowserDaemon:
         ) as mock_run:
             assert await close_browser_daemon("turn-sess") is True
 
-        mock_run.assert_called_once_with("turn-sess", "close", timeout=10)
+        mock_run.assert_called_once_with(
+            "turn-sess", "close", timeout=_mod._TURN_END_CLOSE_TIMEOUT
+        )
         assert "turn-sess" not in _mod._touched_sessions
         assert "turn-sess" not in _mod._alive_sessions
         assert "turn-sess" not in _mod._session_locks
@@ -1420,6 +1423,47 @@ class TestCloseBrowserDaemon:
 
         save.assert_not_awaited()
         assert not _mod._pending_saves.get("closing-sess")
+
+    def test_teardown_fits_inside_the_cancel_grace(self):
+        """Past the grace the worker re-cancels the turn task: the teardown
+        is interrupted before it reaps, and the cluster lock is released while
+        it is still running. The other turn cleanup shares the same window."""
+        from . import agent_browser as _mod
+
+        budget = _mod._SAVE_DRAIN_TIMEOUT + _mod._TURN_END_CLOSE_TIMEOUT
+        assert budget < _CANCEL_GRACE_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_a_cancel_during_setup_still_clears_the_closing_flag(self):
+        """Left set, the session would never persist state again on this pod."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("cancel-sess")
+        mutex = MagicMock()
+        mutex.__aenter__ = AsyncMock(side_effect=asyncio.CancelledError)
+        mutex.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(_mod, "_session_locks_mutex", mutex):
+            with pytest.raises(asyncio.CancelledError):
+                await close_browser_daemon("cancel-sess")
+
+        assert "cancel-sess" not in _mod._closing_sessions
+        assert "cancel-sess" not in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_session_deletion_forgets_the_session(self):
+        """The deletion path's own `close` records the session through `_run`;
+        without a discard afterwards every deleted session stays forever."""
+        from . import agent_browser as _mod
+
+        async def run(session_name, *_args, **_kwargs):
+            _mod._touched_sessions.add(session_name)
+            return _run_result(rc=0)
+
+        with patch("backend.copilot.tools.agent_browser._run", run):
+            await close_browser_session("deleted-sess")
+
+        assert "deleted-sess" not in _mod._touched_sessions
 
 
 # ---------------------------------------------------------------------------

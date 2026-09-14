@@ -163,9 +163,14 @@ _pending_saves: dict[str, set[asyncio.Task[None]]] = {}
 # start a new one that nothing will ever stop.
 _closing_sessions: set[str] = set()
 
-# Upper bound on waiting for a session's saves at teardown. Each save is
-# three commands with 10s timeouts run concurrently, so this is generous.
-_SAVE_DRAIN_TIMEOUT = 15
+# Turn-end teardown budget. Drain plus close must stay under the executor's
+# _CANCEL_GRACE_SECONDS (5s), with room for the rest of the turn's cleanup:
+# past the grace the worker re-cancels the turn task, the teardown never
+# reaps, and the cluster lock is released while it is still running. A save
+# slower than the drain is dropped; the next turn restores from the last one
+# that landed.
+_SAVE_DRAIN_TIMEOUT = 2
+_TURN_END_CLOSE_TIMEOUT = 2
 
 
 def _fire_and_forget_save(
@@ -408,16 +413,20 @@ async def close_browser_daemon(session_name: str) -> bool:
     """
     if session_name not in _touched_sessions:
         return False
-    _closing_sessions.add(session_name)
-    _alive_sessions.discard(session_name)
-    async with _session_locks_mutex:
-        _session_locks.pop(session_name, None)
     try:
+        # Inside the try so a cancellation on the mutex still reaches the
+        # finally; a session left in _closing_sessions never saves again.
+        _closing_sessions.add(session_name)
+        _alive_sessions.discard(session_name)
+        async with _session_locks_mutex:
+            _session_locks.pop(session_name, None)
         # The last tool call's save may still be running. It has to finish
         # first: it reads the daemon this is about to close, and if it ran
         # afterwards its `get url` would start a fresh one.
         await _drain_saves(session_name)
-        rc, _, stderr = await _run(session_name, "close", timeout=10)
+        rc, _, stderr = await _run(
+            session_name, "close", timeout=_TURN_END_CLOSE_TIMEOUT
+        )
         if rc != 0:
             logger.warning(
                 "[browser] close at turn end failed for session %s: %s",
@@ -478,6 +487,10 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
             session_name,
             exc_info=True,
         )
+    finally:
+        # After the close, not before: `_run` records the session again
+        # while sending it.
+        _touched_sessions.discard(session_name)
 
 
 # ---------------------------------------------------------------------------
