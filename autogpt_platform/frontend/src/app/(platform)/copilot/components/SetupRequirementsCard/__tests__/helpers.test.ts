@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { deriveAuthMethods } from "@/hooks/useCredentials";
+import type { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
   coerceCredentialFields,
   buildSiblingInputsFromCredentials,
@@ -36,6 +38,43 @@ describe("coerceCredentialFields", () => {
     expect(result.credentialFields).toHaveLength(1);
     expect(result.credentialFields[0][0]).toBe("cred1");
     expect(result.requiredCredentials.has("cred1")).toBe(true);
+  });
+
+  it("keeps device_code so device-auth providers are connectable", () => {
+    // `deriveAuthMethods` only shadows `oauth2` when `device_code` is present,
+    // and a device-code provider has no authorization-code flow to offer in
+    // its place, so this filter must pass `device_code` through.
+    const input = {
+      stripe_link_credentials: {
+        provider: "stripe_link",
+        types: ["device_code", "oauth2"],
+      },
+    };
+    const result = coerceCredentialFields(input);
+    expect(result.credentialFields).toHaveLength(1);
+    expect(result.credentialFields[0][1]).toMatchObject({
+      credentials_types: ["device_code", "oauth2"],
+    });
+  });
+
+  it("hands the card a payload that resolves to device auth, not OAuth", () => {
+    // Composed with the real `deriveAuthMethods`, no mocks: what this filter
+    // produces has to be what that consumer needs to route to device auth.
+    const { credentialFields } = coerceCredentialFields({
+      stripe_link_credentials: {
+        provider: "stripe_link",
+        type: "device_code",
+        types: ["device_code", "oauth2"],
+      },
+    });
+
+    const schema = credentialFields[0][1] as {
+      credentials_types: CredentialsType[];
+    };
+    const methods = deriveAuthMethods(schema.credentials_types);
+
+    expect(methods.supportsDeviceCode).toBe(true);
+    expect(methods.supportsOAuth2).toBe(false);
   });
 
   it("filters out invalid credential types", () => {

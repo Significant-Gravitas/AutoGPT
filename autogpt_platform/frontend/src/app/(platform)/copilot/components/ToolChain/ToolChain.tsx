@@ -23,17 +23,21 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { describeSendFailure } from "../ChatInput/helpers";
+import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { ChainRowView } from "./ChainRowView";
 import {
   type ChainRow,
   getChainHeading,
   isLiftedSetupRow,
+  isToolCallPending,
   markSupersededSubSessionRows,
   toChainRow,
 } from "./helpers";
@@ -46,8 +50,8 @@ interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
   /** Public share viewer: the chain renders as the owner saw it, but setup
-   *  cards and the Proceed draft are the owner's work — a reader gets no
-   *  Connect prompt and no write into the composer store. */
+   *  cards and Proceed are the owner's work — a reader gets no Connect
+   *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
 }
 
@@ -57,16 +61,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
-  const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
-  // Ids drafted by the last Proceed, plus the send count at that moment.
-  // Proceed only fills the composer, so the cards' onSent callbacks fire
-  // when the user actually sends — not when the draft is written.
-  const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
+  const { onSend } = useCopilotChatActions();
+  // The ref latches against a double effect run; the state re-renders Proceed.
+  const autoSentRef = useRef(false);
+  const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
-  // renders one Proceed that drafts everything into the chat input at once.
+  // renders one Proceed that sends everything as a single message.
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
@@ -90,15 +92,73 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [register, unregister],
   );
 
-  useEffect(
-    function notifyDraftedCardsOnSend() {
-      const drafted = draftedRef.current;
-      if (!drafted || sentMessageCount <= drafted.sentAt) return;
-      draftedRef.current = null;
-      drafted.ids.forEach((id) => actionEntries.get(id)?.onSent?.());
-    },
-    [sentMessageCount, actionEntries],
+  const pendingActions = [...actionEntries.values()];
+  const connectorRequests = pendingActions
+    .map((entry) => entry.connectors)
+    .filter((request) => request !== undefined);
+  const mcpRequests = pendingActions
+    .map((entry) => entry.mcp)
+    .filter((request) => request !== undefined);
+  const inputRequests = pendingActions
+    .map((entry) => entry.inputs)
+    .filter((request) => request !== undefined);
+  const questionRequests = pendingActions
+    .map((entry) => entry.questions)
+    .filter((request) => request !== undefined);
+  const needsManualProceed = pendingActions.some(
+    (entry) => entry.manualProceed,
   );
+  const hasCardWork =
+    connectorRequests.length > 0 ||
+    mcpRequests.length > 0 ||
+    inputRequests.length > 0 ||
+    questionRequests.length > 0;
+  const allActionsReady =
+    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
+  // One tool can need several accounts. The turn goes out once, when every
+  // card in the chain is satisfied — otherwise connecting the first provider
+  // sends while the rest of the rows are still visibly unconnected.
+  const justConnectedHere = pendingActions.some((entry) => entry.justConnected);
+  // A tool still awaiting its result may yet add a card to this chain, and the
+  // send is once-only — spending it now leaves that card unsendable. A stopped
+  // stream owes no more results, however its calls ended.
+  const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
+  const canAutoSend =
+    !readOnly &&
+    !awaitingToolResult &&
+    !autoSent &&
+    allActionsReady &&
+    !needsManualProceed &&
+    justConnectedHere;
+  // Nothing to sign in to and nothing to fill in: without a button this card
+  // has no way forward at all — a card that lands after the send is spent
+  // included. Only asks that build a message qualify — an MCP row builds none,
+  // so offering one there is a button that does nothing.
+  const offerProceed =
+    !readOnly &&
+    !awaitingToolResult &&
+    !canAutoSend &&
+    allActionsReady &&
+    (connectorRequests.length > 0 || inputRequests.length > 0);
+
+  useEffect(
+    function sendOnceEveryCardIsSatisfied() {
+      if (!canAutoSend || autoSentRef.current) return;
+      autoSentRef.current = true;
+      setAutoSent(true);
+      const message = pendingActions
+        .map((entry) => entry.buildMessage())
+        .filter(Boolean)
+        .join("\n\n");
+      if (!message) return;
+      pendingActions.forEach((entry) => entry.onSent?.());
+      sendReply(message);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
+    [canAutoSend],
+  );
+
+  useCredentialFailureCounters({ entries: actionEntries });
 
   const rows = useMemo(
     () =>
@@ -152,32 +212,26 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
-  const pendingActions = [...actionEntries.values()];
-  const connectorRequests = pendingActions
-    .map((entry) => entry.connectors)
-    .filter((request) => request !== undefined);
-  const mcpRequests = pendingActions
-    .map((entry) => entry.mcp)
-    .filter((request) => request !== undefined);
-  const inputRequests = pendingActions
-    .map((entry) => entry.inputs)
-    .filter((request) => request !== undefined);
-  const questionRequests = pendingActions
-    .map((entry) => entry.questions)
-    .filter((request) => request !== undefined);
-  const hasCardWork =
-    connectorRequests.length > 0 ||
-    mcpRequests.length > 0 ||
-    inputRequests.length > 0 ||
-    questionRequests.length > 0;
-  const allActionsReady =
-    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
+  // The cards are already gone by the time a send can fail — the user's
+  // message is appended optimistically and the chat's error banner offers
+  // Retry — so the failure only needs to be said out loud, and the toast
+  // points at the thread rather than the composer.
+  function sendReply(message: string) {
+    void Promise.resolve(onSend(message)).catch((error: unknown) =>
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(
+          error,
+          "it is still in the thread, use Retry to send it again",
+        ),
+        variant: "destructive",
+      }),
+    );
+  }
 
-  // Proceed never sends: it drafts the combined reply of every READY card
-  // into the chat input so the user reviews/edits and presses send
-  // themselves. Unready cards (e.g. an unconnected MCP server) are left
-  // out instead of blocking the ready ones. Cards stay registered until
-  // the message actually goes out, at which point their onSent fires.
+  // Proceed sends the combined reply of every READY card as one message,
+  // and their onSent callbacks fire at that moment. Unready cards (e.g. an
+  // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
     const message = readyActions
@@ -185,11 +239,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       .filter(Boolean)
       .join("\n\n");
     if (!message) return;
-    draftedRef.current = {
-      ids: readyActions.map((entry) => entry.id),
-      sentAt: sentMessageCount,
-    };
-    setInitialPrompt(message);
+    readyActions.forEach((entry) => entry.onSent?.());
+    sendReply(message);
   }
 
   return (
@@ -225,7 +276,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={!panelOpen ? ("" as unknown as boolean) : undefined}
+                inert={!panelOpen || undefined}
                 className="min-h-0 overflow-hidden"
               >
                 <div
@@ -343,6 +394,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
+            manualProceed={needsManualProceed || offerProceed}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />
@@ -355,8 +407,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             <span className="flex items-center gap-1.5 text-sm text-zinc-600">
               <Icon icon={SentIcon} size={16} className="text-zinc-400" />
               {allActionsReady
-                ? "Everything's filled in — send it to continue"
-                : "Complete the steps above, then send to continue"}
+                ? "Everything's filled in"
+                : "Complete the steps above to continue"}
             </span>
             <Button
               variant="primary"

@@ -47,6 +47,7 @@ class ResponseType(str, Enum):
     TOOL_INPUT_START = "tool-input-start"
     TOOL_INPUT_AVAILABLE = "tool-input-available"
     TOOL_OUTPUT_AVAILABLE = "tool-output-available"
+    TOOL_DISPLAY_AVAILABLE = "data-tool-display"
 
     # Other
     ERROR = "error"
@@ -198,6 +199,19 @@ class StreamToolInputAvailable(StreamBaseResponse):
     input: dict[str, Any] = Field(
         default_factory=dict, description="Tool input arguments"
     )
+
+
+class ToolDisplayData(BaseModel):
+    toolCallId: str
+    displayName: str
+
+
+class StreamToolDisplayAvailable(StreamBaseResponse):
+    """Resolved display name, retained as an AI SDK data part on replay."""
+
+    type: ResponseType = ResponseType.TOOL_DISPLAY_AVAILABLE
+    id: str
+    data: ToolDisplayData
 
 
 _MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB

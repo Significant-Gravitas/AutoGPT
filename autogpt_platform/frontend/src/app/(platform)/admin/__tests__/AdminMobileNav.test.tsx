@@ -43,7 +43,7 @@ vi.mock("next/link", () => ({
 }));
 
 import { AdminMobileNav } from "../components/AdminMobileNav/AdminMobileNav";
-import { adminNavItems } from "../components/AdminSidebar/helpers";
+import { getAdminNavItems } from "../components/AdminSidebar/helpers";
 
 describe("AdminMobileNav", () => {
   beforeEach(() => {
@@ -64,7 +64,7 @@ describe("AdminMobileNav", () => {
 
     expect(
       screen.getByRole("button", { name: /admin navigation/i }).textContent,
-    ).toContain(adminNavItems[0].label);
+    ).toContain(getAdminNavItems()[0].label);
   });
 
   it("opens a popover listing every admin section", async () => {
@@ -72,7 +72,7 @@ describe("AdminMobileNav", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /admin navigation/i }));
 
-    for (const { label } of adminNavItems) {
+    for (const { label } of getAdminNavItems()) {
       expect(
         await screen.findByRole("link", { name: new RegExp(label, "i") }),
       ).toBeDefined();

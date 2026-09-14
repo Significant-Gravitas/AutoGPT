@@ -3,6 +3,7 @@ import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   render,
   screen,
   cleanup,
@@ -107,19 +108,6 @@ vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
   ),
 }));
 
-vi.mock("@/components/atoms/Tooltip/BaseTooltip", () => ({
-  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS: "ARTIFACTS",
@@ -219,7 +207,36 @@ describe("ChatContainer", () => {
     cleanup();
     resetCopilotStore();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps usage tooltips hoverable and dismissible as the limit changes", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "Unsent draft" } });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.getByTestId("chat-input")).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("Unsent draft");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(input.parentElement!, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toBeDefined();
+    await act(async () => {});
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(consoleWarn.mock.calls.flat().join(" ")).not.toMatch(
+      /controlled|uncontrolled/,
+    );
+    consoleWarn.mockRestore();
   });
 
   it("renders the blurred usage-limit backdrop only when the limit is reached", () => {

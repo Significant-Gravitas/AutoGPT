@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
+from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
 from backend.data.notifications import (
@@ -23,6 +24,7 @@ from backend.data.notifications import (
     NotificationEventModel,
     NotificationResult,
     PassWorkEvent,
+    TrialUpdateData,
     get_notif_data_type,
 )
 from backend.data.user import (
@@ -42,6 +44,7 @@ from backend.notifications.queue import (
     create_notification_config,
     queue_notification_async,
 )
+from backend.notifications.trial import trial_notice_disposition
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel, discord_send_alert
@@ -194,6 +197,16 @@ class NotificationManager(AppService):
         event = self._parse_message(message)
         if not event:
             return False
+
+        if event.type == NotificationType.TRIAL_UPDATE:
+            data = TrialUpdateData.model_validate(event.data.model_dump())
+            disposition = await trial_notice_disposition(event.user_id, data)
+            if disposition == "obsolete":
+                return True
+            if disposition == "suppressed":
+                # Keep the claim: this queued message owns retries, not a new
+                # webhook publication. Exhausted retries use the shared DLQ.
+                raise RuntimeError("Trial notice is temporarily suppressed")
 
         preference = await get_database_manager_async_client(
             should_retry=False

@@ -219,7 +219,7 @@ async def test_setup_supplied_session_expert_never_graph_reattributes():
 
 @pytest.mark.asyncio
 async def test_setup_without_expert_creates_unattributed_preset():
-    """``expert_id=None`` means exactly that: an AutoPilot copilot session
+    """``expert_id=None`` means exactly that: an Otto copilot session
     must get an unattributed preset it can manage from its own scope, so this
     layer never infers an expert from the graph. Callers that want graph-match
     attribution (the HTTP route) resolve it themselves before calling in."""

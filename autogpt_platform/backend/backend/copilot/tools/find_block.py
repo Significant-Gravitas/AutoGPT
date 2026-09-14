@@ -48,7 +48,7 @@ COPILOT_EXCLUDED_BLOCK_IDS = {
     "3b191d9f-356f-482d-8238-ba04b6d18381",
     # AutoPilotBlock - has dedicated run_sub_session tool with async start +
     # poll lifecycle. Calling it via run_block would block the parent stream
-    # for the sub-AutoPilot's entire runtime (15-45+ min typical).
+    # for the sub-Otto's entire runtime (15-45+ min typical).
     "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
 }
 

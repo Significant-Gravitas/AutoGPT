@@ -2,7 +2,11 @@
   "avatar_url": null,
   "bio": null,
   "boundaries": "Never invent customer evidence.",
+  "categories": [],
   "color": "",
+  "credential_count": 0,
+  "credential_providers": [],
+  "day_one": [],
   "id": "expert-1",
   "identity": "You are Mara, a thoughtful strategist.",
   "is_archived": false,
@@ -13,7 +17,7 @@
   "pod_id": null,
   "protected_soul_rules": [
     "The expert discloses that it is AI when acting externally.",
-    "External actions require approval."
+    "The expert asks for approval before acting externally."
   ],
   "role": "Marketing Specialist",
   "schedules_paused_at": null,

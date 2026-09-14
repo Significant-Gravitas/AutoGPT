@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
@@ -26,8 +27,18 @@ from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.trial_cost_context import trial_cost_context
+from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.microsoft_365_copilot.service import (
+    stream_chat_completion_microsoft_365,
+)
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -42,6 +53,7 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
+    from backend.copilot.tree import TurnEnvelope
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
@@ -130,6 +142,21 @@ def sync_fail_close_session(
         future.cancel()
     except Exception as e:
         log.warning(f"sync fail-close mark_session_completed failed: {e}")
+
+
+def taint_for_source_platform(
+    envelope: "TurnEnvelope | None", session: "ChatSession"
+) -> "TurnEnvelope | None":
+    """Mark a turn tainted when its prompt came from a chat platform.
+
+    Those prompts are authored off-platform by someone who need not be the
+    account owner, so anything the turn spawns must inherit the bit. Taint
+    only ever rises, and a turn with no envelope stays that way rather than
+    having one invented for it.
+    """
+    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
 
 
 # ============ Mode Routing ============ #
@@ -496,6 +523,7 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        cost_context_stack = AsyncExitStack()
 
         try:
             from backend.copilot.model import get_chat_session
@@ -577,6 +605,45 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
                 log.info("Using Claude SDK with Codex subscription transport")
+            elif entry.llm_auth_provider == "microsoft_365_copilot":
+                if entry.user_id is None:
+                    raise RuntimeError("microsoft_365_copilot_user_required")
+                if entry.llm_credential_id is None:
+                    raise RuntimeError("microsoft_365_copilot_credential_required")
+                try:
+                    credential_lease = (
+                        await IntegrationCredentialsManager().acquire_lease(
+                            entry.user_id,
+                            entry.llm_credential_id,
+                        )
+                    )
+                    credentials = credential_lease.credentials
+                    required_scopes = set(
+                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
+                    )
+                    if (
+                        not isinstance(credentials, OAuth2Credentials)
+                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
+                        or not required_scopes.issubset(credentials.scopes)
+                    ):
+                        raise ValueError("invalid Microsoft 365 Copilot credential")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    # Only a missing or unusable credential is "not found";
+                    # a refresh failure or lock contention on a valid account
+                    # keeps its own cause so it is not reported as missing.
+                    code = (
+                        "microsoft_365_copilot_credential_not_found"
+                        if isinstance(error, ValueError)
+                        else "microsoft_365_copilot_credential_unavailable"
+                    )
+                    raise RuntimeError(code) from error
+                stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
+                log.info("Using Microsoft 365 Copilot Chat API transport")
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
@@ -613,20 +680,26 @@ class CoPilotProcessor:
                     )
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
+            await cost_context_stack.enter_async_context(
+                trial_cost_context(entry.user_id)
+            )
+
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
+            envelope = taint_for_source_platform(entry.envelope, session)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=entry.message or None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
                 model=entry.model,
                 permissions=entry.permissions,
+                envelope=envelope,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id
@@ -700,7 +773,7 @@ class CoPilotProcessor:
                             f"Failed to checkpoint Codex credential: {release_err}"
                         )
                     except Exception as release_err:
-                        log.error(f"Failed to release Codex credential: {release_err}")
+                        log.error(f"Failed to release chat credential: {release_err}")
             finally:
                 try:
                     await stream_registry.mark_session_completed(
@@ -708,3 +781,5 @@ class CoPilotProcessor:
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
+                finally:
+                    await cost_context_stack.aclose()
