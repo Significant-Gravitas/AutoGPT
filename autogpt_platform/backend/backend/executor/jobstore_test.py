@@ -3,12 +3,17 @@ import pickle
 import tempfile
 from contextlib import contextmanager
 from enum import Enum
+from unittest.mock import MagicMock, patch
 
+import pytest
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
 
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.jobstore_backfill import _strip_enums
+from backend.executor.scheduler import Jobstores, Scheduler
+
+_SCHEDULER_PATH = "backend.executor.scheduler"
 
 
 class _RemovedEnum(Enum):
@@ -54,15 +59,63 @@ def test_unrestorable_job_is_parked_not_deleted():
         assert _next_run_time(store, "good") is not None
 
 
-def test_upstream_jobstore_would_have_deleted_the_row():
-    """Control: pins the upstream behaviour this subclass exists to prevent."""
+def test_active_jobs_read_parks_the_row_then_stops_unpickling_it():
+    """The ``next_run_time IS NOT NULL`` listing path meets a poisoned row
+    first, because parking is what makes that column NULL."""
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="good")
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        _poison(store, "poisoned")
+        active = store.jobs_t.c.next_run_time.isnot(None)
+
+        assert [j.id for j in store._get_jobs(active)] == ["good"]
+        assert _ids(store) == {"good", "poisoned"}
+        assert _next_run_time(store, "poisoned") is None
+
+        with patch.object(
+            store, "_reconstitute_job", wraps=store._reconstitute_job
+        ) as restore:
+            assert [j.id for j in store._get_jobs(active)] == ["good"]
+        # The filter now excludes the parked row in SQL, so the second read
+        # never fetches it — one restore, for "good".
+        assert restore.call_count == 1
+
+
+def test_scheduler_listing_path_parks_an_unrestorable_schedule():
+    """The seam between the two fixes: the listing read is filtered at the SQL
+    level (#14439) and must still park rather than delete (#14218), so the
+    jobstore behind it has to be the resilient one."""
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        _poison(store, "poisoned")
+
+        with _scheduler_wired_to(store) as sched:
+            assert (
+                sched._execution_jobstore
+                is sched._persistent_jobstores[Jobstores.EXECUTION.value]
+            )
+            assert sched.get_execution_schedules() == []
+
+        assert _ids(store) == {"poisoned"}
+        assert _next_run_time(store, "poisoned") is None
+        # Parked by that very read, through this instance — not a second one
+        # the operator surface would be reporting on separately.
+        assert store._parked_ids == {"poisoned"}
+        assert sched.get_parked_jobs()[Jobstores.EXECUTION.value] == ["poisoned"]
+
+
+@pytest.mark.parametrize("filtered", [False, True], ids=["all", "active_only"])
+def test_upstream_jobstore_would_have_deleted_the_row(filtered: bool):
+    """Control: pins the upstream behaviour this subclass exists to prevent, on
+    both reads — including the active-only one the listing path now issues."""
     from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
     with _store(cls=SQLAlchemyJobStore) as (store, scheduler):
         scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
         _poison(store, "poisoned")
 
-        store._get_jobs()
+        conditions = (store.jobs_t.c.next_run_time.isnot(None),) if filtered else ()
+        store._get_jobs(*conditions)
 
         assert _ids(store) == set()
 
@@ -132,6 +185,36 @@ def _store(cls=ResilientSQLAlchemyJobStore):
     finally:
         scheduler.shutdown(wait=False)
         os.unlink(path)
+
+
+@contextmanager
+def _scheduler_wired_to(store):
+    """Run ``Scheduler.run_service`` far enough to wire *store* in as the
+    EXECUTION jobstore, with every other dependency stubbed out."""
+    spare = MagicMock(get_parked_job_ids=MagicMock(return_value=[]))
+    with (
+        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.load_dotenv"),
+        patch(f"{_SCHEDULER_PATH}._init_launchdarkly_for_scheduler"),
+        patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            side_effect=[store, spare],
+        ),
+        patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}._extract_schema_from_url",
+            return_value=("public", "sqlite://"),
+        ),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage"),
+        patch("backend.util.service.AppService.run_service"),
+    ):
+        sched = Scheduler(register_system_tasks=False)
+        sched.run_service()
+        sched._invalidate_jobs_cache()
+        yield sched
 
 
 def _poison(store, job_id: str) -> None:
