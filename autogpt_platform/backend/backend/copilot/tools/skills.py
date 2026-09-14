@@ -72,9 +72,8 @@ logger = logging.getLogger(__name__)
 MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
-# The body loads only on activation, so it costs nothing per turn. 50k
-# chars (~12k tokens) clears skill-creator's 33 KB SKILL.md, the package the
-# ecosystem points authors at.
+# Loaded only on activation, so it costs nothing per turn; 50k clears
+# skill-creator's 33 KB SKILL.md, the package authors are told to copy.
 MAX_BODY_CHARS = 50_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
 # so an unbounded list (or one huge trigger) would balloon the prefix
@@ -88,18 +87,14 @@ MAX_TRIGGER_CHARS = 64
 # bounded.  Enumeration fetches one more than this so a folder that exceeds
 # it is reported rather than silently truncated.
 MAX_PACKAGE_FILES = 100
-# Largest public package file is 237 KB, largest package 5.4 MB; these leave
-# room for a font or a template while keeping one hire-time install and one
-# activation's copy into the sandbox bounded.
+# Largest public package file is 237 KB and package 5.4 MB, so these leave
+# room for a font while keeping a hire-time install bounded.
 MAX_PACKAGE_FILE_BYTES = 2 * 1024 * 1024
 MAX_PACKAGE_BYTES = 20 * 1024 * 1024
-# The spec keeps references one level deep; 8 segments is generous for a
-# package and stops a path that is mostly directories.
+# The spec keeps references one level deep; 8 stops a path of directories.
 MAX_PACKAGE_PATH_DEPTH = 8
-# Package files are copied by fan-out wherever the destination tolerates it —
-# one E2B ``files.write`` is a 200 ms HTTP round trip, and a workspace read is
-# a blob fetch, so 60 of either in series is seconds of a turn.  Bounded so a
-# package cannot open 100 connections at once.
+# An E2B write is a 200 ms round trip and a workspace read a blob fetch, so
+# 60 of either in series is seconds of a turn.  Bounded, not unlimited.
 _COPY_CONCURRENCY = 16
 SKILL_FOLDER = "/skills"
 
@@ -133,8 +128,8 @@ _META_KIND_VALUE = "copilot_skill"
 _META_DESCRIPTION = "description"
 _META_TRIGGERS = "triggers"
 _META_VERSION = "version"
-# Package files only: the workspace has no mode bits, so a script's executable
-# bit survives store → copy → sandbox as this flag.
+# The workspace has no mode bits, so a script's executable bit survives
+# store → copy → sandbox as this flag.
 _META_EXECUTABLE = "executable"
 
 # Skill names are slug-like — lowercase letters, digits, dashes, underscores.
@@ -199,9 +194,8 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
-# Frontmatter the Agent Skills spec defines but the platform has no use for.
-# Dropping them rewrites a package author's SKILL.md on every store, so they
-# ride along untouched through parse and render.
+# Spec frontmatter the platform has no use for.  Dropping it rewrites the
+# author's SKILL.md on every store, so it rides through parse and render.
 _CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
 
 
@@ -830,11 +824,9 @@ async def store_user_skill(
             if files is not None
             else []
         )
-        # Siblings before the root: a failure part-way through leaves files
-        # without an indexed skill, never a skill the model reads and whose
-        # resources are not there.  Serially, because ``write_file`` checks
-        # the storage quota it is about to consume — concurrent writers all
-        # read the same pre-write usage and can overshoot it together.
+        # The root is what indexes the skill, so it goes last: a failure
+        # part-way leaves files without a skill, never the reverse.  Serial
+        # because ``write_file``'s quota check is read-then-write.
         existing_paths = {f.path for f in stale}
         written: set[str] = set()
         try:
@@ -852,10 +844,9 @@ async def store_user_skill(
                     ),
                 )
         except Exception:
-            # Undo the files this call created, so a package that fails
-            # part-way leaves nothing behind.  A file that was already there
-            # is left alone: its previous bytes are gone either way, and
-            # deleting it would turn a failed write into a lost file.
+            # Undo only what this call created: a file that was already
+            # there has lost its old bytes either way, and deleting it would
+            # turn a failed write into a lost file.
             await _delete_paths(manager, written - existing_paths)
             raise
         await manager.write_file(
@@ -1369,10 +1360,8 @@ async def _read_package_files(
     prefix = f"{folder}/{slug}/"
     infos = await _list_package_files(manager, folder, slug)
     if len(infos) > MAX_PACKAGE_FILES:
-        # A folder written before the cap existed, or by hand.  Copying it
-        # whole would fail validation and take the hire down with it, so take
-        # the cap's worth and say so — the same truncation ``read_skill``
-        # reports to the model.
+        # Written before the cap existed, or by hand.  Validating it whole
+        # would fail and take the hire down, so truncate as read_skill does.
         logger.warning(
             "[skills] package %s has more than %s files; copying the first %s",
             slug,
@@ -1715,9 +1704,8 @@ def _owner_label(expert_id: str | None) -> str:
 # bubblewrap directory locally.  The manifest records what each file hashed
 # to, so re-activating a skill in a later turn copies only what changed.
 _PACKAGE_MANIFEST = ".package.json"
-# A package that came in with its mode bits carries them on the row; one
-# written before that, or by a caller with no bits to give, still gets
-# ``scripts/`` marked, because that is where the spec puts runnables.
+# A package with no bits to give still gets ``scripts/`` marked, because
+# that is where the spec puts its runnables.
 _EXECUTABLE_PREFIX = "scripts/"
 
 
