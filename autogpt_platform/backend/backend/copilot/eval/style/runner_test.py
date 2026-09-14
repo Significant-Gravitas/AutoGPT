@@ -195,9 +195,11 @@ def test_wrong_spec_rows_pair_each_response_with_every_other_expert():
     experts = roster_experts()
     rows = [_row("Maria", 80.0), _row("Max", None, error="x")]
     crossed = wrong_spec_rows(rows, experts)
+    # Derived from the roster, not listed: a scored row pairs with every
+    # other expert's spec, so a literal pair set silently stops testing the
+    # "every other" part the moment the roster grows.
     assert {(r.expert, r.spec_expert) for r in crossed} == {
-        ("Maria", "Max"),
-        ("Maria", "Frankie"),
+        ("Maria", e.name) for e in experts if e.name != "Maria"
     }
     assert all(r.arm == "wrong_spec" and r.response == "hi" for r in crossed)
 
@@ -208,7 +210,7 @@ def test_the_generation_cost_is_counted_once_across_the_cross_spec_copies():
     usage = Usage(model="m", input_tokens=100, output_tokens=10, cost_usd=1.0)
     rows = [_row("Maria", 80.0, generation=usage)]
     rows += wrong_spec_rows(rows, roster_experts())
-    assert [r.generation for r in rows[1:]] == [None, None]
+    assert [r.generation for r in rows[1:]] == [None] * (len(roster_experts()) - 1)
     result = summarize(
         rows,
         roster_experts(["Maria"]),

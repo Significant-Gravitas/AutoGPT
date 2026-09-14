@@ -2,16 +2,16 @@
   "expert": "Maria",
   "workflows": [
     {
-      "name": "LinkedIn Post Generator",
-      "description": "Researches a topic and drafts LinkedIn post options in the requested tone."
-    },
-    {
-      "name": "Automated Blog Writer",
+      "name": "Automated SEO Blog Writer",
       "description": "Takes a topic and source links to a publish-ready SEO blog draft."
     },
     {
       "name": "AI Webpage Copy Improver",
       "description": "Rewrites a page's copy to read better and rank better in search."
+    },
+    {
+      "name": "YouTube Video to SEO Blog Writer",
+      "description": "Turns a video you already made into a long-form post built to rank."
     }
   ],
   "prompts": [
