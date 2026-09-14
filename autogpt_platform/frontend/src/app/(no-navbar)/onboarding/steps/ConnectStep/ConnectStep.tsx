@@ -6,13 +6,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
 import { MicrosoftCopilotProviderBox } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/MicrosoftCopilotProviderBox";
+import { UpcomingProviderBoxes } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/UpcomingProviderBoxes";
 import { ProviderBox } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/ProviderBox";
 import { useConnectStep } from "./useConnectStep";
-
-const UPCOMING = [
-  { name: "Grok", logoSrc: "/integrations/xai.webp" },
-  { name: "GitHub Copilot", logoSrc: "/integrations/github.png" },
-];
 
 /**
  * The last thing a self-host install asks for: a model to run on.
@@ -65,13 +61,7 @@ export function ConnectStep() {
             isLinked={isMicrosoftLinked}
             onSuccess={finishConnection}
           />
-          {UPCOMING.map((provider) => (
-            <ProviderBox
-              key={provider.name}
-              {...provider}
-              state="coming-soon"
-            />
-          ))}
+          <UpcomingProviderBoxes />
         </div>
 
         {isMicrosoftLinked && (

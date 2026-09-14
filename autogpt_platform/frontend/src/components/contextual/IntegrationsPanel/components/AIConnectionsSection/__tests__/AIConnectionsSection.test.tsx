@@ -451,8 +451,12 @@ describe("AIConnectionsSection", () => {
 
     render(<AIConnectionsSection />);
 
-    expect(await screen.findByText("GitHub Copilot and Grok")).toBeDefined();
-    expect(screen.getByText("Coming soon")).toBeDefined();
+    expect(await screen.findByText("GitHub Copilot")).toBeDefined();
+    expect(screen.getByText("Grok")).toBeDefined();
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", { name: /GitHub Copilot|Grok/ }),
+    ).toBeNull();
   });
 
   it("names the models each connection runs", async () => {

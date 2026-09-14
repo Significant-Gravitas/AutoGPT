@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { UpcomingProviderBoxes } from "./UpcomingProviderBoxes";
 import { ProviderBox } from "./ProviderBox";
 
 const meta = {
@@ -11,8 +12,8 @@ const meta = {
     state: "available",
   },
   decorators: [
-    (Story) => (
-      <div className="w-48">
+    (Story, context) => (
+      <div className={context.parameters.providerGrid ? "w-[40rem]" : "w-48"}>
         <Story />
       </div>
     ),
@@ -31,4 +32,23 @@ export const ComingSoon: Story = {
     logoSrc: "/integrations/github.png",
     state: "coming-soon",
   },
+};
+
+export const AllProviders: Story = {
+  parameters: { providerGrid: true },
+  render: () => (
+    <div className="grid grid-cols-4 gap-3">
+      <ProviderBox
+        name="ChatGPT"
+        logoSrc="/integrations/openai.png"
+        state="available"
+      />
+      <ProviderBox
+        name="Microsoft 365 Copilot"
+        logoSrc="/integrations/microsoft.webp"
+        state="available"
+      />
+      <UpcomingProviderBoxes />
+    </div>
+  ),
 };
