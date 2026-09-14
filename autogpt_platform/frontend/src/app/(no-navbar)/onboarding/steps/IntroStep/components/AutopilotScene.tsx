@@ -1,6 +1,6 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
 
@@ -25,7 +25,7 @@ export function AutopilotScene() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: EASE }}
       >
-        <AnimatedAutopilotAvatar status="done" size={120} trackPointer />
+        <AutopilotAvatar size={120} />
       </motion.div>
 
       <div className="flex flex-col items-center gap-3">

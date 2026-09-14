@@ -21,8 +21,13 @@ export function useNotionAvatarPicker({ name, color, onPick }: Args) {
   );
 
   // The colour was answered a beat ago, so shuffling the face leaves it alone.
+  // Marks stay off too: blush and freckles are something to opt into from the
+  // row, not something a generated face should arrive wearing.
   function shuffle() {
-    setConfig((current) => ({ ...randomNotionConfig(), color: current.color }));
+    setConfig((current) => ({
+      ...withoutMarks(randomNotionConfig()),
+      color: current.color,
+    }));
   }
 
   function cycle(category: NotionCategory, step: number) {
@@ -43,7 +48,11 @@ export function useNotionAvatarPicker({ name, color, onPick }: Args) {
 }
 
 function seedConfig(name: string, color: string | null): NotionAvatarConfig {
-  const seeded = notionConfigForName(name);
+  const seeded = withoutMarks(notionConfigForName(name));
   const token = colorForToken(color);
   return token ? { ...seeded, color: token } : seeded;
+}
+
+function withoutMarks(config: NotionAvatarConfig): NotionAvatarConfig {
+  return { ...config, parts: { ...config.parts, details: 0 } };
 }

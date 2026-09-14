@@ -1,11 +1,10 @@
 "use client";
 
-import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import {
   AUTOPILOT_AURA_COLORS,
   AUTOPILOT_DOT_COLOR,
 } from "@/components/molecules/AutopilotAvatar/helpers";
-import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
 import {
   animate,
   type AnimationPlaybackControls,
@@ -41,18 +40,10 @@ const SPLIT = {
 } as const;
 // A full tumble on the avatar's pitch axis, overlapping the fold so the
 // body is mid-flip as it becomes the dot.
-const TUMBLE = { duration: 0.45, ease: [0.32, 0.72, 0, 1] } as const;
 const REDUCED = { duration: 0.15 } as const;
 // The next stage starts this soon after the previous one begins, so the
 // stages overlap instead of waiting for each bounce to die down.
 const OVERLAP_MS = 120;
-
-const STATUS_BY_SCREEN: Record<OrbScreen, AvatarStatus> = {
-  rest: "idle",
-  recording: "idle",
-  processing: "working",
-  failed: "failed",
-};
 
 interface Props {
   screen: OrbScreen;
@@ -79,16 +70,9 @@ export function MicButton({
 
   const collapse = useMotionValue(0);
   const split = useMotionValue(0);
-  const pitch = useMotionValue(0);
-  // The avatar re-projects its face from this on every frame of a tumble.
-  const [pitchOffset, setPitchOffset] = useState(0);
   const [isFolding, setIsFolding] = useState(false);
 
   useEffect(() => {
-    if (reduceMotion) {
-      pitch.set(0);
-      setPitchOffset(0);
-    }
     const target = isRecording ? 1 : 0;
     if (collapse.get() === target && split.get() === target) {
       setIsFolding(false);
@@ -102,22 +86,12 @@ export function MicButton({
       running.push(controls);
       return controls;
     };
-    const tumble = (direction: 1 | -1) => {
-      if (reduceMotion) return;
-      running.push(
-        animate(pitch, direction === 1 ? Math.PI * 2 : 0, {
-          ...TUMBLE,
-          onUpdate: (value) => setPitchOffset(value),
-        }),
-      );
-    };
     const pause = () =>
       new Promise<void>((resolve) => {
         pauseTimer = setTimeout(resolve, OVERLAP_MS);
       });
     async function fold() {
       setIsFolding(true);
-      tumble(1);
       step(collapse, 1, COLLAPSE).then(() => {
         if (!cancelled) setIsFolding(false);
       });
@@ -130,7 +104,6 @@ export function MicButton({
       await pause();
       if (cancelled) return;
       setIsFolding(true);
-      tumble(-1);
       step(collapse, 0, COLLAPSE).then(() => {
         if (!cancelled) setIsFolding(false);
       });
@@ -141,7 +114,7 @@ export function MicButton({
       clearTimeout(pauseTimer);
       running.forEach((controls) => controls.stop());
     };
-  }, [isRecording, reduceMotion, collapse, split, pitch]);
+  }, [isRecording, reduceMotion, collapse, split]);
 
   const bodyScale = useTransform(collapse, [0, 1], [1, DOT / AVATAR_SIZE]);
   const bodyOpacity = useTransform(collapse, [0, 0.55, 1], [1, 1, 0]);
@@ -162,11 +135,7 @@ export function MicButton({
             willChange: "transform, opacity",
           }}
         >
-          <AnimatedAutopilotAvatar
-            status={STATUS_BY_SCREEN[screen]}
-            size={AVATAR_SIZE}
-            poseOffset={{ pitch: pitchOffset }}
-          />
+          <AutopilotAvatar size={AVATAR_SIZE} />
         </motion.div>
         <VoiceDots
           levels={levels}

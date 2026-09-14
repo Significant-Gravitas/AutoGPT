@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
@@ -25,7 +25,7 @@ export function PreparingStep({
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
       <div className="flex flex-col items-center gap-4">
-        <AnimatedAutopilotAvatar status="working" size={120} trackPointer />
+        <AutopilotAvatar size={120} />
         <Text variant="h4" className="text-center">
           <TypingText
             text="Preparing your workspace..."

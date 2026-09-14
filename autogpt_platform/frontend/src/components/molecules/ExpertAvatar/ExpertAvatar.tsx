@@ -5,9 +5,8 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
 import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +15,6 @@ interface Props {
   avatarUrl: string | null;
   color?: string | null;
   status?: AvatarStatus;
-  animated?: boolean;
   size?: number;
   className?: string;
 }
@@ -32,7 +30,6 @@ export function ExpertAvatar({
   avatarUrl,
   color,
   status = "idle",
-  animated = false,
   size = 40,
   className,
 }: Props) {
@@ -54,21 +51,11 @@ export function ExpertAvatar({
 
   const config = expertNotionConfig({ name, avatarUrl, color });
   if (config) {
-    const isStill = !animated && status === "idle";
-    return isStill ? (
+    return (
       <NotionAvatarImage
-        config={config}
-        size={size}
-        title={name}
-        className={className}
-      />
-    ) : (
-      <NotionAvatar
         config={config}
         status={status}
         size={size}
-        animated={animated}
-        showBadge={status !== "idle"}
         title={name}
         className={className}
       />

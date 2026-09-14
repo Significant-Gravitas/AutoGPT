@@ -1,12 +1,11 @@
-import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
-import type { AvatarStatus } from "@/components/molecules/NotionAvatar/expressions";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import {
   notionConfigForName,
   type NotionColorId,
 } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { motion } from "framer-motion";
-import { facing } from "../helpers";
 
 interface Member {
   name: string;
@@ -103,10 +102,6 @@ function depth(member: Member): number {
   return member.parent ? depth(BY_NAME[member.parent]) + 1 : 0;
 }
 
-function yawToward(member: Member): number {
-  return ((WIDTH / 2 - member.x) / WIDTH) * 40;
-}
-
 function branch(parent: Member): string {
   const kids = TEAM.filter((c) => c.parent === parent.name);
   const stemStart = parent.y + parent.size / 2;
@@ -177,23 +172,16 @@ export function TeamScene() {
               }}
             >
               {member.color ? (
-                <NotionAvatar
+                <NotionAvatarImage
                   config={{
                     ...notionConfigForName(member.name),
                     color: member.color,
                   }}
-                  status={member.status}
                   size={member.size}
-                  poseOffset={facing(yawToward(member))}
-                  showBadge={false}
+                  title={member.name}
                 />
               ) : (
-                <AnimatedAutopilotAvatar
-                  status={member.status}
-                  size={member.size}
-                  poseOffset={facing(yawToward(member))}
-                  trackPointer
-                />
+                <AutopilotAvatar size={member.size} />
               )}
             </motion.div>
           </foreignObject>

@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
-import { AnimatedAutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ProviderBox } from "./components/ProviderBox";
 import { useConnectStep } from "./useConnectStep";
 
@@ -34,7 +34,7 @@ export function ConnectStep() {
     <FadeIn>
       <div className="flex w-full max-w-2xl flex-col items-center gap-8 px-4">
         <div className="flex flex-col items-center gap-4 text-center">
-          <AnimatedAutopilotAvatar status="idle" size={120} trackPointer />
+          <AutopilotAvatar size={120} />
           <Text variant="h4" as="h1">
             Already paying for an AI subscription?
           </Text>

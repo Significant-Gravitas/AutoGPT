@@ -8,7 +8,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { Camera01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { ChangeEvent, useRef } from "react";
 import { useExpertAvatarButton } from "./useExpertAvatarButton";
@@ -48,11 +48,9 @@ export function ExpertAvatarButton({ expert }: Props) {
       >
         {avatarConfig ? (
           <span className="flex size-24 items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-background ring-4 ring-background">
-            <NotionAvatar
+            <NotionAvatarImage
               config={avatarConfig}
               size={96}
-              trackPointer
-              showBadge={false}
               title={expert.name}
             />
           </span>

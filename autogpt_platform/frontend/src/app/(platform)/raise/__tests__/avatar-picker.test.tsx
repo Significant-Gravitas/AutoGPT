@@ -131,6 +131,31 @@ test("opens on the face the expert's name seeds, in the colour they were given",
   expect(drawnAvatar()).toContain(".lavender");
 });
 
+function slotOf(feature: "details" | "hair") {
+  // Slots follow the draw order: face, nose, mouth, eyes, eyebrows, glasses,
+  // hair, accessories, details, beard.
+  const index = feature === "hair" ? 6 : 8;
+  return Number(drawnAvatar()!.split(".")[0].split("-")[index]);
+}
+
+test("opens with no marks, and shuffling does not add them", async () => {
+  await openGenerator();
+  expect(slotOf("details")).toBe(0);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await userEvent.click(screen.getByRole("button", { name: "Shuffle" }));
+    expect(slotOf("details")).toBe(0);
+  }
+});
+
+test("marks are still available from their own row", async () => {
+  await openGenerator();
+
+  await userEvent.click(screen.getByRole("button", { name: "Next marks" }));
+
+  await waitFor(() => expect(slotOf("details")).toBe(1));
+});
+
 test("shuffle changes the face but keeps the chosen colour", async () => {
   await openGenerator();
   const before = drawnAvatar();

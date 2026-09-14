@@ -5,7 +5,6 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
 import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
@@ -45,10 +44,12 @@ export function ExpertAvatar({
 
   const config = expertNotionConfig({ name, avatarUrl, color });
   if (config) {
-    return isSmall ? (
-      <NotionAvatarImage config={config} size={24} title={name} />
-    ) : (
-      <NotionAvatar config={config} size={36} showBadge={false} title={name} />
+    return (
+      <NotionAvatarImage
+        config={config}
+        size={isSmall ? 24 : 36}
+        title={name}
+      />
     );
   }
 

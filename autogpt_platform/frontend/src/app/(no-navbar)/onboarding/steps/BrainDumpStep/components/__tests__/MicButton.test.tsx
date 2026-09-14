@@ -56,24 +56,6 @@ vi.mock("../VoiceAura", () => ({
     </div>
   ),
 }));
-vi.mock(
-  "@/components/molecules/AutopilotAvatar/AnimatedAutopilotAvatar",
-  () => ({
-    AnimatedAutopilotAvatar: ({
-      status,
-      poseOffset,
-    }: {
-      status: string;
-      poseOffset: { pitch: number };
-    }) => (
-      <span
-        data-testid="face"
-        data-status={status}
-        data-pitch={poseOffset.pitch}
-      />
-    ),
-  }),
-);
 beforeEach(() => {
   vi.useFakeTimers();
   state.reduced = false;
@@ -119,30 +101,26 @@ describe("microphone folding", () => {
   it("folds into listening dots and unfolds to a neutral face", async () => {
     const { rerender } = render(<MicButton screen="rest" audioStream={null} />);
     rerender(<MicButton screen="recording" audioStream={null} />);
-    expect(state.animations.map((item) => item.target)).toEqual([
-      Math.PI * 2,
-      1,
-    ]);
+    expect(state.animations.map((item) => item.target)).toEqual([1]);
     expect(screen.getByTestId("fold-wave").getAttribute("data-active")).toBe(
       "yes",
     );
     await overlap();
-    expect(state.animations).toHaveLength(3);
-    await finish(state.animations.slice(0, 2));
+    expect(state.animations).toHaveLength(2);
+    await finish(state.animations.slice(0, 1));
     expect(screen.getByTestId("fold-wave").getAttribute("data-active")).toBe(
       "no",
     );
-    await finish(state.animations.slice(2));
+    await finish(state.animations.slice(1));
     expect(screen.getByTestId("fold-wave").getAttribute("data-active")).toBe(
       "no",
     );
     rerender(<MicButton screen="rest" audioStream={null} />);
     await overlap();
-    expect(state.animations.slice(3).map((item) => item.target)).toEqual([
-      0, 0, 0,
+    expect(state.animations.slice(2).map((item) => item.target)).toEqual([
+      0, 0,
     ]);
-    await finish(state.animations.slice(3));
-    expect(screen.getByTestId("face").getAttribute("data-pitch")).toBe("0");
+    await finish(state.animations.slice(2));
     expect(screen.getByTestId("fold-wave").getAttribute("data-active")).toBe(
       "no",
     );
@@ -153,7 +131,7 @@ describe("microphone folding", () => {
       <MicButton screen="recording" audioStream={null} />,
     );
     const folding = [...state.animations];
-    act(() => folding[1].value.set(0.5));
+    act(() => folding[0].value.set(0.5));
     rerender(<MicButton screen="rest" audioStream={null} />);
     await overlap();
     expect(folding.every((item) => item.stop.mock.calls.length === 1)).toBe(
@@ -162,37 +140,33 @@ describe("microphone folding", () => {
     expect(state.animations.filter((item) => item.target === 1)).toHaveLength(
       1,
     );
-    await finish(state.animations.slice(2));
-    expect(screen.getByTestId("face").getAttribute("data-pitch")).toBe("0");
+    await finish(state.animations.slice(1));
     unmount();
     expect(
       state.animations.every((item) => item.stop.mock.calls.length > 0),
     ).toBe(true);
   });
 
-  it("uses reduced-motion transitions and resets a partially turned face", async () => {
+  it("uses reduced-motion transitions for a fold already under way", async () => {
     const { rerender } = render(
       <MicButton screen="recording" audioStream={null} />,
     );
     act(() => {
-      state.animations[0].value.set(Math.PI);
-      state.animations[0].options.onUpdate?.(Math.PI);
-      state.animations[1].value.set(0.5);
+      state.animations[0].value.set(0.5);
     });
     state.reduced = true;
     rerender(<MicButton screen="rest" audioStream={null} />);
     await overlap();
     expect(
-      state.animations.slice(2).every((item) => item.options.duration === 0.15),
+      state.animations.slice(1).every((item) => item.options.duration === 0.15),
     ).toBe(true);
-    await finish(state.animations.slice(2));
-    expect(screen.getByTestId("face").getAttribute("data-pitch")).toBe("0");
+    await finish(state.animations.slice(1));
     rerender(<MicButton screen="recording" audioStream={null} />);
     await overlap();
     expect(
-      state.animations.slice(4).every((item) => item.options.duration === 0.15),
+      state.animations.slice(3).every((item) => item.options.duration === 0.15),
     ).toBe(true);
-    await finish(state.animations.slice(4));
+    await finish(state.animations.slice(3));
     const count = state.animations.length;
     state.reduced = false;
     rerender(<MicButton screen="recording" audioStream={null} />);

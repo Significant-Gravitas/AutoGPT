@@ -5,6 +5,8 @@ import {
   type NotionCategory,
 } from "./metadata.generated";
 import { NOTION_PARTS } from "./parts.generated";
+import { badgeMarkup } from "./statusBadge";
+import type { AvatarStatus } from "./status";
 
 // The artwork is drawn to the edge of its 1080 box, so a circular crop shears
 // off long hair. Scaling it down inside the disc keeps every hairstyle whole,
@@ -20,6 +22,8 @@ interface Options {
   idPrefix?: string;
   /** Omit the tinted disc, for callers that supply their own background. */
   transparent?: boolean;
+  /** Draws the status dot on the lower right. "idle" draws nothing. */
+  status?: AvatarStatus;
 }
 
 export function layerMarkup(
@@ -39,7 +43,12 @@ export function layerFill(category: NotionCategory): string | undefined {
 
 export function composeNotionAvatar(
   config: NotionAvatarConfig,
-  { size = VIEWBOX, idPrefix = "na", transparent = false }: Options = {},
+  {
+    size = VIEWBOX,
+    idPrefix = "na",
+    transparent = false,
+    status = "idle",
+  }: Options = {},
 ): string {
   const color = findNotionColor(config.color);
   const disc = transparent
@@ -56,6 +65,7 @@ export function composeNotionAvatar(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${VIEWBOX} ${VIEWBOX}" fill="none">`,
     disc,
     `<g transform="translate(${inset} ${inset + FRAME_OFFSET_Y}) scale(${FRAME_SCALE})">${layers}</g>`,
+    badgeMarkup(status, VIEWBOX),
     `</svg>`,
   ].join("");
 }

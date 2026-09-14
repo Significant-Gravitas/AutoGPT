@@ -24,7 +24,7 @@ import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
-import { NotionAvatar } from "@/components/molecules/NotionAvatar/NotionAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 
 import { SpendMeter } from "./components/SpendMeter";
@@ -110,10 +110,8 @@ export function ExpertTeamCard({
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">
             {avatarConfig ? (
               <span className="flex size-[5.5rem] items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-white ring-4 ring-white">
-                <NotionAvatar
+                <NotionAvatarImage
                   config={avatarConfig}
-                  status="idle"
-                  trackPointer
                   size={88}
                   title={expert.name}
                 />
