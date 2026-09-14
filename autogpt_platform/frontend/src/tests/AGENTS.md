@@ -109,8 +109,10 @@ test("shows error when submission fails", async () => {
 ```tsx
 // Example: Test component renders correctly
 render(<AgentCard title="My Agent" />);
-expect(screen.getByText("My Agent")).toBeInTheDocument();
+expect(screen.getByText("My Agent")).toBeDefined();
 ```
+
+Presence checks use `getBy*` (throws if missing) plus `toBeDefined()`. For absence, prefer `queryBy*` with `toBeNull()`. Do not use `toBeInTheDocument()` — `@testing-library/jest-dom` is not registered in this suite.
 
 ### ✅ Storybook Tests (Visual)
 
