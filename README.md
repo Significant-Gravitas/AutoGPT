@@ -114,14 +114,14 @@ The hosted Platform is a paid service with usage-based agent runs. [Compare plan
 The Linux and macOS single-container release installer is coming with the next
 appliance release. Until the public installer endpoint and image tags pass the
 [documented release gates](docs/platform/installer.md#maintainer-release-gates),
-use the [manual self-hosting guide](https://docs.agpt.co/platform/getting-started).
+use the [manual self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started).
 
 The release installer will require an already-running local Docker daemon using
 Linux containers on `amd64` or `arm64`. It pulls the published appliance and
 runs its immutable digest; it does not install Docker or build from source.
 Windows users should continue with the manual self-hosting guide for now.
 
-[Read the self-hosting guide →](https://docs.agpt.co/platform/getting-started)
+[Read the self-hosting guide →](https://docs.agpt.co/platform/self-hosting/getting-started)
 
 ---
 
