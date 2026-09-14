@@ -104,7 +104,7 @@ def __convert_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     elif isinstance(value, str):
-        if value.lower() in ["true", "1"]:
+        if value.strip().lower() in ["true", "1"]:
             return True
         else:
             return False
