@@ -154,9 +154,18 @@ _RESTORE_CONCURRENCY = 10
 # thousands of cookies; restoring them all would be slow and is rarely useful.
 _MAX_RESTORE_COOKIES = 100
 
-# Background tasks for fire-and-forget state persistence.
-# Prevents GC from collecting tasks before they complete.
-_background_tasks: set[asyncio.Task] = set()
+# Background state saves, per session, so teardown can wait for the ones
+# still running. Holding the task also stops GC collecting it mid-flight.
+_pending_saves: dict[str, set[asyncio.Task[None]]] = {}
+
+# Sessions whose daemon is being closed. A save scheduled now would send
+# `get url` to a daemon that is about to go, or, if it lands after the close,
+# start a new one that nothing will ever stop.
+_closing_sessions: set[str] = set()
+
+# Upper bound on waiting for a session's saves at teardown. Each save is
+# three commands with 10s timeouts run concurrently, so this is generous.
+_SAVE_DRAIN_TIMEOUT = 15
 
 
 def _fire_and_forget_save(
@@ -167,9 +176,33 @@ def _fire_and_forget_save(
     State save is already best-effort (errors are swallowed), so running it
     in the background avoids adding latency to tool responses.
     """
+    if session_name in _closing_sessions:
+        logger.debug(
+            "[browser] Skipping state save for session %s: closing", session_name
+        )
+        return
     task = asyncio.create_task(_save_browser_state(session_name, user_id, session))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    saves = _pending_saves.setdefault(session_name, set())
+    saves.add(task)
+    task.add_done_callback(saves.discard)
+
+
+async def _drain_saves(session_name: str) -> None:
+    """Wait for the session's in-flight saves so the last tool call's state
+    is on disk before the daemon that holds it is closed."""
+    saves = _pending_saves.pop(session_name, set())
+    if not saves:
+        return
+    _, still_running = await asyncio.wait(saves, timeout=_SAVE_DRAIN_TIMEOUT)
+    for task in still_running:
+        task.cancel()
+    if still_running:
+        logger.warning(
+            "[browser] %d state save(s) for session %s did not finish in %ss",
+            len(still_running),
+            session_name,
+            _SAVE_DRAIN_TIMEOUT,
+        )
 
 
 async def _has_local_session(session_name: str) -> bool:
@@ -375,9 +408,14 @@ async def close_browser_daemon(session_name: str) -> bool:
     """
     if session_name not in _touched_sessions:
         return False
+    _closing_sessions.add(session_name)
     _alive_sessions.discard(session_name)
     _session_locks.pop(session_name, None)
     try:
+        # The last tool call's save may still be running. It has to finish
+        # first: it reads the daemon this is about to close, and if it ran
+        # afterwards its `get url` would start a fresh one.
+        await _drain_saves(session_name)
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
             logger.warning(
@@ -395,6 +433,7 @@ async def close_browser_daemon(session_name: str) -> bool:
         # `_run` re-adds the session while sending `close`; nothing is
         # running for it now.
         _touched_sessions.discard(session_name)
+        _closing_sessions.discard(session_name)
     return True
 
 

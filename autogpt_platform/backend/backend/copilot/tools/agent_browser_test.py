@@ -16,6 +16,7 @@ from .agent_browser import (
     BrowserNavigateTool,
     BrowserScreenshotTool,
     _ensure_session,
+    _fire_and_forget_save,
     _has_local_session,
     _restore_browser_state,
     _save_browser_state,
@@ -44,6 +45,9 @@ def _reset_and_mock_state(monkeypatch):
 
     _mod._alive_sessions.clear()
     _mod._session_locks.clear()
+    _mod._touched_sessions.clear()
+    _mod._pending_saves.clear()
+    _mod._closing_sessions.clear()
     monkeypatch.setattr(
         "backend.copilot.tools.agent_browser._ensure_session", AsyncMock()
     )
@@ -53,6 +57,9 @@ def _reset_and_mock_state(monkeypatch):
     yield
     _mod._alive_sessions.clear()
     _mod._session_locks.clear()
+    _mod._touched_sessions.clear()
+    _mod._pending_saves.clear()
+    _mod._closing_sessions.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1363,6 +1370,56 @@ class TestCloseBrowserDaemon:
             assert await close_browser_daemon("bad-sess") is True
 
         assert "bad-sess" not in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_close_waits_for_a_pending_state_save(self):
+        """The save reads the daemon; run after the close, its `get url`
+        would start a new one that nothing stops."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("late-sess")
+        release = asyncio.Event()
+        order: list[str] = []
+
+        async def slow_save(*_):
+            await release.wait()
+            order.append("saved")
+
+        async def run(_session, *args, **_kwargs):
+            order.append(args[0])
+            return _run_result(rc=0)
+
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._save_browser_state",
+                slow_save,
+            ),
+            patch("backend.copilot.tools.agent_browser._run", run),
+        ):
+            _fire_and_forget_save("late-sess", "user1", make_session("late-sess"))
+            closing = asyncio.create_task(close_browser_daemon("late-sess"))
+            await asyncio.sleep(0.01)
+            assert order == [], "close must not run while a save is pending"
+            release.set()
+            assert await closing is True
+
+        assert order == ["saved", "close"]
+        assert "late-sess" not in _mod._pending_saves
+
+    @pytest.mark.asyncio
+    async def test_no_save_is_scheduled_once_the_session_is_closing(self):
+        from . import agent_browser as _mod
+
+        _mod._closing_sessions.add("closing-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._save_browser_state",
+            new_callable=AsyncMock,
+        ) as save:
+            _fire_and_forget_save("closing-sess", "user1", make_session())
+            await asyncio.sleep(0)
+
+        save.assert_not_awaited()
+        assert not _mod._pending_saves.get("closing-sess")
 
 
 # ---------------------------------------------------------------------------
