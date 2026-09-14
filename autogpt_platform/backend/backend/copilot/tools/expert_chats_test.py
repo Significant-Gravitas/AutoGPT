@@ -30,7 +30,12 @@ from backend.copilot.tools import (
     get_tool,
 )
 
-from .expert_chats import _MAX_PAGE_CHARS, ListExpertChatsTool, ReadExpertChatTool
+from .expert_chats import (
+    _MAX_MESSAGE_CHARS,
+    _MAX_PAGE_CHARS,
+    ListExpertChatsTool,
+    ReadExpertChatTool,
+)
 from .models import ErrorResponse, ExpertChatListResponse, ExpertChatTranscriptResponse
 
 _NOW = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
@@ -351,18 +356,62 @@ class TestReadPaging:
         self,
     ) -> None:
         result = await _read(self._long_chat())
-        assert sum(len(m.content) for m in result.messages) <= _MAX_PAGE_CHARS
-        assert [m.sequence for m in result.messages] == [3, 4, 5]
+        assert sum(len(m.content) for m in result.messages) == _MAX_PAGE_CHARS
+        assert all(len(m.content) == _MAX_MESSAGE_CHARS for m in result.messages)
+        assert [m.sequence for m in result.messages] == [2, 3, 4, 5]
         assert result.has_more is True
-        assert result.next_before_sequence == 3
+        assert result.next_before_sequence == 2
 
     @pytest.mark.asyncio
     async def test_the_reported_cursor_brings_the_dropped_rows_back(self) -> None:
         db = self._long_chat()
         first = await _read(db)
         older = await _read(db, before_sequence=first.next_before_sequence)
-        assert [m.sequence for m in older.messages] == [1, 2]
+        assert [m.sequence for m in older.messages] == [1]
         assert older.has_more is False
+        assert [m.sequence for m in older.messages + first.messages] == [1, 2, 3, 4, 5]
+
+    @pytest.mark.parametrize("limit", [3, 5, 50])
+    @pytest.mark.asyncio
+    async def test_following_every_cursor_preserves_each_visible_message_once(
+        self, limit: int
+    ) -> None:
+        messages = [
+            _msg(
+                sequence,
+                content="🧪" * [1, 1999, 2000, 2001, 2500][sequence % 5],
+                metadata={"hidden": sequence % 7 == 0},
+            )
+            for sequence in range(1, 24)
+        ]
+        db = _FakeChatDB(messages=messages)
+        pages: list[list[int]] = []
+        before_sequence = None
+        for _ in range(len(messages) + 1):
+            page = await _read(db, limit=limit, before_sequence=before_sequence)
+            assert isinstance(page, ExpertChatTranscriptResponse)
+            sequences = [message.sequence for message in page.messages]
+            assert sequences == sorted(sequences)
+            assert (
+                sum(len(message.content) for message in page.messages)
+                <= _MAX_PAGE_CHARS
+            )
+            assert all(
+                len(message.content) <= _MAX_MESSAGE_CHARS for message in page.messages
+            )
+            pages.append(sequences)
+            if not page.has_more:
+                break
+            assert page.next_before_sequence is not None
+            if before_sequence is not None:
+                assert page.next_before_sequence < before_sequence
+            before_sequence = page.next_before_sequence
+        else:
+            pytest.fail("pagination did not reach the beginning of the chat")
+
+        restored = [sequence for page in reversed(pages) for sequence in page]
+        assert restored == [sequence for sequence in range(1, 24) if sequence % 7]
+        assert len(restored) == len(set(restored))
 
     @pytest.mark.asyncio
     async def test_a_short_chat_says_so_instead_of_offering_a_cursor(self) -> None:
