@@ -198,6 +198,19 @@ test("the picked face and colour become the draft's answer, and the picker close
   expect(screen.queryByRole("button", { name: "Shuffle" })).toBeNull();
 });
 
+test("the cycle arrows carry no tooltip, which would cover the row above", async () => {
+  await openGenerator();
+
+  // The Button atom pops a tooltip for any icon-only button with an
+  // aria-label. Stacked this tightly, that tooltip lands on its neighbours.
+  // A tooltip trigger leaves data-state on the button it wraps.
+  for (const name of ["Next beard", "Previous beard", "Next hair"]) {
+    const button = screen.getByRole("button", { name });
+    expect(button.getAttribute("data-state")).toBeNull();
+    expect(button.getAttribute("aria-describedby")).toBeNull();
+  }
+});
+
 test("the colour is chosen in the picker and recolours the face", async () => {
   await openGenerator();
   expect(drawnAvatar()).toContain(".lavender");

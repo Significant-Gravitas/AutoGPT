@@ -81,6 +81,9 @@ export function NotionAvatarPicker({ name, color, onPick }: Props) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Previous ${CATEGORY_LABELS[category].toLowerCase()}`}
+                // The row is labelled inches away, so the tooltip says nothing
+                // new — and stacked this tightly it covers the row above.
+                withTooltip={false}
                 onClick={() => cycle(category, -1)}
               >
                 <Icon icon={ArrowLeft01Icon} size={16} />
@@ -89,6 +92,7 @@ export function NotionAvatarPicker({ name, color, onPick }: Props) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Next ${CATEGORY_LABELS[category].toLowerCase()}`}
+                withTooltip={false}
                 onClick={() => cycle(category, 1)}
               >
                 <Icon icon={ArrowRight01Icon} size={16} />
