@@ -478,6 +478,8 @@ async def _sync_preloads(
         where={"expertId": template_id}
     )
     existing_by_version = {w.storeListingVersionId: w for w in existing}
+    wanted: set[str] = set()
+    unresolved = False
     for preload in entry["preloads"]:
         version_id = (
             resolved_versions.get(preload["slug"])
@@ -489,7 +491,9 @@ async def _sync_preloads(
                 f"Store listing slug '{preload['slug']}' not found; "
                 f"skipping preload for expert '{entry['name']}'"
             )
+            unresolved = True
             continue
+        wanted.add(version_id)
         current = existing_by_version.get(version_id)
         if current is None:
             created = await prisma.models.ExpertWorkflow.prisma().create(
@@ -507,6 +511,48 @@ async def _sync_preloads(
                 where={"id": current.id},
                 data={"scheduleCron": preload["cron"]},
             )
+    await _prune_preloads(template_id, entry, existing, wanted, unresolved)
+
+
+async def _prune_preloads(
+    template_id: str,
+    entry: RosterEntry,
+    existing: list[prisma.models.ExpertWorkflow],
+    wanted: set[str],
+    unresolved: bool,
+) -> None:
+    """Drop template rows for workflows the roster no longer assigns.
+
+    Without this the sync is create-only, so moving a workflow from one
+    persona to another leaves it on both: the losing template keeps its row
+    and every later hire still installs it.
+
+    Template rows only — a hired copy is the user's, and deleting it would
+    take a workflow out of someone's team. Existing hires therefore keep the
+    workflow they were hired with, the same way ``_backfill_hired_copies``
+    leaves hire-owned fields alone. Template rows also carry no schedule
+    (``_install_preloads`` creates those per hire), so there is no live job
+    to detach first.
+
+    A slug that failed to resolve makes ``wanted`` incomplete, and pruning
+    against it would delete a row that is still assigned. Skip the pass
+    entirely in that case; ``_resolve_roster_preloads`` already fails the
+    whole seed before any template is touched, so this only guards the
+    ``resolved_versions=None`` path.
+    """
+    if unresolved:
+        logger.warning(
+            f"Skipping preload prune for expert '{entry['name']}': "
+            "at least one roster slug did not resolve"
+        )
+        return
+    stale = [w.id for w in existing if w.storeListingVersionId not in wanted]
+    if not stale:
+        return
+    await prisma.models.ExpertWorkflow.prisma().delete_many(where={"id": {"in": stale}})
+    logger.info(
+        f"Removed {len(stale)} stale template preload(s) from '{entry['name']}'"
+    )
 
 
 async def _resolve_roster_preloads() -> dict[str, str]:

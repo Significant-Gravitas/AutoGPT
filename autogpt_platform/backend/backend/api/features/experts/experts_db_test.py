@@ -3606,6 +3606,96 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_sync_preloads_drops_workflows_the_roster_reassigned(
+    server: SpinTestServer,
+):
+    """Moving a workflow to another persona must remove it from the losing
+    template. The sync used to be create-only, so the row survived and every
+    later hire still installed it."""
+    kept_id = await _seed_store_listing(server)
+    moved_id = await _seed_store_listing(server)
+    for slv_id in (kept_id, moved_id):
+        await _transfer_listing_to_official_creator(slv_id)
+    kept = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": kept_id}
+    )
+    moved = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": moved_id}
+    )
+    assert kept is not None and moved is not None
+
+    template = await _seed_template(name="Maria", preload_listings=[])
+    entry: seed.RosterEntry = {
+        "name": template.name,
+        "role": template.role,
+        "tagline": "",
+        "avatar_url": None,
+        "bio": "",
+        "bundled_skills": [],
+        "categories": [],
+        "identity": template.identity,
+        "preloads": [
+            {"slug": kept.slug, "cron": None},
+            {"slug": moved.slug, "cron": None},
+        ],
+    }
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {kept_id, moved_id}
+
+    entry["preloads"] = [{"slug": kept.slug, "cron": None}]
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {kept_id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_sync_preloads_keeps_rows_when_a_slug_does_not_resolve(
+    server: SpinTestServer,
+):
+    """An unresolved slug leaves the wanted set incomplete, so pruning
+    against it would delete a workflow the roster still assigns. The prune
+    must be skipped rather than run on partial data."""
+    slv_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(slv_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": slv_id}
+    )
+    assert listing is not None
+
+    template = await _seed_template(name="Maria", preload_listings=[])
+    entry: seed.RosterEntry = {
+        "name": template.name,
+        "role": template.role,
+        "tagline": "",
+        "avatar_url": None,
+        "bio": "",
+        "bundled_skills": [],
+        "categories": [],
+        "identity": template.identity,
+        "preloads": [{"slug": listing.slug, "cron": None}],
+    }
+    await seed._sync_preloads(template.id, entry)
+
+    entry["preloads"] = [{"slug": "no-such-listing-anywhere", "cron": None}]
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {slv_id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_backfills_presentation_fields_onto_hired_copies(
     server: SpinTestServer, test_user
 ):
