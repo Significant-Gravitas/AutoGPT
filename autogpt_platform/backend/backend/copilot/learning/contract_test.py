@@ -8,9 +8,8 @@ between exclusion and review are resolved in favour of the exclusion.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import pytest
+from pydantic import BaseModel, Field
 
 from .contract import (
     ApprovalCheckpoint,
@@ -29,8 +28,7 @@ from .contract import (
 SCOPE = LearningScope(user_id="user-1", expert_id="expert-1", owner_key="expert-1")
 
 
-@dataclass
-class _ReviewedSource:
+class _ReviewedSource(BaseModel):
     revision: str
     epoch: int = 0
     approved_revision: str | None = None
@@ -39,13 +37,12 @@ class _ReviewedSource:
     owner_key: str = "expert-1"
 
 
-@dataclass
-class FakeReviewedAdapter:
+class FakeReviewedAdapter(BaseModel):
     """An approval-aware source kind that lives entirely in this test."""
 
     kind: str = "fake_reviewed_item"
     requires_approval: bool = True
-    items: dict[str, _ReviewedSource] = field(default_factory=dict)
+    items: dict[str, _ReviewedSource] = Field(default_factory=dict)
 
     async def revalidate(
         self,

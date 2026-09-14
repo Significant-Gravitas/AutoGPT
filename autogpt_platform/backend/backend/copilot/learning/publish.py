@@ -438,7 +438,7 @@ async def write_committed_version(
             version=parsed.version,
             expert_id=version.expert_id,
             version_origin=None,
-            expected_head=ExpectedHead(version.id),
+            expected_head=ExpectedHead(version_id=version.id),
         )
     except SkillContentBlockedError as exc:
         await skill_publication_db().abandon_publication(

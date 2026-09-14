@@ -7,10 +7,10 @@ suppressions are exercised for real through ``FakeLearningStore``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.dream.llm import (
     CompletionUsage,
@@ -44,14 +44,15 @@ GOOD_BODY = (
 )
 
 
-@dataclass
-class UnitAdapter:
+class UnitAdapter(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     kind: str = KIND
     requires_approval: bool = False
     store: FakeLearningStore | None = None
-    spans: list[EvidenceSpan] = field(default_factory=list)
-    clipped: list[str] = field(default_factory=list)
-    on_load: list = field(default_factory=list)
+    spans: list[EvidenceSpan] = Field(default_factory=list)
+    clipped: list[str] = Field(default_factory=list)
+    on_load: list = Field(default_factory=list)
 
     async def revalidate(self, *, source_id, revision, scope, approval_event_id):
         assert self.store is not None

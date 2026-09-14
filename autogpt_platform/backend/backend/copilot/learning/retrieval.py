@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.db_accessors import skill_use_db, skill_versions_db
 from backend.data.redis_client import get_redis_async
@@ -38,8 +39,9 @@ def origin_label(origin: str, *, viewer_is_actor: bool = False) -> str:
     return label
 
 
-@dataclass(frozen=True)
-class IndexEntry:
+class IndexEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     name: str
     version: str | None
 

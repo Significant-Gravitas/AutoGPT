@@ -265,7 +265,7 @@ async def test_versioned_write_checks_the_head_inside_the_write_lock(
             description="d",
             body="## Steps\n1. go faster\n",
             version_origin="edited",
-            expected_head=ExpectedHead(None),
+            expected_head=ExpectedHead(version_id=None),
         )
     await store_user_skill(
         USER,
@@ -273,7 +273,7 @@ async def test_versioned_write_checks_the_head_inside_the_write_lock(
         description="d",
         body="## Steps\n1. go faster\n",
         version_origin="edited",
-        expected_head=ExpectedHead(v1.current_version_id),
+        expected_head=ExpectedHead(version_id=v1.current_version_id),
     )
     v2 = await fake_learning_store.get_head(USER, "personal", "deploy-notes")
     assert v2.current_version == 2
@@ -286,7 +286,7 @@ async def test_versioned_write_checks_the_head_inside_the_write_lock(
             description="d",
             body="## Steps\n1. stale bytes\n",
             version_origin=None,
-            expected_head=ExpectedHead(v1.current_version_id),
+            expected_head=ExpectedHead(version_id=v1.current_version_id),
         )
     assert conflict.value.actual == v2.current_version_id
     stored = workspace.files["/skills/deploy-notes/SKILL.md"].decode()
@@ -321,7 +321,7 @@ async def test_versioned_write_has_no_unlocked_fallback(workspace, fake_learning
                 description="d",
                 body="## Steps\n1. never written\n",
                 version_origin=None,
-                expected_head=ExpectedHead(head.current_version_id),
+                expected_head=ExpectedHead(version_id=head.current_version_id),
             )
     stored = workspace.files["/skills/deploy-notes/SKILL.md"].decode()
     assert "go on" in stored and "never written" not in stored

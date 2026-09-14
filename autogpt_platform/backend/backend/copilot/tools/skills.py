@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.learning.content_checks import (
@@ -422,8 +422,7 @@ class SkillUsePausedError(Exception):
     """Raised when a skill the owner stopped using is loaded."""
 
 
-@dataclass(frozen=True)
-class ExpectedHead:
+class ExpectedHead(BaseModel):
     """The tracked version a versioned write expects to still be current.
 
     ``version_id`` is ``None`` for a skill that has no tracked current
@@ -433,6 +432,8 @@ class ExpectedHead:
     human correction, or an editor submitting a stale base) can never put
     older bytes on top of a newer version.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     version_id: str | None
 

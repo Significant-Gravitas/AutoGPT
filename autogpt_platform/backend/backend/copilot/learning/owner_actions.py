@@ -79,7 +79,7 @@ async def apply_owner_edit(
             summary="Edited by the owner",
             keep_auto_improve=keep_auto_improve,
             allowed_pattern_classes=allowed_pattern_classes,
-            expected_head=ExpectedHead(expected_version_id),
+            expected_head=ExpectedHead(version_id=expected_version_id),
         )
     except SkillContentBlockedError as exc:
         return PublishOutcome(

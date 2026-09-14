@@ -24,8 +24,8 @@ _STOPWORDS = frozenset(
     "the a an and or to of in on for with then that this is are be as at by "
     "it its into from your you we our use using via each any all".split()
 )
-_STEP_LINE_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(.+)$")
-_TOKEN_RE = re.compile(r"[a-z0-9_]{2,}")
+_STEP_LINE_RE = re.compile(r"^(?:\d+[.)]|[-*•])\s+(\S.*)$")
+_TOKEN_RE = re.compile(r"[a-z0-9_]{2,}|\d")
 
 UNCERTAIN_EQUIVALENCE_THRESHOLD = 0.6
 
@@ -38,7 +38,7 @@ def behavior_tokens(body: str) -> list[str]:
     """
     steps = [
         match.group(1)
-        for match in (_STEP_LINE_RE.match(line) for line in body.splitlines())
+        for match in (_STEP_LINE_RE.match(line.strip()) for line in body.splitlines())
         if match
     ]
     text = "\n".join(steps) if steps else body
