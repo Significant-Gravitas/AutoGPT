@@ -82,6 +82,7 @@ async def _run(
         session_name,
         *args,
     ]
+    _touched_sessions.add(session_name)
     proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -128,6 +129,12 @@ async def _snapshot(session_name: str) -> str:
 # Module-level cache of sessions known to be alive on this pod.
 # Avoids the subprocess probe on every tool call within the same pod.
 _alive_sessions: set[str] = set()
+
+# Every session this pod has sent ANY agent-browser command for. The CLI
+# starts a daemon (and a Chromium tree) on first contact, including a mere
+# `get url` probe, so this is the set that can have left processes behind.
+# Cleared per session by close_browser_daemon at the end of a turn.
+_touched_sessions: set[str] = set()
 
 # Per-session locks to prevent concurrent _ensure_session calls from
 # triggering duplicate _restore_browser_state for the same session.
@@ -347,6 +354,48 @@ async def _ensure_session(
             return
         if await _restore_browser_state(session_name, user_id, session):
             _alive_sessions.add(session_name)
+
+
+async def close_browser_daemon(session_name: str) -> bool:
+    """Stop this pod's agent-browser daemon for *session_name* at turn end.
+
+    A daemon is one Chromium process tree, roughly 15 processes and most of
+    a gigabyte, and nothing else ever stops it: ``close_browser_session``
+    runs only on session deletion, from the API server, never on the
+    executor pod that owns the processes. Left alone, every browser turn a
+    pod serves adds a tree that outlives the turn, the session, and the
+    user, until the pod is OOM killed.
+
+    The persisted state file is deliberately kept. Cookies and storage are
+    saved to the workspace after every tool call and ``_ensure_session``
+    restores them on demand, so the next browser turn resumes where this one
+    left off, on whichever pod it lands.
+
+    Returns whether a close was attempted. Best-effort: never raises.
+    """
+    if session_name not in _touched_sessions:
+        return False
+    _alive_sessions.discard(session_name)
+    _session_locks.pop(session_name, None)
+    try:
+        rc, _, stderr = await _run(session_name, "close", timeout=10)
+        if rc != 0:
+            logger.warning(
+                "[browser] close at turn end failed for session %s: %s",
+                session_name,
+                stderr[:200],
+            )
+    except Exception:
+        logger.warning(
+            "[browser] Exception closing daemon for session %s",
+            session_name,
+            exc_info=True,
+        )
+    finally:
+        # `_run` re-adds the session while sending `close`; nothing is
+        # running for it now.
+        _touched_sessions.discard(session_name)
+    return True
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:

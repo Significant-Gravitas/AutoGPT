@@ -19,6 +19,7 @@ from .agent_browser import (
     _has_local_session,
     _restore_browser_state,
     _save_browser_state,
+    close_browser_daemon,
     close_browser_session,
 )
 from .models import (
@@ -1278,6 +1279,90 @@ class TestCloseBrowserSession:
         ):
             # Should not raise
             await close_browser_session("bad-sess")
+
+
+# ---------------------------------------------------------------------------
+# close_browser_daemon (turn-end teardown on the executor pod)
+# ---------------------------------------------------------------------------
+
+
+class TestCloseBrowserDaemon:
+    @pytest.mark.asyncio
+    async def test_untouched_session_is_left_alone(self):
+        """`close` on a session with no daemon would START one; never do that."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.discard("never-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            assert await close_browser_daemon("never-sess") is False
+
+        mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_any_command_marks_the_session_touched(self):
+        """A bare probe starts the daemon too, so `_run` itself must record it."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.discard("probe-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser.asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError,
+        ):
+            await _mod._run("probe-sess", "get", "url", timeout=5)
+
+        assert "probe-sess" in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_touched_session_is_closed_and_forgotten(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("turn-sess")
+        _mod._alive_sessions.add("turn-sess")
+        _mod._session_locks["turn-sess"] = asyncio.Lock()
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=0),
+        ) as mock_run:
+            assert await close_browser_daemon("turn-sess") is True
+
+        mock_run.assert_called_once_with("turn-sess", "close", timeout=10)
+        assert "turn-sess" not in _mod._touched_sessions
+        assert "turn-sess" not in _mod._alive_sessions
+        assert "turn-sess" not in _mod._session_locks
+
+    @pytest.mark.asyncio
+    async def test_persisted_state_is_kept(self):
+        """Unlike session deletion, turn end must leave the workspace state
+        file: the next browser turn restores cookies from it."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("keep-sess")
+        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr:
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_daemon("keep-sess")
+
+        mock_get_mgr.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_failure_is_swallowed_and_session_still_forgotten(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("bad-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("gone"),
+        ):
+            assert await close_browser_daemon("bad-sess") is True
+
+        assert "bad-sess" not in _mod._touched_sessions
 
 
 # ---------------------------------------------------------------------------
