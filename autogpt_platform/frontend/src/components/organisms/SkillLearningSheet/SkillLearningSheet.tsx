@@ -182,6 +182,8 @@ function SheetBody({
                     proposal={detail.open_decision}
                     current={detail.current_version ?? null}
                     draft={sheet.decisionDraft}
+                    hasPreviousDraft={sheet.hasPreviousDecisionDraft}
+                    onRecoverDraft={sheet.recoverDecisionDraft}
                     isBusy={sheet.isBusy}
                     onDraftChange={sheet.setDecisionDraft}
                     onDecide={sheet.decideProposal}

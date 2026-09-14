@@ -67,6 +67,9 @@ export function useSkillLearningSheet({
     query: { select: (res) => okData(res) ?? null },
   });
   const detail = detailQuery.data ?? null;
+  const previousDecision = Object.entries(state.decisions)
+    .reverse()
+    .find(([id, body]) => id !== detail?.open_decision?.id && body.trim());
   const selectedVersion = selectedVersionId
     ? ((detail?.versions ?? []).find(
         (version) => version.id === selectedVersionId,
@@ -200,6 +203,19 @@ export function useSkillLearningSheet({
         });
     },
     decisionDraft: state.decisions[detail?.open_decision?.id ?? ""] ?? "",
+    hasPreviousDecisionDraft: Boolean(previousDecision),
+    recoverDecisionDraft: () => {
+      const currentId = detail?.open_decision?.id;
+      if (!currentId || !previousDecision) return;
+      const [previousId, body] = previousDecision;
+      update((previous) => ({
+        decisions: {
+          ...previous.decisions,
+          [previousId]: "",
+          [currentId]: body,
+        },
+      }));
+    },
     setDecisionDraft: (body: string) => {
       const id = detail?.open_decision?.id;
       if (id)

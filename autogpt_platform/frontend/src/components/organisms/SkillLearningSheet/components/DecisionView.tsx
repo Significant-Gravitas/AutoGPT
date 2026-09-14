@@ -14,6 +14,8 @@ interface Props {
   proposal: SkillVersionSummary;
   current: SkillVersionSummary | null;
   draft: string;
+  hasPreviousDraft: boolean;
+  onRecoverDraft: () => void;
   isBusy: boolean;
   onDraftChange: (value: string) => void;
   onDecide: (versionId: string, action: DecisionRequestAction) => void;
@@ -23,6 +25,8 @@ export function DecisionView({
   proposal,
   current,
   draft,
+  hasPreviousDraft,
+  onRecoverDraft,
   isBusy,
   onDraftChange,
   onDecide,
@@ -56,6 +60,22 @@ export function DecisionView({
           </li>
         ))}
       </ul>
+      {hasPreviousDraft && !draft ? (
+        <div className="flex flex-col gap-2">
+          <Text variant="small" tone="secondary">
+            A newer proposal replaced the one you were editing. Your earlier
+            draft is saved.
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={isBusy}
+            onClick={onRecoverDraft}
+          >
+            Bring back my draft
+          </Button>
+        </div>
+      ) : null}
       <Input
         id={`decision-edit-${proposal.id}`}
         label="Edited alternative (optional)"

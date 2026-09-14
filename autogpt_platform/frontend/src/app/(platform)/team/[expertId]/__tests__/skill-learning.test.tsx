@@ -772,4 +772,13 @@ test("an edited alternative stays with its proposal when a new proposal arrives"
       .getByRole("button", { name: "Apply edited alternative" })
       .hasAttribute("disabled"),
   ).toBe(true);
+  await userEvent.click(
+    within(panel).getByRole("button", { name: "Bring back my draft" }),
+  );
+  expect(
+    within(panel).getByLabelText("Edited alternative (optional)"),
+  ).toHaveProperty("value", "1. Alternative for proposal one");
+  expect(
+    within(panel).queryByRole("button", { name: "Bring back my draft" }),
+  ).toBeNull();
 });
