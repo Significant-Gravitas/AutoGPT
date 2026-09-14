@@ -1,13 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { RefObject } from "react";
 import { StatusBadge } from "./components/StatusBadge";
-import {
-  FRAME_OFFSET_Y,
-  FRAME_SCALE,
-  haloFilter,
-  layerFill,
-  layerMarkup,
-} from "./compose";
+import { FRAME_OFFSET_Y, FRAME_SCALE, layerFill, layerMarkup } from "./compose";
 import type { AvatarStatus, Expression } from "./expressions";
 import {
   encodeNotionConfig,
@@ -109,16 +103,13 @@ export function NotionAvatarSvg({
           fill={color.disc}
         />
       )}
-      <defs dangerouslySetInnerHTML={{ __html: haloFilter(idPrefix, true) }} />
-      <g filter={`url(#${idPrefix}halo)`}>
-        <g
-          transform={`translate(${inset} ${inset + FRAME_OFFSET_Y}) scale(${FRAME_SCALE})`}
-        >
-          <g transform={headTransform(pose, VIEWBOX / 2)}>
-            {band(BEHIND)}
-            <g transform={featureTransform(pose)}>{band(FEATURES)}</g>
-            {band(IN_FRONT)}
-          </g>
+      <g
+        transform={`translate(${inset} ${inset + FRAME_OFFSET_Y}) scale(${FRAME_SCALE})`}
+      >
+        <g transform={headTransform(pose, VIEWBOX / 2)}>
+          {band(BEHIND)}
+          <g transform={featureTransform(pose)}>{band(FEATURES)}</g>
+          {band(IN_FRONT)}
         </g>
       </g>
       {showBadge ? (
