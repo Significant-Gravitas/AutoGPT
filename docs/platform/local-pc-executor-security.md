@@ -24,11 +24,11 @@ operation can execute.
 
 | Boundary | Enforcement |
 | --- | --- |
-| Pairing | Public-client OAuth with PKCE; the platform verifies user, client, and session ownership. Tokens are kept by the companion, not included in model prompts. |
+| Pairing | Public-client OAuth with PKCE; the platform verifies user, client, and session ownership. Companion keychain records bind deployment, client, and credential-bearing endpoints. Legacy unscoped tokens require reauthentication; redirects cannot forward credentials. |
 | Remote folder selection | One-level directory browsing returns expiring, connection-bound opaque references. A raw path supplied by a model is not a selection grant. |
 | Chat binding | A selected root grant binds machine, session, revision, canonical folder, and filesystem fingerprint. Reconnection cannot select a different execution target. |
-| Files | Each file operation validates its complete canonical path against the selected folder, including destinations that do not exist yet. |
-| Optional capabilities | Shell, computer use, clipboard, local models, and hardware require companion configuration. Platform flags or model output cannot enable them remotely. |
+| Files | Each file operation validates its complete canonical path, including missing destinations. Content operations check opened descriptors and reject non-regular or multi-linked files before reading/truncating. Moves never fall back to copying across filesystems. |
+| Optional capabilities | Shell, computer use, clipboard, and hardware require companion configuration. Platform flags or model output cannot enable them remotely. Local models and recording remain disabled previews. |
 | Computer use | An authenticated UI decision is scoped to the user, session, machine, and advertised capabilities. Tool registration and invocation check the relevant capability. |
 | Transport | Credential-bearing platform connections require HTTPS/WSS; plain HTTP/WS is reserved for explicit loopback development. |
 | Cleanup | Deletion removes the persisted chat before best-effort connection cleanup. Cleanup does not create a new executor connection. |
@@ -48,9 +48,10 @@ or an OS sandbox. In particular:
   a shell security boundary.
 - Desktop input can act in applications outside the selected folder, and
   screenshots can include unrelated information on the screen.
-- Canonical-path validation does not provide descriptor-based protection
-  against another local process replacing files or directory ancestors between
-  validation and use. Do not treat it as isolation from an attacker already
+- Descriptor checks reject existing hard-link aliases and unsafe content file
+  types, but do not provide complete protection against another local process
+  replacing directory ancestors, changing mounts, or adding links during use.
+  Do not treat it as isolation from an attacker already
   running as the same user, or use a workspace another untrusted local process
   can rewrite.
 - There is no independent credential broker, enforced network egress policy,
@@ -61,7 +62,11 @@ or an OS sandbox. In particular:
 Use a dedicated OS account or disposable VM for untrusted projects or commands.
 Keep shell and desktop control disabled when file access is sufficient.
 Workflow recording remains disabled in the companion until its complete
-capture, consent, interpretation, and review path is ready.
+capture, consent, interpretation, and review path is ready. Local-model routing
+also remains disabled: policy/proxy scaffolding is not connected to the chat
+service, and platform-to-producer cancellation is not integrated. Its dormant
+handler has request/output limits and idle/total deadlines; those are not proof
+that a remote inference server has terminated internal work.
 
 ## Required security regression checks
 
@@ -73,9 +78,13 @@ Before expanding access, verify these cases at the tool boundary:
    responses cannot select a folder. The UI clears invalid selection state.
 3. File writes and moves reject outside-root destinations reached through a
    dangling symlink or traversal through nonexistent parents.
+   Reads/writes reject existing hard links without accessing or truncating
+   their shared contents; failed cross-device moves preserve the destination.
 4. A screenshot or individual input grant does not authorize unrelated input
    actions. Revoked consent blocks subsequent calls.
 5. An insecure remote transport is rejected before credentials are sent.
+   Changed deployment/client/endpoints cannot reuse another scope's tokens;
+   legacy records and redirects cannot forward credentials implicitly.
 6. Failed session creation is compensated; a cleanup error after successful
    creation preserves the valid chat. Failed deletion does not detach it.
 

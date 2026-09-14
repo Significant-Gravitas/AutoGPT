@@ -1,10 +1,9 @@
-"""Local LLM routing gate for the copilot.
+"""Dormant local-model routing policy, not integrated into the chat service.
 
-When the user has a connected local PC shim AND the shim advertises a
-working local LLM backend AND the LaunchDarkly flag fires AND the per-
-(mode, tier) policy permits it, copilot turns get routed to the shim's
-``LOCAL_LLM_COMPLETION`` wire op instead of Anthropic / OpenRouter. The
-prompt + response never leave the user's machine.
+The companion keeps this capability disabled. The policy and wire proxy are
+scaffolding for a future end-to-end integration, including cancellation and
+explicit fallback semantics. Prompts and responses pass through the platform;
+using local inference would not hide that content from the deployment.
 
 See ``autogpt-local-executor/docs/LOCAL_LLM.md`` for the full
 spec — this module implements the activation gate described in
@@ -12,9 +11,8 @@ spec — this module implements the activation gate described in
 
 The router is intentionally a pure decision function (no SDK calls, no
 I/O beyond LD evaluation): it returns the model name to route to, or
-``None`` to fall back to cloud. The actual streaming integration lives
-in ``_LocalLLMProxy.complete()`` on ``LocalPCShim``; ``service.py``
-chains the two together via a small SSE-event adapter.
+``None`` to decline local routing. The streaming proxy exists on
+``LocalPCShim``; no runtime caller connects this policy to the chat service.
 """
 
 from __future__ import annotations

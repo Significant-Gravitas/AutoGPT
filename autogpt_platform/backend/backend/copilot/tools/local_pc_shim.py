@@ -1783,10 +1783,10 @@ class LocalPCShim(LocalPCExecutorMarker):
         and friends — see ``_ComputerProxy`` and
         ``autogpt-local-executor/docs/COMPUTER_USE.md``.
 
-    Local LLM surface:
+    Dormant local-model surface (not connected to the chat service):
         .local_llm.complete(...) (async iterator of deltas) and
-        .local_llm.complete_blocking(...) (string). Routed only when
-        ``LocalLLMRouter.should_route`` returns a model — see
+        .local_llm.complete_blocking(...) (string). The companion keeps
+        this capability disabled pending full integration — see
         ``local_llm_router.py`` and
         ``autogpt-local-executor/docs/LOCAL_LLM.md``.
 
