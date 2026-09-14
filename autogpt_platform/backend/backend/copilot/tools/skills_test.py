@@ -16,6 +16,8 @@ from backend.copilot.tools.skills import (
     MAX_BODY_CHARS,
     MAX_DESCRIPTION_CHARS,
     MAX_NAME_CHARS,
+    MAX_PACKAGE_BYTES,
+    MAX_PACKAGE_FILE_BYTES,
     MAX_PACKAGE_FILES,
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
@@ -28,7 +30,10 @@ from backend.copilot.tools.skills import (
     ParsedSkill,
     ReadSkillResponse,
     ReadSkillTool,
+    SkillFile,
     SkillNotFoundError,
+    SkillPackage,
+    SkillPackageError,
     StoreSkillResponse,
     StoreSkillTool,
     _list_user_skills_from_workspace,
@@ -43,6 +48,7 @@ from backend.copilot.tools.skills import (
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
+    validate_package,
 )
 
 # ---------------------------------------------------------------------------
@@ -271,6 +277,22 @@ class _FakeWorkspaceManager:
             if f"id-{path}" == file_id:
                 del self.files[path]
                 return
+
+
+class _FailingWorkspaceManager(_FakeWorkspaceManager):
+    """Fails the *fail_on*-th ``write_file``, so a package that dies
+    part-way can be checked for what it left behind."""
+
+    def __init__(self, fail_on: int):
+        super().__init__()
+        self.fail_on = fail_on
+        self.writes = 0
+
+    async def write_file(self, **kwargs):
+        self.writes += 1
+        if self.writes == self.fail_on:
+            raise RuntimeError("storage unavailable")
+        return await super().write_file(**kwargs)
 
 
 class _patch_skills_path:
@@ -1480,3 +1502,328 @@ async def test_read_skill_says_when_a_package_exceeds_the_cap():
     assert isinstance(result, ReadSkillResponse)
     assert len(result.files) == MAX_PACKAGE_FILES
     assert f"first {MAX_PACKAGE_FILES} package files" in result.message
+
+
+# ---------------------------------------------------------------------------
+# The package boundary: frontmatter carry-through, caps, whole-tree writes
+# ---------------------------------------------------------------------------
+
+# Verbatim frontmatter from ``anthropics/skills`` at 34040c9c56 —
+# ``skills/webapp-testing/SKILL.md`` and ``skills/pdf/SKILL.md``, the two
+# reference packages the ecosystem points authors at.  Both carry a
+# ``license`` the platform has no use for and must not eat.
+UPSTREAM_SKILL_MD = {
+    "webapp-testing": (
+        "---\n"
+        "name: webapp-testing\n"
+        "description: Toolkit for interacting with and testing local web"
+        " applications using Playwright. Supports verifying frontend"
+        " functionality, debugging UI behavior, capturing browser screenshots,"
+        " and viewing browser logs.\n"
+        "license: Complete terms in LICENSE.txt\n"
+        "---\n\n"
+        "# Web Application Testing\n"
+    ),
+    "pdf": (
+        "---\n"
+        "name: pdf\n"
+        "description: Use this skill whenever the user wants to do anything"
+        " with PDF files. This includes reading or extracting text/tables from"
+        " PDFs, combining or merging multiple PDFs into one, splitting PDFs"
+        " apart, rotating pages, adding watermarks, creating new PDFs, filling"
+        " PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on"
+        " scanned PDFs to make them searchable. If the user mentions a .pdf"
+        " file or asks to produce one, use this skill.\n"
+        "license: Proprietary. LICENSE.txt has complete terms\n"
+        "---\n\n"
+        "# PDF Processing Guide\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("slug", sorted(UPSTREAM_SKILL_MD))
+def test_upstream_frontmatter_survives_a_round_trip(slug):
+    """A real package's SKILL.md must come back out of the platform the way
+    it went in. ``license`` is dropped by a parser that only knows our own
+    fields, which silently rewrites the author's file on every store."""
+    original = parse_skill_markdown(UPSTREAM_SKILL_MD[slug])
+    assert original is not None
+    assert original.extra["license"]
+
+    rendered = render_skill_markdown(original)
+    reparsed = parse_skill_markdown(rendered)
+    assert reparsed is not None
+    assert reparsed.extra == original.extra
+    assert reparsed.description == original.description
+    # Byte-stable from the first render on: a second pass changes nothing.
+    assert render_skill_markdown(reparsed) == rendered
+
+
+def test_every_spec_frontmatter_field_is_carried():
+    raw = (
+        "---\n"
+        "name: kitchen-sink\n"
+        "description: all four spec fields\n"
+        "license: Apache-2.0\n"
+        "compatibility: claude-code >=2.0\n"
+        "allowed-tools:\n"
+        "  - Bash\n"
+        "  - Read\n"
+        "metadata:\n"
+        "  author: someone\n"
+        "---\n"
+        "body\n"
+    )
+    parsed = parse_skill_markdown(raw)
+    assert parsed is not None
+    assert parsed.extra == {
+        "license": "Apache-2.0",
+        "compatibility": "claude-code >=2.0",
+        "allowed-tools": ["Bash", "Read"],
+        "metadata": {"author": "someone"},
+    }
+    assert parse_skill_markdown(render_skill_markdown(parsed)).extra == parsed.extra
+
+
+def test_a_body_the_reference_package_needs_is_accepted():
+    """skill-creator's SKILL.md is 33,168 bytes and is what the ecosystem
+    tells authors to copy; the old 20,000-char cap refused it."""
+    assert MAX_BODY_CHARS >= 33_168
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "../escape.md",
+        "/absolute.md",
+        "scripts/../../escape.md",
+        "scripts//double.md",
+        "./here.md",
+        ".hidden/secret.md",
+        "scripts/.hidden",
+        "windows\\path.md",
+        "nul\x00byte.md",
+        "SKILL.md",
+        "a/b/c/d/e/f/g/h/i.md",
+        "spaces are out.md",
+    ],
+)
+def test_validate_package_refuses_an_unsafe_path(relative_path):
+    with pytest.raises(SkillPackageError) as exc:
+        validate_package(
+            SkillPackage(
+                skill_md="---\nname: a\ndescription: b\n---\nbody\n",
+                files=[SkillFile(relative_path=relative_path, content=b"x")],
+            )
+        )
+    assert relative_path[:120] in str(exc.value)
+    assert not exc.value.over_limit
+
+
+def test_validate_package_refuses_a_duplicate_path():
+    with pytest.raises(SkillPackageError, match="appears twice"):
+        validate_package(
+            SkillPackage(
+                skill_md="---\nname: a\ndescription: b\n---\nbody\n",
+                files=[
+                    SkillFile(relative_path="a.md", content=b"1"),
+                    SkillFile(relative_path="a.md", content=b"2"),
+                ],
+            )
+        )
+
+
+def test_validate_package_accepts_a_nested_skill_md_as_a_file():
+    """The spec lets a package ship an example SKILL.md. Only the root one
+    is special, and it travels as ``skill_md``."""
+    validate_package(
+        SkillPackage(
+            skill_md="---\nname: a\ndescription: b\n---\nbody\n",
+            files=[
+                SkillFile(relative_path="references/examples/SKILL.md", content=b"x"),
+                SkillFile(relative_path="scripts/with_server.py", content="print(1)"),
+            ],
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "files, expected",
+    [
+        (
+            [SkillFile(relative_path=f"r{i}.md", content=b"x") for i in range(101)],
+            f"package has 101 files; the limit is {MAX_PACKAGE_FILES}",
+        ),
+        (
+            [
+                SkillFile(
+                    relative_path="big.bin", content=b"x" * (MAX_PACKAGE_FILE_BYTES + 1)
+                )
+            ],
+            f"file 'big.bin' is {MAX_PACKAGE_FILE_BYTES + 1} bytes; "
+            f"the limit is {MAX_PACKAGE_FILE_BYTES}",
+        ),
+        (
+            [
+                SkillFile(relative_path=f"b{i}.bin", content=b"x" * 2 * 1024 * 1024)
+                for i in range(10)
+            ],
+            f"the limit is {MAX_PACKAGE_BYTES}",
+        ),
+    ],
+    ids=["file-count", "file-size", "package-size"],
+)
+def test_validate_package_names_the_field_and_the_number(files, expected):
+    with pytest.raises(SkillPackageError) as exc:
+        validate_package(
+            SkillPackage(
+                skill_md="---\nname: a\ndescription: b\n---\nbody\n", files=files
+            )
+        )
+    assert expected in str(exc.value)
+    assert exc.value.over_limit
+
+
+@pytest.mark.asyncio
+async def test_an_over_cap_package_writes_nothing():
+    """Validation runs over the whole package before the first write, so a
+    refusal leaves the workspace exactly as it was."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillPackageError, match="the limit is 100"):
+            await store_user_skill(
+                "user-1",
+                name="big",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(relative_path=f"r{i}.md", content=b"x")
+                    for i in range(MAX_PACKAGE_FILES + 1)
+                ],
+            )
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_package_writes_its_files_before_its_skill_md():
+    """The SKILL.md is what puts a skill in <available_skills>, so it goes
+    last: the model never reads a skill whose resources are not there yet."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake):
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path="references/a.md", content="alpha"),
+                SkillFile(
+                    relative_path="scripts/run.py", content=b"x", is_executable=True
+                ),
+            ],
+        )
+    assert list(fake.files) == [
+        "/skills/pkg/references/a.md",
+        "/skills/pkg/scripts/run.py",
+        "/skills/pkg/SKILL.md",
+    ]
+    assert fake.files["/skills/pkg/references/a.md"] == b"alpha"
+    assert fake.metadata["/skills/pkg/scripts/run.py"] == {"executable": True}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_file_write_leaves_no_skill_and_no_tree():
+    fake = _FailingWorkspaceManager(fail_on=3)
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            await store_user_skill(
+                "user-1",
+                name="pkg",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(relative_path=f"r{i}.md", content=b"x") for i in range(4)
+                ],
+            )
+        assert await _list_user_skills_from_workspace("user-1") == []
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_re_storing_with_fewer_files_removes_the_orphans():
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake):
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path="keep.md", content=b"1"),
+                SkillFile(relative_path="scripts/gone.py", content=b"2"),
+            ],
+        )
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b2",
+            files=[SkillFile(relative_path="keep.md", content=b"3")],
+        )
+    assert set(fake.files) == {"/skills/pkg/keep.md", "/skills/pkg/SKILL.md"}
+    assert fake.files["/skills/pkg/keep.md"] == b"3"
+
+
+@pytest.mark.asyncio
+async def test_a_single_file_store_leaves_an_existing_package_alone():
+    """``store_skill`` — the model's own tool — passes no files. It must
+    rewrite the body without deleting the package it belongs to."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake):
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="scripts/run.py", content=b"1")],
+        )
+        await store_user_skill("user-1", name="pkg", description="d", body="new body")
+    assert "/skills/pkg/scripts/run.py" in fake.files
+    assert b"new body" in fake.files["/skills/pkg/SKILL.md"]
+
+
+@pytest.mark.asyncio
+async def test_a_stored_executable_flag_reaches_the_sandbox_copy():
+    """A package file outside ``scripts/`` is only runnable if the bit it
+    arrived with survives the store."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(
+                    relative_path="bin/tool", content=b"#!/bin/sh\n", is_executable=True
+                ),
+                SkillFile(relative_path="bin/data.txt", content=b"plain"),
+            ],
+        )
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        assert isinstance(result, ReadSkillResponse)
+        package_dir = os.path.join(patched.workdir, "skills", "pkg")
+        assert os.stat(os.path.join(package_dir, "bin", "tool")).st_mode & 0o111
+        assert not os.stat(os.path.join(package_dir, "bin", "data.txt")).st_mode & 0o111
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_a_tree_bigger_than_the_cap():
+    """A folder written before the cap existed still has to be removable —
+    enumeration that stops at the cap would strand the rest."""
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES + 5)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}
