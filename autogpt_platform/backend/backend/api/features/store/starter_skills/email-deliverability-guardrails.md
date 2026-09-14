@@ -15,8 +15,12 @@ Most deliverability problems are list problems wearing a technical costume.
 
 - Send only to people who asked. A purchased or scraped list damages the domain
   permanently, and no configuration fixes it.
-- Anything older than about six months without an open is a risk, not an
-  audience. Suppress it or run a single re-permission email first.
+- Judge engagement on clicks, replies, purchases and product activity, never on
+  opens alone — see below for why opens do not mean what they used to. A
+  contact with none of those for about six months is a risk, not an audience.
+- Never suppress on silence alone. Send one re-permission email first and
+  suppress only the people who do not answer it. A quiet subscriber who still
+  buys is not a dead address.
 - Remove hard bounces immediately and permanently. Repeated sends to dead
   addresses are the clearest spam signal there is.
 - Watch complaints, not opens. Open rates have been unreliable since mail
@@ -43,6 +47,20 @@ engaged people first, in small volumes, for a few weeks.
 Change one thing at a time and wait. Check in this order: complaint rate, then
 list age, then whether the sending volume jumped, then authentication, then
 content. Blaming the copy first is the common mistake and rarely the cause.
+
+## What to hand back
+
+A go or a no-go on the send, in the first line, and nothing softer than those
+two words. Then:
+
+- **Blockers** — what makes it a no-go, each with the evidence behind it (the
+  complaint rate, the list's origin, the missing DMARC record) and the specific
+  correction that clears it.
+- **Warnings** — what will not stop this send but will degrade the next one.
+- **What you could not check** — the data you would have needed. Say so plainly
+  rather than passing an unverified item as clear.
+
+A go with three unstated caveats is a no-go that nobody noticed.
 
 ## What not to do
 

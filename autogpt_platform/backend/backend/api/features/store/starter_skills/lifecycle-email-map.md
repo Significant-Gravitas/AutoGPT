@@ -32,8 +32,11 @@ rather than filling the gap with a timed send.
 
 Space sends by what the person is doing, not by a fixed calendar. Day 1, day 3,
 day 7 is a default that fits nobody. Anchor each send to its trigger and set a
-maximum: no more than one automated email in any 48 hours, and any behavioural
-send cancels the rest of the queue.
+maximum: no more than one automated email in any 48 hours.
+
+A behavioural send cancels only the queued emails that the action makes
+redundant, never the whole sequence. Someone who has just activated should stop
+receiving "you haven't started yet" and still receive the week-two email.
 
 ## Writing each one
 

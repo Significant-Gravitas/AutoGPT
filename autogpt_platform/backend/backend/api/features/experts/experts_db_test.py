@@ -18,6 +18,7 @@ import pytest
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import (
+    EXPERT_DAY_ONE_MAX_ITEMS,
     ExpertBundledSkill,
     ExpertDayOneItem,
     ExpertSoulFieldsPatch,
@@ -219,10 +220,15 @@ async def _load_roster_store_assets() -> dict[str, str]:
     published under the official creator — the exact data ``load-store-agents``
     deploys. Idempotent: the loaders skip rows that already exist.
 
+    Also seeds the starter skills, because the roster bundles them and
+    ``_resolve_roster_skills`` fails the whole seed when a bundled slug has no
+    Skills Hub listing — the same ordering a deploy has to follow.
+
     Returns slug -> the CSV's StoreListingVersion id, the version a hire is
     expected to install. A ROSTER slug with no checked-in asset fails here
     instead of being silently substituted by a synthetic listing.
     """
+    await skill_seed.seed_starter_skills()
     await store_assets.create_user_and_profile(db_client)
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
@@ -3057,24 +3063,33 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     upsert.assert_not_awaited()
 
 
-def test_roster_day_one_is_marias_three_rows_and_hidden_for_the_rest():
+def test_roster_day_one_is_marias_two_rows_and_hidden_for_the_rest():
+    """Only Maria promises day-one work, and only work she can do unaided.
+
+    A dated promise needs a cadence behind it, and the only two roster
+    cadences sit on a workflow whose required inputs make
+    ``create_workflow_schedule`` refuse the schedule at hire — so every
+    other persona's rows stay empty rather than promising a delivery the
+    hire flow cannot make."""
     day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
 
     assert [(item.title, item.timing) for item in day_one["Maria"]] == [
-        ("Social listening on your brand", "first scan · 1 hr"),
-        ("Morning briefing, in your Slack", "tomorrow · 9 AM"),
-        ("Two-week content calendar", "day 1"),
+        ("A brief before the draft", "day 1"),
+        ("Your money pages, audited", "day 1"),
     ]
-    # Max's and Frankie's rows are the roster owner's to write.
-    assert day_one["Max"] == []
-    assert day_one["Frankie"] == []
+    for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
+        assert day_one[name] == [], name
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
     maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
     too_many = maria.copy()
-    too_many["day_one"] = [*maria["day_one"], maria["day_one"][0]]
+    # One past the cap, however many rows the roster currently gives her —
+    # deriving the list from len(maria["day_one"]) + 1 made this test pass
+    # silently (and then fail on a MagicMock await) the moment her row count
+    # dropped below the cap.
+    too_many["day_one"] = [maria["day_one"][0]] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
 
     with (
         patch.object(prisma.models.Expert, "prisma") as expert_client,
