@@ -124,7 +124,8 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
     """
     try:
         if not plaintext_key.startswith(APIKeySmith.PREFIX):
-            logger.warning("Invalid API key format")
+            # Every OAuth bearer reaches this line, twice per request.
+            logger.debug("Not an API key: wrong prefix")
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]

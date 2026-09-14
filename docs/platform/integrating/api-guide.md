@@ -71,44 +71,60 @@ Some endpoints have additional per-endpoint limits (e.g. agent execution, file u
 When a rate limit is exceeded, the API returns HTTP `429 Too Many Requests` with a JSON body:
 
 ```json
-{"detail": "Rate limit exceeded: too many requests"}
+{"detail": "Rate limit exceeded (200 requests per 60s). Try again shortly."}
 ```
+
+The numbers in the message are those of the limit that was hit.
 
 ## Available Scopes
 
 When creating API keys or using OAuth, request only the scopes your application needs.
 
-### Core Scopes
+### v2 Scopes
 
 | Scope | Description |
 |-------|-------------|
-| `IDENTITY` | Read user ID, e-mail, and timezone |
-| `READ_GRAPH` | Read graph/agent definitions and versions |
-| `WRITE_GRAPH` | Create, update, and delete graphs |
+| `READ_GRAPH` | Read graph definitions, versions, and the blocks a graph uses |
+| `WRITE_GRAPH` | Create and update graphs, set the active version, change graph settings |
 | `READ_BLOCK` | Read block definitions |
-| `READ_STORE` | Access the agent marketplace |
+| `READ_STORE` | Read your own marketplace submissions |
 | `WRITE_STORE` | Create, update, and delete marketplace submissions |
-| `READ_LIBRARY` | List library agents and their runs |
-| `RUN_AGENT` | Execute agents from your library |
+| `READ_LIBRARY` | List library agents, folders, and presets |
+| `WRITE_LIBRARY` | Fork agents, add marketplace agents to your library, manage folders and presets |
+| `RUN_AGENT` | Run agents and presets from your library |
 | `READ_RUN` | List and get agent run details |
 | `WRITE_RUN` | Stop and delete runs |
-| `READ_RUN_REVIEW` | List pending human-in-the-loop reviews |
+| `SHARE_RUN` | Share and unshare agent runs |
+| `READ_RUN_REVIEW` | List human-in-the-loop reviews |
 | `WRITE_RUN_REVIEW` | Submit human-in-the-loop review responses |
 | `READ_SCHEDULE` | List execution schedules |
 | `WRITE_SCHEDULE` | Create and delete schedules |
-| `READ_CREDITS` | Get credit balance and transaction history |
-| `READ_INTEGRATIONS` | List OAuth credentials |
-| `UPLOAD_FILES` | Upload files for agent input |
+| `READ_CREDITS` | Get credit balance, transactions, invoices, and cost summaries |
+| `READ_INTEGRATIONS` | List integration credentials |
+| `MANAGE_INTEGRATIONS` | Create integration credentials |
+| `DELETE_INTEGRATIONS` | Delete integration credentials |
+| `READ_FILES` | List and download workspace files |
+| `WRITE_FILES` | Upload and delete workspace files |
+
+A few endpoints require two scopes at once:
+
+| Endpoint | Scopes |
+|----------|--------|
+| `POST /graphs/{graph_id}/schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
+| `POST /library/presets/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
+| `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
+
+Public marketplace reads (`GET /marketplace/agents`, `/creators`, and their detail
+routes) and `GET /search` require valid credentials but no particular scope.
 
 ### Legacy Scopes (v1 only)
 
 | Scope | Description |
 |-------|-------------|
+| `IDENTITY` | Read user ID, e-mail, and timezone (v1 `GET /me`; v2 has no equivalent yet) |
 | `EXECUTE_GRAPH` | Execute graphs directly (use `RUN_AGENT` in v2) |
 | `EXECUTE_BLOCK` | Execute individual blocks |
 | `USE_TOOLS` | Use chat tools via external API |
-| `MANAGE_INTEGRATIONS` | Initiate and complete OAuth flows |
-| `DELETE_INTEGRATIONS` | Delete OAuth credentials |
 
 ## Support
 

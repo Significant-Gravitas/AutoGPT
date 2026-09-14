@@ -33,6 +33,12 @@ async def resolve_auth_info(
         )
 
     if bearer is not None:
+        # MCP clients can only send credentials as a Bearer token, so an API key
+        # arrives here too; without this the request resolves to anonymous and
+        # gets the per-IP rate limit. Order matches v2's MCP TokenVerifier.
+        if api_key_info := await validate_api_key(bearer.credentials):
+            return api_key_info
+
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
             return token_info
