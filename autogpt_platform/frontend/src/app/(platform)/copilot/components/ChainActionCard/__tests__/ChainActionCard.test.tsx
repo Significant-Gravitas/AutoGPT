@@ -96,6 +96,7 @@ function mcpRequest(
     loading: false,
     error: null,
     showManualToken: false,
+    authScheme: "bearer",
     onConnect: vi.fn(),
     onUseToken: vi.fn(),
     ...overrides,
@@ -138,6 +139,7 @@ function renderCard(
       mcp={[]}
       inputs={[]}
       questions={[]}
+      manualProceed={false}
       isReady
       onProceed={onProceed}
       {...overrides}
@@ -201,6 +203,81 @@ describe("ChainActionCard", () => {
       expect(screen.queryByText("Connect")).toBeNull();
     });
 
+    it("keeps a selection while the providers context is still loading", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+
+      render(
+        // `null` is the provider context's "still loading" sentinel, so every
+        // credential lookup misses — clearing then drops a good selection.
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      await screen.findByText("GitHub");
+      expect(request.onChange).not.toHaveBeenCalled();
+    });
+
+    it("clears the selection once loading reveals no matching credential", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+      const loadedWithNoMatch = {
+        github: { savedCredentials: [] },
+      } as unknown as CredentialsProvidersContextType;
+
+      const { rerender } = render(
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+      expect(request.onChange).not.toHaveBeenCalled();
+
+      rerender(
+        <CredentialsProvidersContext.Provider value={loadedWithNoMatch}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      // Neither the credential nor the selection changed across this
+      // transition, so only `allProviders` can re-run the effect.
+      await waitFor(() =>
+        expect(request.onChange).toHaveBeenCalledWith("credentials", undefined),
+      );
+    });
+
     it("auto-selects a saved credential from the providers context", async () => {
       const request = connectorRequest();
       const providers = {
@@ -223,6 +300,7 @@ describe("ChainActionCard", () => {
             mcp={[]}
             inputs={[]}
             questions={[]}
+            manualProceed={false}
             isReady
             onProceed={vi.fn()}
           />
@@ -308,7 +386,7 @@ describe("ChainActionCard", () => {
       expect(useToken?.disabled).toBe(false);
 
       fireEvent.click(useToken!);
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
     });
 
     it("submits the manual token on Enter", () => {
@@ -319,7 +397,77 @@ describe("ChainActionCard", () => {
       fireEvent.change(input, { target: { value: "secret-token" } });
       fireEvent.keyDown(input, { key: "Enter" });
 
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
+    });
+
+    it("prefixes a Basic credential selected in the chain row", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "basic" } },
+      );
+      fireEvent.change(
+        screen.getByLabelText("Basic authentication token for Notion"),
+        { target: { value: "  cGstbGYtYWJjZA==  " } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Basic cGstbGYtYWJjZA==");
+    });
+
+    it("refuses an unencoded user:password before calling onUseToken", () => {
+      // The other three manual-credential surfaces validate before storing.
+      // Without it this one sent the raw pair, and the user got the backend's
+      // 422 instead of the message that names the Base64 step.
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "basic" } },
+      );
+      fireEvent.change(
+        screen.getByLabelText("Basic authentication token for Notion"),
+        { target: { value: "pk-lf-abc:sk-lf-xyz" } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /unencoded user:password/,
+      );
+    });
+
+    it("points the credential input at both its hint and its error", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      const input = screen.getByLabelText("API token for Notion");
+      const hintId = input.getAttribute("aria-describedby");
+      expect(hintId).toBeTruthy();
+      // The hint is the only place the Base64 step is explained, and nothing
+      // carried the id the input pointed at.
+      expect(document.getElementById(hintId as string)?.textContent).toMatch(
+        /Bearer authentication/,
+      );
+    });
+
+    it("uses the selector when it differs from a pasted prefix", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(screen.getByLabelText("API token for Notion"), {
+        target: { value: "Basic encoded-value" },
+      });
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "bearer" } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer encoded-value");
     });
   });
 
@@ -378,6 +526,7 @@ describe("ChainActionCard", () => {
           mcp={[]}
           inputs={[inputsRequest()]}
           questions={[]}
+          manualProceed={false}
           isReady
           onProceed={onProceed}
         />,
@@ -486,7 +635,7 @@ describe("ChainActionCard", () => {
       renderCard({ questions: [questionRequest()] });
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(true);
     });
@@ -496,9 +645,7 @@ describe("ChainActionCard", () => {
         questions: [questionRequest({ answers: { region: "Europe" } })],
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
@@ -961,7 +1108,7 @@ describe("ChainActionCard", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Add answers to message",
+            name: "Send answers",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -975,17 +1122,116 @@ describe("ChainActionCard", () => {
           mcp={[]}
           inputs={[]}
           questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
           isReady
           onProceed={onProceed}
         />,
       );
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(false);
       fireEvent.click(send);
       expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("advances to the next question when an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which format?")).toBeDefined();
+    });
+
+    it("stays on the last question after an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(onProceed).not.toHaveBeenCalled();
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Send answers",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    it("does not advance when the arrow keys select an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: "ArrowDown" });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.getByText("Which region?")).toBeDefined();
+    });
+
+    it("selects without advancing when Space is pressed on an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: " " });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
     });
 
     it("keeps two same-keyword questions on their own cards", () => {
@@ -1029,9 +1275,7 @@ describe("ChainActionCard", () => {
         isReady: false,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
   });

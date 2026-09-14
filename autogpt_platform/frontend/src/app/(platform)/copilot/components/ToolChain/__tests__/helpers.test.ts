@@ -8,10 +8,28 @@ import {
   getChainHeading,
   isChainPart,
   isLiftedSetupRow,
+  isToolCallPending,
   markSupersededSubSessionRows,
   toChainRow,
   type ChainRow,
 } from "../helpers";
+
+function toolCallPart(
+  state:
+    | "input-streaming"
+    | "input-available"
+    | "approval-requested"
+    | "approval-responded"
+    | "output-available"
+    | "output-error"
+    | "output-denied",
+): MessagePart {
+  return {
+    type: "tool-run_block",
+    state,
+    toolCallId: "call-1",
+  } as unknown as MessagePart;
+}
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -579,4 +597,25 @@ describe("markSupersededSubSessionRows", () => {
     const marked = markSupersededSubSessionRows(rows);
     expect(marked.every((r) => !r.supersededSubSession)).toBe(true);
   });
+});
+
+describe("isToolCallPending", () => {
+  // A tool paused on human-in-the-loop approval has no result either — the
+  // same class of bug the chain's once-only send already guards against for
+  // input-streaming/input-available.
+  it.each([
+    "input-streaming",
+    "input-available",
+    "approval-requested",
+    "approval-responded",
+  ] as const)("treats %s as pending", (state) => {
+    expect(isToolCallPending(toolCallPart(state))).toBe(true);
+  });
+
+  it.each(["output-available", "output-error", "output-denied"] as const)(
+    "treats %s as settled",
+    (state) => {
+      expect(isToolCallPending(toolCallPart(state))).toBe(false);
+    },
+  );
 });

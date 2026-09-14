@@ -1,5 +1,7 @@
 """Tests for integration_creds — TTL cache and token lookup paths."""
 
+import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +11,7 @@ from backend.copilot.integration_creds import (
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
     PROVIDER_ENV_VARS,
+    _consume_creds_changed_events,
     _gh_identity_cache,
     _gh_identity_null_cache,
     _null_cache,
@@ -18,6 +21,12 @@ from backend.copilot.integration_creds import (
     invalidate_user_provider_cache,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.creds_events import CredentialsChangedEvent
+from backend.integrations.creds_manager import (
+    IntegrationCredentialsManager,
+    register_creds_changed_hook,
+    unregister_creds_changed_hook,
+)
 
 _USER = "user-integration-creds-test"
 _PROVIDER = "github"
@@ -44,6 +53,13 @@ def _make_oauth2_creds(token: str = "test-oauth-token") -> OAuth2Credentials:
         refresh_token_expires_at=None,
         scopes=[],
     )
+
+
+@pytest.fixture(autouse=True)
+def no_listener_thread():
+    """Keep the lazy subscription from spawning a Redis-connecting thread."""
+    with patch("backend.copilot.integration_creds._ensure_cache_invalidation_listener"):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -212,11 +228,11 @@ class TestGetProviderToken:
         assert (_USER, _PROVIDER) not in _null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_null_cache_has_shorter_ttl_than_token_cache(self):
-        """Verify the TTL constants are set correctly for each cache."""
+    async def test_token_cache_ttl_is_the_stale_token_ceiling(self):
+        """The TTL is the fallback when a pub/sub invalidation is lost."""
         assert _null_cache.ttl == _NULL_CACHE_TTL
         assert _token_cache.ttl == _TOKEN_CACHE_TTL
-        assert _NULL_CACHE_TTL < _TOKEN_CACHE_TTL
+        assert _TOKEN_CACHE_TTL <= 60.0
 
 
 class TestThreadSafetyLocks:
@@ -327,3 +343,97 @@ class TestGetIntegrationEnvVars:
         result = await get_integration_env_vars(_USER)
 
         assert result == {}
+
+
+class TestCacheInvalidationListener:
+    """The cross-process half: a write elsewhere reaches this process's cache."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_drops_exactly_the_affected_entry(self):
+        _token_cache[(_USER, "github")] = "stale"
+        _token_cache[(_USER, "notion")] = "untouched"
+        _token_cache[("other-user", "github")] = "untouched"
+
+        await _consume(CredentialsChangedEvent(user_id=_USER, provider="github"))
+
+        assert (_USER, "github") not in _token_cache
+        assert _token_cache[(_USER, "notion")] == "untouched"
+        assert _token_cache[("other-user", "github")] == "untouched"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_resubscribes_when_the_stream_ends(self):
+        """A closed subscription must not leave the cache unwatched."""
+        streams = 0
+
+        async def stream():
+            nonlocal streams
+            streams += 1
+            if streams > 1:
+                raise asyncio.CancelledError
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        with patch("backend.copilot.integration_creds.listen_creds_changed", stream):
+            with pytest.raises(asyncio.CancelledError):
+                await _consume_creds_changed_events()
+
+        assert streams == 2
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_upgrade_after_fetch_is_visible_without_waiting_for_the_ttl(self):
+        """OPEN-3472: a token fetched at T, upgraded at T+60s, was still served
+        from cache until the 300 s TTL lapsed at T+300s."""
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_api_key_creds("old-scopes-token")]
+        )
+        with patch("backend.copilot.integration_creds._manager", manager):
+            assert await get_provider_token(_USER, _PROVIDER) == "old-scopes-token"
+
+        published = await _write_credential_as_another_process()
+        assert _token_cache[(_USER, _PROVIDER)] == "old-scopes-token"
+
+        for event in published:
+            await _consume(event)
+
+        manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_api_key_creds("new-scopes-token")]
+        )
+        with patch("backend.copilot.integration_creds._manager", manager):
+            assert await get_provider_token(_USER, _PROVIDER) == "new-scopes-token"
+
+
+async def _consume(*events: CredentialsChangedEvent) -> None:
+    """Run the listener over *events*, then stop it."""
+
+    async def stream():
+        for event in events:
+            yield event
+        raise asyncio.CancelledError
+
+    with patch("backend.copilot.integration_creds.listen_creds_changed", stream):
+        with pytest.raises(asyncio.CancelledError):
+            await _consume_creds_changed_events()
+
+
+async def _write_credential_as_another_process() -> list[CredentialsChangedEvent]:
+    """Perform a credential write with no in-process hook — the API process's
+    shape — and return what it broadcast."""
+    published: list[CredentialsChangedEvent] = []
+
+    async def capture(user_id: str, provider: str) -> None:
+        published.append(CredentialsChangedEvent(user_id=user_id, provider=provider))
+
+    manager = IntegrationCredentialsManager()
+    manager.store = MagicMock()
+    manager.store.update_creds = AsyncMock()
+    manager._locked = lambda *args, **kwargs: contextlib.nullcontext()
+
+    unregister_creds_changed_hook()
+    try:
+        with patch("backend.integrations.creds_manager.publish_creds_changed", capture):
+            await manager.update(_USER, _make_oauth2_creds("new-scopes-token"))
+    finally:
+        register_creds_changed_hook(invalidate_user_provider_cache)
+
+    return published

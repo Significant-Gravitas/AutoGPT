@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
+import { useState } from "react";
 
 const queryConfig = {
   staleTime: 60 * 1000, // 60 seconds - match server cache
@@ -13,6 +14,8 @@ const queryConfig = {
 };
 
 export const useMainMarketplacePage = () => {
+  const [category, setCategory] = useState<string | null>(null);
+
   // Data is prefetched on server and hydrated, these queries will use cached data
   const {
     data: featuredAgents,
@@ -38,10 +41,14 @@ export const useMainMarketplacePage = () => {
     {
       sorted_by: "runs",
       page_size: 1000,
+      ...(category ? { category } : {}),
     },
     {
       query: {
         ...queryConfig,
+        // Keep the current grid on screen while a category change loads, so
+        // picking a filter doesn't collapse the whole page to skeletons.
+        placeholderData: (previousData) => previousData,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -74,6 +81,8 @@ export const useMainMarketplacePage = () => {
     featuredAgents,
     topAgents,
     featuredCreators,
+    category,
+    setCategory,
     isLoading,
     hasError,
   };

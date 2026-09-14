@@ -248,7 +248,7 @@ async def _compose_fresh_briefing(
     if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
         return content
     return content.model_copy(
-        update={"narrative": await compose_narrative(user_id, content, experts)}
+        update={"narrative": await compose_narrative(user_id, content)}
     )
 
 

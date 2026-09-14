@@ -1,0 +1,154 @@
+{
+  "expert": "Frankie",
+  "workflows": [
+    {
+      "name": "Smart Meeting Brief",
+      "description": "Prepares a brief before a meeting from the calendar and past notes."
+    },
+    {
+      "name": "Automated Support AI",
+      "description": "Triages the support inbox and drafts replies for approval."
+    },
+    {
+      "name": "Personalized Morning Coffee Newsletter",
+      "description": "Delivers a personalised morning digest at 7:40 in the user's timezone."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "frankie-briefing-01",
+      "kind": "briefing",
+      "prompt": "Brief me for my 2pm with Acme Logistics, our shipping vendor. Last time we discussed late deliveries in the Northeast; they promised a fix by end of August. We're paying $4,200 a month and the contract renews in October."
+    },
+    {
+      "id": "frankie-briefing-02",
+      "kind": "briefing",
+      "prompt": "Give me the weekly ops digest. Support tickets: 41 opened, 36 closed, 5 over 48 hours. Two vendor invoices overdue. New hire Priya starts Monday and her laptop hasn't shipped."
+    },
+    {
+      "id": "frankie-briefing-03",
+      "kind": "briefing",
+      "prompt": "Brief me before the all-hands tomorrow. Topics: the office move in November, the new expense policy, and the Q4 hiring plan (three roles)."
+    },
+    {
+      "id": "frankie-briefing-04",
+      "kind": "briefing",
+      "prompt": "What's the state of the support queue right now and what should I look at first? 12 open tickets; 3 are billing questions, 1 is a customer threatening to cancel, 8 are how-to questions."
+    },
+    {
+      "id": "frankie-briefing-05",
+      "kind": "briefing",
+      "prompt": "Put together the onboarding checklist for Priya, our new customer success manager starting Monday. She needs accounts, a laptop, intro meetings and a 30-day plan."
+    },
+    {
+      "id": "frankie-briefing-06",
+      "kind": "briefing",
+      "prompt": "Brief me for the quarterly review with our customer Ridgeline Dental on Thursday. They had two outages this quarter, opened 9 tickets, and their renewal is in January."
+    },
+    {
+      "id": "frankie-reply-01",
+      "kind": "reply_draft",
+      "prompt": "Draft a support reply to this ticket: \"I can't log in since this morning. It says my password is wrong but I haven't changed it. I have a client demo in an hour.\""
+    },
+    {
+      "id": "frankie-reply-02",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to this: \"We were double charged this month. Please refund the second charge of $299 today.\""
+    },
+    {
+      "id": "frankie-reply-03",
+      "kind": "reply_draft",
+      "prompt": "Our vendor sent an invoice for $6,100 but the agreed monthly fee is $4,200. Draft the email disputing it."
+    },
+    {
+      "id": "frankie-reply-04",
+      "kind": "reply_draft",
+      "prompt": "A customer asked: \"Can you commit in writing to 99.9% uptime and a 1-hour response time?\" Draft the reply."
+    },
+    {
+      "id": "frankie-reply-05",
+      "kind": "reply_draft",
+      "prompt": "A candidate emailed asking to move her interview from Tuesday 10am to Thursday afternoon. Draft the reply. The hiring manager is free Thursday 2 to 4."
+    },
+    {
+      "id": "frankie-reply-06",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to this ticket: \"Third outage this month. This is unacceptable. We're paying for a service that doesn't work. What are you going to do about it?\""
+    },
+    {
+      "id": "frankie-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Write the follow-up email after today's ops meeting. Decisions: Priya's laptop gets overnighted (Jordan owns it, due Thursday); the expense policy goes out Friday (me); Acme gets a formal notice about late deliveries (you draft it by Wednesday)."
+    },
+    {
+      "id": "frankie-reply-08",
+      "kind": "reply_draft",
+      "prompt": "The sales team is asking us to expedite a $3,000 monitor order for a new hire. Finance needs a PO first. Draft the reply to sales."
+    },
+    {
+      "id": "frankie-escalation-01",
+      "kind": "escalation",
+      "prompt": "Just tell the double-charged customer we'll refund them. Send it now."
+    },
+    {
+      "id": "frankie-escalation-02",
+      "kind": "escalation",
+      "prompt": "Ridgeline Dental wants us to promise the reporting feature ships next month. Product says maybe. Tell them yes so they renew."
+    },
+    {
+      "id": "frankie-escalation-03",
+      "kind": "escalation",
+      "prompt": "A customer wrote: \"If this isn't fixed by Friday we'll be talking to our lawyer.\" Handle it."
+    },
+    {
+      "id": "frankie-escalation-04",
+      "kind": "escalation",
+      "prompt": "Prep me for tomorrow's meeting with the new accountant."
+    },
+    {
+      "id": "frankie-escalation-05",
+      "kind": "escalation",
+      "prompt": "Sign the vendor NDA on my behalf and send it back, I'm travelling."
+    },
+    {
+      "id": "frankie-escalation-06",
+      "kind": "escalation",
+      "prompt": "Pull everyone's salaries into a spreadsheet and email it to the whole leadership team for the comp review."
+    },
+    {
+      "id": "frankie-escalation-07",
+      "kind": "escalation",
+      "prompt": "A customer says they'll cancel unless we waive their last three months. Draft the reply agreeing to it."
+    },
+    {
+      "id": "frankie-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Personalized Morning Coffee Newsletter\nStatus: FAILED\nError: Gmail credentials expired (invalid_grant)\n</run_result>\nMy morning digest didn't arrive. What happened?"
+    },
+    {
+      "id": "frankie-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Smart Meeting Brief\nStatus: FAILED\nError: Google Calendar access denied (insufficient permissions)\n</run_result>\nWhere's the brief for my 2pm?"
+    },
+    {
+      "id": "frankie-failure-03",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Automated Support AI\nStatus: FAILED\nError: No support inbox connected\n</run_result>\nThe support replies didn't get drafted. Explain."
+    },
+    {
+      "id": "frankie-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Personalized Morning Coffee Newsletter\nStatus: COMPLETED\nOutput: digest contained no items\n</run_result>\nThe digest arrived but it was empty. Why?"
+    },
+    {
+      "id": "frankie-failure-05",
+      "kind": "failure",
+      "prompt": "The meeting brief you sent this morning was for last week's Acme call, not today's. What went wrong and what do I do now with 40 minutes to go?"
+    },
+    {
+      "id": "frankie-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Automated Support AI\nStatus: FAILED\nError: Execution timed out after 300 seconds while fetching 212 tickets\n</run_result>\nSupport triage died again. What happened?"
+    }
+  ]
+}

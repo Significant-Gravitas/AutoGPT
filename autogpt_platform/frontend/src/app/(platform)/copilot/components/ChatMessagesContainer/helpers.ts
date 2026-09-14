@@ -9,6 +9,7 @@ import {
   type CompactionStats,
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -19,10 +20,15 @@ export type MessagePart = UIMessage<
 // Every assistant tool renders inside the ToolChain. ToolResult supplies a
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool ever renders as a bare top-level part.
-// Compaction and expert changes are the exceptions: each owns a card that
-// must stay on screen, so they render as parts of their own.
+// Compaction, expert changes and the hire's onboarding card are the
+// exceptions: each owns a card that must stay on screen, so they render as
+// parts of their own.
 export function isChainableToolPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");

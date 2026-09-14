@@ -1,12 +1,19 @@
 """Unit tests for the schedule index (in-memory SQLite, no infra)."""
 
+import sqlite3
+from unittest.mock import patch
+
+import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
 
 
 def _index() -> ScheduleIndex:
-    index = ScheduleIndex(create_engine("sqlite://"))
+    connection = sqlite3.connect(":memory:")
+    connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    index = ScheduleIndex(create_engine("sqlite://", creator=lambda: connection))
     index.ensure_table()
     return index
 
@@ -42,6 +49,63 @@ def test_upsert_many_and_delete_many():
     index.upsert_many([_entry("j1"), _entry("j2"), _entry("j3")])
     index.delete_many(["j1", "j3"])
     assert index.all_job_ids() == {"j2"}
+
+
+def test_upsert_many_replaces_more_rows_than_the_bind_limit():
+    index = _index()
+    entries = [_entry(f"j{i}") for i in range(2001)]
+    index.upsert_many(entries)
+    index.upsert(_entry("untouched"))
+
+    index.upsert_many(
+        [entry.model_copy(update={"user_id": "user-2"}) for entry in entries]
+    )
+
+    assert index.candidate_job_ids(user_id="user-1") == ["untouched"]
+    assert set(index.candidate_job_ids(user_id="user-2") or []) == {
+        entry.job_id for entry in entries
+    }
+
+
+def test_delete_many_removes_more_rows_than_the_bind_limit():
+    index = _index()
+    job_ids = [f"j{i}" for i in range(2001)]
+    for job_id in job_ids:
+        index.upsert(_entry(job_id))
+    index.upsert(_entry("untouched"))
+
+    index.delete_many(job_ids)
+
+    assert index.all_job_ids() == {"untouched"}
+
+
+def test_upsert_many_rolls_back_all_batches_after_retry_exhaustion():
+    index = _index()
+    entries = [_entry(f"j{i}") for i in range(2001)]
+    for entry in entries:
+        index.upsert(entry)
+    replacements = [entry.model_copy(update={"user_id": "user-2"}) for entry in entries]
+
+    with patch.object(index._engine, "begin", wraps=index._engine.begin) as begin:
+        with pytest.raises(IntegrityError):
+            index.upsert_many([*replacements, replacements[0]])
+
+    assert begin.call_count == 2
+    assert index.candidate_job_ids(user_id="user-2") == []
+    assert set(index.candidate_job_ids(user_id="user-1") or []) == {
+        entry.job_id for entry in entries
+    }
+
+
+def test_upsert_many_retries_a_transient_integrity_error():
+    index = _index()
+    conflict = IntegrityError(None, None, sqlite3.IntegrityError("concurrent insert"))
+    with patch.object(
+        index._engine, "begin", side_effect=[conflict, index._engine.begin()]
+    ):
+        index.upsert_many([_entry("j1"), _entry("j2")])
+
+    assert index.all_job_ids() == {"j1", "j2"}
 
 
 def test_delete_missing_row_is_a_noop():

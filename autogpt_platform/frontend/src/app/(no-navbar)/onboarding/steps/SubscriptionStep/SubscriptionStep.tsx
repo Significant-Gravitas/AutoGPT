@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { PLAN_KEYS } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionStep } from "./useSubscriptionStep";
+import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 
 export function SubscriptionStep() {
   const {
@@ -44,6 +45,9 @@ export function SubscriptionStep() {
           </Text>
         </div>
 
+        <div className="w-full max-w-2xl">
+          <TrialCard returnTo="onboarding" />
+        </div>
         <div className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]">
           {(["monthly", "yearly"] as const).map((cycle) => (
             <button

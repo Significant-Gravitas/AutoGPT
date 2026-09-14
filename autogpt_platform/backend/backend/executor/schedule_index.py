@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Matches APScheduler's default id column length so every job id that fits
 # the jobstore fits the index.
 _JOB_ID_LENGTH = 191
+_WRITE_BATCH_SIZE = 500
 
 
 class ScheduleIndexEntry(BaseModel):
@@ -99,12 +100,17 @@ class ScheduleIndex:
         for attempt in (1, 2):
             try:
                 with self._engine.begin() as conn:
-                    conn.execute(
-                        delete(self._table).where(
-                            self._table.c.job_id.in_([r["job_id"] for r in rows])
+                    for start in range(0, len(rows), _WRITE_BATCH_SIZE):
+                        batch = rows[start : start + _WRITE_BATCH_SIZE]
+                        conn.execute(
+                            delete(self._table).where(
+                                self._table.c.job_id.in_([r["job_id"] for r in batch])
+                            )
                         )
-                    )
-                    conn.execute(insert(self._table), rows)
+                    for start in range(0, len(rows), _WRITE_BATCH_SIZE):
+                        conn.execute(
+                            insert(self._table), rows[start : start + _WRITE_BATCH_SIZE]
+                        )
                 return
             except IntegrityError:
                 if attempt == 2:
@@ -117,9 +123,14 @@ class ScheduleIndex:
         if not job_ids:
             return
         with self._engine.begin() as conn:
-            conn.execute(
-                delete(self._table).where(self._table.c.job_id.in_(list(job_ids)))
-            )
+            for start in range(0, len(job_ids), _WRITE_BATCH_SIZE):
+                conn.execute(
+                    delete(self._table).where(
+                        self._table.c.job_id.in_(
+                            job_ids[start : start + _WRITE_BATCH_SIZE]
+                        )
+                    )
+                )
 
     def all_job_ids(self) -> set[str]:
         with self._engine.connect() as conn:

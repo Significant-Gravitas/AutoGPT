@@ -239,6 +239,22 @@ class SubscriptionEndedData(LifecycleData):
     due_to_payment: bool
 
 
+class TrialUpdateData(LifecycleData):
+    notice_key: str | None = None
+    kind: Literal[
+        "started",
+        "ending",
+        "canceled",
+        "resumed",
+        "ended",
+        "converted",
+        "payment_failed",
+    ]
+    ends_label: str
+    onboarding_credit_amount: int
+    offer_version: str
+
+
 NotificationData = Union[
     BriefingData,
     AlertData,
@@ -250,6 +266,7 @@ NotificationData = Union[
     SubscriptionCancelledData,
     SubscriptionResumedData,
     SubscriptionEndedData,
+    TrialUpdateData,
 ]
 
 _DATA_TYPES: dict[NotificationType, type[BaseNotificationData]] = {
@@ -263,6 +280,7 @@ _DATA_TYPES: dict[NotificationType, type[BaseNotificationData]] = {
     NotificationType.SUBSCRIPTION_CANCELLED: SubscriptionCancelledData,
     NotificationType.SUBSCRIPTION_RESUMED: SubscriptionResumedData,
     NotificationType.SUBSCRIPTION_ENDED: SubscriptionEndedData,
+    NotificationType.TRIAL_UPDATE: TrialUpdateData,
 }
 
 # Which Jinja template family renders each type. The billing messages all share
@@ -278,6 +296,7 @@ _TEMPLATES: dict[NotificationType, str] = {
     NotificationType.SUBSCRIPTION_CANCELLED: "lifecycle",
     NotificationType.SUBSCRIPTION_RESUMED: "lifecycle",
     NotificationType.SUBSCRIPTION_ENDED: "lifecycle",
+    NotificationType.TRIAL_UPDATE: "trial",
 }
 
 # The `kind` slot the lifecycle template branches on.
@@ -328,6 +347,7 @@ _STREAMS: dict[NotificationType, DeliveryStream] = {
     NotificationType.SUBSCRIPTION_CANCELLED: DeliveryStream.BILLING,
     NotificationType.SUBSCRIPTION_RESUMED: DeliveryStream.BILLING,
     NotificationType.SUBSCRIPTION_ENDED: DeliveryStream.BILLING,
+    NotificationType.TRIAL_UPDATE: DeliveryStream.BILLING,
 }
 
 

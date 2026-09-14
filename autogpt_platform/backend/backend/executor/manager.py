@@ -52,7 +52,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -74,6 +74,7 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
@@ -894,7 +895,7 @@ class ExecutionProcessor:
             )
 
             # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
-            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # the default cap; coordination blocks (AgentExecutor, Otto)
             # opt out by overriding `execution_timeout_seconds = None`. Their
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
@@ -1086,6 +1087,7 @@ class ExecutionProcessor:
             activity_events.handle_run_completed(
                 db_client, graph_exec, exec_meta, exec_stats
             )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1591,6 +1593,7 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
+        set_executor_id(self.executor_id)
         self._update_prompt_metrics()
         # Deliberate reuse of pyro_host: despite the legacy name it is the
         # bind address for every service's internal listener (see

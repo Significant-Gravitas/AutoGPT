@@ -19,6 +19,7 @@ from backend.data.credit import (
     UserCreditBase,
     get_user_credit_model,
 )
+from backend.data.credit_history import get_credit_history
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
 from backend.data.onboarding_steps import OnboardingStep
@@ -355,29 +356,17 @@ class OrgCreditModel(UserCreditBase):
         transaction_count_limit: int,
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
+        cursor: str | None = None,
+        viewer_organization_id: str | None = None,
     ) -> TransactionHistory:
-        raw = await get_org_transaction_history(
-            self._org_id,
-            limit=transaction_count_limit,
-            offset=0,
-        )
-        from backend.data.model import CreditTransactionItem
-
-        # TransactionHistory expects CreditTransactionItem; running_balance
-        # lives on UserTransaction but isn't part of this DTO and is dropped.
-        transactions = [
-            CreditTransactionItem(
-                user_id=user_id,
-                amount=t["amount"],
-                transaction_type=t.get("type", CreditTransactionType.USAGE),
-                transaction_key=t.get("transactionKey", ""),
-                description=f"{t.get('type', 'UNKNOWN')} Transaction",
-            )
-            for t in raw
-        ]
-        return TransactionHistory(
-            transactions=transactions,
-            next_transaction_time=None,
+        return await get_credit_history(
+            user_id=user_id,
+            organization_id=self._org_id,
+            transaction_count_limit=transaction_count_limit,
+            transaction_time_ceiling=transaction_time_ceiling,
+            transaction_type=transaction_type,
+            cursor=cursor,
+            viewer_organization_id=viewer_organization_id,
         )
 
     async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:

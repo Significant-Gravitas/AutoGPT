@@ -8,6 +8,7 @@ backend test job (and counted by codecov), not just the integration suite.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,6 +44,17 @@ from backend.util.exceptions import (
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +467,7 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     """The scope pre-check can race an archive/delete, after which
     ``create_chat_session`` drops the attribution and hands back a plain
     session. Dispatching there would write an expert's follow-up into
-    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    Otto memory scope, so the turn is skipped — but the schedule is
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
@@ -599,7 +611,7 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     """A follow-up fired into a chat the user already owns must not persist as
     role="user".
 
-    ``origin`` is a property of the session, so an interactive Autopilot chat
+    ``origin`` is a property of the session, so an interactive Otto chat
     stays interactive when a schedule fires into it — the confirm gate in
     ``expert_proposal`` falls back to the newest user-message sequence to prove
     a human answered the preview. A machine-authored turn landing as role="user"
@@ -1061,9 +1073,10 @@ def test_graph_args_expert_id_defaults_to_none():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_forwards_expert_id():
-    """An expert-attributed schedule must stamp its expert_id onto the
-    execution it creates, so any surface can answer "who ran this"."""
+async def test_execute_graph_forwards_expert_id_and_schedule_id():
+    """An expert-attributed schedule must stamp its expert_id and its own id
+    onto the execution it creates, so any surface can answer "who ran this"
+    and "did it run on schedule"."""
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1088,6 +1101,7 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+    assert mock_add.call_args.kwargs["schedule_id"] == "sched-1"
 
 
 @pytest.mark.asyncio
@@ -1484,14 +1498,23 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 # ---------------------------------------------------------------------------
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+class _StartupRun(NamedTuple):
+    add_job_calls: list
+    embedding_backfill: MagicMock
+    backfill_calls_at_readiness: int
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
-    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    a mock APScheduler, recording what it registered and what it ran before
+    handing over to ``AppService.run_service``."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
     mock_scheduler = MagicMock()
+    embedding_backfill = MagicMock(return_value=None)
+    at_readiness = []
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
@@ -1504,12 +1527,17 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", embedding_backfill),
         # super().run_service() blocks forever keeping the service alive; no-op it.
-        patch("backend.util.service.AppService.run_service", return_value=None),
+        patch(
+            "backend.util.service.AppService.run_service",
+            side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
+        ),
     ):
         Scheduler(register_system_tasks=True).run_service()
-    return mock_scheduler.add_job.call_args_list
+    return _StartupRun(
+        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+    )
 
 
 def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
@@ -1517,7 +1545,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 ):
     """The sweep must be registered as an interval job keyed off the configured
     interval setting and capped to a single concurrent instance."""
-    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
     matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
     assert len(matches) == 1
@@ -1531,9 +1559,38 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
-    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
+    """``AppService.run_service`` starts the event loop uvicorn is scheduled
+    onto, so anything run before it keeps the RPC port closed. The backfill
+    takes minutes on a fresh stack; it must not sit on that path."""
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    assert run.backfill_calls_at_readiness == 0
+
+
+def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
+    """Dropping the startup call must not delay coverage: the six-hourly job
+    is due now, and cannot be skipped as a misfire however late it starts."""
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.args[0] is run.embedding_backfill
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
 
 
 class TestScheduleOrgVisibility:
@@ -1785,278 +1842,6 @@ class TestMorningBriefingSchedule:
             r.levelno == logging.ERROR and "Morning briefing failed" in r.getMessage()
             for r in caplog.records
         )
-
-
-# ---------------------------------------------------------------------------
-# schedule index integration (SQLite-backed, mocked APScheduler)
-# ---------------------------------------------------------------------------
-
-
-def _scheduler_with_index() -> Scheduler:
-    """A Scheduler wired to a real in-memory index and a mocked APScheduler."""
-    from sqlalchemy import create_engine
-
-    from backend.executor.schedule_index import ScheduleIndex
-
-    scheduler = Scheduler(register_system_tasks=False)
-    scheduler._schedule_index = ScheduleIndex(create_engine("sqlite://"))
-    scheduler._schedule_index.ensure_table()
-    scheduler._schedule_index_ready = True
-    scheduler.scheduler = MagicMock()
-    return scheduler
-
-
-def _graph_job_kwargs(schedule_id: str, user_id: str, graph_id: str) -> dict:
-    return {
-        "kind": "graph",
-        "schedule_id": schedule_id,
-        "user_id": user_id,
-        "graph_id": graph_id,
-        "graph_version": 1,
-        "cron": "0 0 * * *",
-        "input_data": {},
-        "input_credentials": {},
-    }
-
-
-def test_index_entry_from_graph_args_normalizes_empty_org():
-    from backend.executor.scheduler import _index_entry
-
-    args = GraphExecutionJobArgs(**_graph_job_kwargs("s1", "u1", "g1"))
-    entry = _index_entry("job-id-not-schedule-id", args)
-    # job_id comes from the jobstore key, not kwargs — legacy rows can have
-    # schedule_id=None while still being addressable by job.id.
-    assert entry.job_id == "job-id-not-schedule-id"
-    assert entry.user_id == "u1"
-    assert entry.kind == "graph"
-    assert entry.graph_id == "g1"
-    assert entry.session_id is None
-    assert entry.organization_id is None  # "" default → NULL
-
-
-def test_index_entry_from_copilot_args_carries_session():
-    from backend.executor.scheduler import _index_entry
-
-    args = CopilotTurnJobArgs(
-        schedule_id="s1",
-        user_id="u1",
-        session_id="sess-1",
-        message="m",
-        cron="0 0 * * *",
-        organization_id="org-1",
-    )
-    entry = _index_entry("s1", args)
-    assert entry.kind == "copilot_turn"
-    assert entry.graph_id is None
-    assert entry.session_id == "sess-1"
-    assert entry.organization_id == "org-1"
-
-
-def test_get_schedule_jobs_falls_back_without_index_or_before_backfill():
-    scheduler = Scheduler(register_system_tasks=False)
-    scheduler.scheduler = MagicMock()
-    full_scan = [MagicMock()]
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
-        assert (
-            scheduler._get_schedule_jobs(
-                user_id="u1",
-                graph_id=None,
-                session_id=None,
-                kind=None,
-                organization_id=None,
-            )
-            == full_scan
-        )
-        scan.assert_called_once()
-
-    scheduler = _scheduler_with_index()
-    scheduler._schedule_index_ready = False
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
-        assert (
-            scheduler._get_schedule_jobs(
-                user_id="u1",
-                graph_id=None,
-                session_id=None,
-                kind=None,
-                organization_id=None,
-            )
-            == full_scan
-        )
-        scan.assert_called_once()
-
-
-def test_get_schedule_jobs_unfiltered_read_uses_full_scan():
-    scheduler = _scheduler_with_index()
-    full_scan = [MagicMock()]
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
-        assert (
-            scheduler._get_schedule_jobs(
-                user_id=None,
-                graph_id=None,
-                session_id=None,
-                kind="graph",  # kind alone is not an identity filter
-                organization_id=None,
-            )
-            == full_scan
-        )
-        scan.assert_called_once()
-
-
-def test_get_schedule_jobs_loads_candidates_and_drops_dangling_rows():
-    from backend.executor.scheduler import _index_entry
-
-    scheduler = _scheduler_with_index()
-    live_args = GraphExecutionJobArgs(**_graph_job_kwargs("live", "u1", "g1"))
-    gone_args = GraphExecutionJobArgs(**_graph_job_kwargs("gone", "u1", "g1"))
-    assert scheduler._schedule_index is not None
-    scheduler._schedule_index.upsert_many(
-        [_index_entry("live", live_args), _index_entry("gone", gone_args)]
-    )
-
-    live_job = _mock_job(live_args.model_dump(mode="json"))
-    scheduler.scheduler.get_job.side_effect = lambda job_id, jobstore=None: (
-        live_job if job_id == "live" else None
-    )
-
-    with patch.object(scheduler, "_get_jobs_cached") as scan:
-        jobs = scheduler._get_schedule_jobs(
-            user_id="u1",
-            graph_id=None,
-            session_id=None,
-            kind=None,
-            organization_id=None,
-        )
-    scan.assert_not_called()
-    assert jobs == [live_job]
-    # The dangling row (fired one-shot removed by APScheduler) is cleaned up.
-    assert scheduler._schedule_index.all_job_ids() == {"live"}
-
-
-def test_get_schedule_jobs_index_error_falls_back_to_full_scan():
-    scheduler = _scheduler_with_index()
-    full_scan = [MagicMock()]
-    assert scheduler._schedule_index is not None
-    with (
-        patch.object(
-            scheduler._schedule_index,
-            "candidate_job_ids",
-            side_effect=RuntimeError("db down"),
-        ),
-        patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan,
-    ):
-        assert (
-            scheduler._get_schedule_jobs(
-                user_id="u1",
-                graph_id=None,
-                session_id=None,
-                kind=None,
-                organization_id=None,
-            )
-            == full_scan
-        )
-        scan.assert_called_once()
-
-
-def test_get_execution_schedules_via_index_applies_exact_predicate():
-    """Index candidates still flow through the ownership predicate."""
-    from backend.executor.scheduler import _index_entry
-
-    scheduler = _scheduler_with_index()
-    mine = GraphExecutionJobArgs(**_graph_job_kwargs("mine", "u1", "g1"))
-    assert scheduler._schedule_index is not None
-    scheduler._schedule_index.upsert(_index_entry("mine", mine))
-
-    job = _mock_job(mine.model_dump(mode="json"))
-    scheduler.scheduler.get_job.return_value = job
-
-    with patch.object(scheduler, "_get_jobs_cached") as scan:
-        results = scheduler.get_execution_schedules(user_id="u1")
-    scan.assert_not_called()
-    assert [r.id for r in results] == ["mine"]
-
-    # A stale/hostile index row for another user's schedule is trimmed by
-    # the predicate even though the index nominated it.
-    other = GraphExecutionJobArgs(**_graph_job_kwargs("other", "u2", "g2"))
-    scheduler._schedule_index.upsert(
-        _index_entry("other", other).model_copy(update={"user_id": "u1"})
-    )
-    scheduler.scheduler.get_job.side_effect = lambda job_id, jobstore=None: (
-        job if job_id == "mine" else _mock_job(other.model_dump(mode="json"))
-    )
-    results = scheduler.get_execution_schedules(user_id="u1")
-    assert [r.id for r in results] == ["mine"]
-
-
-def test_persist_schedule_writes_index_row_and_delete_removes_it():
-    scheduler = _scheduler_with_index()
-    args = GraphExecutionJobArgs(**_graph_job_kwargs("s1", "u1", "g1"))
-    job = _mock_job(args.model_dump(mode="json"))
-    scheduler.scheduler.add_job.return_value = job
-
-    scheduler._persist_schedule(
-        dispatch_func=MagicMock(),
-        job_args=args,
-        trigger=MagicMock(),
-        name="n",
-    )
-    assert scheduler._schedule_index is not None
-    assert scheduler._schedule_index.all_job_ids() == {"s1"}
-
-    with patch.object(
-        scheduler, "_authorized_job", return_value=(job, MagicMock(kind="graph"))
-    ):
-        scheduler.delete_graph_execution_schedule("s1", "u1")
-    assert scheduler._schedule_index.all_job_ids() == set()
-
-
-def test_persist_schedule_survives_index_write_failure():
-    scheduler = _scheduler_with_index()
-    args = GraphExecutionJobArgs(**_graph_job_kwargs("s1", "u1", "g1"))
-    scheduler.scheduler.add_job.return_value = _mock_job(args.model_dump(mode="json"))
-    assert scheduler._schedule_index is not None
-    with patch.object(
-        scheduler._schedule_index, "upsert", side_effect=RuntimeError("db down")
-    ):
-        job = scheduler._persist_schedule(
-            dispatch_func=MagicMock(),
-            job_args=args,
-            trigger=MagicMock(),
-            name="n",
-        )
-    assert job is not None  # schedule creation must not fail on index errors
-
-
-def test_reconcile_rebuilds_index_and_keeps_racing_rows():
-    from backend.executor.scheduler import _index_entry
-
-    scheduler = _scheduler_with_index()
-    index = scheduler._schedule_index
-    assert index is not None
-
-    in_store = GraphExecutionJobArgs(**_graph_job_kwargs("in-store", "u1", "g1"))
-    store_jobs = [
-        _mock_job(in_store.model_dump(mode="json")),
-        _mock_job({"user_id": "u1"}),  # maintenance job: unparseable → skipped
-    ]
-    scheduler.scheduler.get_jobs.return_value = store_jobs
-
-    # Row for a job that fired and was auto-removed (confirmed gone) …
-    fired = GraphExecutionJobArgs(**_graph_job_kwargs("fired", "u1", "g1"))
-    index.upsert(_index_entry("fired", fired))
-    # … and a row added concurrently with the scan: not in the snapshot but
-    # still present in the live store — it must survive the reconcile.
-    racing = GraphExecutionJobArgs(**_graph_job_kwargs("racing", "u1", "g1"))
-    index.upsert(_index_entry("racing", racing))
-    racing_job = _mock_job(racing.model_dump(mode="json"))
-    scheduler.scheduler.get_job.side_effect = lambda job_id, jobstore=None: (
-        racing_job if job_id == "racing" else None
-    )
-
-    scheduler._schedule_index_ready = False
-    scheduler._reconcile_schedule_index()
-
-    assert index.all_job_ids() == {"in-store", "racing"}
-    assert scheduler._schedule_index_ready is True
 
     def _remove(self, existing=None, user_id="user-1"):
         sched = Scheduler.__new__(Scheduler)

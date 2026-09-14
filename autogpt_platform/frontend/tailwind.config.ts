@@ -30,6 +30,27 @@ const smoothShadowRing = plugin(function smoothShadowRing({
   });
 });
 
+// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
+// stay percent-encoded or the data URI terminates early.
+const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
+
+// Lays grain over an element's own background. Deliberately sets no `position`,
+// so it never fights the positioning utilities already on the target — callers
+// must position the element themselves.
+const grainTexture = plugin(function grainTexture({ addUtilities }) {
+  addUtilities({
+    ".grain-overlay::after": {
+      content: '""',
+      position: "absolute",
+      inset: "0",
+      backgroundImage: GRAIN_TEXTURE,
+      opacity: "0.5",
+      mixBlendMode: "soft-light",
+      pointerEvents: "none",
+    },
+  });
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -305,6 +326,7 @@ const config = {
     tailwindcssAnimate,
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
+    grainTexture,
   ],
 } satisfies Config;
 

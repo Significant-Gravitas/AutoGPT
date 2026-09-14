@@ -37,7 +37,7 @@ export function useKitSearch(scope: KitSearchScope) {
       },
     },
   );
-  const skillsQuery = useListCopilotSkills({
+  const skillsQuery = useListCopilotSkills(undefined, {
     query: {
       enabled: scope === "skills",
       select: (response) => okData(response) ?? [],

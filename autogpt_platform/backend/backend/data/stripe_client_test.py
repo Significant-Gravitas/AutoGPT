@@ -1,12 +1,17 @@
 """Tests for the single-door Stripe helper."""
 
 import asyncio
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import stripe
 from prometheus_client import REGISTRY
 
-from backend.data.stripe_client import stripe_call, stripe_call_timeout
+from backend.data.stripe_client import (
+    stripe_call,
+    stripe_call_timeout,
+    stripe_list_items,
+)
 
 
 def _n(resource: str, method: str, outcome: str) -> float:
@@ -83,3 +88,28 @@ async def test_timeout_is_bounded_and_counted():
     assert "exceeded 0.05s" in str(info.value)
     assert info.value.should_retry is False
     assert _n("Subscription", "retrieve", "timeout") == before + 1
+
+
+@pytest.mark.asyncio
+async def test_pagination_preserves_all_items():
+    first = stripe.ListObject.construct_from(
+        {"data": [{"id": "first"}], "has_more": True}, "test-key"
+    )
+    second = stripe.ListObject.construct_from(
+        {"data": [{"id": "second"}], "has_more": False}, "test-key"
+    )
+    with patch.object(
+        stripe.ListObject, "next_page_async", AsyncMock(return_value=second)
+    ) as next_page:
+        assert [item.id async for item in stripe_list_items(first)] == [
+            "first",
+            "second",
+        ]
+    next_page.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_incomplete_empty_page_is_not_treated_as_exhaustive_history():
+    page = stripe.ListObject.construct_from({"data": [], "has_more": True}, "test-key")
+    with pytest.raises(ValueError, match="empty page"):
+        _ = [item async for item in stripe_list_items(page)]

@@ -1,7 +1,7 @@
 """User-facing memory API: read + forget for the caller's own memory scopes.
 
 Backs the Settings → Memory page (SECRT-2580). Scope is structural, mirroring
-the admin memory API: account (AutoPilot) routes live at ``/memory/...`` and
+the admin memory API: account (Otto) routes live at ``/memory/...`` and
 expert routes at ``/memory/experts/{expert_id}/...``. Every route resolves the
 scope from the *authenticated caller* — there is no target-user path segment,
 so these routes can never read or delete another user's memory by construction.
@@ -139,7 +139,7 @@ async def _get_overview_impl(
 async def get_my_memory_overview(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> MemoryScopeOverview:
-    """Counts for the caller's account (AutoPilot) memory."""
+    """Counts for the caller's account (Otto) memory."""
     return await _get_overview_impl(user_id, None)
 
 
@@ -291,7 +291,7 @@ async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryR
 
     logger.info(
         f"Memory erase: user {user_id[:12]} wiped scope "
-        f"{resolved_expert_id or 'AutoPilot'} ({deleted} nodes)"
+        f"{resolved_expert_id or 'Otto'} ({deleted} nodes)"
     )
     return EraseMemoryResponse(
         expert_id=resolved_expert_id, deleted_nodes=deleted, erased=True

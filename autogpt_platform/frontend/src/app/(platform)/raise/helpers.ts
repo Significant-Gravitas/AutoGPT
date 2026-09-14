@@ -4,6 +4,11 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import {
+  findRoleOption,
+  isValidCustomRole,
+  normalizeCustomRole,
+} from "./components/RoleStep/helpers";
 
 export type RaiseStep =
   | "role"
@@ -55,7 +60,7 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
   nameQuestion: "Good pick. What do you want to call them?",
   colorQuestion: "Nice. Now choose a color for them.",
@@ -175,6 +180,32 @@ export function assembledKit(draft: RaiseDraft): RaiseKit | null {
   return {
     weeklyBudget: draft.budget?.credits ?? null,
     attachments: [...(draft.marketplace ?? []), ...(draft.skills ?? [])],
+  };
+}
+
+/** Every field still at its initial value — an untouched wizard, safe to
+ *  seed from a link without overwriting work in progress. */
+export function isEmptyDraft(draft: RaiseDraft): boolean {
+  return (Object.keys(EMPTY_DRAFT) as (keyof RaiseDraft)[]).every(
+    (key) => draft[key] === EMPTY_DRAFT[key],
+  );
+}
+
+/** `/raise?role=…` from the greeting page's raise door: answers the role
+ *  beat exactly as `pickRole` would, so the flow opens on the name
+ *  question instead of asking again for something already chosen. */
+export function draftWithPrefilledRole(
+  draft: RaiseDraft,
+  role: string | null,
+): RaiseDraft {
+  if (!role || !isEmptyDraft(draft)) return draft;
+  const preset = findRoleOption(role);
+  if (!preset && !isValidCustomRole(role)) return draft;
+  return {
+    ...draft,
+    hasStarted: true,
+    role: preset ? preset.id : normalizeCustomRole(role),
+    step: "name",
   };
 }
 

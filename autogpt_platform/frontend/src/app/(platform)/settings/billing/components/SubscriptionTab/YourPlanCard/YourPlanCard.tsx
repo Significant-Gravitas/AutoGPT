@@ -58,6 +58,8 @@ export function YourPlanCard({ index = 0 }: Props) {
 
   const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
 
+  if (plan?.tierKey === "TRIAL") return null;
+
   if (isLoading || !plan) {
     return (
       <motion.div {...sectionMotion}>
