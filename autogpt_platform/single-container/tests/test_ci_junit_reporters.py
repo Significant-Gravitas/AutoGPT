@@ -103,6 +103,81 @@ class CommandReporterTests(unittest.TestCase):
             self.assertIsNotNone(suite.find("testcase/error"))
 
 
+class ReportWriteFailureTests(unittest.TestCase):
+    def test_report_write_errors_are_diagnostic_and_preserve_failure_status(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tests = root / "tests"
+            tests.mkdir()
+            (tests / "test_healthy.py").write_text(
+                "import unittest\n"
+                "class Healthy(unittest.TestCase):\n"
+                "    def test_passes(self): pass\n",
+                encoding="utf-8",
+            )
+            existing_directory = root / "directory.xml"
+            existing_directory.mkdir()
+            existing_file = root / "not-a-directory"
+            existing_file.write_text("occupied", encoding="utf-8")
+            cases = [
+                (
+                    "command-success",
+                    COMMAND_REPORTER,
+                    ["--name", "command", "--classname", "ci"],
+                    ["--", sys.executable, "-c", "pass"],
+                    1,
+                ),
+                (
+                    "command-failure",
+                    COMMAND_REPORTER,
+                    ["--name", "command", "--classname", "ci"],
+                    ["--", sys.executable, "-c", "raise SystemExit(7)"],
+                    7,
+                ),
+                (
+                    "command-spawn-error",
+                    COMMAND_REPORTER,
+                    ["--name", "command", "--classname", "ci"],
+                    ["--", str(root / "missing-command")],
+                    127,
+                ),
+                (
+                    "unittest-success",
+                    UNITTEST_REPORTER,
+                    ["--start-directory", str(tests)],
+                    [],
+                    1,
+                ),
+                (
+                    "unittest-discovery-error",
+                    UNITTEST_REPORTER,
+                    ["--start-directory", str(root / "missing-tests")],
+                    [],
+                    1,
+                ),
+            ]
+            for name, reporter, args, command, status in cases:
+                for output in [existing_directory, existing_file / "report.xml"]:
+                    with self.subTest(name=name, output=str(output)):
+                        result = subprocess.run(
+                            [
+                                sys.executable,
+                                str(reporter),
+                                *args,
+                                "--output",
+                                str(output),
+                                *command,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        self.assertEqual(result.returncode, status, result.stderr)
+                        self.assertIn("Failed to write JUnit report", result.stderr)
+                        self.assertIn(str(output), result.stderr)
+                        self.assertNotIn("Traceback", result.stderr)
+
+
 class UnittestReporterTests(unittest.TestCase):
     def test_discovery_report_contains_every_test_id(self):
         with tempfile.TemporaryDirectory() as temp_dir:

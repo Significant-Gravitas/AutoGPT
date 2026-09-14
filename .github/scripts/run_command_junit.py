@@ -2,6 +2,7 @@
 
 import argparse
 import subprocess
+import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -68,30 +69,28 @@ def write_junit(
 def main() -> int:
     args = parse_args()
     started_at = time.monotonic()
+    spawn_error = None
     try:
         completed = subprocess.run(args.command, check=False)
+        returncode = completed.returncode
     except OSError as error:
-        duration = time.monotonic() - started_at
+        spawn_error = f"{type(error).__name__}: {error}"
+        returncode = 127
+    duration = time.monotonic() - started_at
+    try:
         write_junit(
             args.output,
             args.name,
             args.classname,
             args.command,
-            None,
+            None if spawn_error is not None else returncode,
             duration,
-            spawn_error=f"{type(error).__name__}: {error}",
+            spawn_error=spawn_error,
         )
-        return 127
-    duration = time.monotonic() - started_at
-    write_junit(
-        args.output,
-        args.name,
-        args.classname,
-        args.command,
-        completed.returncode,
-        duration,
-    )
-    return completed.returncode
+    except OSError as error:
+        print(f"Failed to write JUnit report {args.output}: {error}", file=sys.stderr)
+        return returncode or 1
+    return returncode
 
 
 if __name__ == "__main__":

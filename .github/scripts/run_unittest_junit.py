@@ -244,12 +244,16 @@ def main() -> int:
             )
         ]
         successful = False
-    write_junit(
-        args.output,
-        args.suite_name,
-        records,
-        time.monotonic() - started_at,
-    )
+    try:
+        write_junit(
+            args.output,
+            args.suite_name,
+            records,
+            time.monotonic() - started_at,
+        )
+    except OSError as error:
+        print(f"Failed to write JUnit report {args.output}: {error}", file=sys.stderr)
+        return 1
     return 0 if successful else 1
 
 

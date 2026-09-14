@@ -123,7 +123,8 @@ jobs:
 
   chromatic:
     runs-on: ubuntu-latest
-    # Disabled: remove this condition and restore component filtering to re-enable.
+    # Disabled. Re-enable only for github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+    # and a paths-filter match on autogpt_platform/frontend/src/components/**.
     if: ${{ false }}
 
     steps:
