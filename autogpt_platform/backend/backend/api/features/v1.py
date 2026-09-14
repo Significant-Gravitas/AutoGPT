@@ -44,6 +44,11 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summary_if_disabled,
 )
 from backend.api.features.experts import experts_db
+from backend.api.features.skill_zip import (
+    MAX_ZIP_BYTES,
+    package_from_zip,
+    zip_from_package,
+)
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
@@ -59,14 +64,19 @@ from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
+    ParsedSkill,
+    SkillFile,
     SkillLimitError,
     SkillNotFoundError,
+    SkillPackageError,
     delete_user_skill,
     get_default_skill_with_body,
-    list_user_skill_sibling_paths,
+    list_user_skill_files,
     list_user_skills,
     parse_skill_markdown,
+    read_user_skill_package,
     read_user_skill_with_body,
+    skill_folder,
     store_user_skill,
 )
 from backend.data import execution as execution_db
@@ -2749,6 +2759,15 @@ class CopilotSkillInfo(BaseModel):
     triggers: list[str] = []
 
 
+class CopilotSkillFile(BaseModel):
+    """One file of a skill package, by its path relative to the skill folder
+    (``scripts/run.py``) — the path the SKILL.md body references it by."""
+
+    path: str
+    size_bytes: int
+    is_executable: bool = False
+
+
 class CopilotSkillDetail(BaseModel):
     """Full SKILL.md content surfaced to the library expand-to-view UI."""
 
@@ -2758,11 +2777,9 @@ class CopilotSkillDetail(BaseModel):
     body: str
     version: str | None = None
     is_default: bool = False
-    # Sibling files in the same skill folder (references/, scripts/,
-    # assets/, etc.) — the workspace paths the model can reach via
-    # ``read_workspace_file``.  Empty for built-in defaults since they
-    # ship as on-disk markdown and have no sibling artefacts.
-    sibling_files: list[str] = []
+    # The package's other files (references/, scripts/, assets/).  Empty for
+    # built-in defaults, which ship as one on-disk markdown file.
+    files: list[CopilotSkillFile] = []
 
 
 class UploadCopilotSkillRequest(BaseModel):
@@ -2857,8 +2874,78 @@ async def upload_copilot_skill(
                 "'name' and 'description' followed by a markdown body."
             ),
         )
+    stored = await _store_uploaded_skill(user_id, parsed, expert_id=expert_id)
+    return CopilotSkillInfo(
+        name=stored.name,
+        description=stored.description,
+        triggers=list(stored.triggers),
+    )
+
+
+@v1_router.post(
+    path="/skills/package",
+    summary="Upload a copilot skill as a zipped package",
+    operation_id="uploadCopilotSkillPackage",
+    tags=["skills"],
+    status_code=201,
+    responses={
+        400: {"description": "Unreadable archive, or a malformed SKILL.md or path"},
+        409: {"description": "Per-user skill limit reached"},
+        413: {"description": "Archive, file or file count over the package limit"},
+    },
+    dependencies=[Security(requires_user)],
+)
+async def upload_copilot_skill_package(
+    user_id: Annotated[str, Security(get_user_id)],
+    file: UploadFile,
+    expert_id: str | None = Query(
+        default=None, description="Store the skill as this expert's own."
+    ),
+) -> CopilotSkillInfo:
+    """Create a skill from a zipped package — a root ``SKILL.md`` plus the
+    files beside it.
+
+    The zip is transport only: it is unpacked here and stored as the skill's
+    folder, so the model reaches ``scripts/`` and ``references/`` by path
+    exactly as it does for a package copied from another skill.
+    """
+    await _require_skill_owner(user_id, expert_id)
+    data = await _read_upload(file, MAX_ZIP_BYTES)
     try:
-        stored = await store_user_skill(
+        package = await run_in_threadpool(package_from_zip, data)
+    except SkillPackageError as exc:
+        raise HTTPException(status_code=413 if exc.over_limit else 400, detail=str(exc))
+    parsed = parse_skill_markdown(package.skill_md)
+    if parsed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The archive's SKILL.md is not valid — expected YAML "
+                "frontmatter with 'name' and 'description' followed by a "
+                "markdown body."
+            ),
+        )
+    stored = await _store_uploaded_skill(
+        user_id, parsed, expert_id=expert_id, files=package.files
+    )
+    return CopilotSkillInfo(
+        name=stored.name,
+        description=stored.description,
+        triggers=list(stored.triggers),
+    )
+
+
+async def _store_uploaded_skill(
+    user_id: str,
+    parsed: ParsedSkill,
+    *,
+    expert_id: str | None,
+    files: list[SkillFile] | None = None,
+) -> ParsedSkill:
+    """Persist a parsed upload, mapping each refusal to its status: 409 at the
+    per-user cap, 413 over a package limit, 400 for anything malformed."""
+    try:
+        return await store_user_skill(
             user_id,
             expert_id=expert_id,
             name=parsed.name,
@@ -2867,21 +2954,35 @@ async def upload_copilot_skill(
             triggers=list(parsed.triggers),
             version=parsed.version,
             extra=parsed.extra,
+            files=files,
         )
     except SkillLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except (VirusDetectedError, VirusScanError) as exc:
-        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
+        logger.warning(f"[skills] virus scan rejected an uploaded skill: {exc}")
         raise HTTPException(
             status_code=400, detail="Skill content rejected by virus scan"
         )
+    except SkillPackageError as exc:
+        raise HTTPException(status_code=413 if exc.over_limit else 400, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return CopilotSkillInfo(
-        name=stored.name,
-        description=stored.description,
-        triggers=list(stored.triggers),
-    )
+
+
+async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload with an early abort, so a body over the cap is refused
+    without ever being held whole."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(64 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Archive is larger than the {max_bytes}-byte limit",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @v1_router.get(
@@ -2930,9 +3031,7 @@ async def read_copilot_skill(
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
         )
-    sibling_files = await list_user_skill_sibling_paths(
-        user_id, slug, expert_id=expert_id
-    )
+    prefix = f"{skill_folder(expert_id)}/{slug}/"
     return CopilotSkillDetail(
         name=parsed.name,
         description=parsed.description,
@@ -2940,7 +3039,59 @@ async def read_copilot_skill(
         body=parsed.body,
         version=parsed.version,
         is_default=False,
-        sibling_files=sibling_files,
+        files=[
+            CopilotSkillFile(
+                path=f.path.removeprefix(prefix),
+                size_bytes=f.size_bytes,
+                is_executable=f.is_executable,
+            )
+            for f in await list_user_skill_files(user_id, slug, expert_id=expert_id)
+        ],
+    )
+
+
+@v1_router.get(
+    path="/skills/{name}/package",
+    summary="Download a copilot skill as a zipped package",
+    operation_id="downloadCopilotSkillPackage",
+    tags=["skills"],
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            },
+            "description": "The skill folder as a zip archive",
+        },
+        404: {"description": "Skill not found"},
+    },
+    dependencies=[Security(requires_user)],
+)
+async def download_copilot_skill_package(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to download"),
+    expert_id: str | None = Query(
+        default=None, description="Download this expert's own copy of the skill."
+    ),
+) -> Response:
+    """Return the skill's whole folder as a zip — ``SKILL.md`` at the root,
+    siblings at their relative paths, executable bits preserved — so a
+    download re-uploads to the same tree.
+
+    Built-in defaults are single on-disk files and are not downloadable here;
+    GET ``/skills/{name}`` serves their body.
+    """
+    await _require_skill_owner(user_id, expert_id)
+    slug = name.strip().lower()
+    package = await read_user_skill_package(user_id, slug, expert_id=expert_id)
+    if package is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    return Response(
+        content=await run_in_threadpool(zip_from_package, package),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{slug}.zip"'},
     )
 
 

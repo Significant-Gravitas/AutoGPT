@@ -43,7 +43,7 @@ from backend.copilot.tools.skills import (
     find_user_skill_slugs,
     get_default_skills,
     list_all_skills,
-    list_user_skill_sibling_paths,
+    list_user_skill_files,
     parse_skill_markdown,
     render_skill_markdown,
     render_skills_index,
@@ -1370,7 +1370,7 @@ async def test_a_nested_skill_md_is_neither_indexed_nor_a_second_skill():
     with _patch_skills_path(fake):
         skills = await _list_user_skills_from_workspace("user-1")
         slugs = await find_user_skill_slugs("user-1", ["big", "examples"])
-        siblings = await list_user_skill_sibling_paths("user-1", "big")
+        siblings = [f.path for f in await list_user_skill_files("user-1", "big")]
     assert [s.name for s in skills] == ["big"]
     assert slugs == {"big": "big"}
     assert siblings == ["/skills/big/references/examples/SKILL.md"]
@@ -1380,7 +1380,7 @@ async def test_a_nested_skill_md_is_neither_indexed_nor_a_second_skill():
 async def test_package_enumeration_pages_past_the_old_fifty_row_limit():
     fake = _package_manager(siblings=80)
     with _patch_skills_path(fake):
-        siblings = await list_user_skill_sibling_paths("user-1", "big")
+        siblings = [f.path for f in await list_user_skill_files("user-1", "big")]
     assert len(siblings) == 80
 
 
@@ -1390,7 +1390,7 @@ async def test_package_enumeration_stops_one_past_the_cap():
     instead of quietly presenting a truncated package as whole."""
     fake = _package_manager(siblings=MAX_PACKAGE_FILES + 50)
     with _patch_skills_path(fake):
-        siblings = await list_user_skill_sibling_paths("user-1", "big")
+        siblings = [f.path for f in await list_user_skill_files("user-1", "big")]
     assert len(siblings) == MAX_PACKAGE_FILES + 1
 
 

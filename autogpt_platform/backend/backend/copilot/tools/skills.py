@@ -1235,32 +1235,56 @@ async def read_user_skill_with_body(
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
 
 
-async def list_user_skill_sibling_paths(
+async def read_user_skill_package(
     user_id: str,
     name: str,
     *,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
-) -> list[str]:
-    """Return the workspace paths of files siblings to ``SKILL.md`` in a
-    user-stored skill's folder (``references/``, ``scripts/``, ``assets/``,
-    or anything the model stashed there at distillation time).
+) -> SkillPackage | None:
+    """The whole stored skill — the ``SKILL.md`` exactly as stored plus every
+    sibling — or ``None`` when the slug has no ``SKILL.md``.
 
-    Used by the REST GET ``/skills/{name}`` endpoint so the library UI's
-    expand-to-view dialog can show the model what extra artefacts the
-    skill bundle carries.  Returns ``[]`` on any error — sibling listing
-    is best-effort and must not fail the parent request.
+    What the zip download hands out, so a downloaded package re-uploads to a
+    byte-identical tree. :func:`read_user_skill_with_body` is the root alone.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id, scope)
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+    except Exception:
+        return None
+    return SkillPackage(
+        skill_md=raw.decode("utf-8", errors="replace"),
+        files=await _read_package_files(manager, skill_folder(expert_id), slug),
+    )
+
+
+async def list_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[SkillFileInfo]:
+    """Every file beside a stored skill's ``SKILL.md`` — ``references/``,
+    ``scripts/``, ``assets/``, or anything the model stashed there — with the
+    size and executable bit the library UI's file tree shows.
+
+    Returns ``[]`` on any error: listing decorates the read it accompanies and
+    must not fail it.
     """
     slug = name.strip().lower()
     if not slug:
         return []
     try:
         manager = await _get_user_skill_manager(user_id, scope)
-        files = await _list_package_files(manager, skill_folder(expert_id), slug)
-        return [f.path for f in files]
+        return await _list_package_files(manager, skill_folder(expert_id), slug)
     except Exception:
         logger.warning(
-            "[skills] failed to list sibling files for %s", slug, exc_info=True
+            "[skills] failed to list package files for %s", slug, exc_info=True
         )
         return []
 
