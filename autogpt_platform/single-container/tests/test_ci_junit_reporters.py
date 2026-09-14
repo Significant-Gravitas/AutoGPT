@@ -266,6 +266,21 @@ class UnittestReporterTests(unittest.TestCase):
             allowed_suite = ET.parse(allowed).getroot()
             self.assertEqual(allowed_suite.attrib["skipped"], "1")
 
+            other = Path(temp_dir) / "other.xml"
+            other_result = subprocess.run(
+                command
+                + [str(other), "--allow-skip", "test_skip.SkipTests.test_other"],
+                check=False,
+            )
+            self.assertNotEqual(other_result.returncode, 0)
+            other_suite = ET.parse(other).getroot()
+            self.assertEqual(other_suite.attrib["failures"], "1")
+            self.assertEqual(other_suite.attrib["skipped"], "0")
+            self.assertIn(
+                "test_skip.SkipTests.test_optional",
+                other_suite.find("testcase/failure").text,
+            )
+
     def test_expected_failure_is_never_allowlisted_as_a_skip(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             test_directory = Path(temp_dir) / "tests"
