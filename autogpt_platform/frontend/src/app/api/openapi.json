@@ -13997,6 +13997,49 @@
         "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
       }
     },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin Read Skill Submission File",
+        "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
+        "operationId": "getV2Admin read skill submission file",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
@@ -15171,6 +15214,67 @@
             }
           },
           "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}/files/{path}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Read marketplace skill file",
+        "description": "One file's text, for reading a package before installing it.",
+        "operationId": "getV2Read marketplace skill file",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "File's path relative to the skill folder",
+              "title": "Path"
+            },
+            "description": "File's path relative to the skill folder"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it.",
+              "title": "Version Id"
+            },
+            "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "404": { "description": "Skill, version or file not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -28192,7 +28296,16 @@
       "SkillPackageFile": {
         "properties": {
           "path": { "type": "string", "title": "Path" },
-          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["path", "size_bytes"],
@@ -28242,6 +28355,12 @@
             "type": "boolean",
             "title": "Is Live",
             "description": "Whether this version is the one the marketplace serves."
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "description": "Files beside the submitted SKILL.md, so a reviewer sees what a package ships before approving it."
           }
         },
         "type": "object",

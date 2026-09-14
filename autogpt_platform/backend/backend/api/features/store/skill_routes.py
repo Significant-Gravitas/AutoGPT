@@ -13,6 +13,10 @@ from . import skill_db, skill_model, skill_submission_db
 # evaluated as an anonymous context, which with the flag off answers False.
 _ANONYMOUS_FLAG_KEY = "anonymous"
 
+# This endpoint is a source viewer for someone deciding to install or approve a
+# package, not a file server: a file past this is refused rather than streamed.
+MAX_VIEWABLE_FILE_BYTES = 256 * 1024
+
 
 async def require_skills_hub_flag(
     user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
@@ -114,6 +118,106 @@ async def get_marketplace_skill(
 ) -> skill_model.MarketplaceSkillDetails:
     """One listing with the full SKILL.md body the install will copy."""
     return await skill_db.get_marketplace_skill(slug)
+
+
+@router.get(
+    "/{slug}/files/{path:path}",
+    summary="Read marketplace skill file",
+    tags=["store", "public"],
+    response_class=fastapi.responses.PlainTextResponse,
+    responses={
+        404: {"description": "Skill, version or file not found"},
+        413: {"description": "File is too large to view"},
+        415: {"description": "File is not text"},
+    },
+)
+async def read_marketplace_skill_file(
+    slug: str = Path(..., description="Slug of the skill listing"),
+    path: str = Path(..., description="File's path relative to the skill folder"),
+    version_id: str | None = Query(
+        default=None,
+        description=(
+            "Read this version instead of the live one. A pending submission "
+            "is readable only by the creator who submitted it."
+        ),
+    ),
+    user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
+) -> str:
+    """One file's text, for reading a package before installing it."""
+    version = await skill_db.find_readable_version(
+        slug, version_id=version_id, user_id=user_id
+    )
+    return await read_package_file(version.id, path)
+
+
+async def read_package_file(skill_listing_version_id: str, relative_path: str) -> str:
+    """The published file's text, or the refusal that applies to it.
+
+    Shared with the admin reviewer's own route, which reaches a pending
+    version through its router's admin check rather than through this one.
+    """
+    meta = await skill_db.get_package_file_meta(skill_listing_version_id, relative_path)
+    # The path is matched against the published rows, so nothing here can
+    # address storage — an unknown path is simply not part of the package.
+    if meta is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"'{relative_path}' is not part of this package"
+        )
+    if meta.size_bytes > MAX_VIEWABLE_FILE_BYTES:
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail=(
+                f"'{relative_path}' is {meta.size_bytes} bytes; this endpoint "
+                f"serves up to {MAX_VIEWABLE_FILE_BYTES}"
+            ),
+        )
+    if not _is_text_type(meta.mime_type):
+        raise fastapi.HTTPException(
+            status_code=415,
+            detail=f"'{relative_path}' is {meta.mime_type}, which is not text",
+        )
+    content = await skill_db.read_package_file_bytes(
+        skill_listing_version_id, relative_path
+    )
+    if content is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"'{relative_path}' is not part of this package"
+        )
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise fastapi.HTTPException(
+            status_code=415, detail=f"'{relative_path}' is not valid UTF-8 text"
+        )
+
+
+def _is_text_type(mime_type: str | None) -> bool:
+    """Whether the viewer will serve a file of this type.
+
+    ``None`` is an extension ``mimetypes`` cannot name — a ``Makefile``, a
+    ``.toml`` — which a reviewer still has to read, so the decode below is
+    what refuses those rather than the name.
+    """
+    if mime_type is None:
+        return True
+    return mime_type.startswith("text/") or mime_type in _TEXT_APPLICATION_TYPES
+
+
+# `mimetypes` names these `application/…` though a package ships them as source
+# a reviewer reads; every other non-`text/` type is a binary this will not serve.
+_TEXT_APPLICATION_TYPES = frozenset(
+    {
+        "application/javascript",
+        "application/json",
+        "application/sql",
+        "application/toml",
+        "application/x-httpd-php",
+        "application/x-sh",
+        "application/x-yaml",
+        "application/xml",
+        "application/yaml",
+    }
+)
 
 
 @router.post(
