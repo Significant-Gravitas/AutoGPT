@@ -21,7 +21,7 @@ from backend.copilot.tools.skills import (
     ReadSkillResponse,
     ReadSkillTool,
     SkillFile,
-    list_user_skill_sibling_paths,
+    list_user_skill_files,
     parse_skill_markdown,
     store_user_skill,
 )
@@ -222,7 +222,9 @@ async def test_installing_a_newer_version_drops_a_sibling_the_old_one_had(
     await _publish(creator, setup_admin_user)
     await skill_db.install_marketplace_skill(creator, SLUG, expert_id=expert)
 
-    installed = await list_user_skill_sibling_paths(creator, SLUG, expert_id=expert)
+    installed = {
+        f.path for f in await list_user_skill_files(creator, SLUG, expert_id=expert)
+    }
     folder = f"/experts/{expert}/skills/{SLUG}"
     assert f"{folder}/LICENSE.txt" not in installed
     assert f"{folder}/scripts/with_server.py" in installed
@@ -241,4 +243,4 @@ async def test_installing_a_single_file_listing_clears_a_package_left_behind(
     await _publish(creator, setup_admin_user)
     await skill_db.install_marketplace_skill(creator, SLUG, expert_id=expert)
 
-    assert await list_user_skill_sibling_paths(creator, SLUG, expert_id=expert) == []
+    assert await list_user_skill_files(creator, SLUG, expert_id=expert) == []

@@ -48,11 +48,13 @@ from backend.copilot.tools.skills import (
     list_all_skills,
     list_user_skill_files,
     parse_skill_markdown,
+    read_user_skill_package,
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
     validate_package,
 )
+from backend.util.exceptions import ConflictError
 
 # ---------------------------------------------------------------------------
 # Round-trip
@@ -1351,6 +1353,80 @@ def _package_manager(slug: str = "big", siblings: int = 0) -> _FakeWorkspaceMana
     for i in range(siblings):
         fake.files[f"/skills/{slug}/references/r{i:03d}.md"] = f"ref {i}".encode()
     return fake
+
+
+class _MovingTree(_FakeWorkspaceManager):
+    """A store that keeps landing under the read.
+
+    Each listing reports a fresh row id for one sibling, which is what a real
+    overwrite does — ``write_file`` mints a new uuid and recreates the row, so
+    the id is what a concurrent write moves. Deriving the id from the path, as
+    the plain fake does, cannot express that.
+    """
+
+    def __init__(self, settles_at: int | None = None):
+        super().__init__()
+        self.files["/skills/big/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name="big", description="big description", body="steps")
+        ).encode()
+        self.files["/skills/big/references/moving.md"] = b"contents"
+        self.listings = 0
+        self.settles_at = settles_at
+
+    async def list_files(self, **kwargs):
+        self.listings += 1
+        rows = await super().list_files(**kwargs)
+        if self.settles_at is None or self.listings < self.settles_at:
+            for row in rows:
+                if row.path.endswith("moving.md"):
+                    row.id = f"id-moving-{self.listings}"
+        return rows
+
+
+@pytest.mark.asyncio
+async def test_a_package_read_retries_until_the_tree_stops_moving():
+    # Settles from the third listing: attempt one sees the tree move, attempt
+    # two finds it still.
+    fake = _MovingTree(settles_at=3)
+    with _patch_skills_path(fake):
+        package = await read_user_skill_package("user-1", "big")
+    assert package is not None
+    assert [f.relative_path for f in package.files] == ["references/moving.md"]
+
+
+@pytest.mark.asyncio
+async def test_a_package_read_that_never_settles_raises_instead_of_mixing():
+    """The body and the files would otherwise come from different versions, and
+    a publish would put that mix on the shelf permanently."""
+    fake = _MovingTree()
+    with _patch_skills_path(fake):
+        with pytest.raises(ConflictError):
+            await read_user_skill_package("user-1", "big")
+
+
+@pytest.mark.asyncio
+async def test_a_read_failure_is_answered_once_and_never_retried():
+    """Only a moved fingerprint costs an attempt. Retrying a storage failure
+    would turn one error into three reads and report a concurrency conflict for
+    something that is not one."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    reads = 0
+    original = fake.read_file
+
+    async def counted(path: str) -> bytes:
+        nonlocal reads
+        reads += 1
+        if path.endswith("references/guide.md"):
+            raise RuntimeError("blob store down")
+        return await original(path)
+
+    fake.read_file = counted
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="blob store down"):
+            await read_user_skill_package("user-1", "big")
+    # The root plus the one sibling that raised: a retry would read them again.
+    assert reads == 2
 
 
 @pytest.mark.asyncio

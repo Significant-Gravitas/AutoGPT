@@ -1,8 +1,15 @@
+import hashlib
+
 import prisma.enums
 import prisma.models
 import pytest
 
-from backend.copilot.tools.skills import ParsedSkill
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillFile,
+    SkillPackage,
+    render_skill_markdown,
+)
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 from backend.util.test import SpinTestServer
 
@@ -14,6 +21,12 @@ LIBRARY_SKILL = ParsedSkill(
     body="# Brand voice\nLead with positioning.\n",
     triggers=("brand voice",),
 )
+
+
+def _library_package(files: list[SkillFile] | None = None) -> SkillPackage:
+    return SkillPackage(
+        skill_md=render_skill_markdown(LIBRARY_SKILL), files=files or []
+    )
 
 
 def _request(**overrides) -> skill_model.SkillSubmissionRequest:
@@ -28,8 +41,12 @@ def _request(**overrides) -> skill_model.SkillSubmissionRequest:
 
 @pytest.fixture(autouse=True)
 async def library_skill(mocker, server: SpinTestServer):
+    # A single-file skill unless a test says otherwise; the package round trip
+    # runs against a real workspace in skill_package_test.py.
     mocker.patch.object(
-        skill_submission_db, "read_user_skill_with_body", return_value=LIBRARY_SKILL
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_library_package(),
     )
     await prisma.models.SkillListingVersion.prisma().delete_many()
     await prisma.models.SkillListing.prisma().delete_many()
@@ -84,7 +101,7 @@ async def test_publishing_a_skill_that_is_not_in_the_library_is_refused(
     creator, mocker
 ):
     mocker.patch.object(
-        skill_submission_db, "read_user_skill_with_body", return_value=None
+        skill_submission_db, "read_user_skill_package", return_value=None
     )
 
     with pytest.raises(NotFoundError):
@@ -146,12 +163,16 @@ async def test_republishing_leaves_the_live_version_serving_until_approved(
     )
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="brand-voice-guide",
-            description="Rewritten.",
-            body="# Rewritten\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=SkillPackage(
+            skill_md=render_skill_markdown(
+                ParsedSkill(
+                    name="brand-voice-guide",
+                    description="Rewritten.",
+                    body="# Rewritten\n",
+                    triggers=(),
+                )
+            )
         ),
     )
 
@@ -167,12 +188,16 @@ async def test_editing_re_snapshots_the_library_skill(creator, mocker):
     submission = await skill_submission_db.submit_skill(creator, _request())
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="brand-voice-guide",
-            description="Tightened.",
-            body="# Tightened\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=SkillPackage(
+            skill_md=render_skill_markdown(
+                ParsedSkill(
+                    name="brand-voice-guide",
+                    description="Tightened.",
+                    body="# Tightened\n",
+                    triggers=(),
+                )
+            )
         ),
     )
 
@@ -227,16 +252,79 @@ async def test_the_review_queue_holds_only_pending_submissions(creator, reviewer
     assert await skill_submission_db.list_pending_skill_submissions() == []
 
 
+async def test_publishing_snapshots_every_file_beside_the_skill_md(creator, mocker):
+    mocker.patch.object(
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_library_package(
+            [
+                SkillFile(relative_path="references/tone.md", content=b"warm"),
+                SkillFile(
+                    relative_path="scripts/lint.py", content=b"x", is_executable=True
+                ),
+            ]
+        ),
+    )
+
+    submission = await skill_submission_db.submit_skill(creator, _request())
+
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": submission.skill_listing_version_id},
+        order={"relativePath": "asc"},
+    )
+    assert [(r.relativePath, r.sizeBytes, r.isExecutable) for r in rows] == [
+        ("references/tone.md", 4, False),
+        ("scripts/lint.py", 1, True),
+    ]
+    assert rows[0].sha256 == hashlib.sha256(b"warm").hexdigest()
+    assert rows[0].mimeType == "text/markdown"
+
+
+async def test_editing_a_pending_submission_drops_a_file_it_no_longer_has(
+    creator, mocker
+):
+    """The rows are the version's package, so an edit replaces them whole —
+    a file left behind would ship in a version its creator never published."""
+    package = mocker.patch.object(
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_library_package(
+            [
+                SkillFile(relative_path="references/tone.md", content=b"warm"),
+                SkillFile(relative_path="references/gone.md", content=b"bye"),
+            ]
+        ),
+    )
+    submission = await skill_submission_db.submit_skill(creator, _request())
+    package.return_value = _library_package(
+        [SkillFile(relative_path="references/tone.md", content=b"warmer")]
+    )
+
+    await skill_submission_db.edit_skill_submission(
+        creator, submission.skill_listing_version_id, _request()
+    )
+
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": submission.skill_listing_version_id}
+    )
+    assert [r.relativePath for r in rows] == ["references/tone.md"]
+    assert rows[0].content.decode() == b"warmer"
+
+
 async def test_editing_cannot_repoint_the_submission_at_another_skill(creator, mocker):
     submission = await skill_submission_db.submit_skill(creator, _request())
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="other-skill",
-            description="Someone else's content.",
-            body="# Other\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=SkillPackage(
+            skill_md=render_skill_markdown(
+                ParsedSkill(
+                    name="other-skill",
+                    description="Someone else's content.",
+                    body="# Other\n",
+                    triggers=(),
+                )
+            )
         ),
     )
 
