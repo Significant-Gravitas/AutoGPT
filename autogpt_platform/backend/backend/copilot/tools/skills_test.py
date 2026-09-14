@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.copilot.tools.skills as skills
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
@@ -2098,3 +2099,91 @@ async def test_the_prune_never_reads_a_root_skill_md_as_a_stale_sibling():
         )
         assert os.path.exists(decoy)
         assert os.path.exists(escape)
+
+
+@pytest.mark.asyncio
+async def test_a_chmod_that_failed_is_retried_next_activation():
+    """The manifest is what a later activation trusts instead of re-doing the
+    work, so recording a mode that never applied makes a transient sandbox
+    failure permanent: the file is skipped from then on and stays unrunnable."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(
+                    relative_path="bin/tool",
+                    content=b"#!/bin/sh\n",
+                    is_executable=True,
+                )
+            ],
+        )
+        real = skills.set_executable
+        calls: list[list[str]] = []
+
+        async def flaky(paths, executable, session_id):
+            calls.append(list(paths))
+            if len(calls) <= 2:
+                return list(paths)
+            return await real(paths, executable, session_id)
+
+        tool = os.path.join(patched.workdir, "skills", "pkg", "bin", "tool")
+        with patch.object(skills, "set_executable", flaky):
+            await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+            assert not os.stat(tool).st_mode & 0o111
+            await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+        assert os.stat(tool).st_mode & 0o111
+
+
+@pytest.mark.asyncio
+async def test_a_stale_file_that_would_not_go_stays_in_the_manifest():
+    """Dropping it from the manifest is what stops the next activation from
+    trying again, so a file the package no longer has stays where bash_exec
+    can run it for good."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path="a.md", content=b"a"),
+                SkillFile(relative_path="gone.md", content=b"g"),
+            ],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="a.md", content=b"a")],
+        )
+        asked: list[list[str]] = []
+
+        async def dead_rm(paths, session_id):
+            asked.append(list(paths))
+            return list(paths)
+
+        with patch.object(skills, "remove_from_workdir", dead_rm):
+            await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+            await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="pkg"
+            )
+        gone = os.path.join(patched.workdir, "skills", "pkg", "gone.md")
+        # Asked both times, not just the first.
+        assert [c for c in asked if c] == [[gone], [gone]]
+        with open(os.path.join(patched.workdir, "skills", "pkg", ".package.json")) as f:
+            assert "gone.md" in json.load(f)

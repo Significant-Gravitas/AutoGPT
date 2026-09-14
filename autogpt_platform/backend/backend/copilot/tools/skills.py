@@ -2152,14 +2152,22 @@ async def _sync_skill_package(
         for c in copied
     }
 
+    # The manifest is what a later activation trusts instead of re-doing work,
+    # so it records only what actually happened. A mode that would not apply or
+    # a file that would not go is left out of it, and the next activation tries
+    # again; committing them would make a transient failure permanent.
+    committed = dict(written)
+
     # Only files this pass wrote carry a ``target``; a manifest hit needs no
     # chmod, because its recorded mode already matches.
-    await set_executable(
+    unset = await set_executable(
         [c.target for c in copied if c.target and c.executable], True, session_id
-    )
-    await set_executable(
+    ) + await set_executable(
         [c.target for c in copied if c.target and not c.executable], False, session_id
     )
+    for c in copied:
+        if c.target in unset:
+            committed.pop(c.relative, None)
     # A file the skill no longer has must not stay where bash_exec can run it,
     # and delete_skill followed by store_skill on the same slug is exactly that
     # case.  Prune by what the package HOLDS, not by what was copied: a copy
@@ -2170,13 +2178,18 @@ async def _sync_skill_package(
         # acting on a name that does not belong to it.
         current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
         stale = sorted(set(manifest) - current)
-        await remove_from_workdir(
-            [f"{package_dir}/{relative}" for relative in stale], session_id
+        left = set(
+            await remove_from_workdir(
+                [f"{package_dir}/{relative}" for relative in stale], session_id
+            )
         )
+        for relative in stale:
+            if f"{package_dir}/{relative}" in left:
+                committed[relative] = manifest[relative]
     # A single-file skill must not leave an empty package directory behind, so
     # the manifest is written only when there is, or was, something to track.
-    if written or manifest:
-        await _write_package_manifest(package_dir, written, session_id)
+    if committed or manifest:
+        await _write_package_manifest(package_dir, committed, session_id)
 
     if not files:
         return None, None
