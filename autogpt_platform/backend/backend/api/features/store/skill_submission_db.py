@@ -1,17 +1,25 @@
 """Publishing a library skill as a marketplace listing, and reviewing it.
 
-A submission snapshots the creator's own ``SKILL.md`` at submit time, so
-editing the library copy afterwards never changes what installers get — only
-a new submission does. The live version stays served throughout: approval is
-what promotes a pending version, and a rejection leaves the shelf untouched.
+A submission snapshots the creator's own package — the ``SKILL.md`` and every
+file beside it — at submit time, so editing the library copy afterwards never
+changes what installers get; only a new submission does. The live version stays
+served throughout: approval is what promotes a pending version, and a rejection
+leaves the shelf untouched.
 """
 
 import datetime
+import hashlib
+import mimetypes
 
+import prisma
 import prisma.enums
 import prisma.models
 
-from backend.copilot.tools.skills import read_user_skill_with_body
+from backend.copilot.tools.skills import (
+    SkillFile,
+    read_user_skill_files,
+    read_user_skill_with_body,
+)
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 
@@ -30,6 +38,8 @@ async def submit_skill(
     skill = await read_user_skill_with_body(user_id, slug)
     if skill is None:
         raise NotFoundError(f"Skill '{slug}' is not in your library")
+    # Outside the transaction: these are blob reads, not database work.
+    files = await read_user_skill_files(user_id, slug)
     await _require_profile(user_id)
 
     async with transaction() as tx:
@@ -61,6 +71,7 @@ async def submit_skill(
                 "submittedAt": datetime.datetime.now(datetime.timezone.utc),
             }
         )
+        await _snapshot_files(tx, version.id, files)
     return skill_model.SkillSubmission.from_db(version, listing)
 
 
@@ -106,21 +117,24 @@ async def edit_skill_submission(
     skill = await read_user_skill_with_body(user_id, slug)
     if skill is None:
         raise NotFoundError(f"Skill '{slug}' is not in your library")
+    files = await read_user_skill_files(user_id, slug)
 
-    updated = await prisma.models.SkillListingVersion.prisma().update(
-        where={"id": version.id},
-        data={
-            "name": skill.name,
-            "description": skill.description,
-            "body": skill.body,
-            "triggers": list(skill.triggers),
-            "categories": request.categories,
-            "requiredProviders": request.required_providers,
-            "changesSummary": request.changes_summary or version.changesSummary,
-        },
-    )
-    if updated is None:
-        raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
+    async with transaction() as tx:
+        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
+            where={"id": version.id},
+            data={
+                "name": skill.name,
+                "description": skill.description,
+                "body": skill.body,
+                "triggers": list(skill.triggers),
+                "categories": request.categories,
+                "requiredProviders": request.required_providers,
+                "changesSummary": request.changes_summary or version.changesSummary,
+            },
+        )
+        if updated is None:
+            raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
+        await _snapshot_files(tx, updated.id, files)
     return skill_model.SkillSubmission.from_db(updated, listing)
 
 
@@ -191,6 +205,37 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
         for v in versions
         if v.SkillListing is not None
     ]
+
+
+async def _snapshot_files(
+    tx, skill_listing_version_id: str, files: list[SkillFile]
+) -> None:
+    """Make *files* the version's package, replacing whatever it held.
+
+    The bytes are copied rather than referenced, which is what lets the
+    creator keep editing their library skill without moving the shelf.
+    """
+    await prisma.models.SkillListingFile.prisma(tx).delete_many(
+        where={"skillListingVersionId": skill_listing_version_id}
+    )
+    if not files:
+        return
+    await prisma.models.SkillListingFile.prisma(tx).create_many(
+        data=[
+            {
+                "skillListingVersionId": skill_listing_version_id,
+                "relativePath": f.relative_path,
+                "sizeBytes": f.size_bytes,
+                "sha256": hashlib.sha256(f.content).hexdigest(),
+                # What the workspace stored for it: `write_file` guesses from
+                # the filename whenever the caller passes no type, as ours do.
+                "mimeType": mimetypes.guess_type(f.relative_path)[0],
+                "isExecutable": f.is_executable,
+                "content": prisma.Base64.encode(f.content),
+            }
+            for f in files
+        ]
+    )
 
 
 async def _owned_version(

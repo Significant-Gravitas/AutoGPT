@@ -1,6 +1,7 @@
 import datetime
 from types import SimpleNamespace
 
+import prisma
 import prisma.enums
 import prisma.models
 import pytest
@@ -208,6 +209,70 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_i
     )
     assert refreshed is not None
     assert refreshed.installCount == 1
+
+
+async def test_install_of_a_listing_with_no_files_passes_an_empty_package(mocker):
+    """`files=None` means "leave the folder alone", so a single-file listing
+    installed over a package would leave the old package's files in place."""
+    listing = await _make_listing("no-files-one")
+    stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+
+    await skill_db.install_marketplace_skill("user-1", listing.slug)
+
+    assert stored.await_args.kwargs["files"] == []
+
+
+async def test_install_carries_the_versions_files_and_their_executable_bits(mocker):
+    listing = await _make_listing("with-files-one")
+    assert listing.activeVersionId is not None
+    await prisma.models.SkillListingFile.prisma().create_many(
+        data=[
+            {
+                "skillListingVersionId": listing.activeVersionId,
+                "relativePath": "scripts/run.py",
+                "sizeBytes": 5,
+                "sha256": "x",
+                "isExecutable": True,
+                "content": prisma.Base64.encode(b"print"),
+            },
+            {
+                "skillListingVersionId": listing.activeVersionId,
+                "relativePath": "references/a.md",
+                "sizeBytes": 3,
+                "sha256": "y",
+                "content": prisma.Base64.encode(b"ref"),
+            },
+        ]
+    )
+    stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+
+    await skill_db.install_marketplace_skill("user-1", listing.slug)
+
+    files = stored.await_args.kwargs["files"]
+    assert [(f.relative_path, f.content, f.is_executable) for f in files] == [
+        ("references/a.md", b"ref", False),
+        ("scripts/run.py", b"print", True),
+    ]
+
+
+async def test_detail_lists_the_package_files_without_their_bytes(mocker):
+    listing = await _make_listing("detail-files-one")
+    assert listing.activeVersionId is not None
+    await prisma.models.SkillListingFile.prisma().create(
+        data={
+            "skillListingVersionId": listing.activeVersionId,
+            "relativePath": "scripts/run.py",
+            "sizeBytes": 5,
+            "sha256": "x",
+            "content": prisma.Base64.encode(b"print"),
+        }
+    )
+
+    detail = await skill_db.get_marketplace_skill("detail-files-one")
+
+    assert [(f.path, f.size_bytes) for f in detail.files] == [("scripts/run.py", 5)]
 
 
 async def test_reinstalling_stores_again_but_does_not_count_again(mocker):

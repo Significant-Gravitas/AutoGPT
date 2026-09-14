@@ -13,7 +13,8 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import list_user_skills, store_user_skill
+from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
+from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -58,7 +59,10 @@ async def get_marketplace_skills(
 
 async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetails:
     listing = await _find_live_listing(slug)
-    return skill_model.MarketplaceSkillDetails.from_db(listing)
+    version = skill_model.active_version(listing)
+    return skill_model.MarketplaceSkillDetails.from_db(
+        listing, files=await _list_version_file_meta(version.id)
+    )
 
 
 async def get_live_skills(
@@ -80,7 +84,7 @@ async def get_live_skills(
 async def install_marketplace_skill(
     user_id: str, slug: str, *, expert_id: str | None = None
 ) -> skill_model.InstalledSkill:
-    """Copy a listing's SKILL.md into *expert_id*'s skill folder, or the
+    """Copy a listing's whole package into *expert_id*'s skill folder, or the
     caller's own library when ``None``.
 
     The listing's slug becomes the installed skill's name, so an install is
@@ -99,6 +103,9 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        # `[]`, never `None` — which means "leave the folder alone" and would
+        # keep a sibling only the previously installed version had.
+        files=await _read_version_files(active.id),
         expert_id=expert_id,
     )
     if is_new:
@@ -107,6 +114,39 @@ async def install_marketplace_skill(
         )
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
+    )
+
+
+async def _read_version_files(skill_listing_version_id: str) -> list[SkillFile]:
+    """The published package's files, contents included, ready to install."""
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": skill_listing_version_id},
+        order={"relativePath": "asc"},
+    )
+    return [
+        SkillFile(
+            relative_path=row.relativePath,
+            content=row.content.decode(),
+            is_executable=row.isExecutable,
+        )
+        for row in rows
+    ]
+
+
+async def _list_version_file_meta(
+    skill_listing_version_id: str,
+) -> list[skill_model.SkillPackageFile]:
+    """Path and size per file, without the bytes.
+
+    Raw because prisma-client-py always selects every column, and a detail
+    page that pulled `content` would carry the whole package per request.
+    """
+    return await query_raw_with_schema(
+        'SELECT "relativePath" AS path, "sizeBytes" AS size_bytes '
+        'FROM {schema_prefix}"SkillListingFile" '
+        'WHERE "skillListingVersionId" = $1 ORDER BY "relativePath"',
+        skill_listing_version_id,
+        model=skill_model.SkillPackageFile,
     )
 
 

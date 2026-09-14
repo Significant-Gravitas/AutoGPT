@@ -1265,6 +1265,28 @@ async def list_user_skill_sibling_paths(
         return []
 
 
+async def read_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[SkillFile]:
+    """Every sibling of a stored skill's ``SKILL.md``, contents included.
+
+    Strict where :func:`copy_skill_to_expert` is forgiving: a publish that
+    dropped a file it could not read would put the hole in the marketplace,
+    where every later install inherits it.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return []
+    manager = await _get_user_skill_manager(user_id, scope)
+    return await _read_package_files(
+        manager, skill_folder(expert_id), slug, strict=True
+    )
+
+
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     """Folder slug of personal Otto's skill called *name*."""
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
@@ -1349,17 +1371,24 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
 
 
 async def _read_package_files(
-    manager: WorkspaceManager, folder: str, slug: str
+    manager: WorkspaceManager, folder: str, slug: str, *, strict: bool = False
 ) -> list[SkillFile]:
     """Load a stored package's siblings into memory, ready to be written
     somewhere else.  Reads run concurrently — each is a blob fetch, and a
     60-file package read one at a time is a hire the user waits through.
-    A file that cannot be read is dropped with a warning: an expert with
-    most of a package is worth more than a hire that fails.
+
+    Best-effort by default, because an expert with most of a package is worth
+    more than a hire that fails; *strict* refuses instead, for a caller whose
+    output outlives the call.
     """
     prefix = f"{folder}/{slug}/"
     infos = await _list_package_files(manager, folder, slug)
     if len(infos) > MAX_PACKAGE_FILES:
+        if strict:
+            raise SkillPackageError(
+                f"package '{slug}' has more than {MAX_PACKAGE_FILES} files",
+                over_limit=True,
+            )
         # Written before the cap existed, or by hand.  Validating it whole
         # would fail and take the hire down, so truncate as read_skill does.
         logger.warning(
@@ -1376,6 +1405,8 @@ async def _read_package_files(
             try:
                 content = await manager.read_file(info.path)
             except Exception:
+                if strict:
+                    raise
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None
         return SkillFile(

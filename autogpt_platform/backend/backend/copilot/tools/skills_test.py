@@ -45,6 +45,7 @@ from backend.copilot.tools.skills import (
     list_all_skills,
     list_user_skill_sibling_paths,
     parse_skill_markdown,
+    read_user_skill_files,
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
@@ -1348,6 +1349,28 @@ def _package_manager(slug: str = "big", siblings: int = 0) -> _FakeWorkspaceMana
     for i in range(siblings):
         fake.files[f"/skills/{slug}/references/r{i:03d}.md"] = f"ref {i}".encode()
     return fake
+
+
+@pytest.mark.asyncio
+async def test_reading_a_package_for_publish_refuses_to_drop_an_unreadable_file():
+    """A hire keeps most of a package rather than failing, but a publish that
+    dropped a file would put the hole in the marketplace, where every later
+    install inherits it."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    fake.read_file = AsyncMock(side_effect=RuntimeError("blob store down"))
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError):
+            await read_user_skill_files("user-1", "big")
+
+
+@pytest.mark.asyncio
+async def test_reading_a_package_for_publish_refuses_one_over_the_file_cap():
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES + 1)
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillPackageError) as caught:
+            await read_user_skill_files("user-1", "big")
+    assert caught.value.over_limit is True
 
 
 @pytest.mark.asyncio
