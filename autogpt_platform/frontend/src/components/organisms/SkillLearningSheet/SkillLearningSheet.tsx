@@ -10,17 +10,20 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import {
-  canRestore,
-  stripFrontmatter,
-} from "@/services/skill-learning/helpers";
+import { canRestore } from "@/services/skill-learning/helpers";
 import { ChangesView } from "./components/ChangesView";
 import { DecisionView } from "./components/DecisionView";
 import { EditSkillForm } from "./components/EditSkillForm";
 import { HistoryView } from "./components/HistoryView";
 import { SourcesView } from "./components/SourcesView";
 import { SummaryView } from "./components/SummaryView";
-import { SheetView, useSkillLearningSheet } from "./useSkillLearningSheet";
+import { useSkillLearningSheet } from "./useSkillLearningSheet";
+import {
+  SheetView,
+  SkillReviewState,
+  UpdateSkillReview,
+  useSkillReviewState,
+} from "./useSkillReviewState";
 
 export interface LearningScope {
   /** ``null`` is the personal (AutoPilot) scope. */
@@ -52,6 +55,11 @@ export function SkillLearningSheet({
   onChanged,
   onClose,
 }: Props) {
+  const review = useSkillReviewState(
+    scope.expertId,
+    skillName,
+    initialVersionId,
+  );
   return (
     <ExpertSidePanel
       identity={
@@ -70,14 +78,14 @@ export function SkillLearningSheet({
       onClose={onClose}
     >
       {skillName ? (
-        // Keyed by the requested record: deliberate navigation to another
-        // skill or version resets selection and drafts, while a background
-        // refetch of the same record keeps them.
         <SheetBody
           key={`${scope.expertId ?? "personal"}:${skillName}:${initialVersionId ?? ""}`}
           expertId={scope.expertId}
           skillName={skillName}
-          initialVersionId={initialVersionId}
+          state={review.state}
+          update={review.update}
+          restoreScroll={review.restoreScroll}
+          rememberScroll={review.rememberScroll}
           onChanged={onChanged}
         />
       ) : null}
@@ -88,23 +96,30 @@ export function SkillLearningSheet({
 interface BodyProps {
   expertId: string | null;
   skillName: string;
-  initialVersionId: string | null;
+  state: SkillReviewState;
+  update: UpdateSkillReview;
+  restoreScroll: (element: HTMLDivElement | null) => void;
+  rememberScroll: (top: number) => void;
   onChanged: () => void;
 }
 
 function SheetBody({
   expertId,
   skillName,
-  initialVersionId,
+  state,
+  update,
+  restoreScroll,
+  rememberScroll,
   onChanged,
 }: BodyProps) {
   const sheet = useSkillLearningSheet({
     expertId,
     skillName,
-    initialVersionId,
+    state,
+    update,
     onChanged,
   });
-  const editing = sheet.editDraft !== null;
+  const editing = sheet.editor !== null;
 
   if (sheet.isLoading) {
     return (
@@ -132,13 +147,18 @@ function SheetBody({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {editing && version ? (
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        ref={restoreScroll}
+        onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
+      >
+        {sheet.editor ? (
           <EditSkillForm
-            version={version}
-            draft={sheet.editDraft ?? ""}
+            currentVersion={detail.current_version ?? null}
+            draft={sheet.editor}
             isBusy={sheet.isBusy}
-            onDraftChange={sheet.setEditDraft}
+            onDraftChange={sheet.updateEditor}
+            onReviewCurrent={sheet.reviewCurrent}
             onSave={sheet.saveEdit}
             onCancel={sheet.cancelEdit}
           />
@@ -172,12 +192,9 @@ function SheetBody({
                   version={version}
                   isBusy={sheet.isBusy}
                   onPolicy={sheet.updatePolicy}
-                  onEdit={() =>
-                    sheet.startEdit(
-                      stripFrontmatter(version?.body ?? ""),
-                      currentId,
-                    )
-                  }
+                  onEdit={() => {
+                    if (version) sheet.startEdit(version);
+                  }}
                   onReport={sheet.reportOutcome}
                 />
               </div>

@@ -133,7 +133,11 @@ async def restore_version(
     """
     versions = skill_versions_db()
     target = await versions.get_version(user_id, version_id)
-    if target is None or target.skill_name != skill_name:
+    if (
+        target is None
+        or target.skill_name != skill_name
+        or target.owner_key != owner_key_for(expert_id)
+    ):
         return PublishOutcome(status="conflict", reason="version not found")
     if target.state in ("invalidated", "blocked_content") or not target.content:
         return PublishOutcome(
@@ -193,7 +197,11 @@ async def decide_proposal(
     """Resolve one open proposal. Applying re-checks eligibility first."""
     versions = skill_versions_db()
     proposal = await versions.get_version(user_id, version_id)
-    if proposal is None or proposal.skill_name != skill_name:
+    if (
+        proposal is None
+        or proposal.skill_name != skill_name
+        or proposal.owner_key != owner_key_for(expert_id)
+    ):
         return PublishOutcome(status="conflict", reason="proposal not found")
     if proposal.state != "needs_decision":
         return PublishOutcome(status="conflict", reason="proposal is no longer open")

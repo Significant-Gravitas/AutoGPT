@@ -12,6 +12,7 @@ import {
 } from "@/app/api/__generated__/endpoints/home/home.msw";
 import {
   getEditLearnedSkillMockHandler200,
+  getUpdateSkillLearningPolicyMockHandler200,
   getGetSkillLearningDetailMockHandler200,
   getListSkillLearningHistoryMockHandler200,
   getRestoreLearnedSkillVersionMockHandler200,
@@ -503,4 +504,272 @@ describe("Expert skills — learning", () => {
       within(panel).queryByRole("button", { name: /Restore v/ }),
     ).toBeNull();
   });
+});
+
+describe("exact version review", () => {
+  test("requests an older linked version even when it is outside recent history", async () => {
+    const requested: (string | null)[] = [];
+    server.use(
+      getGetSkillLearningDetailMockHandler200(({ request }) => {
+        const id = new URL(request.url).searchParams.get("version_id");
+        requested.push(id);
+        return { ...detail, versions: id === "ver-1" ? [v2, v1] : [v2] };
+      }),
+    );
+    searchParams.set("tab", "skills");
+    searchParams.set("skill", "csv-import-checks");
+    searchParams.set("version", "ver-1");
+    render(<ExpertDetailPage />);
+    const panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    expect(
+      (await within(panel).findByText(/not the current version/)).textContent,
+    ).toContain("v1");
+    expect(requested).toContain("ver-1");
+  });
+
+  test("does not substitute the current version when a requested version is unavailable", async () => {
+    searchParams.set("tab", "skills");
+    searchParams.set("skill", "csv-import-checks");
+    searchParams.set("version", "missing-version");
+    render(<ExpertDetailPage />);
+    const panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    expect(await within(panel).findByText(/could not load/i)).toBeDefined();
+    expect(
+      within(panel).queryByRole("button", { name: "Edit skill" }),
+    ).toBeNull();
+    expect(within(panel).queryByTestId("version-state")).toBeNull();
+  });
+
+  test("shows the step comparison and complete raw changes for reordered procedures", async () => {
+    server.use(
+      getGetSkillLearningDetailMockHandler200({
+        ...detail,
+        current_version: { ...v2, body: "## Steps\n1. Import\n2. Validate" },
+        versions: [
+          { ...v2, body: "## Steps\n1. Import\n2. Validate" },
+          { ...v1, body: "## Steps\n1. Validate\n2. Import" },
+        ],
+      }),
+    );
+    searchParams.set("tab", "skills");
+    searchParams.set("skill", "csv-import-checks");
+    render(<ExpertDetailPage />);
+    const panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    await userEvent.click(
+      await within(panel).findByRole("tab", { name: "Changes" }),
+    );
+    expect(within(panel).getByText("Compared with v1")).toBeDefined();
+    const changes = within(panel).getByRole("list", {
+      name: "Changes by step",
+    });
+    expect(within(changes).getAllByRole("listitem")).toHaveLength(2);
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Show raw Markdown diff" }),
+    );
+    expect(panel.querySelector("pre")?.textContent).toBe(
+      "- 1. Validate\n- 2. Import\n+ 1. Import\n+ 2. Validate",
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Hide raw diff" }),
+    );
+    expect(panel.querySelector("pre")).toBeNull();
+  });
+});
+
+describe("recovering an unfinished edit", () => {
+  test("keeps the procedure, description, and improvement choice after closing the panel", async () => {
+    render(<ExpertDetailPage />);
+    await openSkillsTab();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Learning details for csv-import-checks",
+      }),
+    );
+    let panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    await userEvent.click(
+      await within(panel).findByRole("button", { name: "Edit skill" }),
+    );
+    await userEvent.clear(within(panel).getByLabelText("Description"));
+    await userEvent.type(
+      within(panel).getByLabelText("Description"),
+      "Check before importing",
+    );
+    await userEvent.clear(within(panel).getByLabelText("Procedure (Markdown)"));
+    await userEvent.type(
+      within(panel).getByLabelText("Procedure (Markdown)"),
+      "1. Keep my correction",
+    );
+    await userEvent.click(
+      within(panel).getByRole("switch", {
+        name: "Keep automatic improvements on",
+      }),
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Close skill learning panel" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "csv-import-checks" }),
+      ).toBeNull(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Learning details for csv-import-checks",
+      }),
+    );
+    panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    expect(
+      await within(panel).findByLabelText("Procedure (Markdown)"),
+    ).toHaveProperty("value", "1. Keep my correction");
+    expect(within(panel).getByLabelText("Description")).toHaveProperty(
+      "value",
+      "Check before importing",
+    );
+    expect(
+      within(panel)
+        .getByRole("switch", { name: "Keep automatic improvements on" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  test("lets the owner review a newer version and explicitly retry the preserved draft", async () => {
+    const v3 = version({
+      id: "ver-3",
+      version: 3,
+      base_version_id: "ver-2",
+      description: "Check tab-separated input too",
+      triggers: ["CSV import", "TSV import"],
+      body: "## Steps\n1. Saved from another tab",
+    });
+    const submissions: unknown[] = [];
+    let current = detail;
+    server.use(
+      getGetSkillLearningDetailMockHandler200(() => current),
+      getEditLearnedSkillMockHandler200(async ({ request }) => {
+        submissions.push(await request.json());
+        current = { ...detail, current_version: v3, versions: [v3, v2, v1] };
+        return {
+          status: submissions.length === 1 ? "conflict" : "applied",
+          status_label: submissions.length === 1 ? "Conflict" : "Applied",
+          reason: "A newer version was saved",
+          version: null,
+          pattern_class: null,
+          blocked_step: null,
+        };
+      }),
+    );
+    searchParams.set("tab", "skills");
+    searchParams.set("skill", "csv-import-checks");
+    render(<ExpertDetailPage />);
+    const panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    await userEvent.click(
+      await within(panel).findByRole("button", { name: "Edit skill" }),
+    );
+    await userEvent.clear(within(panel).getByLabelText("Procedure (Markdown)"));
+    await userEvent.type(
+      within(panel).getByLabelText("Procedure (Markdown)"),
+      "1. My correction",
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Save edit" }),
+    );
+    await waitFor(() => expect(submissions).toHaveLength(1));
+    expect(submissions[0]).toMatchObject({ expected_version_id: "ver-2" });
+    const review = await within(panel).findByText("Review changes against v3");
+    expect(
+      within(panel)
+        .getByRole("button", { name: "Save edit" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    await userEvent.click(review);
+    expect(
+      within(panel).getByText(
+        "Current description: Check tab-separated input too",
+      ),
+    ).toBeDefined();
+    expect(panel.querySelector("pre")?.textContent).toContain(
+      "Saved from another tab",
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Continue editing from v3" }),
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Save edit" }),
+    );
+    await waitFor(() => expect(submissions).toHaveLength(2));
+    expect(submissions[1]).toMatchObject({
+      expected_version_id: "ver-3",
+      body: "1. My correction",
+      triggers: ["CSV import", "TSV import"],
+    });
+    await waitFor(() =>
+      expect(within(panel).queryByLabelText("Procedure (Markdown)")).toBeNull(),
+    );
+  });
+});
+
+test("an edited alternative stays with its proposal when a new proposal arrives", async () => {
+  const first = version({
+    id: "proposal-1",
+    version: 3,
+    state: "needs_decision",
+    state_label: "Needs your decision",
+    base_version_id: "ver-2",
+  });
+  const second = version({
+    ...first,
+    id: "proposal-2",
+    version: 4,
+    body: "## Steps\n1. Check delimiters",
+  });
+  let proposal = first;
+  server.use(
+    getGetSkillLearningDetailMockHandler200(() => ({
+      ...detail,
+      open_decision: proposal,
+    })),
+    getUpdateSkillLearningPolicyMockHandler200(() => detail.policy),
+  );
+  searchParams.set("tab", "skills");
+  searchParams.set("skill", "csv-import-checks");
+  render(<ExpertDetailPage />);
+  const panel = await screen.findByRole("complementary", {
+    name: "csv-import-checks",
+  });
+  const input = await within(panel).findByLabelText(
+    "Edited alternative (optional)",
+  );
+  await userEvent.type(input, "1. Alternative for proposal one");
+  await userEvent.click(
+    within(panel).getByRole("button", { name: "Pause learning" }),
+  );
+  expect(
+    within(panel).getByLabelText("Edited alternative (optional)"),
+  ).toHaveProperty("value", "1. Alternative for proposal one");
+  proposal = second;
+  await userEvent.click(
+    within(panel).getByRole("button", { name: "Pause learning" }),
+  );
+  await waitFor(() =>
+    expect(
+      within(panel).getByLabelText("Edited alternative (optional)"),
+    ).toHaveProperty("value", ""),
+  );
+  expect(
+    within(panel)
+      .getByRole("button", { name: "Apply edited alternative" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
 });

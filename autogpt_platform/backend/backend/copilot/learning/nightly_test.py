@@ -607,3 +607,37 @@ async def test_pass_never_raises(fake_store, adapter, boundaries, monkeypatch):
     with patch.object(nightly.logger, "exception"):
         result = await _run()
     assert result.error is not None and "db down" in result.error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gate", ["proposal_limit", "missing_evidence"])
+async def test_completed_review_survives_later_deferral_gates(
+    fake_store, adapter, boundaries, monkeypatch, gate
+):
+    source = await _source(fake_store)
+    await fake_store.upsert_review(
+        USER,
+        source_id=source.id,
+        source_revision="4",
+        policy_version=nightly.POLICY_VERSION,
+        run_id="earlier",
+        disposition="applied",
+        applied_version_id="v-earlier",
+    )
+    if gate == "proposal_limit":
+        monkeypatch.setattr(nightly, "_open_proposals", AsyncMock(return_value=10))
+    else:
+        adapter.spans = []
+    result = await _run()
+    ledger = await fake_store.get_review_for_revision(
+        USER, source.id, "4", nightly.POLICY_VERSION
+    )
+    assert ledger.disposition == "applied"
+    assert ledger.run_id == "earlier"
+    assert ledger.applied_version_id == "v-earlier"
+    assert result.dispositions == {"applied": 1}
+    assert (
+        await fake_store.get_source(USER, source.id)
+    ).processed_revision == canonical_revision("4")
+    boundaries["review"].assert_not_called()
+    boundaries["write"].assert_not_called()

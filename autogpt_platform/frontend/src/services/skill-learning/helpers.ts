@@ -85,17 +85,26 @@ export function stepChanges(before: string, after: string): StepChange[] {
 function stepMap(body: string) {
   const steps = new Map<string, string>();
   const prose: string[] = [];
-  let index = 0;
+  const counts = new Map<string, number>();
+  let section = "";
   for (const raw of stripFrontmatter(body).split("\n")) {
-    const match = raw.match(/^\s*(?:(\d+)[.)]|[-*•])\s+(.+)$/);
-    if (match) {
-      index += 1;
-      steps.set(`Step ${match[1] ?? index}`, match[2].trim());
-    } else if (raw.trim() && !raw.trim().startsWith("#")) {
-      prose.push(raw.trim());
+    const line = raw.trim();
+    const heading = line.match(/^#{1,6}\s+(\S.*)$/);
+    const match = line.match(/^(?:\d+[.)]|[-*•])\s+(\S.*)$/);
+    if (heading) {
+      section = heading[1];
+      prose.push(line);
+    } else if (match) {
+      const index = (counts.get(section) ?? 0) + 1;
+      counts.set(section, index);
+      const prefix =
+        !section || section.toLowerCase() === "steps" ? "" : `${section} · `;
+      steps.set(`${prefix}Step ${index}`, match[1]);
+    } else if (line) {
+      prose.push(line);
     }
   }
-  if (prose.length) steps.set("Other text", prose.join(" "));
+  if (prose.length) steps.set("Other text", prose.join("\n"));
   return steps;
 }
 
@@ -105,14 +114,28 @@ export function stripFrontmatter(content: string) {
 }
 
 export function lineDiff(before: string, after: string) {
-  const previous = new Set(stripFrontmatter(before).split("\n"));
-  const next = new Set(stripFrontmatter(after).split("\n"));
-  const removed = [...previous].filter(
-    (line) => !next.has(line) && line.trim(),
-  );
-  const added = [...next].filter((line) => !previous.has(line) && line.trim());
+  const previous = stripFrontmatter(before).split("\n");
+  const next = stripFrontmatter(after).split("\n");
+  let start = 0;
+  while (
+    start < previous.length &&
+    start < next.length &&
+    previous[start] === next[start]
+  ) {
+    start += 1;
+  }
+  let previousEnd = previous.length;
+  let nextEnd = next.length;
+  while (
+    previousEnd > start &&
+    nextEnd > start &&
+    previous[previousEnd - 1] === next[nextEnd - 1]
+  ) {
+    previousEnd -= 1;
+    nextEnd -= 1;
+  }
   return [
-    ...removed.map((line) => `- ${line}`),
-    ...added.map((line) => `+ ${line}`),
+    ...previous.slice(start, previousEnd).map((line) => `- ${line}`),
+    ...next.slice(start, nextEnd).map((line) => `+ ${line}`),
   ].join("\n");
 }

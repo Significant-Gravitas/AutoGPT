@@ -13908,6 +13908,18 @@
               "title": "Expert Id"
             },
             "description": "Expert scope; omit for personal"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Version Id"
+            }
           }
         ],
         "responses": {

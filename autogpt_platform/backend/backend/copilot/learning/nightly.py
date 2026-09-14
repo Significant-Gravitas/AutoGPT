@@ -178,6 +178,9 @@ async def _process_source(
     config: ChatConfig,
 ) -> str:
     source = source_revision_from_record(stored)
+    settled = await already_settled(user_id, source, result)
+    if settled is not None:
+        return settled
     adapter = get_source_adapter(source.source_kind)
     if adapter is None:
         return await settle(user_id, source, result, "skipped", "unknown source kind")
@@ -230,9 +233,6 @@ async def _process_source(
             advance=False,
         )
 
-    settled = await already_settled(user_id, source, result)
-    if settled is not None:
-        return settled
     budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
     if not budget_ok:
         return await record(

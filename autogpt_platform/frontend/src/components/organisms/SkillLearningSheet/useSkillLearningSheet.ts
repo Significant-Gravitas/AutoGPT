@@ -17,16 +17,21 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { SkillVersionSummary } from "@/app/api/__generated__/models/skillVersionSummary";
+import { stripFrontmatter } from "@/services/skill-learning/helpers";
+import {
+  SkillEditDraft,
+  SkillReviewState,
+  UpdateSkillReview,
+} from "./useSkillReviewState";
 
 interface Args {
   expertId: string | null;
   skillName: string;
-  initialVersionId: string | null;
+  state: SkillReviewState;
+  update: UpdateSkillReview;
   onChanged: () => void;
 }
-
-export type SheetView = "summary" | "changes" | "sources" | "history";
 
 const SETTLED_STATUSES = new Set(["applied", "recorded"]);
 
@@ -40,40 +45,37 @@ export function scopeParams(expertId: string | null) {
 export function useSkillLearningSheet({
   expertId,
   skillName,
-  initialVersionId,
+  state,
+  update,
   onChanged,
 }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [view, setView] = useState<SheetView>("summary");
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
-    initialVersionId,
-  );
-  const [editDraft, setEditDraft] = useState<string | null>(null);
-  // The current version's id captured when editing began. The server
-  // checks it inside its write lock, so a change that lands while the
-  // owner types (overnight, or from another tab) becomes a conflict with
-  // the draft kept, never a silent overwrite.
-  const [editBaseVersionId, setEditBaseVersionId] = useState<string | null>(
-    null,
-  );
-  const [decisionDraft, setDecisionDraft] = useState("");
+  const { view, selectedVersionId, editor } = state;
+
+  function updateEditor(patch: Partial<SkillEditDraft>) {
+    update((previous) => ({
+      editor: previous.editor ? { ...previous.editor, ...patch } : null,
+    }));
+  }
 
   const params = scopeParams(expertId);
-  const detailQuery = useGetSkillLearningDetail(skillName, params, {
+  const detailParams = selectedVersionId
+    ? { ...params, version_id: selectedVersionId }
+    : params;
+  const detailQuery = useGetSkillLearningDetail(skillName, detailParams, {
     query: { select: (res) => okData(res) ?? null },
   });
   const detail = detailQuery.data ?? null;
-  const selectedVersion =
-    (detail?.versions ?? []).find(
-      (version) => version.id === selectedVersionId,
-    ) ??
-    detail?.current_version ??
-    null;
+  const selectedVersion = selectedVersionId
+    ? ((detail?.versions ?? []).find(
+        (version) => version.id === selectedVersionId,
+      ) ?? null)
+    : (detail?.current_version ?? null);
 
   function refresh() {
     queryClient.invalidateQueries({
-      queryKey: getGetSkillLearningDetailQueryKey(skillName, params),
+      queryKey: getGetSkillLearningDetailQueryKey(skillName),
     });
     queryClient.invalidateQueries({
       queryKey: getListCopilotSkillsQueryKey(params),
@@ -124,9 +126,13 @@ export function useSkillLearningSheet({
   });
   const decide = useDecideSkillLearningProposal({
     mutation: {
-      onSuccess: (res) => {
+      onSuccess: (res, variables) => {
         const data = okData(res);
-        if (data && report(data, "Decision recorded")) setDecisionDraft("");
+        if (data && report(data, "Decision recorded")) {
+          update((previous) => ({
+            decisions: { ...previous.decisions, [variables.versionId]: "" },
+          }));
+        }
       },
       onError: fail("Could not record the decision"),
     },
@@ -145,8 +151,7 @@ export function useSkillLearningSheet({
       onSuccess: (res) => {
         const data = okData(res);
         if (data && report(data, "Edit applied")) {
-          setEditDraft(null);
-          setEditBaseVersionId(null);
+          update({ editor: null, selectedVersionId: null });
         }
       },
       onError: fail("Edit blocked"),
@@ -164,26 +169,44 @@ export function useSkillLearningSheet({
 
   return {
     view,
-    setView,
+    setView: (next: SkillReviewState["view"]) => update({ view: next }),
     detail,
     isLoading: detailQuery.isLoading,
-    isError: detailQuery.isError,
+    isError:
+      detailQuery.isError ||
+      Boolean(selectedVersionId && detail && !selectedVersion),
     refetch: detailQuery.refetch,
     selectedVersion,
-    selectVersion: setSelectedVersionId,
-    editDraft,
-    setEditDraft,
-    editBaseVersionId,
-    startEdit: (body: string, baseVersionId: string | null) => {
-      setEditBaseVersionId(baseVersionId);
-      setEditDraft(body);
+    selectVersion: (id: string) => update({ selectedVersionId: id }),
+    editor,
+    updateEditor,
+    startEdit: (version: SkillVersionSummary) => {
+      update({
+        editor: {
+          baseVersionId: version.id,
+          body: stripFrontmatter(version.body ?? ""),
+          description: version.description,
+          triggers: version.triggers ?? [],
+          keepAutoImprove: false,
+        },
+      });
     },
-    cancelEdit: () => {
-      setEditDraft(null);
-      setEditBaseVersionId(null);
+    cancelEdit: () => update({ editor: null }),
+    reviewCurrent: () => {
+      if (detail?.current_version)
+        updateEditor({
+          baseVersionId: detail.current_version.id,
+          triggers: detail.current_version.triggers ?? [],
+        });
     },
-    decisionDraft,
-    setDecisionDraft,
+    decisionDraft: state.decisions[detail?.open_decision?.id ?? ""] ?? "",
+    setDecisionDraft: (body: string) => {
+      const id = detail?.open_decision?.id;
+      if (id)
+        update((previous) => ({
+          decisions: { ...previous.decisions, [id]: body },
+        }));
+    },
     isBusy:
       policy.isPending ||
       restore.isPending ||
@@ -205,7 +228,10 @@ export function useSkillLearningSheet({
         versionId,
         data: {
           action,
-          edited_body: action === "apply_edited" ? decisionDraft : null,
+          edited_body:
+            action === "apply_edited"
+              ? (state.decisions[versionId] ?? null)
+              : null,
         },
         params,
       }),
@@ -215,19 +241,21 @@ export function useSkillLearningSheet({
         data: { version_id: versionId, outcome: result, detail: "" },
         params,
       }),
-    saveEdit: (body: string, description: string, keepAutoImprove: boolean) =>
+    saveEdit: () => {
+      if (!editor) return;
       edit.mutate({
         name: skillName,
         data: {
-          body,
-          description,
-          triggers: selectedVersion?.triggers ?? [],
-          keep_auto_improve: keepAutoImprove,
+          body: editor.body,
+          description: editor.description,
+          triggers: editor.triggers,
+          keep_auto_improve: editor.keepAutoImprove,
           allowed_pattern_classes: [],
-          expected_version_id: editBaseVersionId,
+          expected_version_id: editor.baseVersionId,
         },
         params,
-      }),
+      });
+    },
     excludeSource: (sourceKind: string, sourceRef: string) =>
       exclude.mutate({ sourceKind, sourceRef }),
   };

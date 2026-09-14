@@ -185,6 +185,7 @@ async def list_decisions(
 async def get_skill_detail(
     name: Annotated[str, _NAME_PATH],
     expert_id: Annotated[str | None, _EXPERT_QUERY] = None,
+    version_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> SkillLearningDetail:
     """Current version, evidence, limits, sources, history, policy, and reuse."""
@@ -197,7 +198,31 @@ async def get_skill_detail(
             status_code=404, detail="No learning history for this skill"
         )
     versions = await versions_data.list_versions(user_id, owner_key, slug)
-    current = next((v for v in versions if v.id == head.current_version_id), None)
+    by_id = {v.id: v for v in versions}
+
+    async def include_version(
+        required_id: str | None,
+    ) -> versions_data.SkillVersionRecord | None:
+        if required_id is None:
+            return None
+        version = by_id.get(required_id)
+        if version is None:
+            version = await versions_data.get_version(user_id, required_id)
+        if (
+            version is None
+            or version.owner_key != owner_key
+            or version.skill_name != slug
+        ):
+            raise HTTPException(status_code=404, detail="Skill version not found")
+        by_id[version.id] = version
+        return version
+
+    selected = await include_version(version_id)
+    current = await include_version(head.current_version_id)
+    for version in (selected, current):
+        if version:
+            await include_version(version.base_version_id)
+    versions = sorted(by_id.values(), key=lambda v: v.version, reverse=True)
     open_decision = next((v for v in versions if v.state == "needs_decision"), None)
     events = await use_data.list_use_events(user_id, owner_key, slug)
     if head.use_paused_at is not None:

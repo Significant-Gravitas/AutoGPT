@@ -31,3 +31,43 @@ describe("skill-learning helpers", () => {
     ).toBe("/settings/memory?skill=csv&version=v2");
   });
 });
+
+describe("review accuracy", () => {
+  it("retains the order and repeated lines in a raw diff", () => {
+    expect(lineDiff("Validate\nImport", "Import\nValidate")).toBe(
+      "- Validate\n- Import\n+ Import\n+ Validate",
+    );
+    expect(lineDiff("Check\nCheck\nImport", "Check\nImport")).toBe("- Check");
+    expect(lineDiff("Check\nImport", "Check\n\nImport")).toBe("+ ");
+  });
+
+  it("does not let a later numbered section hide a procedure correction", () => {
+    const before =
+      "## Steps\n1. Import rows\n\n## Verification\n1. Check counts";
+    const after =
+      "## Steps\n1. Validate then import rows\n\n## Verification\n1. Check counts";
+    expect(stepChanges(before, after)).toEqual([
+      {
+        step: "Step 1",
+        before: "Import rows",
+        after: "Validate then import rows",
+      },
+    ]);
+  });
+
+  it("keeps separate bullets and verification changes visible", () => {
+    const before =
+      "## Steps\n- Open\n- Import\n## Verification\n1. Check counts";
+    const after =
+      "## Steps\n- Open\n- Validate\n- Import\n## Verification\n1. Check types";
+    expect(stepChanges(before, after)).toEqual([
+      { step: "Step 2", before: "Import", after: "Validate" },
+      {
+        step: "Verification · Step 1",
+        before: "Check counts",
+        after: "Check types",
+      },
+      { step: "Step 3", before: null, after: "Import" },
+    ]);
+  });
+});

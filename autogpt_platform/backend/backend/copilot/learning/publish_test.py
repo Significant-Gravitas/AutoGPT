@@ -441,3 +441,53 @@ async def test_revoking_a_source_invalidates_dependents_and_restores_or_pauses(
     head2 = await fake_store.get_head(USER, EXPERT, "other-skill")
     assert head2.use_paused_at is not None
     assert (await fake_store.get_version(USER, only.version.id)).state == "invalidated"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_scope", [None, "other-expert"])
+async def test_restore_cannot_copy_a_version_from_another_scope(
+    fake_store, workspace, target_scope
+):
+    versions = await _seed(fake_store)
+    head = await fake_store.ensure_head(USER, target_scope, NAME)
+    outcome = await owner_actions.restore_version(
+        user_id=USER,
+        expert_id=target_scope,
+        skill_name=NAME,
+        version_id=versions[1].id,
+        actor_user_id=USER,
+    )
+    assert outcome.status == "conflict"
+    assert (
+        await fake_store.get_head(USER, head.owner_key, NAME)
+    ).current_version_id is None
+    workspace.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_decision_cannot_archive_another_experts_proposal(fake_store, workspace):
+    await _seed(fake_store)
+    source_head = await fake_store.get_head(USER, EXPERT, NAME)
+    proposal = await fake_store.create_version(
+        USER,
+        head=source_head,
+        content=_content(BODY_V2),
+        description="Import a CSV",
+        triggers=["csv"],
+        origin="saved_overnight",
+        state="needs_decision",
+        base_version_id=source_head.current_version_id,
+    )
+    await fake_store.ensure_head(USER, "other-expert", NAME)
+    outcome = await owner_actions.decide_proposal(
+        user_id=USER,
+        expert_id="other-expert",
+        skill_name=NAME,
+        version_id=proposal.id,
+        action="keep_current",
+        edited_body=None,
+        actor_user_id=USER,
+    )
+    assert outcome.status == "conflict"
+    assert (await fake_store.get_version(USER, proposal.id)).state == "needs_decision"
+    workspace.assert_not_called()

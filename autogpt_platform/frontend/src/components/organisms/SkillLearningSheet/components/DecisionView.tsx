@@ -63,6 +63,7 @@ export function DecisionView({
         type="textarea"
         rows={5}
         value={draft}
+        disabled={isBusy}
         placeholder={stripFrontmatter(proposal.body ?? "").slice(0, 120)}
         onChange={(event) => onDraftChange(event.target.value)}
       />

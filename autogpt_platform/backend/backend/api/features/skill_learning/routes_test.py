@@ -118,6 +118,7 @@ async def _publish(store: FakeLearningStore, user_id: str, *, body: str = BODY):
             ),
             description="Import CSV",
             origin="saved_overnight",
+            base_version_id=head.current_version_id,
             summary="Added an encoding check after the previous import failed.",
             sources=[
                 {
@@ -455,3 +456,78 @@ def test_expert_learning_pause_endpoint(store, monkeypatch, test_user_id):
         ).status_code
         == 404
     )
+
+
+def test_detail_includes_requested_version_outside_recent_history(store, test_user_id):
+    _, oldest = run(_publish(store, test_user_id))
+    for i in range(51):
+        _, current = run(_publish(store, test_user_id, body=BODY + f"Revision {i}"))
+    resp = client.get(
+        "/skill-learning/skills/csv-import-checks",
+        params={"expert_id": EXPERT, "version_id": oldest.id},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["current_version"]["id"] == current.id
+    assert oldest.id in {v["id"] for v in payload["versions"]}
+
+
+@pytest.mark.parametrize("scope", [None, "other-expert"])
+def test_detail_rejects_version_from_another_owned_scope(store, test_user_id, scope):
+    _, version = run(_publish(store, test_user_id))
+    run(store.ensure_head(test_user_id, scope, "csv-import-checks"))
+    params = {"version_id": version.id}
+    if scope:
+        params["expert_id"] = scope
+    resp = client.get("/skill-learning/skills/csv-import-checks", params=params)
+    assert resp.status_code == 404
+    assert "Import CSV" not in resp.text
+
+
+def test_detail_rejects_missing_version_instead_of_showing_current(store, test_user_id):
+    run(_publish(store, test_user_id))
+    resp = client.get(
+        "/skill-learning/skills/csv-import-checks",
+        params={"expert_id": EXPERT, "version_id": "missing"},
+    )
+    assert resp.status_code == 404
+
+
+def test_detail_includes_the_comparison_base_of_an_old_link(store, test_user_id):
+    _, base = run(_publish(store, test_user_id))
+    _, selected = run(_publish(store, test_user_id, body=BODY + "2. Verify types"))
+    for i in range(51):
+        run(_publish(store, test_user_id, body=BODY + f"Revision {i}"))
+    payload = client.get(
+        "/skill-learning/skills/csv-import-checks",
+        params={"expert_id": EXPERT, "version_id": selected.id},
+    ).json()
+    by_id = {version["id"]: version for version in payload["versions"]}
+    assert by_id[selected.id]["base_version_id"] == base.id
+    assert by_id[base.id]["body"] == base.content
+
+
+def test_detail_does_not_lose_current_version_behind_unpublished_history(
+    store, test_user_id
+):
+    _, current = run(_publish(store, test_user_id))
+    head = run(store.get_head(test_user_id, EXPERT, "csv-import-checks"))
+    for i in range(51):
+        run(
+            store.create_version(
+                test_user_id,
+                head=head,
+                content=f"Attempt {i}",
+                description="Unpublished",
+                triggers=[],
+                origin="saved_overnight",
+                state="archived",
+                base_version_id=current.id,
+            )
+        )
+    resp = client.get(
+        "/skill-learning/skills/csv-import-checks", params={"expert_id": EXPERT}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["current_version"]["id"] == current.id
+    assert resp.json()["state"] == "ready"
