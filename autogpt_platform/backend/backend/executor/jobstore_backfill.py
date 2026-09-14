@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import MetaData, Table, create_engine, select
+from sqlalchemy.exc import NoSuchTableError
 
 logger = logging.getLogger(__name__)
 
@@ -69,16 +70,18 @@ def main() -> int:
 def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int, int]:
     try:
         table = Table(tablename, metadata, autoload_with=engine)
-    except Exception as e:
-        logger.info(f"{tablename}: skipped ({e})")
+    except NoSuchTableError:
+        logger.info(f"{tablename}: skipped (no such table)")
         return 0, 0
 
-    changed = unreadable = 0
+    changed = unreadable = skipped = 0
     with engine.begin() as connection:
         rows = list(connection.execute(select(table.c.id, table.c.job_state)))
         for row in rows:
             try:
                 state = pickle.loads(row.job_state)
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except BaseException as e:
                 # Already unrestorable; parking/repair is a separate concern.
                 logger.warning(f"{tablename}: {row.id} is unreadable ({e})")
@@ -95,16 +98,32 @@ def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int
             new_state["args"] = _strip_enums(args)
             new_state["kwargs"] = _strip_enums(kwargs)
 
-            changed += 1
             logger.info(f"{tablename}: {row.id} carries pickled enum(s)")
-            if apply:
-                connection.execute(
-                    table.update()
-                    .where(table.c.id == row.id)
-                    .values(job_state=pickle.dumps(new_state, pickle.HIGHEST_PROTOCOL))
+            if not apply:
+                changed += 1
+                continue
+
+            result = connection.execute(
+                table.update()
+                .where(
+                    table.c.id == row.id,
+                    table.c.job_state == row.job_state,
+                )
+                .values(job_state=pickle.dumps(new_state, pickle.HIGHEST_PROTOCOL))
+            )
+            if result.rowcount == 1:
+                changed += 1
+            else:
+                skipped += 1
+                logger.warning(
+                    f"{tablename}: {row.id} changed under the scan; left alone, "
+                    "re-run to pick it up"
                 )
 
-    logger.info(f"{tablename}: {len(rows)} row(s) scanned, {changed} to rewrite")
+    suffix = f", {skipped} skipped (changed under the scan)" if skipped else ""
+    logger.info(
+        f"{tablename}: {len(rows)} row(s) scanned, {changed} to rewrite{suffix}"
+    )
     return changed, unreadable
 
 

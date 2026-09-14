@@ -2003,14 +2003,24 @@ class Scheduler(AppService):
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
+    # Paused and fired-once rows are never deleted, so this scan is bounded
+    # rather than left to grow with the backlog — startup precedes the RPC port.
+    _PARKED_SCAN_LIMIT = 1000
+
     def _report_parked_jobs(self) -> None:
         """Parking is recoverable but silent — startup has to say it happened."""
         for alias, store in self._persistent_jobstores.items():
             try:
-                parked = store.get_parked_job_ids()
+                healed = store.reconcile_repaired_jobs()
+                parked = store.get_parked_job_ids(limit=self._PARKED_SCAN_LIMIT)
             except Exception as e:
                 logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
                 continue
+            if healed:
+                logger.info(
+                    f"{len(healed)} repaired job(s) in jobstore '{alias}' are now "
+                    f"paused and can be resumed: {healed}"
+                )
             if parked:
                 logger.error(
                     f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "

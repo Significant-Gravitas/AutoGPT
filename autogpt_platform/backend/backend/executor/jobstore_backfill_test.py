@@ -3,7 +3,9 @@ import pickle
 import tempfile
 from contextlib import contextmanager
 from enum import Enum
+from unittest.mock import patch
 
+import pytest
 from sqlalchemy import (
     Column,
     Float,
@@ -14,8 +16,11 @@ from sqlalchemy import (
     create_engine,
     select,
 )
+from sqlalchemy.exc import OperationalError
 
-from backend.executor.jobstore_backfill import _has_enum, _normalize_table
+from backend.executor.jobstore_backfill import _has_enum, _normalize_table, _strip_enums
+
+_BACKFILL = "backend.executor.jobstore_backfill"
 
 TABLE = "apscheduler_jobs"
 
@@ -125,6 +130,44 @@ def test_missing_table_is_skipped_not_raised():
             0,
             0,
         )
+
+
+def test_a_reflection_failure_is_not_reported_as_a_missing_table():
+    """A missing table is a skip; anything else must fail loudly. This script
+    gates a deploy, so a connection or permission error exiting 0 would read as
+    'nothing to rewrite'."""
+    engine = create_engine("sqlite:////nonexistent-dir/nope.sqlite")
+
+    with pytest.raises(OperationalError):
+        _normalize_table(engine, MetaData(), TABLE, apply=True)
+
+
+def test_a_row_that_changed_under_the_scan_is_left_alone():
+    """The scheduler rewrites job_state whenever a job fires, and READ
+    COMMITTED lets that land between the scan and the update."""
+    with _db() as engine:
+        _insert(engine, "job1", {"kwargs": {"provider": Provider.GITHUB}})
+        newer = pickle.dumps({"kwargs": {"written": "by the scheduler"}})
+
+        # Stand in for the concurrent writer: the value in the table is no
+        # longer the one the scan read, so the predicate must not match.
+        def _interfere(value):
+            with engine.begin() as conn:
+                conn.execute(
+                    Table(TABLE, MetaData(), autoload_with=engine)
+                    .update()
+                    .where(Column("id", Unicode(191)) == "job1")
+                    .values(job_state=newer)
+                )
+            return _strip_enums(value)
+
+        with patch(f"{_BACKFILL}._strip_enums", side_effect=_interfere):
+            changed, unreadable = _normalize_table(
+                engine, MetaData(), TABLE, apply=True
+            )
+
+        assert changed == 0
+        assert _job_state(engine, "job1") == newer
 
 
 @contextmanager

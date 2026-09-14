@@ -104,6 +104,63 @@ def test_scheduler_listing_path_parks_an_unrestorable_schedule():
         assert sched.get_parked_jobs()[Jobstores.EXECUTION.value] == ["poisoned"]
 
 
+def test_repaired_job_can_be_resumed_and_then_fires():
+    """Park, repair, resume, run. Parking can only clear the COLUMN, so without
+    reconciliation the repaired row is stranded: it reports healthy, never comes
+    due, and resume refuses it because the pickled copy is still set."""
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        healthy_state = _job_state(store, "poisoned")
+        _poison(store, "poisoned")
+        store._get_jobs()
+        assert store.get_parked_job_ids() == ["poisoned"]
+
+        # Repair rewrites job_state and leaves its next_run_time untouched,
+        # which is exactly what jobstore_backfill does.
+        _set_job_state(store, "poisoned", healthy_state)
+        assert store.get_parked_job_ids() == []
+        assert store._get_jobs()[0].next_run_time is not None  # stranded
+        assert _next_run_time(store, "poisoned") is None
+
+        assert store.reconcile_repaired_jobs() == ["poisoned"]
+
+        # Now an ordinary paused job: both copies agree, so resume revives it.
+        assert store._get_jobs()[0].next_run_time is None
+        scheduler.resume_job("poisoned")
+        assert _next_run_time(store, "poisoned") is not None
+        assert [j.id for j in store.get_due_jobs(_utc(2**31 - 1))] == ["poisoned"]
+
+
+def test_reconcile_leaves_a_user_paused_job_alone():
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="paused")
+        scheduler.pause_job("paused")
+
+        assert store.reconcile_repaired_jobs() == []
+        assert _next_run_time(store, "paused") is None
+
+
+def test_reconcile_leaves_a_still_broken_job_parked():
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        _poison(store, "poisoned")
+        store._get_jobs()
+
+        assert store.reconcile_repaired_jobs() == []
+        assert store.get_parked_job_ids() == ["poisoned"]
+
+
+def test_parked_scan_limit_bounds_the_rows_read():
+    with _store() as (store, scheduler):
+        for i in range(5):
+            scheduler.add_job(noop, "interval", seconds=3600, id=f"j{i}")
+            _poison(store, f"j{i}")
+        store._get_jobs()
+
+        assert len(store.get_parked_job_ids()) == 5
+        assert len(store.get_parked_job_ids(limit=2)) == 2
+
+
 @pytest.mark.parametrize("filtered", [False, True], ids=["all", "active_only"])
 def test_upstream_jobstore_would_have_deleted_the_row(filtered: bool):
     """Control: pins the upstream behaviour this subclass exists to prevent, on
@@ -215,6 +272,22 @@ def _scheduler_wired_to(store):
         sched.run_service()
         sched._invalidate_jobs_cache()
         yield sched
+
+
+def _job_state(store, job_id: str):
+    with store.engine.begin() as conn:
+        return conn.execute(
+            select(store.jobs_t.c.job_state).where(store.jobs_t.c.id == job_id)
+        ).scalar()
+
+
+def _set_job_state(store, job_id: str, job_state) -> None:
+    with store.engine.begin() as conn:
+        conn.execute(
+            store.jobs_t.update()
+            .where(store.jobs_t.c.id == job_id)
+            .values(job_state=job_state)
+        )
 
 
 def _poison(store, job_id: str) -> None:
