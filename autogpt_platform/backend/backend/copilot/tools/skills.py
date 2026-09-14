@@ -1822,7 +1822,10 @@ async def _list_package_files(
 # runs before any of that is actionable: the E2B box in production, the
 # bubblewrap directory locally.  The manifest records what each file hashed
 # to, so re-activating a skill in a later turn copies only what changed.
-_PACKAGE_MANIFEST = ".package.json"
+# Bookkeeping, not part of the package, so it is kept OUT of the directory the
+# package is copied into: a skill shipping its own ``.package.json`` would
+# otherwise be overwritten by it, and the digest would then match forever.
+_MANIFEST_DIR = ".skill-packages"
 _EXECUTABLE_PREFIX = "scripts/"
 # One E2B ``files.write`` is an HTTP round trip and measured 200 ms, so a
 # 60-file package copied serially would cost 12 s of the turn (0.35 s
@@ -1849,9 +1852,11 @@ async def _sync_skill_package(
     *complete* says whether *files* is the whole package: a truncated listing
     cannot tell a removed file from an unlisted one, so it prunes nothing.
     """
-    package_dir = f"{workdir_root(session_id)}/skills/{slug}"
+    workdir = workdir_root(session_id)
+    package_dir = f"{workdir}/skills/{slug}"
+    manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
     prefix = f"{folder}/{slug}/"
-    manifest = await _read_package_manifest(package_dir, session_id)
+    manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
     async def copy(info: SkillFileInfo) -> tuple[str, str, str | None] | None:
@@ -1918,7 +1923,7 @@ async def _sync_skill_package(
     # A single-file skill must not leave an empty package directory behind, so
     # the manifest is written only when there is, or was, something to track.
     if next_manifest or manifest:
-        await _write_package_manifest(package_dir, next_manifest, session_id)
+        await _write_package_manifest(manifest_path, next_manifest, session_id)
 
     if not files:
         return None, None
@@ -1949,10 +1954,10 @@ def _is_safe_relative(path: str) -> bool:
     )
 
 
-async def _read_package_manifest(package_dir: str, session_id: str) -> dict[str, str]:
+async def _read_package_manifest(manifest_path: str, session_id: str) -> dict[str, str]:
     """Hashes written by the last activation, empty on a first run or any
     unreadable manifest — a re-copy is cheap, a stale skip is not."""
-    raw = await read_workdir_bytes(f"{package_dir}/{_PACKAGE_MANIFEST}", session_id)
+    raw = await read_workdir_bytes(manifest_path, session_id)
     if not raw:
         return {}
     try:
@@ -1971,12 +1976,10 @@ async def _read_package_manifest(package_dir: str, session_id: str) -> dict[str,
 
 
 async def _write_package_manifest(
-    package_dir: str, hashes: dict[str, str], session_id: str
+    manifest_path: str, hashes: dict[str, str], session_id: str
 ) -> None:
     result = await save_to_workdir(
-        f"{package_dir}/{_PACKAGE_MANIFEST}",
-        json.dumps(hashes).encode(),
-        session_id,
+        manifest_path, json.dumps(hashes).encode(), session_id
     )
     if isinstance(result, ErrorResponse):
         logger.warning("[skills] failed to write package manifest: %s", result.message)

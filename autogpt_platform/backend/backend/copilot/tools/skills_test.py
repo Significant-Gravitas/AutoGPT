@@ -1693,7 +1693,7 @@ async def test_a_pruned_file_loses_its_manifest_entry():
         await ReadSkillTool()._execute(
             user_id="user-1", session=_make_session(), name="big"
         )
-        manifest_path = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        manifest_path = os.path.join(patched.workdir, ".skill-packages", "big.json")
         with open(manifest_path) as f:
             assert set(json.load(f)) == {"references/gone.md", "references/stays.md"}
 
@@ -1703,3 +1703,26 @@ async def test_a_pruned_file_loses_its_manifest_entry():
         )
         with open(manifest_path) as f:
             assert set(json.load(f)) == {"references/stays.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_package_file_named_like_the_manifest_survives():
+    """The manifest is our bookkeeping, not part of the package, so it must
+    not sit where a package file could collide with it: the collision
+    overwrites the user's file and the digest then matches, so no later
+    activation ever restores it."""
+    fake = _package_manager()
+    fake.files["/skills/big/.package.json"] = b'{"mine": true}'
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        theirs = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        with open(theirs, "rb") as f:
+            assert f.read() == b'{"mine": true}'
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        with open(theirs, "rb") as f:
+            assert f.read() == b'{"mine": true}'
