@@ -92,7 +92,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Always bake dev: schedule/dispatch runs execute from the DEFAULT
           # branch (master), which would otherwise silently bake master's
