@@ -180,7 +180,10 @@ class UnittestReporterTests(unittest.TestCase):
                 "    def setUpClass(cls):\n"
                 "        raise RuntimeError('fixture failed')\n"
                 "    def test_never_runs(self):\n"
-                "        pass\n",
+                "        pass\n"
+                "class Healthy(unittest.TestCase):\n"
+                "    def test_passes(self):\n"
+                "        self.assertTrue(True)\n",
                 encoding="utf-8",
             )
             output = Path(temp_dir) / "unittest.xml"
@@ -199,9 +202,13 @@ class UnittestReporterTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             suite = ET.parse(output).getroot()
-            self.assertEqual(suite.attrib["tests"], "1")
+            self.assertEqual(suite.attrib["tests"], "2")
             self.assertEqual(suite.attrib["errors"], "1")
-            self.assertIsNotNone(suite.find("testcase/error"))
+            self.assertIn("fixture failed", suite.find("testcase/error").text)
+            self.assertIn(
+                "test_passes",
+                {case.attrib["name"] for case in suite.findall("testcase")},
+            )
 
     def test_zero_discovered_tests_is_a_machine_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
