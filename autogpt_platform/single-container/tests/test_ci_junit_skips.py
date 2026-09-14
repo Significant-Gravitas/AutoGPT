@@ -116,6 +116,57 @@ class UnittestSkipReportingTests(unittest.TestCase):
         )
         self.assertTrue(any("disallowed skip" in case.text for case in failures))
 
+    def test_repeated_subtest_failures_and_errors_are_all_reported(self):
+        result, report = self.run_reporter(
+            """
+            import unittest
+            class Required(unittest.TestCase):
+                def test_required(self):
+                    with self.subTest(service='database'):
+                        self.fail('database assertion failed')
+                    with self.subTest(service='queue'):
+                        self.fail('queue assertion failed')
+                    with self.subTest(service='storage'):
+                        raise RuntimeError('storage unavailable')
+                    with self.subTest(service='optional'):
+                        self.skipTest('required service unavailable')
+            """
+        )
+        self.assertNotEqual(result.returncode, 0)
+        cases = report.findall("testcase")
+        self.assertEqual(report.get("tests"), str(len(cases)))
+        self.assertEqual(report.get("failures"), "3")
+        self.assertEqual(report.get("errors"), "1")
+        failures = report.findall("testcase/failure")
+        self.assertEqual(len(failures), 3)
+        for message in [
+            "database assertion failed",
+            "queue assertion failed",
+            "disallowed skip",
+        ]:
+            self.assertTrue(any(message in failure.text for failure in failures))
+        self.assertIn("storage unavailable", report.find("testcase/error").text)
+        self.assertEqual(len({case.get("name") for case in cases}), len(cases))
+
+    def test_cleanup_error_preserves_subtest_failure(self):
+        result, report = self.run_reporter(
+            """
+            import unittest
+            class Required(unittest.TestCase):
+                def cleanup(self):
+                    raise RuntimeError('cleanup failed')
+                def test_required(self):
+                    self.addCleanup(self.cleanup)
+                    with self.subTest(service='database'):
+                        self.fail('database assertion failed')
+            """
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(report.get("failures"), "1")
+        self.assertEqual(report.get("errors"), "1")
+        self.assertIn("database assertion failed", report.find("testcase/failure").text)
+        self.assertIn("cleanup failed", report.find("testcase/error").text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,7 @@ class JUnitResult(unittest.TextTestResult):
         super().__init__(*args, **kwargs)
         self.records: list[TestRecord] = []
         self._started_at: dict[int, float] = {}
-        self._outcomes: dict[int, tuple[str, str]] = {}
+        self._outcomes: dict[int, list[tuple[unittest.TestCase, str, str]]] = {}
         self._recorded: set[int] = set()
 
     def _append_record(self, test, duration: float, outcome: str, detail: str):
@@ -42,37 +42,42 @@ class JUnitResult(unittest.TextTestResult):
 
     def startTest(self, test):
         self._started_at[id(test)] = time.monotonic()
-        self._outcomes[id(test)] = ("success", "")
+        self._outcomes[id(test)] = []
         super().startTest(test)
 
     def addFailure(self, test, err):
-        self._outcomes[id(test)] = ("failure", self._exc_info_to_string(err, test))
+        self._outcomes[id(test)].append(
+            (test, "failure", self._exc_info_to_string(err, test))
+        )
         super().addFailure(test, err)
 
     def addError(self, test, err):
         detail = self._exc_info_to_string(err, test)
         if id(test) in self._started_at:
-            self._outcomes[id(test)] = ("error", detail)
+            self._outcomes[id(test)].append((test, "error", detail))
         else:
             self._append_record(test, 0.0, "error", detail)
         super().addError(test, err)
 
     def addSkip(self, test, reason):
         if id(test) in self._started_at:
-            self._outcomes[id(test)] = ("skipped", reason)
+            self._outcomes[id(test)].append((test, "skipped", reason))
         else:
             self._append_record(test, 0.0, "skipped", reason)
         super().addSkip(test, reason)
 
     def addExpectedFailure(self, test, err):
-        self._outcomes[id(test)] = (
-            "expected_failure",
-            f"expected failure\n{self._exc_info_to_string(err, test)}",
+        self._outcomes[id(test)].append(
+            (
+                test,
+                "expected_failure",
+                f"expected failure\n{self._exc_info_to_string(err, test)}",
+            )
         )
         super().addExpectedFailure(test, err)
 
     def addUnexpectedSuccess(self, test):
-        self._outcomes[id(test)] = ("failure", "unexpected success")
+        self._outcomes[id(test)].append((test, "failure", "unexpected success"))
         super().addUnexpectedSuccess(test)
 
     def addSubTest(self, test, subtest, err):
@@ -81,19 +86,18 @@ class JUnitResult(unittest.TextTestResult):
                 "failure" if issubclass(err[0], test.failureException) else "error"
             )
             detail = self._exc_info_to_string(err, subtest)
-            self._outcomes[id(test)] = (outcome, detail)
+            self._outcomes[id(test)].append((subtest, outcome, detail))
         super().addSubTest(test, subtest, err)
 
     def stopTest(self, test):
         started_at = self._started_at.pop(id(test), time.monotonic())
-        outcome, detail = self._outcomes.pop(id(test), ("success", ""))
+        outcomes = self._outcomes.pop(id(test), []) or [(test, "success", "")]
         if id(test) not in self._recorded:
-            self._append_record(
-                test,
-                time.monotonic() - started_at,
-                outcome,
-                detail,
-            )
+            duration = time.monotonic() - started_at
+            for recorded_test, outcome, detail in outcomes:
+                self._append_record(recorded_test, duration, outcome, detail)
+                self._recorded.discard(id(recorded_test))
+                duration = 0.0
         self._recorded.discard(id(test))
         super().stopTest(test)
 
