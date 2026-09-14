@@ -549,7 +549,13 @@ async def _prune_preloads(
     stale = [w.id for w in existing if w.storeListingVersionId not in wanted]
     if not stale:
         return
-    await prisma.models.ExpertWorkflow.prisma().delete_many(where={"id": {"in": stale}})
+    # Scoped by expertId as well as id: the ids came from a query already
+    # filtered to this template, so the clause is redundant today, but it
+    # keeps the only delete_many in this module from being able to reach
+    # another persona's rows if the caller's `existing` ever widens.
+    await prisma.models.ExpertWorkflow.prisma().delete_many(
+        where={"id": {"in": stale}, "expertId": template_id}
+    )
     logger.info(
         f"Removed {len(stale)} stale template preload(s) from '{entry['name']}'"
     )
