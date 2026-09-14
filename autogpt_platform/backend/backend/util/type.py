@@ -59,12 +59,12 @@ def __convert_tuple(value: Any) -> tuple:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             try:
-                return tuple(json.loads(value))
+                parsed = json.loads(value)
+                return tuple(parsed) if isinstance(parsed, list) else (value,)
             except json.JSONDecodeError:
                 return (value,)
-        else:
-            return (value,)
-    elif isinstance(value, (list, set)):
+        return (value,)
+    if isinstance(value, (list, set)):
         return tuple(value)
     elif isinstance(value, dict):
         return tuple(value.items())
@@ -81,12 +81,17 @@ def __convert_set(value: Any) -> set:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             try:
-                return set(json.loads(value))
-            except (json.JSONDecodeError, TypeError):
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    try:
+                        return set(parsed)
+                    except TypeError:
+                        return {value}
                 return {value}
-        else:
-            return {value}
-    elif isinstance(value, (list, tuple)):
+            except json.JSONDecodeError:
+                return {value}
+        return {value}
+    if isinstance(value, (list, tuple)):
         return set(value)
     elif isinstance(value, dict):
         return set(value.items())

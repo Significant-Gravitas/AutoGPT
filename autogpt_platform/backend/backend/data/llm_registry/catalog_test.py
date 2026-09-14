@@ -283,6 +283,26 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
     assert qwen_max_entry.context_window == 262144
 
 
+def test_deepseek_v4_1_flash_bills_at_authored_rates():
+    """DeepSeek V4.1 Flash (OpenRouter, DeepSeek list price $0.15/$0.60 per
+    1M, $0.003/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    flash = LLMModel("deepseek/deepseek-v4.1-flash")
+    assert MODEL_COST[flash] == 1
+    assert TOKEN_COST[flash].model_dump() == {
+        "input": 22.5,
+        "output": 90.0,
+        "cache_read": 0.45,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[flash].max_output_tokens == 384000
+    flash_entry = next(
+        m for m in CATALOG.models if m.slug == "deepseek/deepseek-v4.1-flash"
+    )
+    assert flash_entry.price_tier == 1
+    assert flash_entry.context_window == 1048576
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
