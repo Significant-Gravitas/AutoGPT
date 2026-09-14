@@ -46,3 +46,33 @@ def stub_user_lookup_in_helpers(monkeypatch):
     client.get_user_by_id = AsyncMock(return_value=user)
     stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
+
+
+@pytest.fixture(autouse=True)
+def stub_learning_registry(monkeypatch):
+    """Route the skill registry's learning hooks to an in-memory store.
+
+    ``store_user_skill`` appends a version and ``list_all_skills`` /
+    ``read_skill`` consult the learning registry through the
+    ``skill_versions_db()`` accessor. Without a connected Prisma client that
+    accessor is the DatabaseManager RPC client, whose connection retries
+    would make every registry test crawl. Tests that need the store can
+    request ``fake_learning_store``.
+    """
+    from backend.copilot.learning._fake_store import FakeLearningStore
+
+    store = FakeLearningStore()
+    for target in (
+        "backend.copilot.learning.retrieval.skill_versions_db",
+        "backend.copilot.learning.retrieval.skill_use_db",
+        "backend.copilot.learning.history.skill_versions_db",
+        "backend.copilot.learning.history.skill_publication_db",
+        "backend.copilot.tools.skills.skill_versions_db",
+    ):
+        monkeypatch.setattr(target, lambda: store)
+    return store
+
+
+@pytest.fixture
+def fake_learning_store(stub_learning_registry):
+    return stub_learning_registry

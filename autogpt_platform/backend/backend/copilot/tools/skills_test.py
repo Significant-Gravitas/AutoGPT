@@ -230,6 +230,7 @@ class _FakeWorkspaceManager:
                 info.path = p
                 info.id = f"id-{p}"
                 info.metadata = self.metadata.get(p, {})
+                info.size_bytes = len(self.files[p])
                 result.append(info)
         return result
 

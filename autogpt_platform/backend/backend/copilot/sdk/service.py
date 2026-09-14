@@ -54,6 +54,7 @@ from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tool_display import tool_calls_for_provider
@@ -158,6 +159,7 @@ from ..builder_context import (
 from ..expert_context import build_expert_identity_suffix
 from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
+    SKILLS_CONTEXT_TAG,
     _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
@@ -175,7 +177,7 @@ from ..tools import (
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
-from ..tools.skills import build_skills_context
+from ..tools.skills import build_skills_context, build_skills_refresh_context
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -5226,7 +5228,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             skills_ctx_content = ""
             try:
                 skills_ctx_content = await build_skills_context(
-                    user_id, expert_id=session.expert_id
+                    user_id, expert_id=session.expert_id, session_id=session_id
                 )
             except Exception:
                 logger.exception(
@@ -5354,6 +5356,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        # Skill-index freshness for existing conversations: when a skill
+        # was added, updated, restored, or paused since this session last
+        # saw the index, prepend a compact refresh so the model discovers
+        # the current version without a new chat. Not persisted.
+        if has_history and is_user_message:
+            skills_refresh = await build_skills_refresh_context(
+                user_id, session.expert_id, session_id
+            )
+            if skills_refresh:
+                query_message = (
+                    f"<{SKILLS_CONTEXT_TAG}>\n{skills_refresh}\n</{SKILLS_CONTEXT_TAG}>"
+                    f"\n\n{query_message}"
+                )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -6197,6 +6212,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti: a memory-service failure must not change
+        # what the nightly learner can consider. Fire-and-forget; the
+        # helper is flag-gated and never raises.
+        if expert_identity_validated and user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[pre_attempt_msg_count:]) if session else [],
+                    message,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload CLI native session file for cross-pod --resume ---
         # The CLI writes its native session JSONL after each turn completes.

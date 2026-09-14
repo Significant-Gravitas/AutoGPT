@@ -6,11 +6,16 @@ import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import { useEffect } from "react";
 
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
+import { LearningHistoryCard } from "./components/LearningHistoryCard";
+import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
+import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
+import { learningSheetScope } from "./helpers";
 import { MemoryChatPanel } from "./components/MemoryChatPanel/MemoryChatPanel";
 import { useMemoryChatPanel } from "./components/MemoryChatPanel/useMemoryChatPanel";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
 
 function SettingsMemoryPage() {
@@ -36,6 +41,7 @@ function SettingsMemoryPage() {
   } = useMemoryPage();
 
   const chatPanel = useMemoryChatPanel({ scopeExpertID });
+  const learning = useLearningHistory(scopeExpertID);
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,6 +81,37 @@ function SettingsMemoryPage() {
           onForgetTopic={() => void chatPanel.openWithSeed("forget")}
         />
       )}
+
+      {learning.enabled ? (
+        <>
+          <OpenDecisionsCard
+            decisions={learning.decisions}
+            experts={experts}
+            isDeciding={learning.isDeciding}
+            onDecide={learning.decideProposal}
+          />
+          <LearningHistoryCard
+            items={learning.items}
+            isLoading={learning.isLoading}
+            experts={experts}
+            origin={learning.origin}
+            state={learning.state}
+            onOriginChange={learning.setOrigin}
+            onStateChange={learning.setState}
+            onOpen={learning.openRecordFor}
+          />
+          <SkillLearningSheet
+            scope={learningSheetScope(
+              learning.openRecord?.expertId ?? null,
+              experts,
+            )}
+            skillName={learning.openRecord?.skillName ?? null}
+            initialVersionId={learning.openRecord?.versionId ?? null}
+            onChanged={learning.refreshHistory}
+            onClose={learning.closeRecord}
+          />
+        </>
+      ) : null}
 
       <EraseMemoryCard
         scopeName={scopeName}

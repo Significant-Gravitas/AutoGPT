@@ -21,6 +21,7 @@
     "is_template": true,
     "last_run_at": null,
     "last_run_status": null,
+    "learning_paused_at": null,
     "name": "Maria",
     "pod_id": null,
     "protected_soul_rules": [
