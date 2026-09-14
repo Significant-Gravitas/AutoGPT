@@ -29,7 +29,7 @@ import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -115,11 +115,22 @@ export function MCPToolDialog({
 
   const startOAuthRef = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const oauthPendingRef = useRef(false);
+  const isUnmountedRef = useRef(false);
+  const preOpenedWindowRef = useRef<Window | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
+    isUnmountedRef.current = false;
     return () => {
+      isUnmountedRef.current = true;
       oauthAbortRef.current?.();
+      // Close a window pre-opened by a flow still fetching the login URL —
+      // its abort isn't registered yet, so the line above can't reach it.
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
     };
   }, []);
 
@@ -275,12 +286,30 @@ export function MCPToolDialog({
 
   const handleOAuthSignIn = useCallback(async () => {
     if (!serverUrl.trim()) return;
+    // Nothing here was readable synchronously before, so a double-tap on the
+    // sign-in button could run two flows and the second would overwrite
+    // preOpenedWindowRef, stranding the first window.
+    if (oauthPendingRef.current) return;
+    oauthPendingRef.current = true;
     setError(null);
 
     // Abort any previous OAuth flow
     oauthAbortRef.current?.();
 
     setOauthLoading(true);
+
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback.
+    //
+    // The button path is a real tap and is what this fixes. The auto-start
+    // effect below (a 401/403 during tool discovery) has no gesture to
+    // preserve, so its window.open is blocked there as it is today and this
+    // returns null — openOAuthPopup then behaves exactly as before. Making
+    // that path work needs a tap of its own, which is a product decision
+    // rather than a fix.
+    const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     try {
       // Only a 400 from the *initiate* call means "this server has no OAuth
@@ -310,10 +339,17 @@ export function MCPToolDialog({
       }
       const { login_url, state_token } = loginResponse.data;
 
+      // Unmounted while the login URL was being fetched — the cleanup
+      // already closed the window; don't adopt it or touch state.
+      if (isUnmountedRef.current) return;
+
       const { promise, cleanup } = openOAuthPopup(login_url, {
         stateToken: state_token,
+        preOpenedWindow,
         useCrossOriginListeners: true,
       });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
       oauthAbortRef.current = cleanup.abort;
 
       const result = await promise;
@@ -373,6 +409,16 @@ export function MCPToolDialog({
         setError(message);
       }
     } finally {
+      // Close the dangling about:blank window only while this flow still owns
+      // it. After handoff the ref is null, so this is a no-op and the helper
+      // owns the window.
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
+      }
+      oauthPendingRef.current = false;
       setOauthLoading(false);
       setLoading(false);
       oauthAbortRef.current = null;
