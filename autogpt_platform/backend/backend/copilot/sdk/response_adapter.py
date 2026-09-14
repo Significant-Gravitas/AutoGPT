@@ -46,6 +46,7 @@ from backend.copilot.response_model import (
 )
 
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
+from .tool_display import strip_display_token
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +356,7 @@ class SDKResponseAdapter:
                     # Strip MCP prefix so frontend sees "find_block"
                     # instead of "mcp__copilot__find_block".
                     tool_name = block.name.strip().removeprefix(MCP_TOOL_PREFIX)
+                    tool_input = strip_display_token(block.input)
 
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
@@ -363,12 +365,12 @@ class SDKResponseAdapter:
                         StreamToolInputAvailable(
                             toolCallId=block.id,
                             toolName=tool_name,
-                            input=block.input,
+                            input=tool_input,
                         )
                     )
                     self.current_tool_calls[block.id] = {
                         "name": tool_name,
-                        "input": block.input,
+                        "input": tool_input,
                     }
 
         elif isinstance(sdk_message, UserMessage):

@@ -18,6 +18,7 @@ from backend.copilot.db import (
     get_user_chat_sessions,
     set_turn_duration,
     update_chat_message_tool_calls,
+    update_chat_session_llm_route,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
@@ -78,6 +79,26 @@ def _make_session(
         Messages=messages or [],
     )
     return session
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("affected", "expected"), [(1, True), (0, False)])
+async def test_update_chat_session_llm_route_merges_metadata_atomically(
+    affected: int, expected: bool
+) -> None:
+    execute = AsyncMock(return_value=affected)
+
+    with patch("backend.copilot.db.db.execute_raw_with_schema", execute):
+        result = await update_chat_session_llm_route(
+            "sess-1", "user-1", "codex", "cred-1"
+        )
+
+    assert result is expected
+    sql, *params = execute.await_args.args
+    assert "COALESCE" in sql
+    assert "jsonb_build_object" in sql
+    assert '"updatedAt" = NOW()' in sql
+    assert params == ["sess-1", "user-1", "codex", "cred-1"]
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,12 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 
-const VALID_CREDENTIAL_TYPES = new Set([
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-]);
+// Used as a filter below, so it has to be total: a type missing here is
+// silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
+// `CredentialsType` at build time, so a new type cannot go missing quietly.
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(CREDENTIALS_TYPES);
 
 export function coerceCredentialFields(rawMissingCredentials: unknown): {
   credentialFields: CredentialField[];
@@ -298,6 +298,23 @@ export function checkAllInputsComplete(
     const v = inputValues[name];
     return v !== undefined && v !== null && v !== "";
   });
+}
+
+/**
+ * True while a credential the provider just refused is still the one selected.
+ *
+ * The row is kept on file, so the picker re-selects it on mount; without this
+ * the card would report ready and the chat would re-run into the same 401.
+ */
+export function isRejectedCredentialSelected(
+  rejection: CredentialRejection | null | undefined,
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): boolean {
+  const rejectedId = rejection?.credential_id;
+  if (!rejectedId) return false;
+  return Object.values(inputCredentials).some(
+    (credential) => credential?.id === rejectedId,
+  );
 }
 
 export function checkCanRun(

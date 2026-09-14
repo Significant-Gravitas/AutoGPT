@@ -40,3 +40,32 @@ export function trackPaywallView() {
     // into an error boundary. Analytics must never be able to take checkout down.
   }
 }
+
+const CHECKOUT_CANCELLED_SESSION_KEY = "paywall_checkout_cancelled_tracked";
+
+/**
+ * Reports that the user reached Stripe Checkout and came back without paying.
+ *
+ * Distinguishes "looked at the price and never clicked" from "picked a plan,
+ * saw the card form, and backed out" — two very different problems that
+ * `paywall_view` alone cannot separate, since Stripe is off-domain.
+ *
+ * Guarded per tab because the `subscription=cancelled` param persists after the
+ * return: the wizard's URL-sync effect only rewrites the query when the step
+ * changes, and on a cancel return the step is already correct, so a refresh
+ * would otherwise report the same abandonment again.
+ */
+export function trackPaywallCheckoutCancelled() {
+  try {
+    if (sessionStorage.getItem(CHECKOUT_CANCELLED_SESSION_KEY)) return;
+    sessionStorage.setItem(CHECKOUT_CANCELLED_SESSION_KEY, "1");
+  } catch {
+    // In-app browsers may block sessionStorage — double-counting beats dropping.
+  }
+
+  try {
+    analytics.sendDatafastEvent("paywall_checkout_cancelled", {});
+  } catch {
+    // Never let analytics take the checkout UI down; see trackPaywallView.
+  }
+}

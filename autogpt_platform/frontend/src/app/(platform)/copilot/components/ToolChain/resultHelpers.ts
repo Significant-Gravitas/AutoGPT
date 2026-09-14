@@ -1,3 +1,5 @@
+export { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
+
 export function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "string") {
     try {
@@ -22,15 +24,6 @@ export function safeHostname(url: string): string | null {
   }
 }
 
-export function integrationIconSrc(provider: string): string | null {
-  const slug = provider
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-  return slug ? `/integrations/${slug}.png` : null;
-}
-
 // Every backend tool response carries these envelope fields; cards read the
 // domain payload, so shape detection runs on the stripped object.
 const BASE_RESPONSE_KEYS = new Set(["type", "message", "session_id"]);
@@ -38,8 +31,19 @@ const BASE_RESPONSE_KEYS = new Set(["type", "message", "session_id"]);
 export function stripBaseFields(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
+  // A couple of responses repeat their own discriminator in `name`
+  // ("no_results", "agents_found"). It is envelope, not payload, and left in
+  // it both renders as a field of its own and pushes the object past the
+  // single-key check that picks a real card -- so a no-results answer came out
+  // as a raw suggestions array labelled "Suggestions", with "Name no_results"
+  // under it. Only drop `name` when it is that echo: a payload whose name
+  // means something (a folder, a file, a block) never equals the type.
+  const type = obj.type;
   return Object.fromEntries(
-    Object.entries(obj).filter(([key]) => !BASE_RESPONSE_KEYS.has(key)),
+    Object.entries(obj).filter(
+      ([key, value]) =>
+        !BASE_RESPONSE_KEYS.has(key) && !(key === "name" && value === type),
+    ),
   );
 }
 

@@ -53,7 +53,7 @@ from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.integrations.codex.transport import (
-    PooledCodexRuntimeLease,
+    CodexCredentialLease,
     get_codex_transport,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -102,7 +102,7 @@ _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort
 }
 
 
-def _catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
+def catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
@@ -161,7 +161,7 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
                 "gating are inactive"
             )
         return None
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     if model is None:
         reason = "unknown to the model registry"
     elif not model.is_enabled:
@@ -330,7 +330,7 @@ async def resolve_model_route(
 async def resolve_codex_model_route(
     mode: ModelMode,
     tier: ModelTier,
-    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+    credential_lease: CredentialLease | CodexCredentialLease,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""
     advertised = await _advertised_codex_models(credential_lease)
@@ -348,9 +348,9 @@ async def resolve_codex_model_route(
 
 
 async def _advertised_codex_models(
-    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+    credential_lease: CredentialLease | CodexCredentialLease,
 ) -> list[CodexModelInfo]:
-    if isinstance(credential_lease, PooledCodexRuntimeLease):
+    if isinstance(credential_lease, CodexCredentialLease):
         return await credential_lease.models()
     return await get_codex_transport().models(credential_lease)
 
@@ -434,7 +434,7 @@ def _resolved_codex_model(
 def _codex_catalog_allows(slug: str) -> bool:
     if not llm_registry.has_models():
         return True
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     return bool(
         model is not None and model.is_enabled and model.metadata.provider == "openai"
     )
@@ -443,7 +443,7 @@ def _codex_catalog_allows(slug: str) -> bool:
 def _codex_account_fallback_allowed(slug: str) -> bool:
     if not llm_registry.has_models():
         return True
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     if model is None:
         return True
     return model.is_enabled and model.metadata.provider == "openai"

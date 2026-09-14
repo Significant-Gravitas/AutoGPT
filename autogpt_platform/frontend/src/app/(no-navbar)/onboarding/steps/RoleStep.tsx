@@ -3,98 +3,97 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SelectableCard } from "../components/SelectableCard";
 import { useOnboardingWizardStore } from "../store";
-import { Emoji } from "@/components/atoms/Emoji/Emoji";
-import { useEffect, useRef } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  ChartLineData01Icon,
+  CodeIcon,
+  CubeIcon,
+  Flag01Icon,
+  Megaphone01Icon,
+  Settings02Icon,
+  Target01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 
-const IMG_SIZE = 42;
+const ICON_SIZE = 20;
 
 const ROLES = [
   {
     id: "Founder/CEO",
     label: "Founder / CEO",
-    icon: <Emoji text="🎯" size={IMG_SIZE} />,
+    icon: <Icon icon={Target01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Operations",
     label: "Operations",
-    icon: <Emoji text="⚙️" size={IMG_SIZE} />,
+    icon: <Icon icon={Settings02Icon} size={ICON_SIZE} />,
   },
   {
     id: "Sales/BD",
     label: "Sales / BD",
-    icon: <Emoji text="📈" size={IMG_SIZE} />,
+    icon: <Icon icon={ChartLineData01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Marketing",
     label: "Marketing",
-    icon: <Emoji text="📢" size={IMG_SIZE} />,
+    icon: <Icon icon={Megaphone01Icon} size={ICON_SIZE} />,
   },
   {
     id: "Product/PM",
     label: "Product / PM",
-    icon: <Emoji text="🔨" size={IMG_SIZE} />,
+    icon: <Icon icon={CubeIcon} size={ICON_SIZE} />,
   },
   {
     id: "Engineering",
     label: "Engineering",
-    icon: <Emoji text="💻" size={IMG_SIZE} />,
+    icon: <Icon icon={CodeIcon} size={ICON_SIZE} />,
   },
   {
     id: "HR/People",
     label: "HR / People",
-    icon: <Emoji text="👤" size={IMG_SIZE} />,
+    icon: <Icon icon={UserGroupIcon} size={ICON_SIZE} />,
   },
-  { id: "Other", label: "Other", icon: <Emoji text="🚩" size={IMG_SIZE} /> },
+  {
+    id: "Other",
+    label: "Other",
+    icon: <Icon icon={Flag01Icon} size={ICON_SIZE} />,
+  },
 ] as const;
 
 export function RoleStep() {
-  const name = useOnboardingWizardStore((s) => s.name);
   const role = useOnboardingWizardStore((s) => s.role);
   const otherRole = useOnboardingWizardStore((s) => s.otherRole);
   const setRole = useOnboardingWizardStore((s) => s.setRole);
   const setOtherRole = useOnboardingWizardStore((s) => s.setOtherRole);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
-  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const isOther = role === "Other";
+  const canContinue = isOther ? Boolean(otherRole.trim()) : Boolean(role);
 
-  useEffect(() => {
-    return () => {
-      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-    };
-  }, []);
-
-  function handleRoleSelect(id: string) {
-    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-    setRole(id);
-    if (id !== "Other") {
-      autoAdvanceTimer.current = setTimeout(nextStep, 350);
-    }
-  }
-
-  function handleOtherContinue() {
-    if (otherRole.trim()) {
-      nextStep();
-    }
+  function handleNext() {
+    if (canContinue) nextStep();
   }
 
   return (
     <FadeIn>
-      <div className="flex w-full flex-col items-center gap-12 px-4">
-        <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-2 px-4 text-center">
-          <Text
-            variant="h3"
-            className="!text-[1.5rem] !leading-[2rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
-          >
-            What best describes you, {name}?
-          </Text>
-          <Text variant="lead" className="!text-zinc-500">
-            So AutoPilot knows how to help you best
-          </Text>
+      <div className="flex w-full flex-col items-center gap-8 px-4">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
+          <BotAvatar
+            config={AUTOPILOT_AVATAR}
+            status="idle"
+            size={120}
+            trackPointer
+            showBadge={false}
+          />
+          <Text variant="h4">What best describes you?</Text>
         </div>
 
         <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
@@ -104,35 +103,49 @@ export function RoleStep() {
               icon={r.icon}
               label={r.label}
               selected={role === r.id}
-              onClick={() => handleRoleSelect(r.id)}
-              className="p-8"
+              onClick={() => setRole(r.id)}
+              className="h-28 w-[11.5rem]"
             />
           ))}
         </div>
 
-        {isOther && (
-          <>
-            <div className="-mb-5 w-full px-8 md:px-0">
-              <Input
-                id="other-role"
-                label="Other role"
-                hideLabel
-                placeholder="Describe your role..."
-                value={otherRole}
-                onChange={(e) => setOtherRole(e.target.value)}
-                autoFocus
-              />
-            </div>
-
-            <Button
-              onClick={handleOtherContinue}
-              disabled={!otherRole.trim()}
-              className="w-full max-w-xs"
+        <AnimatePresence initial={false}>
+          {isOther && (
+            <motion.div
+              key="other-role"
+              initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -8 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -8 }}
+              transition={{
+                duration: reduceMotion ? 0.15 : 0.24,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="-my-1 w-full max-w-lg overflow-hidden"
             >
-              Continue
-            </Button>
-          </>
-        )}
+              <div className="w-full px-8 py-1 md:px-0">
+                <Input
+                  id="other-role"
+                  label="Other role"
+                  hideLabel
+                  placeholder="Describe your role..."
+                  value={otherRole}
+                  onChange={(e) => setOtherRole(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <Button
+          type="button"
+          size="small"
+          onClick={handleNext}
+          disabled={!canContinue}
+          className="h-10 w-56 rounded-xl"
+        >
+          Next
+        </Button>
       </div>
     </FadeIn>
   );

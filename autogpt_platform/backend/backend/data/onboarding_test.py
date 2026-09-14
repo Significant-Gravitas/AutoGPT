@@ -11,6 +11,14 @@ from backend.data.onboarding import (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_trial_enrollment(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.data.onboarding.get_subscription_trial",
+        AsyncMock(return_value=None),
+    )
+
+
 def test_format_onboarding_for_extraction_basic():
     result = format_onboarding_for_extraction(
         user_name="John",

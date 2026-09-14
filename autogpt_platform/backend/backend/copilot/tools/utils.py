@@ -17,6 +17,7 @@ from backend.data.model import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
+from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,7 @@ async def get_or_create_library_agent(
 async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
+    expert_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -274,7 +276,7 @@ async def match_credentials_to_requirements(
     if not requirements:
         return matched, missing
 
-    available_creds = await get_user_credentials(user_id)
+    available_creds = await get_user_credentials(user_id, expert_id)
 
     for field_name, field_info in requirements.items():
         matching_cred = find_matching_credential(available_creds, field_info)
@@ -314,10 +316,35 @@ async def match_credentials_to_requirements(
     return matched, missing
 
 
-async def get_user_credentials(user_id: str) -> list[Credentials]:
-    """Get all available credentials for a user."""
+async def get_user_credentials(
+    user_id: str, expert_id: str | None = None
+) -> list[Credentials]:
+    """Get the credentials available for a user, scoped to an expert if given."""
     creds_manager = IntegrationCredentialsManager()
-    return await creds_manager.store.get_all_creds(user_id)
+    credentials = await creds_manager.store.get_all_creds(user_id)
+    return await scope_credentials_to_expert(user_id, expert_id, credentials)
+
+
+async def scope_credentials_to_expert(
+    user_id: str,
+    expert_id: str | None,
+    credentials: list[Credentials],
+) -> list[Credentials]:
+    """Narrow *credentials* to what *expert_id* has been granted.
+
+    A plain (non-expert) session passes ``expert_id=None`` and keeps everything.
+    Filtering at selection time — rather than only at the executor's gate — is
+    what makes an ungranted integration surface as "missing credentials", so the
+    user is offered the connect/grant step instead of a run that fails later.
+    """
+    if expert_id is None:
+        return credentials
+
+    from backend.api.features.experts.credentials import filter_credentials_for_expert
+    from backend.data.db_accessors import experts_db
+
+    allowed = set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
+    return filter_credentials_for_expert(credentials, allowed)
 
 
 def find_matching_credential(
@@ -355,6 +382,7 @@ def create_credential_meta_from_match(
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
+    expert_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[str]]:
     """
     Match user's available credentials against graph's required credentials.
@@ -381,9 +409,11 @@ async def match_user_credentials_to_graph(
     if not aggregated_creds:
         return graph_credentials_inputs, missing_creds
 
-    # Get all available credentials for the user
+    # Get the credentials available for the user, narrowed to the expert's grants
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await creds_manager.store.get_all_creds(user_id)
+    available_creds = await scope_credentials_to_expert(
+        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    )
 
     # For each required credential field, find a matching user credential
     # field_info.provider is a frozenset because aggregate_credentials_inputs()
@@ -502,6 +532,7 @@ def _credential_is_for_mcp_server(
 async def check_user_has_required_credentials(
     user_id: str,
     required_credentials: list[CredentialsMetaInput],
+    expert_id: str | None = None,
 ) -> list[CredentialsMetaInput]:
     """
     Check which required credentials the user is missing.
@@ -517,7 +548,9 @@ async def check_user_has_required_credentials(
         return []
 
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await creds_manager.store.get_all_creds(user_id)
+    available_creds = await scope_credentials_to_expert(
+        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    )
 
     missing: list[CredentialsMetaInput] = []
     for required in required_credentials:
@@ -529,3 +562,64 @@ async def check_user_has_required_credentials(
             missing.append(required)
 
     return missing
+
+
+def credential_rejection_status(exc: BaseException) -> int | None:
+    """Rejection status from *exc* or anything it was raised from, else ``None``.
+
+    Blocks bubble the provider's failure through ``BlockError`` with the
+    original exception on ``__cause__``, so the status only survives one
+    level down.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        status = _status_code_of(current)
+        if status in CREDENTIAL_REJECTED_STATUS_CODES:
+            return status
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def sanitize_provider_message(message: str, max_chars: int = 200) -> str:
+    """Bounded one-line copy of a provider error, with secrets removed.
+
+    The input is an upstream body we do not control and may quote the request
+    it rejected, so anything that can carry a token is dropped before the text
+    reaches the chat.
+    """
+    text = " ".join(str(message).split())
+    text = _BEARER_TOKEN_RE.sub("[redacted]", text)
+    text = _URL_QUERY_RE.sub(r"\1", text)
+    text = _AUTH_HEADER_RE.sub("[redacted]", text)
+    text = _SECRET_PARAM_RE.sub("[redacted]", text)
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "…"
+    return text
+
+
+def _status_code_of(exc: BaseException) -> int | None:
+    for value in (
+        getattr(exc, "status_code", None),  # HTTPClientError, openai, httpx wrappers
+        getattr(exc, "status", None),  # aiohttp.ClientResponseError
+        getattr(getattr(exc, "response", None), "status_code", None),  # requests
+    ):
+        if isinstance(value, int):
+            return value
+    return None
+
+
+_BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+\S+")
+_URL_QUERY_RE = re.compile(r"(https?://[^\s\"'?]+)\?\S*")
+# An Authorization value is a scheme plus its token, so a bare \S+ would eat
+# only the scheme and leave the credential sitting behind "[redacted]".
+_AUTH_HEADER_RE = re.compile(
+    r"(?i)['\"]?\bauthorization\b['\"]?\s*[=:]\s*['\"]?(?:\w[\w-]*\s+)?\S+"
+)
+# Optional quotes around the key and value cover the JSON and dict shapes a
+# provider echoes back; without them the quote before the colon defeats the match.
+_SECRET_PARAM_RE = re.compile(
+    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token"
+    r"|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
+)

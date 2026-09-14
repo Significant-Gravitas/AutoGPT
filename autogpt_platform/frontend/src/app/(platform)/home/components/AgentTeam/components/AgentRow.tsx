@@ -1,7 +1,6 @@
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
-import Link from "next/link";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
+import { BubbleChatIcon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatWeeklySpend } from "../../../helpers";
@@ -12,54 +11,63 @@ interface Props {
   agent: HomeAgentStatus;
 }
 
+/** One expert with its status and two ways in. The detail line is gone:
+ *  anything that needs doing is already spelled out under Needs you. */
 export function AgentRow({ agent }: Props) {
   const spend = formatWeeklySpend(agent.spend_cents);
+  const nextRun = agent.next_run_time
+    ? `Next run ${formatUntil(agent.next_run_time)}`
+    : null;
+  const secondLine = [spend, nextRun].filter(Boolean).join(" · ");
+
   return (
-    <Link
-      href={`/team/${agent.expert.id}`}
-      className="group -mx-2 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
-    >
+    <div className="flex min-w-0 items-center gap-3 px-4 py-2.5">
       <ExpertAvatar
         name={agent.expert.name}
         avatarUrl={agent.expert.avatar_url}
+        size={32}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" className="truncate text-zinc-900">
+          <Text
+            variant="body-medium"
+            tone="primary"
+            className="truncate leading-5"
+          >
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
         </div>
-        <div className="flex min-w-0 items-center gap-1 text-zinc-500">
-          <Text variant="small" className="min-w-0 truncate">
-            {agent.detail}
+        {secondLine ? (
+          <Text
+            variant="small"
+            tone="muted"
+            className="truncate tabular-nums leading-4"
+            unmask={false}
+          >
+            {secondLine}
           </Text>
-          {spend ? (
-            <Text
-              variant="small"
-              className="shrink-0 tabular-nums"
-              unmask={false}
-            >
-              {`· ${spend}`}
-            </Text>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-      {agent.next_run_time ? (
-        <Text
-          variant="small"
-          className="shrink-0 tabular-nums text-zinc-400 group-hover:text-zinc-600"
-        >
-          {formatUntil(agent.next_run_time)}
-        </Text>
-      ) : (
-        <Icon
-          icon={ArrowRight01Icon}
-          size={15}
-          className="shrink-0 text-zinc-300 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-600"
-          aria-hidden="true"
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* Icon-only: the atom shows the aria-label as a hover tooltip. */}
+        <Button
+          as="NextLink"
+          href={`/copilot?expertId=${agent.expert.id}`}
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={BubbleChatIcon}
+          aria-label={`Chat with ${agent.expert.name}`}
         />
-      )}
-    </Link>
+        <Button
+          as="NextLink"
+          href={`/team/${agent.expert.id}`}
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={Settings01Icon}
+          aria-label={`Manage ${agent.expert.name}`}
+        />
+      </div>
+    </div>
   );
 }

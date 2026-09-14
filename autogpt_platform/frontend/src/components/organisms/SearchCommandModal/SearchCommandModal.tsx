@@ -16,6 +16,7 @@ import { SearchCommandSkeleton } from "./SearchCommandSkeleton";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   isOpen: boolean;
@@ -84,13 +85,13 @@ export function SearchCommandModal({
     // Escape closure is handled by Radix's ``onOpenChange``; arrow
     // keys and Enter stay here so the input keeps focus while the user
     // navigates the result list.
-    if (event.key === "ArrowDown") {
+    if (isKey(event, "ArrowDown")) {
       event.preventDefault();
       moveHighlight(1);
-    } else if (event.key === "ArrowUp") {
+    } else if (isKey(event, "ArrowUp")) {
       event.preventDefault();
       moveHighlight(-1);
-    } else if (event.key === "Enter") {
+    } else if (isKey(event, "Enter")) {
       event.preventDefault();
       selectHighlightedItem();
     }

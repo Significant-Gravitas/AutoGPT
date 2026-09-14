@@ -27,6 +27,7 @@ export function useWallet() {
   const [topUpOpen, setTopUpOpen] = useState(false);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalCount = groups.reduce((acc, group) => acc + group.tasks.length, 0);
 
@@ -140,10 +141,23 @@ export function useWallet() {
       return;
     }
     setFlash(true);
-    setTimeout(() => {
+    if (flashTimer.current !== null) {
+      clearTimeout(flashTimer.current);
+    }
+    flashTimer.current = setTimeout(() => {
+      flashTimer.current = null;
       setFlash(false);
     }, 300);
   }, [credits, prevCredits]);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current !== null) {
+        clearTimeout(flashTimer.current);
+        flashTimer.current = null;
+      }
+    };
+  }, []);
 
   return {
     state,

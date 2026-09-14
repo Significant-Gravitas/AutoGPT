@@ -11,15 +11,15 @@ interface BadgeProps {
 }
 
 const badgeVariants: Record<BadgeVariant, string> = {
-  success: "bg-green-100 text-green-800",
-  error: "bg-red-100 text-red-800",
-  warning: "bg-amber-100 text-amber-800",
-  info: "bg-slate-50 text-black",
+  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  error: "bg-red-50 text-red-700 ring-red-600/10",
+  warning: "bg-amber-50 text-amber-800 ring-amber-500/20",
+  info: "bg-zinc-50 text-zinc-600 ring-zinc-500/10",
 };
 
 const badgeSizes: Record<BadgeSize, string> = {
-  small: "px-[6px] py-[3px] text-[0.55rem] leading-4 tracking-widest",
-  medium: "px-[9px] py-[3px] text-[0.6785rem] leading-5 tracking-wider",
+  small: "px-1.5 py-0.5 text-[11px] leading-4",
+  medium: "px-2 py-0.5 text-xs leading-5",
 };
 
 export function Badge({
@@ -31,15 +31,9 @@ export function Badge({
   return (
     <span
       className={cn(
-        // Base styles from Figma
-        "inline-flex items-center gap-2 rounded-[45px]",
-        // Text styles
-        "font-sans font-medium uppercase",
-        // Text overflow handling
+        "inline-flex items-center gap-1.5 rounded-md font-sans font-medium ring-1 ring-inset",
         "overflow-hidden text-ellipsis",
-        // Size styles
         badgeSizes[size],
-        // Variant styles
         badgeVariants[variant],
         className,
       )}

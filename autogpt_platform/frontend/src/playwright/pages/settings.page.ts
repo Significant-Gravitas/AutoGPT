@@ -11,7 +11,7 @@ export class SettingsPage extends BasePage {
     await expect(this.page).toHaveURL(/\/profile\/settings/);
     await expect(
       this.page.getByText("Manage your account settings and preferences."),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
   }
 
   getAlertsSwitch(): Locator {

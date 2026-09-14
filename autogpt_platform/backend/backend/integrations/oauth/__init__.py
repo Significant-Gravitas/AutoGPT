@@ -5,12 +5,15 @@ from pydantic import BaseModel
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
 from backend.integrations.providers import provider_key
 
+from .codex import CodexDeviceAuthHandler
 from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .microsoft_365_copilot import Microsoft365CopilotDeviceAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
+from .rmfg import RMFGDeviceAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
 from .twitter import TwitterOAuthHandler
 
@@ -232,6 +235,9 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 # Device Code Grant handlers (RFC 8628)
 # ------------------------------------------------------------------ #
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
+    CodexDeviceAuthHandler,
+    Microsoft365CopilotDeviceAuthHandler,
+    RMFGDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]
 

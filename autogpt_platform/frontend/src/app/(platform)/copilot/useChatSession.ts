@@ -28,11 +28,15 @@ import { latestExpertSessionParams } from "./expertSessionQuery";
 interface UseChatSessionOptions {
   dryRun?: boolean;
   expertId?: string | null;
+  /** Off = keep the fresh new-task state addressed to the expert instead of
+   *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
+  adoptLatestExpertThread?: boolean;
 }
 
 export function useChatSession({
   dryRun = false,
   expertId = null,
+  adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
@@ -113,6 +117,7 @@ export function useChatSession({
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
   const canAdoptExpertSession =
+    adoptLatestExpertThread &&
     !!expertId &&
     !sessionId &&
     expertId === mountExpertIdRef.current &&
@@ -236,9 +241,9 @@ export function useChatSession({
     if (chatTransports !== undefined && availableTransports.length === 0) {
       toast({
         variant: "destructive",
-        title: "AutoPilot needs an AI connection",
+        title: "Your expert needs an AI connection",
         description:
-          "Sign in with ChatGPT under OpenAI in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
       });
       throw new Error("chat_transport_not_configured");
     }
@@ -251,7 +256,7 @@ export function useChatSession({
           : "Choose an AI connection",
         description: connectionsAreLoading
           ? "Wait a moment and try again."
-          : "Select the connection AutoPilot should use before starting a new task.",
+          : "Select the connection your expert should use before starting a new task.",
       });
       throw new Error(
         connectionsAreLoading
@@ -260,22 +265,30 @@ export function useChatSession({
       );
     }
     if (
+      copilotLlmAuth !== null &&
       copilotLlmAuth.authProvider !== "platform" &&
       resolvedLLMAuth.authProvider === "platform"
     ) {
       toast({
         title: "AI connections changed",
         description:
-          "The next AutoPilot task will resolve the currently available connection before it starts.",
+          "The next task will use the available connection when it starts.",
       });
     }
 
     try {
-      const sessionData: CreateSessionRequest = {
-        llm_auth_provider: resolvedLLMAuth.authProvider,
-      };
-      if (resolvedLLMAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+      const sessionData: CreateSessionRequest = {};
+      // Only an explicit choice travels. Naming the route unconditionally
+      // makes every new chat an override, which is how a connection picked
+      // once quietly became the account's default and how a default changed
+      // in Settings stopped taking effect: the server skips its own default
+      // whenever the client names one. `copilotLlmAuth` is null until the
+      // user actually picks, and null means "use whatever the server says".
+      if (copilotLlmAuth !== null) {
+        sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
+        if (resolvedLLMAuth.authProvider !== "platform") {
+          sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+        }
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
@@ -345,11 +358,23 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
-  const sessionLlmAuthProvider: "platform" | "codex" | null =
+  const storedLlmAuthProvider =
+    sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider
+      : null;
+  const sessionLlmAuthProvider:
+    | "platform"
+    | "codex"
+    | "microsoft_365_copilot"
+    | null = sessionId
+    ? storedLlmAuthProvider === "codex" ||
+      storedLlmAuthProvider === "microsoft_365_copilot"
+      ? storedLlmAuthProvider
+      : "platform"
+    : null;
+  const sessionLlmCredentialId =
     sessionId && sessionQuery.data?.status === 200
-      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
-        ? "codex"
-        : "platform"
+      ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
       : null;
 
   // The expert this session actually belongs to, straight off the session
@@ -366,6 +391,7 @@ export function useChatSession({
     sessionId,
     setSessionId,
     sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
