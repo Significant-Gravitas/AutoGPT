@@ -53,6 +53,7 @@ class ResponseType(str, Enum):
     EXPERT_WORKFLOW = "expert_workflow"
     EXPERT_WORKFLOWS = "expert_workflows"
     EXPERT_CREDENTIALS = "expert_credentials"
+    CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
@@ -618,7 +619,8 @@ class TeamExpertInfo(BaseModel):
     avatar_url: str | None = None
     is_paused: bool = False
     workflow_count: int = 0
-    credential_count: int = 0
+    # None for an expert session: a teammate's grant count is the owner's view.
+    credential_count: int | None = None
 
 
 class TeamRosterResponse(ToolResponseBase):

@@ -1196,8 +1196,11 @@ async def test_credential_lookup_normalizes_trailing_slash():
                     session=session,
                     server_url=url_with_slash,
                 )
-            # Credential lookup should use the normalized URL (no trailing slash)
-            mock_lookup.assert_called_once_with(_USER_ID, "https://mcp.example.com/mcp")
+            # Credential lookup should use the normalized URL (no trailing slash),
+            # and a personal session narrows by nothing.
+            mock_lookup.assert_called_once_with(
+                _USER_ID, "https://mcp.example.com/mcp", allowed_ids=None
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1498,6 +1501,13 @@ async def _run_with_grants(allowed: list[str]):
     client = AsyncMock()
     client.list_tools = AsyncMock(return_value=_make_tool_list("fetch"))
 
+    # The real lookup narrows by allowed_ids before ranking, so the stub has to
+    # as well — otherwise the tool never sees the filter it now relies on.
+    async def _lookup(_user_id, _url, allowed_ids=None):
+        if allowed_ids is not None and creds.id not in allowed_ids:
+            return None
+        return creds
+
     with (
         patch(
             "backend.copilot.tools.run_mcp_tool.validate_url_host",
@@ -1505,10 +1515,9 @@ async def _run_with_grants(allowed: list[str]):
         ),
         patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-            new_callable=AsyncMock,
-            return_value=creds,
+            new=_lookup,
         ),
-        patch("backend.data.db_accessors.experts_db", return_value=experts),
+        patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
         patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=client),
     ):
         return await RunMCPToolTool()._execute(

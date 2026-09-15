@@ -323,9 +323,15 @@ class RunAgentTool(BaseTool):
 
             # Priority: library_agent_id if provided
             if has_library_id:
-                library_agent = await library_db().get_library_agent(
-                    params.library_agent_id, user_id
-                )
+                try:
+                    library_agent = await library_db().get_library_agent(
+                        params.library_agent_id, user_id
+                    )
+                except NotFoundError:
+                    # get_library_agent raises rather than returning None, so
+                    # the graph-id fallback this tool documents is only
+                    # reachable from here.
+                    library_agent = None
                 if not library_agent:
                     library_agent = await library_db().get_library_agent_by_graph_id(
                         user_id, params.library_agent_id

@@ -27362,6 +27362,7 @@
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
+          "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",
           "trigger_setup",
