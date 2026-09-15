@@ -94,6 +94,35 @@ function runForceHydrate({
 }
 
 describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424)", () => {
+  it.each(["Hello [1] world", "Goodbye", ""])(
+    "reconciles the streamed preview with rewritten provider text: %j",
+    (finalText) => {
+      const preview: Messages = [
+        seqMessage(1),
+        {
+          id: "live-assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Hello world", state: "done" }],
+        },
+      ];
+      const canonical: Messages = [
+        seqMessage(1),
+        {
+          id: `${SESSION_ID}-seq-2`,
+          role: "assistant",
+          parts: [{ type: "text", text: finalText, state: "done" }],
+        },
+      ];
+      expect(
+        runForceHydrate({
+          prev: preview,
+          staleWindow: [seqMessage(1)],
+          freshWindow: canonical,
+        }),
+      ).toEqual(canonical);
+    },
+  );
+
   afterEach(() => {
     _resetInterruptedToastLedgerForTests();
     cleanup();

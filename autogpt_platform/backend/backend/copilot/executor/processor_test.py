@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
@@ -32,6 +33,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -41,6 +43,15 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
 )
+
+
+@pytest.fixture(autouse=True)
+def no_trial_attribution(mocker):
+    store = MagicMock()
+    store.get_subscription_trial = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+    )
 
 
 class TestResolveUseSdk:
@@ -709,6 +720,103 @@ def _codex_session(
     session.session_id = "sess-codex"
     session.metadata.builder_graph_id = builder_graph_id
     return session
+
+
+def _microsoft_365_copilot_entry() -> CoPilotExecutionEntry:
+    return CoPilotExecutionEntry(
+        session_id="sess-microsoft",
+        turn_id="turn-microsoft",
+        user_id="user-1",
+        message="hi",
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-microsoft",
+    )
+
+
+def _microsoft_365_copilot_session() -> ChatSession:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-microsoft",
+    )
+    session.session_id = "sess-microsoft"
+    return session
+
+
+@pytest.mark.asyncio
+async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
+    from backend.integrations.oauth.microsoft_365_copilot import (
+        Microsoft365CopilotDeviceAuthHandler,
+    )
+
+    published = _TrackedStream(events=[])
+    lease = MagicMock()
+    lease.credentials = OAuth2Credentials(
+        provider="microsoft_365_copilot",
+        id="cred-microsoft",
+        access_token=SecretStr("graph-token"),
+        refresh_token=SecretStr("refresh-token"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    microsoft_stream = MagicMock(return_value=MagicMock())
+    baseline_stream = MagicMock()
+    sdk_stream = MagicMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_microsoft_365_copilot_session()),
+        ),
+        patch(
+            "backend.copilot.executor.processor.IntegrationCredentialsManager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_microsoft_365",
+            microsoft_stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_baseline",
+            baseline_stream,
+        ),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            sdk_stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _microsoft_365_copilot_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    manager.acquire_lease.assert_awaited_once_with("user-1", "cred-microsoft")
+    lease.release.assert_awaited_once()
+    microsoft_stream.assert_called_once()
+    assert microsoft_stream.call_args.kwargs["credential_lease"] is lease
+    baseline_stream.assert_not_called()
+    sdk_stream.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1398,3 +1506,28 @@ class TestBuildingModeForcesSdk:
             new=AsyncMock(return_value=session),
         ):
             assert await _building_mode_forces_sdk(session.session_id) is True
+
+
+def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
+    """A chat-platform prompt is authored off-platform by someone who need not
+    be the account owner, so the turn's envelope must carry taint. This is the
+    taint bit's only producer today and nothing asserted it.
+    """
+    from backend.copilot.executor.processor import taint_for_source_platform
+    from backend.copilot.tree import root_envelope
+
+    clean = root_envelope("turn-1")
+    assert clean.tainted is False
+
+    web = MagicMock()
+    web.metadata.source_platform = None
+    assert taint_for_source_platform(clean, web) is clean
+
+    slack = MagicMock()
+    slack.metadata.source_platform = "slack"
+    promoted = taint_for_source_platform(clean, slack)
+    assert promoted.tainted is True
+    assert promoted.tree_id == clean.tree_id
+
+    # No envelope (a legacy queue entry) stays None rather than inventing one.
+    assert taint_for_source_platform(None, slack) is None

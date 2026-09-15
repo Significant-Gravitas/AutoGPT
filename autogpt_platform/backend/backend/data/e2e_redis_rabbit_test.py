@@ -31,18 +31,11 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     create_execution_queue_config,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 
 def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
+    return is_tcp_port_reachable(redis_client.HOST, redis_client.PORT)
 
 
 def _has_live_rabbit() -> bool:
@@ -415,6 +408,7 @@ async def test_graph_execution_queue_publish_and_consume() -> None:
     → consume → payload round-trips intact. Uses a unique routing key so
     the live executor consumer (if any) doesn't race for the message."""
     from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+    from backend.util.settings import Config
 
     test_queue_name = f"e2e_test_{uuid4().hex[:8]}_v2"
     test_routing_key = f"e2e.test.{uuid4().hex[:8]}"
@@ -433,7 +427,11 @@ async def test_graph_execution_queue_publish_and_consume() -> None:
         routing_key=test_routing_key,
         arguments={"x-queue-type": "quorum"},
     )
-    cfg = RabbitMQConfig(vhost="/", exchanges=[test_exchange], queues=[test_queue])
+    cfg = RabbitMQConfig(
+        vhost=Config().rabbitmq_vhost,
+        exchanges=[test_exchange],
+        queues=[test_queue],
+    )
 
     publisher = AsyncRabbitMQ(cfg)
     await publisher.connect()

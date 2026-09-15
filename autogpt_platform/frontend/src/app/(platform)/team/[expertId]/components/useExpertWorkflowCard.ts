@@ -41,7 +41,7 @@ const STATUS = {
 
 interface Args {
   workflow: ExpertWorkflowRef;
-  expertId: string;
+  expertId?: string;
 }
 
 export function useExpertWorkflowCard({ workflow, expertId }: Args) {
@@ -60,9 +60,7 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
   const libraryHref = workflow.library_agent_id
     ? `/library/agents/${workflow.library_agent_id}`
     : null;
-  const chatPrompt = encodeURIComponent(
-    `Tell me about the workflow "${name}" and how you use it.`,
-  );
+  const chatPrompt = `Tell me about the workflow "${name}" and how you use it.`;
 
   function openRun(execution: GraphExecutionMeta) {
     router.push(`${libraryHref}?activeTab=runs&activeItem=${execution.id}`);
@@ -98,7 +96,8 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
     builderHref: workflow.graph_id
       ? `/build?flowID=${workflow.graph_id}`
       : null,
-    chatHref: `/copilot?expertId=${expertId}&autosubmit=true#prompt=${chatPrompt}`,
+    chatPrompt,
+    chatHref: `/copilot?${expertId ? `expertId=${expertId}&` : ""}autosubmit=true#prompt=${encodeURIComponent(chatPrompt)}`,
     openRun,
     openTriggers,
   };

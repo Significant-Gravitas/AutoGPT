@@ -1,26 +1,22 @@
+import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import {
-  Activity01Icon,
-  Alert01Icon,
-  Clock01Icon,
-  SparklesIcon,
-} from "@hugeicons/core-free-icons";
+import { Activity01Icon, Alert01Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import Image from "next/image";
-import { type ExpertRosterStatus, getExpertCoverSrc } from "../../../helpers";
+import type { ExpertRosterStatus } from "../../../helpers";
 
 type CoverStatus = ExpertRosterStatus | "built-in";
 
-const STATUS_STYLES: Record<
-  CoverStatus,
-  { label: string; className: string; icon: IconSvgElement }
+/** Only the states that ask something of the user get a badge; "idle" and
+ *  "built-in" are the resting state and say nothing the card does not. */
+const STATUS_STYLES: Partial<
+  Record<
+    CoverStatus,
+    { label: string; className: string; icon: IconSvgElement }
+  >
 > = {
-  idle: {
-    label: "Idle",
-    className: "bg-white text-zinc-700",
-    icon: Clock01Icon,
-  },
   working: {
     label: "Working",
     className: "bg-emerald-50 text-emerald-700",
@@ -31,44 +27,48 @@ const STATUS_STYLES: Record<
     className: "bg-amber-50 text-amber-700",
     icon: Alert01Icon,
   },
-  "built-in": {
-    label: "Built in",
-    className: "bg-white text-zinc-700",
-    icon: SparklesIcon,
-  },
 };
 
 interface Props {
   className?: string;
   color: string | undefined;
-  src?: string;
   status?: CoverStatus;
+  /** Cover picture washed over the colour, so the pastel shows through. */
+  art?: string | null;
 }
 
-export function ExpertCover({ className, color, src, status }: Props) {
-  const statusStyle = status ? STATUS_STYLES[status] : null;
+export function ExpertCover({ className, color, status, art }: Props) {
+  const statusStyle = status ? (STATUS_STYLES[status] ?? null) : null;
 
   return (
     <div
       className={cn(
         "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
+        coverClassFor(color ?? null),
         className,
       )}
     >
-      <Image
-        src={src ?? getExpertCoverSrc(color)}
-        alt=""
-        fill
-        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-        className="object-cover"
-      />
+      {art ? (
+        <Image
+          src={art}
+          alt=""
+          fill
+          sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+          className="object-contain opacity-30"
+        />
+      ) : null}
       {statusStyle ? (
-        <span
-          className={`absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle.className}`}
+        <Text
+          variant="small-medium"
+          as="span"
+          className={cn(
+            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5",
+            statusStyle.className,
+          )}
         >
           <Icon icon={statusStyle.icon} size={13} />
           {statusStyle.label}
-        </span>
+        </Text>
       ) : null}
     </div>
   );

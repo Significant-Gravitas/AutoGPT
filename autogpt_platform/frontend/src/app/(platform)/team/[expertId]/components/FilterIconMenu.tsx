@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,19 +30,20 @@ export function FilterIconMenu<T extends string>({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* Sized and bordered like the small SearchInput it sits beside,
+            with no fill until a filter is active. */}
         <Button
           type="button"
-          variant="icon"
-          size="icon"
+          variant="outline"
+          size="icon-sm"
           aria-label={label}
+          leadingIcon={FilterHorizontalIcon}
           className={cn(
-            "h-7 w-7 rounded-md border-zinc-200 p-0",
+            "size-9 rounded-xl border-input bg-transparent text-zinc-600 shadow-none hover:border-input hover:bg-zinc-50",
             isActive &&
-              "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white",
+              "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 hover:text-white",
           )}
-        >
-          <Icon icon={FilterHorizontalIcon} size={14} />
-        </Button>
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[11rem]">
         <DropdownMenuRadioGroup

@@ -1,10 +1,15 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import type { IconSvgElement } from "@hugeicons/react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 
+type TabsLineVariant = "default" | "compact";
+
 interface TabsLineContextValue {
+  variant: TabsLineVariant;
   activeTabElement: HTMLElement | null;
   setActiveTabElement: React.Dispatch<React.SetStateAction<HTMLElement | null>>;
 }
@@ -21,14 +26,23 @@ function useTabsLine() {
   return context;
 }
 
-function TabsLine(
-  props: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>,
-) {
+interface TabsLineProps
+  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
+  /**
+   * `compact` is the dense neutral style: flush, zinc underline, 14px
+   * triggers with tighter padding. `default` keeps the purple accent.
+   */
+  variant?: TabsLineVariant;
+}
+
+function TabsLine({ variant = "default", ...props }: TabsLineProps) {
   const [activeTabElement, setActiveTabElement] =
     React.useState<HTMLElement | null>(null);
 
   return (
-    <TabsLineContext.Provider value={{ activeTabElement, setActiveTabElement }}>
+    <TabsLineContext.Provider
+      value={{ variant, activeTabElement, setActiveTabElement }}
+    >
       <TabsPrimitive.Root {...props} />
     </TabsLineContext.Provider>
   );
@@ -51,9 +65,11 @@ interface TabsLineListProps
 const TabsLineList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsLineListProps
->(({ className, flush = false, indicatorClassName, ...props }, ref) => {
-  const { activeTabElement } = useTabsLine();
+>(({ className, flush, indicatorClassName, ...props }, ref) => {
+  const { variant, activeTabElement } = useTabsLine();
   const listRef = React.useRef<HTMLDivElement>(null);
+  const isCompact = variant === "compact";
+  const isFlush = flush ?? isCompact;
 
   return (
     <div className="relative">
@@ -67,7 +83,7 @@ const TabsLineList = React.forwardRef<
         }}
         className={cn(
           "inline-flex w-full items-center justify-start border-b border-zinc-100",
-          flush && "[&>button:first-child]:!pl-0",
+          isFlush && "[&>button:first-child]:!pl-0",
           className,
         )}
         {...props}
@@ -76,6 +92,7 @@ const TabsLineList = React.forwardRef<
         <div
           className={cn(
             "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
+            isCompact && "bg-zinc-900",
             indicatorClassName,
           )}
           style={{
@@ -90,12 +107,18 @@ const TabsLineList = React.forwardRef<
 });
 TabsLineList.displayName = "TabsLineList";
 
+interface TabsLineTriggerProps
+  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> {
+  /** Hugeicon shown before the label at 14px. */
+  icon?: IconSvgElement;
+}
+
 const TabsLineTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => {
+  TabsLineTriggerProps
+>(({ className, icon, children, ...props }, ref) => {
   const elementRef = React.useRef<HTMLButtonElement>(null);
-  const { setActiveTabElement } = useTabsLine();
+  const { variant, setActiveTabElement } = useTabsLine();
 
   React.useEffect(() => {
     if (!elementRef.current) return;
@@ -128,10 +151,16 @@ const TabsLineTrigger = React.forwardRef<
       }}
       className={cn(
         "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        icon && "gap-1.5",
+        variant === "compact" &&
+          "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
         className,
       )}
       {...props}
-    />
+    >
+      {icon ? <Icon icon={icon} size={14} aria-hidden /> : null}
+      {children}
+    </TabsPrimitive.Trigger>
   );
 });
 TabsLineTrigger.displayName = "TabsLineTrigger";

@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -70,6 +71,25 @@ function mockAllEndpoints() {
 }
 
 describe("BotsContent", () => {
+  it("keeps rows visible when a response omits platform", async () => {
+    mockAllEndpoints();
+    server.use(
+      http.get("*/api/proxy/api/admin/bot-analytics/top-servers", () =>
+        HttpResponse.json([
+          {
+            server_id: "legacy-1",
+            name: "Legacy server",
+            messages: 7,
+            commands: 2,
+          },
+        ]),
+      ),
+    );
+    render(<BotsContent />);
+    expect(await screen.findByText("Legacy server")).toBeDefined();
+    expect(await screen.findByText("/setup")).toBeDefined();
+  });
+
   it("renders the live server count and headline metrics", async () => {
     mockAllEndpoints();
     render(<BotsContent />);

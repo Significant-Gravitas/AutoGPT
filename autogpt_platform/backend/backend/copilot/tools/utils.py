@@ -17,6 +17,7 @@ from backend.data.model import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
+from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -561,3 +562,64 @@ async def check_user_has_required_credentials(
             missing.append(required)
 
     return missing
+
+
+def credential_rejection_status(exc: BaseException) -> int | None:
+    """Rejection status from *exc* or anything it was raised from, else ``None``.
+
+    Blocks bubble the provider's failure through ``BlockError`` with the
+    original exception on ``__cause__``, so the status only survives one
+    level down.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        status = _status_code_of(current)
+        if status in CREDENTIAL_REJECTED_STATUS_CODES:
+            return status
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def sanitize_provider_message(message: str, max_chars: int = 200) -> str:
+    """Bounded one-line copy of a provider error, with secrets removed.
+
+    The input is an upstream body we do not control and may quote the request
+    it rejected, so anything that can carry a token is dropped before the text
+    reaches the chat.
+    """
+    text = " ".join(str(message).split())
+    text = _BEARER_TOKEN_RE.sub("[redacted]", text)
+    text = _URL_QUERY_RE.sub(r"\1", text)
+    text = _AUTH_HEADER_RE.sub("[redacted]", text)
+    text = _SECRET_PARAM_RE.sub("[redacted]", text)
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "…"
+    return text
+
+
+def _status_code_of(exc: BaseException) -> int | None:
+    for value in (
+        getattr(exc, "status_code", None),  # HTTPClientError, openai, httpx wrappers
+        getattr(exc, "status", None),  # aiohttp.ClientResponseError
+        getattr(getattr(exc, "response", None), "status_code", None),  # requests
+    ):
+        if isinstance(value, int):
+            return value
+    return None
+
+
+_BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+\S+")
+_URL_QUERY_RE = re.compile(r"(https?://[^\s\"'?]+)\?\S*")
+# An Authorization value is a scheme plus its token, so a bare \S+ would eat
+# only the scheme and leave the credential sitting behind "[redacted]".
+_AUTH_HEADER_RE = re.compile(
+    r"(?i)['\"]?\bauthorization\b['\"]?\s*[=:]\s*['\"]?(?:\w[\w-]*\s+)?\S+"
+)
+# Optional quotes around the key and value cover the JSON and dict shapes a
+# provider echoes back; without them the quote before the colon defeats the match.
+_SECRET_PARAM_RE = re.compile(
+    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token"
+    r"|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
+)

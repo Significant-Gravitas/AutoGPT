@@ -197,6 +197,22 @@ export type CredentialsType =
   | "host_scoped"
   | "device_code";
 
+/**
+ * Every credential type the platform can store, as a runtime list.
+ *
+ * Built from a total `Record<CredentialsType, true>` so that extending
+ * `CredentialsType` without updating this list fails the build. Use it
+ * wherever a list of credential types acts as a filter: an omission there
+ * silently removes a connection method rather than mis-ordering it.
+ */
+export const CREDENTIALS_TYPES: readonly CredentialsType[] = Object.keys({
+  api_key: true,
+  oauth2: true,
+  user_password: true,
+  host_scoped: true,
+  device_code: true,
+} satisfies Record<CredentialsType, true>) as CredentialsType[];
+
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
@@ -622,6 +638,7 @@ export type CredentialsMetaResponse = {
   scopes?: Array<string>;
   username?: string;
   host?: string;
+  mcp_auth_scheme?: "basic" | "bearer" | null;
   is_system?: boolean;
   is_managed?: boolean;
 };

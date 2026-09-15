@@ -1,5 +1,7 @@
 import type { ToolUIPart } from "ai";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import {
   extractToolName,
   getAnimationText,
@@ -85,24 +87,30 @@ const ACTION_RESPONSE_TYPES = new Set([
   "suggested_goal",
 ]);
 
-function actionLabel(output: unknown): string | null {
+function actionLabel(toolName: string, tool: ToolUIPart): string | null {
+  const output = tool.output;
   const data = asObject(output);
   if (!data) return null;
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
+  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
         ? (data.setup_info as Record<string, unknown>)
         : null;
-    const name = setup?.agent_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : setup?.agent_name;
     return typeof name === "string" && name.trim()
       ? `Connect ${name.trim()} to continue`
       : "Complete setup to continue";
   }
   if (data.type === "review_required") {
-    const name = data.block_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : data.block_name;
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
@@ -158,7 +166,11 @@ export function isExpertChangePart(part: MessagePart): boolean {
 }
 
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");
@@ -225,7 +237,7 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       : tool;
 
     const providerIconSrc = getProviderIconSrc(stableTool);
-    const requiredActionLabel = actionLabel(tool.output);
+    const requiredActionLabel = actionLabel(toolName, tool);
 
     const data = {
       tool: toolName,
@@ -233,7 +245,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state);
+    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
+      displayName: tool.title,
+      output: tool.output,
+    });
     if (catalogLabel) {
       return {
         key: tool.toolCallId,

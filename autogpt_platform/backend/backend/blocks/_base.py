@@ -541,7 +541,7 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 # Default wall-clock cap on a single block-run invocation. Leaf compute blocks
-# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# inherit this; coordination blocks (AgentExecutor, Otto) override their
 # instance attribute to None to opt out. The executor consults
 # `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
 # the value is not None.

@@ -502,7 +502,7 @@ class TestApiKeyFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """Critical safety check: a stray ``OPENAI_API_KEY`` (set by users
-        for graphiti / embedders) must not silently bind to AutoPilot's
+        for graphiti / embedders) must not silently bind to Otto's
         local Ollama endpoint as the bearer token. The fallback chain
         for local is empty by design — and the
         ``_validate_local_transport_requirements`` guard surfaces the
@@ -608,7 +608,7 @@ class TestLocalRequirementsValidator:
     misconfig where ``CHAT_USE_LOCAL=true`` was set but the operator
     forgot to provide either an endpoint or an api key. Without it the
     base_url field validator silently fills the OpenRouter default and
-    AutoPilot's first turn 401s — much worse UX than a startup error
+    Otto's first turn 401s — much worse UX than a startup error
     pointing at the missing env var."""
 
     def test_explicit_base_url_and_api_key_succeeds(self):

@@ -3,24 +3,28 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
+import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expert: Expert;
   onEditSoul: () => void;
+  onChat: () => void;
 }
 
-export function ExpertDetailHeader({ expert, onEditSoul }: Props) {
+export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
   const accent = getRaisedExpertAccent(expert.role, expert.color);
+  const cover = getExpertCover(expert);
 
   return (
     <header>
-      <ExpertCover className="h-36" color={expert.color} />
+      <ExpertCover className="h-36" color={cover.color} art={cover.art} />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="-mt-12 ml-14 block shrink-0">
@@ -31,36 +35,38 @@ export function ExpertDetailHeader({ expert, onEditSoul }: Props) {
             <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
               {expert.name}
             </h1>
-            <span
+            {/* Same pill as the marketplace expert card. */}
+            <Text
+              variant="small-medium"
+              as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-sm font-medium",
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5",
                 accent.pill,
               )}
             >
-              <Icon icon={accent.roleIcon} size={14} />
+              <Icon icon={accent.roleIcon} size={12} />
               {expert.role}
-            </span>
+            </Text>
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
           </div>
-          {expert.tagline ? (
-            <p className="mt-1 text-sm text-zinc-500">{expert.tagline}</p>
-          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="secondary"
             size="small"
-            className={ACTION_BUTTON_CLASS}
-            leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
+            leadingIcon={PencilEdit02Icon}
             onClick={onEditSoul}
           >
             Edit Soul
           </Button>
           <Button
-            as="NextLink"
-            href={`/copilot?expertId=${expert.id}`}
             variant="primary"
             size="small"
-            className={ACTION_BUTTON_CLASS}
+            leadingIcon={BubbleChatIcon}
+            onClick={onChat}
           >
             Chat
           </Button>

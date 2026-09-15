@@ -40,6 +40,9 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
   const [isFireOpen, setIsFireOpen] = useState(false);
   const [isSoulOpen, setIsSoulOpen] = useState(false);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatDrawerKey, setChatDrawerKey] = useState(0);
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
 
   const { mutate: resumeSchedules, isPending: isResuming } =
     useResumeExpertSchedules({
@@ -80,12 +83,35 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
       setIsSoulOpen(false);
       return;
     }
+    setIsChatOpen(false);
     setIsSoulOpen(true);
     setSoulDrawerKey((current) => current + 1);
   }
 
   function closeSoul() {
     setIsSoulOpen(false);
+  }
+
+  function toggleChat() {
+    if (isChatOpen) {
+      setIsChatOpen(false);
+      return;
+    }
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(null);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function openChatWithPrompt(prompt: string) {
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(prompt);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function closeChat() {
+    setIsChatOpen(false);
   }
 
   return {
@@ -112,5 +138,11 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     soulDrawerKey,
     toggleSoul,
     closeSoul,
+    isChatOpen,
+    chatDrawerKey,
+    chatSeed,
+    toggleChat,
+    openChatWithPrompt,
+    closeChat,
   };
 }
