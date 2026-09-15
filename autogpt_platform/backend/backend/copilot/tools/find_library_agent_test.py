@@ -553,3 +553,44 @@ async def test_expert_search_counts_only_installed_workflows(tool):
     assert len(result.agents) == result.count == 2
     assert result.title == "Found 2 installed workflows"
     assert "3 agents" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_expert_search_names_the_library_agents_it_could_install(tool):
+    """The posted ownership rules let an expert "install a workflow from the
+    owner's library or the marketplace", so the library has to be findable.
+    The uninstalled matches stay out of `agents`, which consumers read as the
+    runnable set, and are named with the id install_expert_workflow takes."""
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-0"])
+    found = AgentsFoundResponse(
+        title="Found 12 agents in your library",
+        message="Found 12 agents in your library",
+        agents=[
+            AgentInfo(
+                id=f"lib-{i}",
+                graph_id=f"graph-{i}",
+                name=f"Agent {i}",
+                description="",
+                source="library",
+            )
+            for i in range(12)
+        ],
+        count=12,
+    )
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            AsyncMock(return_value=scope),
+        ),
+        patch.object(FindLibraryAgentTool, "_search", AsyncMock(return_value=found)),
+    ):
+        result = await tool._execute(
+            "owner", ChatSession.new("owner", dry_run=False, expert_id="expert-a")
+        )
+    assert isinstance(result, AgentsFoundResponse)
+    assert [a.id for a in result.agents] == ["lib-0"]
+    assert '"Agent 1" (lib-1)' in result.message
+    assert "install_expert_workflow" in result.message
+    # Capped, so a large library cannot crowd out the turn.
+    assert '"Agent 11" (lib-11)' not in result.message
+    assert "and 1 more" in result.message

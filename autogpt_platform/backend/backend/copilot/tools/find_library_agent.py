@@ -13,7 +13,7 @@ from .agent_search import (
 )
 from .base import BaseTool
 from .expert_scope import require_installed_workflow, session_workflow_scope
-from .models import AgentsFoundResponse, ErrorResponse, ToolResponseBase
+from .models import AgentInfo, AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
 class FindLibraryAgentTool(BaseTool):
@@ -137,20 +137,29 @@ class FindLibraryAgentTool(BaseTool):
                     )
                 }
             )
-        agents = [
-            a
-            for a in result.agents
-            if scope.allows_agent(library_agent_id=a.id, graph_id=a.graph_id)
-        ]
+        installed: list[AgentInfo] = []
+        uninstalled: list[AgentInfo] = []
+        for agent in result.agents:
+            allowed = scope.allows_agent(
+                library_agent_id=agent.id, graph_id=agent.graph_id
+            )
+            (installed if allowed else uninstalled).append(agent)
+        message = (
+            f"Found {len(installed)} installed workflows. Only installed "
+            "workflows can be run, edited or scheduled."
+        )
+        if uninstalled:
+            message += (
+                " Also in the owner's library, not installed on you: "
+                f"{_install_candidates(uninstalled)} — install one with "
+                "install_expert_workflow to use it."
+            )
         return result.model_copy(
             update={
-                "agents": agents,
-                "count": len(agents),
-                "title": f"Found {len(agents)} installed workflows",
-                "message": (
-                    f"Found {len(agents)} installed workflows. Only this expert's workflows are "
-                    "listed; install_expert_workflow adds more."
-                ),
+                "agents": installed,
+                "count": len(installed),
+                "title": f"Found {len(installed)} installed workflows",
+                "message": message,
             }
         )
 
@@ -204,6 +213,21 @@ class FindLibraryAgentTool(BaseTool):
             user_id=user_id,
             include_graph=include_graph,
         )
+
+
+_INSTALL_CANDIDATE_LIMIT = 10
+
+
+def _install_candidates(agents: list[AgentInfo]) -> str:
+    """Name library agents an expert may install, with the id install takes.
+
+    They stay out of ``agents``, which consumers read as the runnable set.
+    """
+    shown = agents[:_INSTALL_CANDIDATE_LIMIT]
+    listed = ", ".join(f'"{a.name}" ({a.id})' for a in shown)
+    if len(agents) > len(shown):
+        listed += f", and {len(agents) - len(shown)} more"
+    return listed
 
 
 async def _write_graph_note(
