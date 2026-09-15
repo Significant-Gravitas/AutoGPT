@@ -88,6 +88,47 @@ export function buildOAuthLoginQuery(
   return Object.keys(query).length > 0 ? query : undefined;
 }
 
+/**
+ * Structured fields from a WebSocket CloseEvent for console logging.
+ * Never pass the raw Event/CloseEvent to console.* — browsers stringify
+ * those as "[object Event]" / "CloseEvent", which is opaque in prod logs.
+ */
+export type WsCloseInfo = {
+  code: number;
+  reason: string;
+  wasClean: boolean;
+  readyState?: number;
+};
+
+/**
+ * Extract { code, reason, wasClean } (+ optional readyState) from a close
+ * event. Kept as a named helper so unit tests can pin the shape without
+ * mocking BackendAPI / WebSocket.
+ */
+export function formatWsCloseEvent(
+  ev: Pick<CloseEvent, "code" | "reason" | "wasClean">,
+  readyState?: number,
+): WsCloseInfo {
+  const info: WsCloseInfo = {
+    code: ev.code,
+    reason: ev.reason ?? "",
+    wasClean: ev.wasClean,
+  };
+  if (readyState !== undefined) {
+    info.readyState = readyState;
+  }
+  return info;
+}
+
+/**
+ * Strip `token=` query values from a WebSocket URL so logs never leak JWT
+ * material. Uses a regex (not URLSearchParams) so the placeholder stays
+ * readable instead of percent-encoding to %5Bredacted%5D.
+ */
+export function redactWsUrl(url: string): string {
+  return url.replace(/([?&]token=)[^&]*/gi, "$1[redacted]");
+}
+
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -1089,15 +1130,19 @@ export default class BackendAPI {
         };
 
         this.webSocket.onclose = (event) => {
+          const closeInfo = formatWsCloseEvent(
+            event,
+            this.webSocket?.readyState,
+          );
           if (this.webSocket?.state == "connecting") {
             console.error(
-              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
-              event,
+              "[BackendAPI] WebSocket failed to connect",
+              closeInfo,
             );
           } else if (this.webSocket?.state == "connected") {
             console.warn(
-              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
-              event,
+              "[BackendAPI] WebSocket connection closed",
+              closeInfo,
             );
           }
           this.webSocket!.state = "closed";
@@ -1117,9 +1162,13 @@ export default class BackendAPI {
           }
         };
 
-        this.webSocket.onerror = (error) => {
+        this.webSocket.onerror = () => {
           if (this.webSocket?.state == "connected") {
-            console.error("[BackendAPI] WebSocket error:", error);
+            console.error("[BackendAPI] WebSocket error", {
+              state: this.webSocket.state,
+              readyState: this.webSocket.readyState,
+              url: redactWsUrl(this.webSocket.url || this.wsUrl),
+            });
           }
         };
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
