@@ -6,6 +6,7 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useMemo } from "react";
+import { useNow } from "@/hooks/useNow";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import {
   isActive,
@@ -26,6 +27,13 @@ export function useSitrepItems(
     query: { select: okData },
   });
 
+  const hasActiveExecution = useMemo(
+    () => (executions ?? []).some((e) => isActive(e.status)),
+    [executions],
+  );
+  // Keep "Running for …" messages advancing while executions are in flight.
+  const nowMs = useNow(1000, hasActiveExecution);
+
   return useMemo(() => {
     if (agents.length === 0) return [];
 
@@ -35,7 +43,7 @@ export function useSitrepItems(
     const coveredAgentIds = new Set<string>();
 
     for (const [agent, execs] of agentExecutions) {
-      const item = buildSitrepFromExecutions(agent, execs);
+      const item = buildSitrepFromExecutions(agent, execs, nowMs);
       if (item) {
         items.push(item);
         coveredAgentIds.add(agent.id);
@@ -60,7 +68,7 @@ export function useSitrepItems(
     items.sort((a, b) => order[a.priority] - order[b.priority]);
 
     return items.slice(0, maxItems);
-  }, [agents, executions, maxItems, scheduledWithinMs]);
+  }, [agents, executions, maxItems, scheduledWithinMs, nowMs]);
 }
 
 function groupByAgent(
@@ -86,6 +94,7 @@ function groupByAgent(
 function buildSitrepFromExecutions(
   agent: LibraryAgent,
   executions: GraphExecutionMeta[],
+  nowMs: number,
 ): SitrepItemData | null {
   const active = executions.find((e) => isActive(e.status));
   if (active) {
@@ -97,7 +106,7 @@ function buildSitrepFromExecutions(
       priority: "running",
       message:
         active.stats?.activity_status ??
-        runningMessage(active.status, active.started_at),
+        runningMessage(active.status, active.started_at, nowMs),
       status: "running",
     };
   }
