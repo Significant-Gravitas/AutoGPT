@@ -154,4 +154,84 @@ describe("ProfileInfoForm", () => {
     });
     expect(uploadSpy).not.toHaveBeenCalled();
   });
+
+  it.each(["button", "form"])(
+    "submits once through %s and keeps the pending state until the response",
+    async (trigger) => {
+      let calls = 0;
+      let finishSave: () => void = () => {};
+      const pending = new Promise<void>((resolve) => {
+        finishSave = resolve;
+      });
+      server.use(
+        getPostV2UpdateUserProfileMockHandler200(async ({ request }) => {
+          calls += 1;
+          const body = await request.json();
+          expect(body).toMatchObject({
+            name: "Updated name",
+            links: ["https://example.com"],
+          });
+          await pending;
+          return makeProfile({ name: "Updated name" });
+        }),
+      );
+      render(
+        <ProfileInfoForm
+          profile={makeProfile({ links: ["https://example.com", ""] })}
+        />,
+      );
+      fireEvent.change(screen.getByTestId("profile-info-form-display-name"), {
+        target: { value: "Updated name" },
+      });
+      try {
+        if (trigger === "button") {
+          fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        } else {
+          const form = screen
+            .getByRole("button", { name: "Save changes" })
+            .closest("form");
+          expect(form).not.toBeNull();
+          expect(fireEvent.submit(form!)).toBe(false);
+        }
+        await waitFor(() => {
+          expect(calls).toBe(1);
+          expect(
+            screen
+              .getByRole("button", { name: "Saving..." })
+              .hasAttribute("disabled"),
+          ).toBe(true);
+        });
+      } finally {
+        finishSave();
+      }
+      await waitFor(() => {
+        const button = screen.getByRole("button", { name: "Save changes" });
+        expect(button.hasAttribute("disabled")).toBe(false);
+      });
+      expect(calls).toBe(1);
+    },
+  );
+
+  it("keeps the saved avatar and explains an upload failure", async () => {
+    toastSpy.mockClear();
+    uploadSpy.mockReset();
+    uploadSpy.mockRejectedValueOnce(new Error("Upload unavailable"));
+    const avatar = "https://storage.googleapis.com/media/avatar.png";
+    render(<ProfileInfoForm profile={makeProfile({ avatar_url: avatar })} />);
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File(["image"], "avatar.png", { type: "image/png" })],
+      },
+    });
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith({
+        title: "Failed to upload photo",
+        description: "Upload unavailable",
+        variant: "destructive",
+      }),
+    );
+    expect(
+      screen.getByRole("img", { name: "Profile" }).getAttribute("src"),
+    ).toBe(avatar);
+  });
 });
