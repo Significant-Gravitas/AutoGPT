@@ -142,6 +142,19 @@ _TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
         "order_by": _WORKFLOW_ORDER,
     }
 }
+# The exporter needs a workflow's marketplace reference down to the creator's
+# username, which no other read does — the roster only ever shows the version.
+EXPORT_INCLUDE: prisma.types.ExpertInclude = {
+    "Workflows": {
+        "include": {
+            "LibraryAgent": True,
+            "StoreListingVersion": {
+                "include": {"StoreListing": {"include": {"CreatorProfile": True}}}
+            },
+        },
+        "order_by": _WORKFLOW_ORDER,
+    }
+}
 _MAX_EXPERT_RUNS = 20
 # One year: the window the at-a-glance activity graph draws.
 EXPERT_ACTIVITY_DAYS = 365
@@ -1353,6 +1366,35 @@ async def _owned_active_expert(
             "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
         }
+    )
+
+
+async def get_owned_expert_row(
+    user_id: str, expert_id: str
+) -> prisma.models.Expert | None:
+    """The caller's own active expert, loaded for export.
+
+    Same ownership test as every other owner-scoped read, so an expert the
+    caller cannot see is indistinguishable from one that does not exist.
+    """
+    return await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        include=EXPORT_INCLUDE,
+    )
+
+
+async def get_template_row(template_id: str) -> prisma.models.Expert | None:
+    """A roster template, loaded for export. Templates are marketplace content,
+    so there is no owner to match on."""
+    return await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=EXPORT_INCLUDE,
     )
 
 
