@@ -61,7 +61,7 @@ def _unavailable_denial() -> TurnDenial:
     mirrors the web route's 503-on-lookup-failure behaviour."""
     return TurnDenial(
         reason="unavailable",
-        message="Otto is temporarily unavailable — please try again in a moment.",
+        message="Chat is temporarily unavailable — please try again in a moment.",
     )
 
 
@@ -84,8 +84,8 @@ async def _check_paywall(user_id: str) -> TurnDenial | None:
     return TurnDenial(
         reason="paywalled",
         message=(
-            "Otto needs an active subscription. "
-            "Upgrade your plan to start chatting with it."
+            "Chatting with experts requires an active subscription. "
+            "Upgrade your plan to start chatting."
         ),
         button_label="Subscribe" if billing else None,
         button_url=billing,

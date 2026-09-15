@@ -155,7 +155,7 @@ describe("SubSessionCard", () => {
       />,
     );
 
-    expect(screen.getByText("Sub-Otto")).toBeDefined();
+    expect(screen.getByText("Expert")).toBeDefined();
     expect(screen.getByText("completed")).toBeDefined();
     expect(screen.getByText("All finished")).toBeDefined();
     expect(screen.getByText("2m 5s")).toBeDefined();

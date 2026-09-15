@@ -53,6 +53,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.tracking import track_user_message
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
 
@@ -428,6 +429,19 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 restore_exc,
             )
         raise
+
+    if pending.role == "user" and pending.content:
+        try:
+            track_user_message(
+                user_id=user_id,
+                session_id=head.session_id,
+                message_length=len(pending.content),
+                expert_id=head.expert_id,
+                origin=head.metadata.origin,
+                surface="chat",
+            )
+        except Exception:
+            logger.warning("Failed to track promoted chat turn", exc_info=True)
 
     await invalidate_session_cache(head.session_id)
     return True
