@@ -662,6 +662,43 @@ A marketing team could use this block to create engaging video content for socia
 
 ---
 
+## Deep Seek
+
+### What it is
+Execute chat and reasoning prompts with DeepSeek AI models (DeepSeek-V3 and DeepSeek-R1) and extract reasoning tokens.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The prompt or query to send to the DeepSeek model. | str | Yes |
+| model | The DeepSeek model to use (deepseek-chat or deepseek-reasoner). | "deepseek-chat" \| "deepseek-reasoner" | No |
+| system_prompt | Optional system prompt to provide context to the model. | str | No |
+| temperature | Sampling temperature between 0 and 2. Ignored by deepseek-reasoner. | float | No |
+| max_tokens | The maximum number of tokens to generate. | int | No |
+| json_mode | Enforce JSON object output format. | bool | No |
+| stream | Whether to stream the response from the API. | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| response | The text response from the DeepSeek model. | str |
+| reasoning_content | Chain-of-thought reasoning content from deepseek-reasoner models. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Ideogram Model
 
 ### What it is
