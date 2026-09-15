@@ -2,8 +2,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { UserGroupIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ImportExpertButton } from "./ImportExpertButton/ImportExpertButton";
 
-export function EmptyTeamState() {
+interface Props {
+  canImport: boolean;
+}
+
+export function EmptyTeamState({ canImport }: Props) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
       <Icon icon={UserGroupIcon} size={32} className="text-zinc-400" />
@@ -26,6 +31,7 @@ export function EmptyTeamState() {
         <Button as="NextLink" href="/raise" variant="secondary" size="small">
           Raise your own
         </Button>
+        {canImport ? <ImportExpertButton variant="link" /> : null}
       </div>
     </div>
   );
