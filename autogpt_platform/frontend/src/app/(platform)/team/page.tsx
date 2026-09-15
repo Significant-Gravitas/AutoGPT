@@ -39,6 +39,7 @@ type TeamTab = (typeof TABS)[number]["value"];
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled: canImport } = useFlagStatus(Flag.EXPERT_PORTABILITY);
   const {
     hiredExperts,
     schedulesForExpert,
@@ -104,7 +105,7 @@ export default function TeamPage() {
               Otto and your hired experts, ready to work.
             </Text>
           </div>
-          <TeamHeaderActions />
+          <TeamHeaderActions canImport={Boolean(canImport)} />
         </div>
 
         {isError ? (
@@ -157,7 +158,7 @@ export default function TeamPage() {
             />
 
             {!isLoading && !isError && hiredExperts.length === 0 ? (
-              <EmptyTeamState />
+              <EmptyTeamState canImport={Boolean(canImport)} />
             ) : null}
           </TabsLineContent>
         </TabsLine>
