@@ -317,8 +317,14 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
+    # Never adopt a template an admin published: it shares the roster's shape
+    # but its content belongs to the expert it came from, not to ROSTER.
     template = await prisma.models.Expert.prisma().find_first(
-        where={"isTemplate": True, "name": entry["name"]},
+        where={
+            "isTemplate": True,
+            "name": entry["name"],
+            "publishedFromExpertId": None,
+        },
         order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
     if template is None:

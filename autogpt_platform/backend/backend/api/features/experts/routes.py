@@ -54,6 +54,11 @@ from backend.api.features.experts.package_model import ExpertPackageError
 from backend.api.features.experts.portability_flag import (
     require_expert_portability_flag,
 )
+from backend.api.features.experts.publish import (
+    UnpublishedWorkflowsError,
+    publish_expert,
+    published_template,
+)
 from backend.api.features.upload_limits import read_upload
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
@@ -402,6 +407,65 @@ async def import_expert_package(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": exc.limit},
         )
+
+
+@router.post(
+    "/{expert_id}/publish",
+    operation_id="publish_expert",
+    status_code=201,
+    dependencies=[
+        Security(autogpt_auth_lib.requires_admin_user),
+        Depends(require_expert_portability_flag),
+    ],
+    responses={
+        400: {"description": "One of the expert's agents is not published"},
+        404: {"description": "Expert not found"},
+    },
+)
+async def publish_expert_as_template(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    """Publish one of your own experts as a marketplace template.
+
+    Admin-only, and the expert has to be the admin's own — publishing
+    somebody else's would put their soul on the marketplace. Publishing again
+    refreshes the same template rather than making a second one.
+    """
+    row = await experts_db.get_owned_expert_row(user_id, expert_id)
+    if row is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    try:
+        template = await publish_expert(row)
+    except UnpublishedWorkflowsError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": "unpublished_workflows",
+                "workflows": exc.workflows,
+                "message": "Publish this agent first",
+            },
+        )
+    published = await experts_db.get_template(template.id)
+    if published is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    return published
+
+
+@router.get(
+    "/{expert_id}/published",
+    operation_id="get_published_template",
+    dependencies=[Depends(require_expert_portability_flag)],
+)
+async def get_published_template(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert | None:
+    """The marketplace template this expert was published as, or null."""
+    if await experts_db.get_owned_expert_row(user_id, expert_id) is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    template = await published_template(expert_id)
+    return await experts_db.get_template(template.id) if template else None
 
 
 @router.get(
