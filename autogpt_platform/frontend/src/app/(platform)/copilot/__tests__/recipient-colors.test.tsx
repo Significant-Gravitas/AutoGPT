@@ -69,7 +69,7 @@ describe("recipient colors", () => {
     });
     await waitFor(() =>
       expect(within(chip).getByRole("img").getAttribute("data-color")).toBe(
-        "coral",
+        "orange",
       ),
     );
     await userEvent.click(chip);
@@ -78,6 +78,6 @@ describe("recipient colors", () => {
       within(menu)
         .getByRole("img", { name: "Maria" })
         .getAttribute("data-color"),
-    ).toBe("coral");
+    ).toBe("orange");
   });
 });
