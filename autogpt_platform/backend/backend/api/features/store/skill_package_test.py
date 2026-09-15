@@ -95,15 +95,8 @@ async def _publish(user_id: str, reviewer_id: str) -> skill_model.SkillSubmissio
 
 
 @pytest.fixture
-async def creator(setup_test_user, server: SpinTestServer) -> str:
-    # By slug, not wholesale: this suite runs against a database it shares
-    # with every other worktree, where the starter listings are real rows.
-    await prisma.models.SkillListingVersion.prisma().delete_many(
-        where={"SkillListing": {"is": {"slug": {"in": [SLUG, STARTER_SLUG]}}}}
-    )
-    await prisma.models.SkillListing.prisma().delete_many(
-        where={"slug": {"in": [SLUG, STARTER_SLUG]}}
-    )
+async def creator(setup_test_user, server: SpinTestServer):
+    await _drop_our_listings()
     await prisma.models.Profile.prisma().upsert(
         where={"userId": setup_test_user},
         data={
@@ -117,7 +110,21 @@ async def creator(setup_test_user, server: SpinTestServer) -> str:
             "update": {},
         },
     )
-    return setup_test_user
+    yield setup_test_user
+    # Left behind, these rows fail the emptiness guard in the suites that sort
+    # after this one.
+    await _drop_our_listings()
+
+
+async def _drop_our_listings() -> None:
+    """By slug, not wholesale: this table is shared with every other checkout
+    here, where the starter listings are real rows."""
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"SkillListing": {"is": {"slug": {"in": [SLUG, STARTER_SLUG]}}}}
+    )
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"slug": {"in": [SLUG, STARTER_SLUG]}}
+    )
 
 
 @pytest.fixture

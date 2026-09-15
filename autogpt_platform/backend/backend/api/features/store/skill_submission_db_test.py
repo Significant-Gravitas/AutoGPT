@@ -48,8 +48,13 @@ async def library_skill(mocker, server: SpinTestServer):
         "read_user_skill_package",
         return_value=_library_package(),
     )
-    await prisma.models.SkillListingVersion.prisma().delete_many()
-    await prisma.models.SkillListing.prisma().delete_many()
+    # These tests assert on the WHOLE marketplace, so they need the listing
+    # table to themselves — take it only when empty, never by emptying it.
+    if await prisma.models.SkillListing.prisma().count():
+        pytest.fail(
+            "this database already holds skill listings; run this file against a "
+            "throwaway Postgres, not the one every worktree here shares"
+        )
     yield
     await prisma.models.SkillListingVersion.prisma().delete_many()
     await prisma.models.SkillListing.prisma().delete_many()
