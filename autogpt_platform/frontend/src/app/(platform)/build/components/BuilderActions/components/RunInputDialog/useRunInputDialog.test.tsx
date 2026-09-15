@@ -20,9 +20,27 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const mockExecuteGraph = vi.fn();
+const mockSendDatafastEvent = vi.hoisted(() => vi.fn());
+vi.mock("@/services/analytics", () => ({
+  analytics: { sendDatafastEvent: mockSendDatafastEvent },
+}));
+
+interface ExecutionOptions {
+  mutation: {
+    onSuccess: (response: {
+      status: number;
+      data: Record<string, unknown>;
+    }) => void;
+  };
+}
+
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
-  usePostV1ExecuteGraphAgent: () => ({
-    mutateAsync: mockExecuteGraph,
+  usePostV1ExecuteGraphAgent: (options: ExecutionOptions) => ({
+    async mutateAsync(variables: unknown) {
+      const response = await mockExecuteGraph(variables);
+      options.mutation.onSuccess(response);
+      return response;
+    },
     isPending: false,
   }),
 }));
@@ -71,6 +89,10 @@ import { useRunInputDialog } from "./useRunInputDialog";
 describe("useRunInputDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecuteGraph.mockResolvedValue({
+      status: 200,
+      data: { id: "run-1", graph_id: "graph-1" },
+    });
   });
 
   afterEach(() => {
@@ -107,5 +129,37 @@ describe("useRunInputDialog", () => {
     expect(mockExecuteGraph).toHaveBeenCalledWith(
       expect.objectContaining({ graphId: "graph-1", graphVersion: 1 }),
     );
+  });
+
+  it("records a successful run from the input dialog", async () => {
+    const { result } = renderHook(() =>
+      useRunInputDialog({ setIsOpen: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current.handleManualRun();
+    });
+
+    expect(mockSendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
+      id: "graph-1",
+      name: "",
+      surface: "builder",
+    });
+  });
+
+  it("does not count an API error response as an activation", async () => {
+    mockExecuteGraph.mockResolvedValue({
+      status: 422,
+      data: { detail: "Invalid graph" },
+    });
+    const { result } = renderHook(() =>
+      useRunInputDialog({ setIsOpen: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current.handleManualRun();
+    });
+
+    expect(mockSendDatafastEvent).not.toHaveBeenCalled();
   });
 });
