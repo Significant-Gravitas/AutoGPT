@@ -2,6 +2,9 @@
 ``<available_skills>`` index builder)."""
 
 import json
+import os
+import shutil
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +16,7 @@ from backend.copilot.tools.skills import (
     MAX_BODY_CHARS,
     MAX_DESCRIPTION_CHARS,
     MAX_NAME_CHARS,
+    MAX_PACKAGE_FILES,
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
     MAX_USER_SKILLS,
@@ -27,11 +31,15 @@ from backend.copilot.tools.skills import (
     SkillNotFoundError,
     StoreSkillResponse,
     StoreSkillTool,
+    _is_safe_relative,
+    _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
     delete_user_skill,
+    find_user_skill_slugs,
     get_default_skills,
     list_all_skills,
+    list_user_skill_sibling_paths,
     parse_skill_markdown,
     render_skill_markdown,
     render_skills_index,
@@ -222,16 +230,33 @@ class _FakeWorkspaceManager:
             raise FileNotFoundError(path)
         return self.files[path]
 
-    async def list_files(self, *, path, limit, include_all_sessions):
+    async def list_files(
+        self,
+        *,
+        path,
+        limit=None,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+    ):
         result = []
-        for p in self.files:
-            if p.startswith(path):
-                info = MagicMock()
-                info.path = p
-                info.id = f"id-{p}"
-                info.metadata = self.metadata.get(p, {})
-                result.append(info)
-        return result
+        # Newest first, as the real query orders by ``createdAt DESC``: that
+        # order is what lets one large package crowd an older skill out of a
+        # capped listing, so a fake in insertion order cannot show the bug.
+        for p in reversed(list(self.files)):
+            if not p.startswith(path):
+                continue
+            name = p.rsplit("/", 1)[-1]
+            if name_contains and name_contains.lower() not in name.lower():
+                continue
+            info = MagicMock()
+            info.path = p
+            info.id = f"id-{p}"
+            info.size_bytes = len(self.files[p])
+            info.metadata = self.metadata.get(p, {})
+            result.append(info)
+        result = result[offset:]
+        return result if limit is None else result[:limit]
 
     async def get_file_info_by_path(self, path):
         if path not in self.files:
@@ -251,11 +276,14 @@ class _FakeWorkspaceManager:
 
 class _patch_skills_path:
     """Context manager that patches the workspace lookup, the Redis
-    client, and the AsyncClusterLock used by ``StoreSkillTool``.
+    client, the AsyncClusterLock used by ``StoreSkillTool``, and the
+    working directory ``read_skill`` materialises packages into.
 
     ``store_skill`` calls ``await get_redis_async()`` and constructs an
     ``AsyncClusterLock`` even when running unit tests — without these
     patches the real Redis client tries to dial out and hangs the test.
+    ``workdir`` is a fresh temp dir per block, so one test's manifest
+    cannot make another skip a write.
     """
 
     def __init__(self, fake_manager: _FakeWorkspaceManager):
@@ -263,7 +291,12 @@ class _patch_skills_path:
         fake_lock.owner_id = "test-owner"
         fake_lock.try_acquire = AsyncMock(return_value="test-owner")
         fake_lock.release = AsyncMock()
+        self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
+            patch(
+                "backend.copilot.tools.workdir.make_session_path",
+                lambda session_id: self.workdir,
+            ),
             patch(
                 "backend.copilot.tools.skills._get_user_skill_manager",
                 new=AsyncMock(return_value=fake_manager),
@@ -286,6 +319,7 @@ class _patch_skills_path:
     def __exit__(self, *exc):
         for p in reversed(self._patches):
             p.__exit__(*exc)
+        shutil.rmtree(self.workdir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1276,3 +1310,419 @@ async def test_list_skills_returns_feature_disabled_when_flag_off():
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "feature_disabled"
+
+
+# ---------------------------------------------------------------------------
+# Multi-file packages: indexing, enumeration, materialisation
+# ---------------------------------------------------------------------------
+
+
+def _package_manager(slug: str = "big", siblings: int = 0) -> _FakeWorkspaceManager:
+    """A fake holding one skill whose SKILL.md was created BEFORE its
+    siblings — the order that made the old client-side filter drop it."""
+    fake = _FakeWorkspaceManager()
+    fake.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name=slug, description=f"{slug} description", body="steps")
+    ).encode()
+    for i in range(siblings):
+        fake.files[f"/skills/{slug}/references/r{i:03d}.md"] = f"ref {i}".encode()
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_a_package_bigger_than_the_listing_cap_stays_indexed():
+    """201 sibling files created after the SKILL.md used to push it off the
+    200-row, newest-first page, so the skill vanished from
+    <available_skills> entirely (#14525)."""
+    fake = _package_manager(siblings=201)
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+    assert [s.name for s in skills] == ["big"]
+
+
+@pytest.mark.asyncio
+async def test_a_nested_skill_md_is_neither_indexed_nor_a_second_skill():
+    """A package may ship a SKILL.md as an example. It is one of the
+    package's files, never a skill of its own."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/examples/SKILL.md"] = b"example"
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+        slugs = await find_user_skill_slugs("user-1", ["big", "examples"])
+        siblings = await list_user_skill_sibling_paths("user-1", "big")
+    assert [s.name for s in skills] == ["big"]
+    assert slugs == {"big": "big"}
+    assert siblings == ["/skills/big/references/examples/SKILL.md"]
+
+
+@pytest.mark.asyncio
+async def test_package_enumeration_pages_past_the_old_fifty_row_limit():
+    fake = _package_manager(siblings=80)
+    with _patch_skills_path(fake):
+        siblings = await list_user_skill_sibling_paths("user-1", "big")
+    assert len(siblings) == 80
+
+
+@pytest.mark.asyncio
+async def test_package_enumeration_stops_one_past_the_cap():
+    """One over the cap, so ``read_skill`` can say the listing is partial
+    instead of quietly presenting a truncated package as whole."""
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES + 50)
+    with _patch_skills_path(fake):
+        siblings = await list_user_skill_sibling_paths("user-1", "big")
+    assert len(siblings) == MAX_PACKAGE_FILES + 1
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_more_siblings_than_one_page_holds():
+    fake = _package_manager(siblings=60)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_read_skill_materialises_the_package_into_the_workdir():
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    fake.files["/skills/big/scripts/run.py"] = b"print('hi')\n"
+    with _patch_skills_path(fake) as patched:
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert isinstance(result, ReadSkillResponse)
+        package_dir = os.path.join(patched.workdir, "skills", "big")
+        assert result.package_dir == package_dir
+        with open(os.path.join(package_dir, "references", "guide.md"), "rb") as f:
+            assert f.read() == b"read me"
+        script = os.path.join(package_dir, "scripts", "run.py")
+        assert os.stat(script).st_mode & 0o111
+    assert {f.path for f in result.files} == {
+        "/skills/big/references/guide.md",
+        "/skills/big/scripts/run.py",
+    }
+    assert result.message.endswith(
+        f"Package files are at {package_dir}; relative paths in the body "
+        "resolve there. Run scripts with bash_exec from that directory."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_single_file_skill_materialises_nothing():
+    fake = _package_manager()
+    with _patch_skills_path(fake) as patched:
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(os.path.join(patched.workdir, "skills"))
+    assert isinstance(result, ReadSkillResponse)
+    assert result.package_dir is None
+    assert result.files == []
+    assert result.message == "Loaded skill 'big'."
+
+
+@pytest.mark.asyncio
+async def test_reactivating_a_skill_rewrites_only_what_changed():
+    """The sandbox persists between turns, so a second read_skill should
+    cost one write per changed file, not one per file."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"v1"
+    fake.files["/skills/big/references/stable.md"] = b"unchanged"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        guide = os.path.join(patched.workdir, "skills", "big", "references", "guide.md")
+        stable = os.path.join(
+            patched.workdir, "skills", "big", "references", "stable.md"
+        )
+        stable_mtime = os.stat(stable).st_mtime_ns
+        os.utime(stable, ns=(0, 0))
+
+        fake.files["/skills/big/references/guide.md"] = b"v2"
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        with open(guide, "rb") as f:
+            assert f.read() == b"v2"
+        # Untouched: the manifest hash matched, so no write happened.
+        assert os.stat(stable).st_mtime_ns == 0
+    assert stable_mtime != 0
+
+
+@pytest.mark.asyncio
+async def test_a_package_that_cannot_be_copied_still_loads_the_body():
+    """The instructions are worth having without the resources, so a
+    materialisation failure is a note in the message, never an error."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake):
+        with patch(
+            "backend.copilot.tools.skills.save_to_workdir",
+            new=AsyncMock(return_value=ErrorResponse(message="disk full")),
+        ):
+            result = await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="big"
+            )
+    assert isinstance(result, ReadSkillResponse)
+    assert result.body.strip() == "steps"
+    assert result.package_dir is None
+    assert [f.path for f in result.files] == ["/skills/big/references/guide.md"]
+    assert "Could not copy 1 package file(s)" in result.message
+
+
+@pytest.mark.asyncio
+async def test_read_skill_says_when_a_package_exceeds_the_cap():
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES + 5)
+    with _patch_skills_path(fake):
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+    assert isinstance(result, ReadSkillResponse)
+    assert len(result.files) == MAX_PACKAGE_FILES
+    assert f"first {MAX_PACKAGE_FILES} package files" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_file_dropped_from_a_package_leaves_the_workdir():
+    """delete_skill then store_skill under the same slug is reachable in one
+    session, and a script left behind is one bash_exec can still run."""
+    fake = _package_manager()
+    fake.files["/skills/big/scripts/old.sh"] = b"#!/bin/bash\necho stale\n"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        stale = os.path.join(patched.workdir, "skills", "big", "scripts", "old.sh")
+        assert os.path.exists(stale)
+
+        del fake.files["/skills/big/scripts/old.sh"]
+        result = await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(stale)
+    assert isinstance(result, ReadSkillResponse)
+    assert result.package_dir is None
+    assert result.files == []
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_listing_prunes_nothing():
+    """Past the cap a listing cannot tell a removed file from an unlisted one,
+    so pruning on it would delete files the package still has."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/keep.md"] = b"keep me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        keep = os.path.join(patched.workdir, "skills", "big", "references", "keep.md")
+        assert os.path.exists(keep)
+
+        # keep.md is now pushed off the end of a capped, newest-first page.
+        for i in range(MAX_PACKAGE_FILES + 1):
+            fake.files[f"/skills/big/references/n{i:03d}.md"] = f"new {i}".encode()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(keep)
+
+
+@pytest.mark.asyncio
+async def test_delete_drains_a_folder_bigger_than_one_page():
+    """One page is capped, so a bigger folder needs more passes; what is left
+    behind keeps consuming quota and is inherited by the next skill at this
+    slug."""
+    fake = _package_manager(siblings=MAX_PACKAGE_FILES * 2 + 5)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_manifest_path_with_a_parent_segment_is_dropped():
+    """The manifest is read back out of the working directory, which the
+    model's own shell can write, so its keys drive a delete only after the
+    same path check every written file passes."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        outside = os.path.join(patched.workdir, "outside.txt")
+        with open(outside, "w") as f:
+            f.write("not the package's")
+        manifest = os.path.join(patched.workdir, ".skill-packages", "big.json")
+        with open(manifest, "w") as f:
+            json.dump({"../../outside.txt": "deadbeef"}, f)
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(outside)
+
+
+@pytest.mark.parametrize(
+    "path", ["../escape", "../../etc/passwd", "..", "ok/../../out", "/abs", ""]
+)
+def test_package_paths_that_leave_the_package_are_refused(path: str):
+    assert _is_safe_relative(path) is False
+
+
+@pytest.mark.parametrize("path", ["SKILL.md", "refs/a.md", "scripts/run.sh"])
+def test_package_paths_inside_the_package_are_accepted(path: str):
+    assert _is_safe_relative(path) is True
+
+
+@pytest.mark.asyncio
+async def test_delete_drains_a_folder_no_fixed_number_of_passes_could_clear(
+    monkeypatch,
+):
+    """The loop ends when a pass deletes nothing new, not after a set number
+    of passes: any fixed limit leaves files behind on a folder big enough."""
+    monkeypatch.setattr("backend.copilot.tools.skills.MAX_PACKAGE_FILES", 2)
+    fake = _package_manager(siblings=100)
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_cannot_be_deleted_ends_the_drain():
+    fake = _package_manager(siblings=3)
+    stuck = "/skills/big/references/r001.md"
+
+    async def refuse(file_id):
+        if file_id == f"id-{stuck}":
+            raise RuntimeError("storage says no")
+        return await _FakeWorkspaceManager.delete_file(fake, file_id)
+
+    fake.delete_file = refuse
+    with _patch_skills_path(fake):
+        await delete_user_skill("user-1", "big")
+    assert list(fake.files) == [stuck]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_package_listing_prunes_nothing():
+    """An enumeration that raised is not an empty package — pruning on it
+    would delete every file the last activation wrote."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        guide = os.path.join(patched.workdir, "skills", "big", "references", "guide.md")
+        assert os.path.exists(guide)
+
+        with patch(
+            "backend.copilot.tools.skills._list_package_files",
+            new=AsyncMock(side_effect=RuntimeError("workspace unavailable")),
+        ):
+            result = await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="big"
+            )
+        assert os.path.exists(guide)
+    assert isinstance(result, ReadSkillResponse)
+    assert result.body.strip() == "steps"
+
+
+@pytest.mark.asyncio
+async def test_nested_skill_md_files_cannot_hide_a_root_skill():
+    """A package shipping its own example SKILL.md files fills the capped,
+    newest-first page; the listing must page past them to the real roots."""
+    fake = _package_manager(slug="aaa-oldest")
+    for i in range(MAX_USER_SKILLS * 4 + 10):
+        fake.files[f"/skills/aaa-oldest/references/e{i:04d}/SKILL.md"] = b"example"
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+        slugs = await find_user_skill_slugs("user-1", ["aaa-oldest"])
+    assert [s.name for s in skills] == ["aaa-oldest"]
+    assert slugs == {"aaa-oldest": "aaa-oldest"}
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_listing_keeps_the_entries_it_could_not_see():
+    """A capped listing proves presence, never absence, so it must not drop
+    the manifest entries for files it never saw: the next complete listing is
+    what decides whether those files are gone, and it can only reach them
+    through the manifest."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/keep.md"] = b"v1"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        keep = os.path.join(patched.workdir, "skills", "big", "references", "keep.md")
+        assert os.path.exists(keep)
+
+        # Past the cap keep.md falls off the newest-first page, so this
+        # activation cannot see it and must leave its entry alone.
+        extra = [
+            f"/skills/big/references/n{i:03d}.md" for i in range(MAX_PACKAGE_FILES + 5)
+        ]
+        for i, path in enumerate(extra):
+            fake.files[path] = f"new {i}".encode()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert os.path.exists(keep)
+
+        # Back under the cap, with keep.md gone from the package: now the
+        # listing is complete, so the file is known gone and must be removed.
+        for path in extra:
+            del fake.files[path]
+        del fake.files["/skills/big/references/keep.md"]
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        assert not os.path.exists(keep)
+
+
+@pytest.mark.asyncio
+async def test_a_pruned_file_loses_its_manifest_entry():
+    """The other half of the rule: once a file is known gone and removed, its
+    entry goes too, or the manifest keeps describing a file that is not there
+    and every later activation re-prunes it."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/gone.md"] = b"bye"
+    fake.files["/skills/big/references/stays.md"] = b"here"
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        manifest_path = os.path.join(patched.workdir, ".skill-packages", "big.json")
+        with open(manifest_path) as f:
+            assert set(json.load(f)) == {"references/gone.md", "references/stays.md"}
+
+        del fake.files["/skills/big/references/gone.md"]
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        with open(manifest_path) as f:
+            assert set(json.load(f)) == {"references/stays.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_package_file_named_like_the_manifest_survives():
+    """The manifest is our bookkeeping, not part of the package, so it must
+    not sit where a package file could collide with it: the collision
+    overwrites the user's file and the digest then matches, so no later
+    activation ever restores it."""
+    fake = _package_manager()
+    fake.files["/skills/big/.package.json"] = b'{"mine": true}'
+    with _patch_skills_path(fake) as patched:
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        theirs = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        with open(theirs, "rb") as f:
+            assert f.read() == b'{"mine": true}'
+
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="big"
+        )
+        with open(theirs, "rb") as f:
+            assert f.read() == b'{"mine": true}'

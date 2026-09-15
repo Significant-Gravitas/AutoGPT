@@ -22,8 +22,10 @@ and user-distilled knowledge.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import posixpath
 import re
 import uuid
 from dataclasses import dataclass
@@ -51,6 +53,13 @@ from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .workdir import (
+    make_executable,
+    read_workdir_bytes,
+    remove_from_workdir,
+    save_to_workdir,
+    workdir_root,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +84,12 @@ MAX_BODY_CHARS = 20_000
 # length so a misbehaving caller cannot blow the token budget.
 MAX_TRIGGERS = 10
 MAX_TRIGGER_CHARS = 64
+# Files a skill may carry beside its SKILL.md.  The largest package in the
+# public ``anthropics/skills`` set is 83 files, so 100 clears the ecosystem
+# with room to spare while keeping one activation's copy into the sandbox
+# bounded.  Enumeration fetches one more than this so a folder that exceeds
+# it is reported rather than silently truncated.
+MAX_PACKAGE_FILES = 100
 SKILL_FOLDER = "/skills"
 
 
@@ -425,26 +440,31 @@ async def delete_user_skill(
         description_for_log[:60],
     )
 
-    try:
-        siblings = await manager.list_files(
-            path=f"{skill_folder(expert_id)}/{slug}/",
-            limit=50,
-            include_all_sessions=True,
-        )
-    except Exception:
-        siblings = []
     await manager.delete_file(info.id)
-    for sibling in siblings:
-        if sibling.id == info.id:
-            continue
+    # One page is capped at MAX_PACKAGE_FILES, so a larger folder needs more
+    # than one pass; anything left behind keeps consuming the user's quota and
+    # is inherited by the next skill stored under this slug.  A pass that
+    # deletes nothing new ends the loop, so a file that cannot be deleted stops
+    # it rather than spinning it.
+    attempted: set[str] = set()
+    while True:
         try:
-            await manager.delete_file(sibling.id)
+            siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
-            logger.warning(
-                "[skills] failed to delete sibling %s",
-                sibling.path,
-                exc_info=True,
-            )
+            break
+        fresh = [s for s in siblings if s.file_id not in attempted]
+        if not fresh:
+            break
+        for sibling in fresh:
+            attempted.add(sibling.file_id)
+            try:
+                await manager.delete_file(sibling.file_id)
+            except Exception:
+                logger.warning(
+                    "[skills] failed to delete sibling %s",
+                    sibling.path,
+                    exc_info=True,
+                )
     await invalidate_skills_index_cache(user_id, expert_id)
     if expert_id is not None:
         await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
@@ -666,19 +686,17 @@ async def _list_user_skills_from_workspace(
     path and falls back to a parallelised read of the SKILL.md body for
     any file missing the metadata (older skills, or skills written by a
     deployment before the metadata-cache change shipped).
+
+    The SKILL.md filter is applied in the query, not after it: the listing
+    is ordered newest-first and capped, so filtering client-side let one
+    package's files push older skills out of the index entirely.
     """
     manager = await _get_user_skill_manager(user_id, scope)
-    files = await manager.list_files(
-        path=f"{skill_folder(expert_id)}/",
-        limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
-        include_all_sessions=True,
-    )
-    md_files = [f for f in files if f.path.endswith("/SKILL.md")]
+    folder = skill_folder(expert_id)
 
     skills: list[ParsedSkill] = []
     needs_read: list[Any] = []
-    for f in md_files:
-        slug = f.path.rsplit("/", 2)[-2] if "/" in f.path else ""
+    for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
@@ -958,12 +976,8 @@ async def list_user_skill_sibling_paths(
         return []
     try:
         manager = await _get_user_skill_manager(user_id, scope)
-        files = await manager.list_files(
-            path=f"{skill_folder(expert_id)}/{slug}/",
-            limit=50,
-            include_all_sessions=True,
-        )
-        return [f.path for f in files if not f.path.endswith("/SKILL.md")]
+        files = await _list_package_files(manager, skill_folder(expert_id), slug)
+        return [f.path for f in files]
     except Exception:
         logger.warning(
             "[skills] failed to list sibling files for %s", slug, exc_info=True
@@ -988,33 +1002,27 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
     if not wanted:
         return {}
     manager = await _get_user_skill_manager(user_id)
-    files = await manager.list_files(
-        path=f"{SKILL_FOLDER}/", limit=MAX_USER_SKILLS * 4, include_all_sessions=True
-    )
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f in files:
-        if not f.path.endswith("/SKILL.md"):
-            continue
-        folder = f.path.rsplit("/", 2)[-2]
-        if folder.strip().lower() in wanted:
-            found[folder.strip().lower()] = folder
+    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
+        if slug.strip().lower() in wanted:
+            found[slug.strip().lower()] = slug
             continue
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         if meta.get(_META_KIND) != _META_KIND_VALUE:
-            unnamed.append(f)
+            unnamed.append((f, slug))
     missing = wanted - set(found)
     if not missing or not unnamed:
         return found
     parsed = await asyncio.gather(
-        *(_parse_skill_from_workspace(manager, f.path) for f in unnamed)
+        *(_parse_skill_from_workspace(manager, f.path) for f, _ in unnamed)
     )
-    for f, entry in zip(unnamed, parsed):
+    for (_, slug), entry in zip(unnamed, parsed):
         if entry is None:
             continue
         name = entry.name.strip().lower()
         if name in missing:
-            found.setdefault(name, f.path.rsplit("/", 2)[-2])
+            found.setdefault(name, slug)
     return found
 
 
@@ -1212,6 +1220,14 @@ class StoreSkillResponse(ToolResponseBase):
     expert_id: str | None = None
 
 
+class SkillFileInfo(BaseModel):
+    """One file of a skill package, by its workspace path."""
+
+    path: str
+    file_id: str
+    size_bytes: int = 0
+
+
 class ReadSkillResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SKILL_LOADED
     name: str
@@ -1219,6 +1235,10 @@ class ReadSkillResponse(ToolResponseBase):
     body: str
     triggers: list[str] = []
     sibling_files: list[str] = []
+    files: list[SkillFileInfo] = []
+    # Where the package was copied; ``None`` for a single-file skill or when
+    # the copy failed, in which case ``files`` still names the workspace paths.
+    package_dir: str | None = None
     is_default: bool = False
     expert_id: str | None = None
 
@@ -1368,7 +1388,8 @@ def _owner_label(expert_id: str | None) -> str:
 
 
 class ReadSkillTool(BaseTool):
-    """Load a skill's body + sibling-file listing by name."""
+    """Load a skill by name: its body, its package listing, and a copy of
+    that package in the working directory the model's shell runs in."""
 
     @property
     def name(self) -> str:
@@ -1377,8 +1398,9 @@ class ReadSkillTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a skill's body + sibling-file list by name. Call when "
-            "a task matches an <available_skills> entry."
+            "Read a skill's body + sibling-file list by name, and copy any "
+            "package files into the working directory. Call when a task "
+            "matches an <available_skills> entry."
         )
 
     @property
@@ -1495,32 +1517,59 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
-        # List sibling files (references/, scripts/, assets/, etc.) so
+        # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
+        folder = skill_folder(owner.expert_id)
+        listed = True
         try:
-            siblings = await manager.list_files(
-                path=f"{skill_folder(owner.expert_id)}/{name}/",
-                limit=50,
-                include_all_sessions=True,
-            )
-            sibling_paths = [
-                f.path for f in siblings if not f.path.endswith("/SKILL.md")
-            ]
+            package_files = await _list_package_files(manager, folder, name)
         except Exception:
             logger.warning(
-                "[skills] failed to list siblings for %s", name, exc_info=True
+                "[skills] failed to list package files for %s", name, exc_info=True
             )
-            sibling_paths = []
+            package_files = []
+            listed = False
+
+        notes: list[str] = []
+        # A listing that failed is not an empty package: treating it as one
+        # would prune every file the last activation wrote.
+        complete = listed and len(package_files) <= MAX_PACKAGE_FILES
+        if listed and not complete:
+            package_files = package_files[:MAX_PACKAGE_FILES]
+            notes.append(
+                f"Only the first {MAX_PACKAGE_FILES} package files are listed."
+            )
+
+        # Runs even for a skill with no files: a package deleted and re-stored
+        # under the same slug leaves its old files in the working directory.
+        package_dir, warning = await _sync_skill_package(
+            manager,
+            package_files,
+            folder=folder,
+            slug=name,
+            session_id=session_id,
+            complete=complete,
+        )
+        if warning:
+            notes.append(warning)
+        if package_dir:
+            notes.append(
+                f"Package files are at {package_dir}; relative paths in the "
+                "body resolve there. Run scripts with bash_exec from that "
+                "directory."
+            )
 
         return ReadSkillResponse(
             name=parsed.name,
             description=parsed.description,
             body=parsed.body,
             triggers=list(parsed.triggers),
-            sibling_files=sibling_paths,
+            sibling_files=[f.path for f in package_files],
+            files=package_files,
+            package_dir=package_dir,
             is_default=False,
             expert_id=owner.expert_id,
-            message=f"Loaded skill '{name}'.",
+            message=" ".join([f"Loaded skill '{name}'.", *notes]),
             session_id=session_id,
         )
 
@@ -1673,3 +1722,264 @@ class ListSkillsTool(BaseTool):
             message=f"{len(payload)} skill(s) available for {_owner_label(owner_id)}.",
             session_id=session.session_id,
         )
+
+
+# ---------------------------------------------------------------------------
+# Package files — enumerating a skill's folder, and keeping the model's
+# working directory in step with it.
+# ---------------------------------------------------------------------------
+
+
+# Rows a listing will scan before giving up. The SKILL.md name filter runs in
+# the query but depth cannot, so a page of newest-first rows can be entirely
+# nested SKILL.md files and yield no roots at all; the bound is the most a
+# compliant folder can hold, every allowed skill carrying a full package.
+_MAX_ROOT_SCAN = MAX_USER_SKILLS * (MAX_PACKAGE_FILES + 1)
+
+
+async def _list_skill_roots(
+    manager: WorkspaceManager, folder: str
+) -> list[tuple[Any, str]]:
+    """``(file, slug)`` for every package root directly under *folder*.
+
+    Pages until the roots run out rather than filtering one capped page: a
+    package shipping its own example ``SKILL.md`` files would otherwise fill
+    the page and hide older skills, which is the defect this listing exists
+    to avoid.
+    """
+    page = MAX_USER_SKILLS * 4  # over-fetch in case of strays
+    roots: list[tuple[Any, str]] = []
+    offset = 0
+    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_USER_SKILLS:
+        rows = await manager.list_files(
+            path=f"{folder}/",
+            limit=page,
+            offset=offset,
+            include_all_sessions=True,
+            name_contains="SKILL.md",
+        )
+        for row in rows:
+            slug = _root_skill_slug(row.path, folder)
+            if slug is not None:
+                roots.append((row, slug))
+        if len(rows) < page:
+            break
+        offset += page
+    return roots
+
+
+def _root_skill_slug(path: str, folder: str) -> str | None:
+    """Folder slug when *path* is a package root, ``<folder>/<slug>/SKILL.md``.
+
+    ``None`` for a SKILL.md nested deeper: a package may ship one as an
+    example, and indexing it would invent a skill nobody stored.
+    """
+    prefix = f"{folder}/"
+    suffix = "/SKILL.md"
+    if not path.startswith(prefix) or not path.endswith(suffix):
+        return None
+    slug = path[len(prefix) : -len(suffix)]
+    return slug if slug and "/" not in slug else None
+
+
+async def _list_package_files(
+    manager: WorkspaceManager, folder: str, slug: str
+) -> list[SkillFileInfo]:
+    """Every file in a skill's folder except its own SKILL.md, at most
+    ``MAX_PACKAGE_FILES + 1`` so a caller can tell a full package from an
+    oversized one.
+
+    Nested paths are kept: a package's ``scripts/`` and ``references/`` are
+    what make it more than one file.
+    """
+    prefix = f"{folder}/{slug}/"
+    root = f"{prefix}SKILL.md"
+    page = MAX_PACKAGE_FILES + 1
+    files: list[SkillFileInfo] = []
+    offset = 0
+    while len(files) <= MAX_PACKAGE_FILES:
+        rows = await manager.list_files(
+            path=prefix, limit=page, offset=offset, include_all_sessions=True
+        )
+        for row in rows:
+            if row.path == root:
+                continue
+            files.append(
+                SkillFileInfo(
+                    path=row.path, file_id=row.id, size_bytes=row.size_bytes or 0
+                )
+            )
+            if len(files) > MAX_PACKAGE_FILES:
+                break
+        if len(rows) < page:
+            break
+        offset += page
+    return files
+
+
+# A skill's body references its resources by relative path ("run
+# scripts/extract.py"), so the files have to exist where the model's shell
+# runs before any of that is actionable: the E2B box in production, the
+# bubblewrap directory locally.  The manifest records what each file hashed
+# to, so re-activating a skill in a later turn copies only what changed.
+# Bookkeeping, not part of the package, so it is kept OUT of the directory the
+# package is copied into: a skill shipping its own ``.package.json`` would
+# otherwise be overwritten by it, and the digest would then match forever.
+_MANIFEST_DIR = ".skill-packages"
+_EXECUTABLE_PREFIX = "scripts/"
+# One E2B ``files.write`` is an HTTP round trip and measured 200 ms, so a
+# 60-file package copied serially would cost 12 s of the turn (0.35 s
+# concurrent).  Bounded, because each copy also reads a blob.
+_COPY_CONCURRENCY = 16
+
+
+async def _sync_skill_package(
+    manager: WorkspaceManager,
+    files: list[SkillFileInfo],
+    *,
+    folder: str,
+    slug: str,
+    session_id: str,
+    complete: bool,
+) -> tuple[str | None, str | None]:
+    """Make the turn's working directory match the skill's package.
+
+    Returns ``(package_dir, warning)``, the directory being ``None`` when the
+    skill carries no files.  A skill's body is worth having without its
+    resources, so every failure here is a warning the model reads rather than
+    an error that withholds the skill.
+
+    *complete* says whether *files* is the whole package: a truncated listing
+    cannot tell a removed file from an unlisted one, so it prunes nothing.
+    """
+    workdir = workdir_root(session_id)
+    package_dir = f"{workdir}/skills/{slug}"
+    manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
+    prefix = f"{folder}/{slug}/"
+    manifest = await _read_package_manifest(manifest_path, session_id)
+    limit = asyncio.Semaphore(_COPY_CONCURRENCY)
+
+    async def copy(info: SkillFileInfo) -> tuple[str, str, str | None] | None:
+        """``(relative path, digest, path to mark executable)`` once the file
+        is in place, or ``None`` when it could not be put there."""
+        relative = info.path[len(prefix) :] if info.path.startswith(prefix) else ""
+        if not _is_safe_relative(relative):
+            logger.warning("[skills] skipping odd package path %s", info.path)
+            return None
+        async with limit:
+            try:
+                content = await manager.read_file(info.path)
+            except Exception:
+                logger.warning("[skills] failed to read %s", info.path, exc_info=True)
+                return None
+            digest = hashlib.sha256(content).hexdigest()
+            if manifest.get(relative) == digest:
+                return relative, digest, None
+            target = await save_to_workdir(
+                f"{package_dir}/{relative}", content, session_id
+            )
+        if isinstance(target, ErrorResponse):
+            logger.warning(
+                "[skills] failed to materialise %s: %s", info.path, target.message
+            )
+            return None
+        return (
+            relative,
+            digest,
+            target if relative.startswith(_EXECUTABLE_PREFIX) else None,
+        )
+
+    copied = await asyncio.gather(*(copy(info) for info in files))
+    written = {relative: digest for relative, digest, _ in filter(None, copied)}
+    executables = [path for _, _, path in filter(None, copied) if path]
+
+    await make_executable(executables, session_id)
+    # A file the skill no longer has must not stay where bash_exec can run it,
+    # and delete_skill followed by store_skill on the same slug is exactly that
+    # case.  Prune by what the package HOLDS, not by what was copied: a copy
+    # that failed leaves a current file whose earlier copy is still wanted.
+    removed: set[str] = set()
+    if complete:
+        # The root is not a sibling and is never written here, so it can only
+        # reach the manifest by a hand edit; excluding it keeps the prune from
+        # acting on a name that does not belong to it.
+        current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
+        removed = set(manifest) - current
+        await remove_from_workdir(
+            [f"{package_dir}/{relative}" for relative in sorted(removed)], session_id
+        )
+
+    # RESOLVING A CONFLICT HERE: the manifest may only lose an entry for a file
+    # we know is gone — one we removed, or one a listing we know was complete
+    # did not contain. Several branches narrow `removed` or hold an entry back
+    # for their own reason; each is that one rule applied to a different way of
+    # not knowing. Keep every reason rather than taking one side of the diff.
+    next_manifest = {
+        relative: digest
+        for relative, digest in manifest.items()
+        if relative not in written and relative not in removed
+    }
+    next_manifest.update(written)
+    # A single-file skill must not leave an empty package directory behind, so
+    # the manifest is written only when there is, or was, something to track.
+    if next_manifest or manifest:
+        await _write_package_manifest(manifest_path, next_manifest, session_id)
+
+    if not files:
+        return None, None
+    missing = len(files) - len(written)
+    if not written:
+        return None, (
+            f"Could not copy {missing} package file(s) into the working "
+            "directory; read them with read_workspace_file at the workspace "
+            "paths listed in files."
+        )
+    if missing:
+        return package_dir, f"{missing} of {len(files)} package file(s) failed to copy."
+    return package_dir, None
+
+
+def _is_safe_relative(path: str) -> bool:
+    """A package path must stay inside the package directory.
+
+    ``normpath`` alone does not settle it: it collapses ``ok/../../out`` to
+    ``../out``, but an already-normal ``../escape`` comes back unchanged and
+    compares equal. The parent segment is therefore rejected on its own.
+    """
+    return (
+        bool(path)
+        and not path.startswith("/")
+        and ".." not in path.split("/")
+        and posixpath.normpath(path) == path
+    )
+
+
+async def _read_package_manifest(manifest_path: str, session_id: str) -> dict[str, str]:
+    """Hashes written by the last activation, empty on a first run or any
+    unreadable manifest — a re-copy is cheap, a stale skip is not."""
+    raw = await read_workdir_bytes(manifest_path, session_id)
+    if not raw:
+        return {}
+    try:
+        loaded = json.loads(raw)
+    except ValueError:
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    # The manifest lives in the model's own working directory, so its keys are
+    # untrusted input to a later rm: keep only paths we would have written.
+    return {
+        k: v
+        for k, v in loaded.items()
+        if isinstance(k, str) and isinstance(v, str) and _is_safe_relative(k)
+    }
+
+
+async def _write_package_manifest(
+    manifest_path: str, hashes: dict[str, str], session_id: str
+) -> None:
+    result = await save_to_workdir(
+        manifest_path, json.dumps(hashes).encode(), session_id
+    )
+    if isinstance(result, ErrorResponse):
+        logger.warning("[skills] failed to write package manifest: %s", result.message)
