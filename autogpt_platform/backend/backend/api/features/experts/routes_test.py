@@ -5,7 +5,9 @@ app, the global `mock_jwt_user` auth override fixture, and `experts_db` mocked
 with AsyncMock at the route module's import site.
 """
 
+import io
 import json
+import zipfile
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -17,11 +19,12 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma import Base64
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
-from backend.api.features.experts.expert_zip import package_from_zip
+from backend.api.features.experts.expert_zip import package_from_zip, zip_from_package
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     WEEKLY_BUDGET_MAX_CREDITS,
@@ -40,12 +43,20 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
+from backend.api.features.experts.package_import import (
+    ExpertImportResult,
+    ExpertPackageIssue,
+    ExpertPackagePreview,
+    WorkflowResolution,
+)
 from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
     PackagedIdentity,
+    PackagedWorkflow,
 )
+from backend.api.features.experts.publish import UnpublishedWorkflowsError
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
@@ -1970,13 +1981,130 @@ def test_download_expert_template_package_404s_for_an_unknown_template(
     assert client.get("/experts/templates/nope/package").status_code == 404
 
 
+def test_download_expert_template_package_serves_what_was_published(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A published template hands back the stored zip rather than rebuilding
+    from an expert that has since moved on."""
+    published = _expert_zip()
+    row = prisma.models.Expert.model_construct(
+        id="template-1", name="Maria Ops", publishedPackage=Base64.encode(published)
+    )
+    mocker.patch.object(
+        experts_db, "get_template_row", new_callable=AsyncMock
+    ).return_value = row
+    build = mocker.patch(
+        "backend.api.features.experts.routes.build_expert_package",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/experts/templates/template-1/package")
+
+    assert response.status_code == 200
+    assert response.content == published
+    build.assert_not_awaited()
+
+
+# ─── Package parse ─────────────────────────────────────────────────────
+
+
+def _expert_zip() -> bytes:
+    return zip_from_package(
+        ExpertPackage(
+            manifest=ExpertManifest(
+                identity=PackagedIdentity(name="Maria Ops", role="Ops lead"),
+                workflows=[
+                    PackagedWorkflow(
+                        name="Morning digest", store_listing_version_id="ver-1"
+                    )
+                ],
+            )
+        )
+    )
+
+
+def _upload(data: bytes) -> dict:
+    return {"file": ("maria-ops.expert.zip", data, "application/zip")}
+
+
+def test_parse_expert_package_describes_the_upload_without_importing(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    preview = ExpertPackagePreview(
+        manifest=ExpertManifest(identity=PackagedIdentity(name="Maria Ops")),
+        avatar_kind="none",
+        workflows=[
+            WorkflowResolution(
+                index=0,
+                name="Morning digest",
+                source="store",
+                store_listing_version_id="ver-1",
+            )
+        ],
+    )
+    mock_preview = mocker.patch(
+        "backend.api.features.experts.routes.preview_package",
+        new_callable=AsyncMock,
+        return_value=preview,
+    )
+
+    response = client.post("/experts/import/parse", files=_upload(_expert_zip()))
+
+    assert response.status_code == 200
+    mock_preview.assert_awaited_once()
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_package_preview",
+    )
+
+
+def test_parse_expert_package_400s_on_entries_that_are_not_part_of_the_format(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Uploading a folder full of chat logs has to say so, not 500."""
+    mock_preview = mocker.patch(
+        "backend.api.features.experts.routes.preview_package", new_callable=AsyncMock
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("expert.json", _expert_zip_manifest())
+        archive.writestr("memory/facts.json", b"{}")
+
+    response = client.post("/experts/import/parse", files=_upload(buffer.getvalue()))
+
+    assert response.status_code == 400
+    assert "memory/facts.json" in response.json()["detail"]
+    mock_preview.assert_not_awaited()
+
+
+def _expert_zip_manifest() -> bytes:
+    with zipfile.ZipFile(io.BytesIO(_expert_zip())) as archive:
+        return archive.read("expert.json")
+
+
+def test_parse_expert_package_413s_on_a_body_over_the_cap(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Refused as the body arrives, so an oversized upload is never held
+    whole."""
+    mocker.patch("backend.api.features.experts.routes.MAX_ZIP_BYTES", 32)
+
+    response = client.post("/experts/import/parse", files=_upload(b"x" * 1024))
+
+    assert response.status_code == 413
+
+
 @pytest.mark.parametrize(
     "call",
     [
         lambda: client.get("/experts/expert-1/package"),
         lambda: client.get("/experts/templates/template-1/package"),
+        lambda: client.post("/experts/import/parse", files=_upload(b"not a zip")),
+        lambda: client.post("/experts/import", files=_upload(b"not a zip")),
+        lambda: client.get("/experts/expert-1/published"),
     ],
-    ids=["download", "download-template"],
+    ids=["download", "download-template", "parse", "import", "published"],
 )
 def test_every_portability_route_is_404_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch, call
@@ -1989,3 +2117,183 @@ def test_every_portability_route_is_404_when_the_flag_is_off(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Feature not available"
+
+
+# ─── Package import ────────────────────────────────────────────────────
+
+
+def _import_result() -> ExpertImportResult:
+    return ExpertImportResult(
+        expert=_make_expert(name="Maria Ops", source_template_id=None),
+        failed_workflows=["Ghost"],
+        warnings=[
+            ExpertPackageIssue(
+                code="workflow_not_in_marketplace",
+                message="'Digest' is not on this marketplace; a private copy "
+                "will be created instead.",
+            )
+        ],
+    )
+
+
+def test_import_expert_package_creates_the_expert_and_reports_what_failed(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_import = mocker.patch(
+        "backend.api.features.experts.routes.import_package",
+        new_callable=AsyncMock,
+        return_value=_import_result(),
+    )
+
+    response = client.post(
+        "/experts/import",
+        files=_upload(_expert_zip()),
+        data={"edits": json.dumps({"name": "Maria (imported)"})},
+    )
+
+    assert response.status_code == 201
+    assert mock_import.await_args.args[2].name == "Maria (imported)"
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_import_result"
+    )
+
+
+def test_import_expert_package_400s_on_edits_that_are_not_valid(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A dialog bug must not read as a broken package."""
+    mock_import = mocker.patch(
+        "backend.api.features.experts.routes.import_package", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/experts/import",
+        files=_upload(_expert_zip()),
+        data={"edits": json.dumps({"unknown_field": 1})},
+    )
+
+    assert response.status_code == 400
+    assert "review edits payload is not valid" in response.json()["detail"]
+    mock_import.assert_not_awaited()
+
+
+def test_import_expert_package_409s_at_the_active_expert_limit(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    """Byte-identical to what hiring and raising answer, so one frontend
+    handler covers every way of gaining an expert."""
+    mocker.patch(
+        "backend.api.features.experts.routes.import_package",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertLimitExceededError(20),
+    )
+
+    response = client.post("/experts/import", files=_upload(_expert_zip()))
+
+    assert response.status_code == 409
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_import_active_cap",
+    )
+
+
+# ─── Publish ───────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def as_admin(mock_jwt_admin):
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    yield
+    app.dependency_overrides[get_jwt_payload] = None
+
+
+def test_publish_expert_returns_the_marketplace_template(
+    mocker: pytest_mock.MockerFixture, as_admin
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = prisma.models.Expert.model_construct(id="expert-1")
+    mocker.patch(
+        "backend.api.features.experts.routes.publish_expert",
+        new_callable=AsyncMock,
+        return_value=prisma.models.Expert.model_construct(id="template-1"),
+    )
+    mocker.patch.object(
+        experts_db, "get_template", new_callable=AsyncMock
+    ).return_value = _make_expert(id="template-1", is_template=True)
+
+    response = client.post("/experts/expert-1/publish")
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "template-1"
+
+
+def test_publish_expert_is_refused_to_a_non_admin(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Publishing puts an expert's soul on the marketplace; the ordinary
+    signed-in user of every other test here must not reach it."""
+    publish = mocker.patch(
+        "backend.api.features.experts.routes.publish_expert", new_callable=AsyncMock
+    )
+
+    assert client.post("/experts/expert-1/publish").status_code in (401, 403)
+    publish.assert_not_awaited()
+
+
+def test_publish_expert_400s_when_an_agent_is_not_published(
+    mocker: pytest_mock.MockerFixture, as_admin
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = prisma.models.Expert.model_construct(id="expert-1")
+    mocker.patch(
+        "backend.api.features.experts.routes.publish_expert",
+        new_callable=AsyncMock,
+        side_effect=UnpublishedWorkflowsError(["Weekly rollup"]),
+    )
+
+    response = client.post("/experts/expert-1/publish")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "code": "unpublished_workflows",
+        "workflows": ["Weekly rollup"],
+        "message": "Publish this agent first",
+    }
+
+
+def test_publish_expert_404s_for_an_expert_the_admin_does_not_own(
+    mocker: pytest_mock.MockerFixture, as_admin
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = None
+
+    assert client.post("/experts/expert-1/publish").status_code == 404
+
+
+@pytest.mark.parametrize("published", [True, False], ids=["live", "never-published"])
+def test_get_published_template_reports_whether_it_is_live(
+    mocker: pytest_mock.MockerFixture, published: bool
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = prisma.models.Expert.model_construct(id="expert-1")
+    mocker.patch(
+        "backend.api.features.experts.routes.published_template",
+        new_callable=AsyncMock,
+        return_value=(
+            prisma.models.Expert.model_construct(id="template-1") if published else None
+        ),
+    )
+    mocker.patch.object(
+        experts_db, "get_template", new_callable=AsyncMock
+    ).return_value = _make_expert(id="template-1", is_template=True)
+
+    response = client.get("/experts/expert-1/published")
+
+    assert response.status_code == 200
+    assert (response.json() or {}).get("id") == ("template-1" if published else None)

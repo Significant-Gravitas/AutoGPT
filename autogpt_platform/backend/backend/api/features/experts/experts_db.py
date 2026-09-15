@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -10,6 +10,7 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from fastapi.concurrency import run_in_threadpool
 from prisma.enums import ResourceVisibility
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -32,12 +33,14 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
+from backend.api.features.experts.expert_zip import package_from_zip
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertActivity,
     ExpertActivityDay,
     ExpertBundledSkill,
+    ExpertDayOneItem,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -52,7 +55,9 @@ from backend.api.features.experts.models import (
     RaiseResult,
     decode_day_one,
     decode_voice_preferences,
+    encode_day_one,
 )
+from backend.api.features.experts.package_skills import install_package_skills
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -61,7 +66,10 @@ from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store import skill_db
-from backend.api.features.store.categories import category_match_values
+from backend.api.features.store.categories import (
+    category_match_values,
+    normalize_categories,
+)
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -95,6 +103,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -147,7 +156,10 @@ _TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
 EXPORT_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
         "include": {
-            "LibraryAgent": True,
+            # AgentGraph carries the name of a user-created agent; LibraryAgent
+            # .name is only populated from a marketplace snapshot, so without it
+            # publishing cannot say which agent is unpublished.
+            "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": {
                 "include": {"StoreListing": {"include": {"CreatorProfile": True}}}
             },
@@ -294,6 +306,15 @@ async def list_templates(
         include=_TEMPLATE_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+async def get_template(template_id: str) -> Expert | None:
+    """One marketplace template by id, as the API returns it."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
+    )
+    return _to_model(row) if row else None
 
 
 def _template_where(
@@ -901,6 +922,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
     await _install_bundled_skills(user_id, expert.id, template.id)
+    await _install_published_skills(user_id, expert.id, template)
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1031,12 +1053,17 @@ async def count_active_experts(user_id: str) -> int:
 
 
 async def count_raised_experts(user_id: str) -> int:
-    """Lifetime raised experts, archived included. Same preview-only caveat."""
+    """Lifetime raised experts, archived included. Same preview-only caveat.
+
+    An imported expert also has no source template, so ``importedAt`` is what
+    keeps it out of this count: an import moves an expert the user already had
+    and must not spend a raise."""
     return await prisma.models.Expert.prisma().count(
         where={
             "ownerUserId": user_id,
             "isTemplate": False,
             "sourceTemplateId": None,
+            "importedAt": None,
         }
     )
 
@@ -1153,6 +1180,9 @@ async def _create_raised_expert_row(
                 "ownerUserId": user_id,
                 "isTemplate": False,
                 "sourceTemplateId": None,
+                # An import has no source template either; it must not spend a
+                # raise. Kept in step with ``count_raised_experts``.
+                "importedAt": None,
             }
         )
         if lifetime_raised_count >= LIFETIME_RAISED_EXPERT_LIMIT:
@@ -1170,6 +1200,61 @@ async def _create_raised_expert_row(
                 "boundaries": boundaries or "",
                 "weeklyBudget": weekly_budget,
                 "skills": skills or [],
+            },
+            include=_WORKFLOW_INCLUDE,
+        )
+
+
+async def create_imported_expert(
+    user_id: str,
+    *,
+    name: str,
+    role: str,
+    tagline: str | None,
+    bio: str | None,
+    color: str,
+    categories: list[str],
+    identity: str,
+    voice_preferences: str,
+    boundaries: str,
+    avatar_url: str | None,
+    day_one: list[ExpertDayOneItem],
+    tool_profile: JsonValue | None,
+) -> prisma.models.Expert:
+    """The row an imported package becomes: a new expert this user owns.
+
+    Like a raise, not like a hire — ``sourceTemplateId`` stays null because the
+    file it came from is not a roster template and may not even have come from
+    here. The active cap applies, taken under the same advisory lock every other
+    creation path uses; the lifetime raise cap deliberately does not, because an
+    import is moving an expert the user already had rather than making a new one.
+
+    ``importedAt`` is what carries that second half. Two nulls cannot say "this
+    was imported", so without it the row would be counted as a raise by every
+    later raise and the exemption would last exactly one request.
+
+    Categories are folded tolerantly: a package written against a different
+    canonical set should arrive with the categories we recognise, not fail.
+    """
+    async with transaction() as tx:
+        await _lock_expert_creation(tx, user_id)
+        await _ensure_active_expert_capacity(tx, user_id)
+        return await tx.expert.create(
+            data={
+                "ownerUserId": user_id,
+                "name": name,
+                "avatarUrl": avatar_url,
+                "color": color,
+                "role": role,
+                "tagline": tagline,
+                "bio": bio,
+                "categories": [c.value for c in normalize_categories(categories)],
+                "identity": identity or _raised_identity(name),
+                "voicePreferences": voice_preferences,
+                "boundaries": boundaries,
+                "dayOne": SafeJson(encode_day_one(day_one)),
+                "toolProfile": SafeJson(tool_profile),
+                "importedAt": datetime.now(timezone.utc),
             },
             include=_WORKFLOW_INCLUDE,
         )
@@ -1685,6 +1770,35 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _install_published_skills(
+    user_id: str, expert_id: str, template: prisma.models.Expert
+) -> None:
+    """Install the skills a published template carries in its package.
+
+    A published template's skills are not Hub listings — they came out of the
+    admin's own expert — so the only place they exist is the stored zip. Best
+    effort, like every other install here: a hire missing one skill is better
+    than no hire.
+    """
+    if not template.publishedPackage:
+        return
+    try:
+        package = await run_in_threadpool(
+            package_from_zip, template.publishedPackage.decode()
+        )
+    except Exception:
+        logger.exception(f"Published package of template #{template.id} is unreadable")
+        return
+    failed = await install_package_skills(
+        user_id, expert_id, package, package.manifest.skills
+    )
+    if failed:
+        logger.warning(
+            f"{len(failed)} packaged skill(s) failed to install on expert "
+            f"#{expert_id}: {', '.join(failed)}"
+        )
 
 
 async def _install_bundled_skills(

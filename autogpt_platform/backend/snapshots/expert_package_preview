@@ -1,0 +1,39 @@
+{
+  "avatar_kind": "none",
+  "errors": [],
+  "manifest": {
+    "avatar": null,
+    "day_one": [],
+    "format_version": 1,
+    "identity": {
+      "bio": null,
+      "categories": [],
+      "color": "",
+      "name": "Maria Ops",
+      "role": "",
+      "tagline": null
+    },
+    "skills": [],
+    "soul": {
+      "boundaries": "",
+      "identity": "",
+      "voice_preferences": "",
+      "voice_samples": []
+    },
+    "tool_profile": null,
+    "workflows": []
+  },
+  "skills": [],
+  "warnings": [],
+  "workflows": [
+    {
+      "index": 0,
+      "name": "Morning digest",
+      "reason": null,
+      "schedule_cron": null,
+      "source": "store",
+      "store_listing_slug": null,
+      "store_listing_version_id": "ver-1"
+    }
+  ]
+}

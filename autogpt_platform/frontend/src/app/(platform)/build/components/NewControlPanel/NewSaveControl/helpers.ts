@@ -1,4 +1,4 @@
-import { Graph } from "@/app/api/__generated__/models/graph";
+import { GraphInput } from "@/app/api/__generated__/models/graphInput";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { Link } from "@/app/api/__generated__/models/link";
 import { NodeModel } from "@/app/api/__generated__/models/nodeModel";
@@ -7,7 +7,7 @@ import { deepEquals } from "@rjsf/utils";
 
 export const graphsEquivalent = (
   saved: GraphModel | undefined,
-  current: Graph | undefined,
+  current: GraphInput | undefined,
 ): boolean => {
   if (!saved || !current) {
     return false;

@@ -1,8 +1,11 @@
 import { Connection } from "@xyflow/react";
 import { Block, BlockUIType, Link } from "./types";
-import { Graph } from "@/app/api/__generated__/models/graph";
+import { GraphInput } from "@/app/api/__generated__/models/graphInput";
 
-export function removeAgentInputBlockValues(graph: Graph, blocks: Block[]) {
+export function removeAgentInputBlockValues(
+  graph: GraphInput,
+  blocks: Block[],
+) {
   const inputBlocks = graph.nodes?.filter(
     (node) =>
       blocks.find((b) => b.id === node.block_id)?.uiType === BlockUIType.INPUT,
@@ -39,7 +42,7 @@ export function formatEdgeID(conn: Link | Connection): string {
  *
  * **⚠️ Note:** not an actual safety feature, just intended to make the import UX more reliable.
  */
-export function sanitizeImportedGraph(graph: Graph): void {
+export function sanitizeImportedGraph(graph: GraphInput): void {
   updateBlockIDs(graph);
   removeCredentials(graph);
 }
@@ -60,7 +63,7 @@ function removeCredentials(obj: any): void {
 /** ⚠️ Remove after 2025-10-01 (one year after implementation in
  * [#8229](https://github.com/Significant-Gravitas/AutoGPT/pull/8229))
  */
-function updateBlockIDs(graph: Graph) {
+function updateBlockIDs(graph: GraphInput) {
   graph.nodes
     ?.filter((node) => node.block_id in updatedBlockIDMap)
     .forEach((node) => {

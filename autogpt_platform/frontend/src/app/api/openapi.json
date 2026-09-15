@@ -6469,6 +6469,93 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/import": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Import Expert Package",
+        "description": "Create the caller's own expert from an uploaded package.\n\nPartial by design: a skill or workflow that could not be installed comes\nback named rather than failing the whole import, because an expert missing\none of its agents is far more use than no expert at all.",
+        "operationId": "import_expert_package",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_expert_package"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertImportResult" }
+              }
+            }
+          },
+          "400": { "description": "The upload or the edits are not valid" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Active expert limit reached" },
+          "413": { "description": "The upload is too large" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+      }
+    },
+    "/api/experts/import/parse": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Parse Expert Package",
+        "description": "Describe an uploaded expert package without importing it.\n\nCreating the expert is a second request carrying the same file plus the\nuser's edits, so nothing is written until they have seen what is in it.",
+        "operationId": "parse_expert_package",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_parse_expert_package"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpertPackagePreview"
+                }
+              }
+            }
+          },
+          "400": { "description": "The upload is not an expert package" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "413": { "description": "The upload is too large" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+      }
+    },
     "/api/experts/pods": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7161,6 +7248,92 @@
         }
       }
     },
+    "/api/experts/{expert_id}/publish": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Publish Expert As Template",
+        "description": "Publish one of your own experts as a marketplace template.\n\nAdmin-only, and the expert has to be the admin's own — publishing\nsomebody else's would put their soul on the marketplace. Publishing again\nrefreshes the same template rather than making a second one.",
+        "operationId": "publish_expert",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "400": {
+            "description": "One of the expert's agents is not published"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/published": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Published Template",
+        "description": "The marketplace template this expert was published as, or null.",
+        "operationId": "get_published_template",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/Expert" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Published Template"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/runs": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7644,7 +7817,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Graph" }
+              "schema": { "$ref": "#/components/schemas/Graph-Input" }
             }
           }
         },
@@ -17814,6 +17987,38 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "Body_import_expert_package": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "A .expert.zip to import"
+          },
+          "edits": {
+            "type": "string",
+            "title": "Edits",
+            "description": "JSON ExpertImportEdits from the dialog",
+            "default": "{}"
+          }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_import_expert_package"
+      },
+      "Body_parse_expert_package": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "A .expert.zip to inspect"
+          }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_parse_expert_package"
+      },
       "Body_patchOauthUpdateAppStatus": {
         "properties": {
           "is_active": {
@@ -19364,7 +19569,7 @@
       },
       "CreateGraph": {
         "properties": {
-          "graph": { "$ref": "#/components/schemas/Graph" },
+          "graph": { "$ref": "#/components/schemas/Graph-Input" },
           "source": {
             "anyOf": [
               { "type": "string", "enum": ["builder", "upload"] },
@@ -21292,6 +21497,77 @@
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
       },
+      "ExpertImportResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_workflows": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Workflows"
+          },
+          "failed_skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Skills"
+          },
+          "warnings": {
+            "items": { "$ref": "#/components/schemas/ExpertPackageIssue" },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": ["expert"],
+        "title": "ExpertImportResult",
+        "description": "An honest partial import: the expert exists, and these parts of it did\nnot make it. Mirrors ``HireResult.failed_preloads``."
+      },
+      "ExpertManifest": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Format Version",
+            "default": 1
+          },
+          "identity": { "$ref": "#/components/schemas/PackagedIdentity" },
+          "soul": { "$ref": "#/components/schemas/PackagedSoul" },
+          "day_one": {
+            "items": { "$ref": "#/components/schemas/ExpertDayOneItem" },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Day One"
+          },
+          "skills": {
+            "items": { "$ref": "#/components/schemas/PackagedSkill" },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Skills"
+          },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/PackagedWorkflow" },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Workflows"
+          },
+          "avatar": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PackagedAvatar" },
+              { "type": "null" }
+            ]
+          },
+          "tool_profile": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/JsonValue" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["identity"],
+        "title": "ExpertManifest",
+        "description": "``expert.json``: the whole expert minus its bytes.\n\nClosed on purpose — see the module docstring. ``format_version`` is a\nliteral so a future format is refused by an old reader rather than\nhalf-understood."
+      },
       "ExpertOnboardingResponse": {
         "properties": {
           "type": {
@@ -21330,6 +21606,54 @@
         "required": ["question", "keyword"],
         "title": "ExpertOnboardingStep",
         "description": "One step of a freshly hired expert's intake card."
+      },
+      "ExpertPackageIssue": {
+        "properties": {
+          "code": { "type": "string", "title": "Code" },
+          "message": { "type": "string", "title": "Message" },
+          "path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": ["code", "message"],
+        "title": "ExpertPackageIssue",
+        "description": "Something the user should know before importing. A ``warning`` still\nimports; an ``error`` is why the dialog's confirm button is disabled."
+      },
+      "ExpertPackagePreview": {
+        "properties": {
+          "manifest": { "$ref": "#/components/schemas/ExpertManifest" },
+          "avatar_kind": {
+            "type": "string",
+            "enum": ["file", "url", "none"],
+            "title": "Avatar Kind"
+          },
+          "skills": {
+            "items": { "$ref": "#/components/schemas/PackagedSkillInfo" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/WorkflowResolution" },
+            "type": "array",
+            "title": "Workflows"
+          },
+          "warnings": {
+            "items": { "$ref": "#/components/schemas/ExpertPackageIssue" },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "errors": {
+            "items": { "$ref": "#/components/schemas/ExpertPackageIssue" },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": ["manifest", "avatar_kind"],
+        "title": "ExpertPackagePreview",
+        "description": "What an uploaded file turns out to hold, and what importing it would do."
       },
       "ExpertPod": {
         "properties": {
@@ -22126,7 +22450,7 @@
         "required": ["credential_ids"],
         "title": "GrantCredentialsRequest"
       },
-      "Graph": {
+      "Graph-Input": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
@@ -22171,6 +22495,97 @@
         },
         "type": "object",
         "required": ["name", "description"],
+        "title": "Graph",
+        "description": "Creatable graph model used in API create/update endpoints."
+      },
+      "Graph-Output": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version", "default": 1 },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
+          "sub_graphs": {
+            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
+            "type": "array",
+            "title": "Sub Graphs"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "readOnly": true
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "readOnly": true
+          },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger",
+          "has_human_in_the_loop",
+          "has_sensitive_action",
+          "trigger_setup_info"
+        ],
         "title": "Graph",
         "description": "Creatable graph model used in API create/update endpoints."
       },
@@ -23943,6 +24358,7 @@
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
+      "JsonValue": {},
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -25825,6 +26241,213 @@
         "required": ["schedules", "total"],
         "title": "OrphanedSchedulesListResponse",
         "description": "Response model for list of orphaned schedules"
+      },
+      "PackagedAvatar": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["file", "url"],
+            "title": "Kind"
+          },
+          "path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Path"
+          },
+          "url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["kind"],
+        "title": "PackagedAvatar",
+        "description": "Where the expert's picture comes from: a member of this archive, or a\nURL the importer may keep as-is. Never both, so there is nothing to\nreconcile on import."
+      },
+      "PackagedFileInfo": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "PackagedFileInfo"
+      },
+      "PackagedIdentity": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Role",
+            "default": ""
+          },
+          "tagline": {
+            "anyOf": [
+              { "type": "string", "maxLength": 160 },
+              { "type": "null" }
+            ],
+            "title": "Tagline"
+          },
+          "bio": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Bio"
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Color",
+            "default": ""
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Categories"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name"],
+        "title": "PackagedIdentity",
+        "description": "Who the expert is on the outside — the roster card, before anyone opens\na chat."
+      },
+      "PackagedSkill": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["slug", "name"],
+        "title": "PackagedSkill",
+        "description": "A skill's card in the manifest; its files live under ``skills/<slug>/``\nin the archive, and the reader refuses a manifest and a tree that disagree."
+      },
+      "PackagedSkillInfo": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "files": {
+            "items": { "$ref": "#/components/schemas/PackagedFileInfo" },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": ["slug", "name", "description"],
+        "title": "PackagedSkillInfo",
+        "description": "A skill as the review dialog lists it: the card, plus the files that\nwould be written, so \"3 files\" is answerable without unzipping again."
+      },
+      "PackagedSoul": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 10000,
+            "title": "Identity",
+            "default": ""
+          },
+          "voice_preferences": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Voice Preferences",
+            "default": ""
+          },
+          "boundaries": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Boundaries",
+            "default": ""
+          },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Voice Samples"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PackagedSoul",
+        "description": "Everything the expert is told about itself. Lengths mirror\n``ExpertSoulUpdate`` so a manifest that validates here still validates when\nthe importer writes it."
+      },
+      "PackagedWorkflow": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "title": "Description",
+            "default": ""
+          },
+          "store_listing_slug": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Store Listing Slug"
+          },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id"
+          },
+          "creator_username": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Creator Username"
+          },
+          "graph": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Graph-Output" },
+              { "type": "null" }
+            ]
+          },
+          "schedule_cron": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200 },
+              { "type": "null" }
+            ],
+            "title": "Schedule Cron"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PackagedWorkflow",
+        "description": "One of the expert's agents, carried twice over: as a marketplace\nreference and as the graph itself.\n\nThe reference is preferred on import because it keeps the new owner on the\npublished agent (updates, credits, attribution); the embedded graph is the\nfallback for a listing the importer cannot see."
       },
       "Pagination": {
         "properties": {
@@ -32219,6 +32842,37 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkflowResolution": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "name": { "type": "string", "title": "Name" },
+          "source": {
+            "type": "string",
+            "enum": ["store", "graph", "unresolvable"],
+            "title": "Source"
+          },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id"
+          },
+          "store_listing_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Slug"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["index", "name", "source"],
+        "title": "WorkflowResolution",
+        "description": "Which of a workflow's two sources this installation would actually use.\n\n``index`` is the workflow's position in the manifest, which is how the\nimport request names the ones the user removed."
       },
       "WorkspaceFile": {
         "properties": {

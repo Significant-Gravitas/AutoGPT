@@ -1,15 +1,19 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 import prisma.models
-from fastapi import APIRouter, Depends, Response, Security
+from fastapi import APIRouter, Depends, File, Form, Response, Security, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
-from backend.api.features.experts.expert_zip import zip_from_package
+from backend.api.features.experts.expert_zip import (
+    MAX_ZIP_BYTES,
+    package_from_zip,
+    zip_from_package,
+)
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -39,10 +43,23 @@ from backend.api.features.experts.package_export import (
     build_expert_package,
     package_filename,
 )
+from backend.api.features.experts.package_import import (
+    ExpertImportEdits,
+    ExpertImportResult,
+    ExpertPackagePreview,
+    import_package,
+    preview_package,
+)
 from backend.api.features.experts.package_model import ExpertPackageError
 from backend.api.features.experts.portability_flag import (
     require_expert_portability_flag,
 )
+from backend.api.features.experts.publish import (
+    UnpublishedWorkflowsError,
+    publish_expert,
+    published_template,
+)
+from backend.api.features.upload_limits import read_upload
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -320,6 +337,137 @@ async def list_expert_setup_items(
     return await expert_setup.list_setup_items(user_id)
 
 
+@router.post(
+    "/import/parse",
+    operation_id="parse_expert_package",
+    dependencies=[Depends(require_expert_portability_flag)],
+    responses={
+        400: {"description": "The upload is not an expert package"},
+        413: {"description": "The upload is too large"},
+    },
+)
+async def parse_expert_package(
+    file: UploadFile = File(..., description="A .expert.zip to inspect"),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertPackagePreview:
+    """Describe an uploaded expert package without importing it.
+
+    Creating the expert is a second request carrying the same file plus the
+    user's edits, so nothing is written until they have seen what is in it.
+    """
+    data = await read_upload(file, MAX_ZIP_BYTES)
+    try:
+        package = await run_in_threadpool(package_from_zip, data)
+    except ExpertPackageError as exc:
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
+        )
+    return await preview_package(user_id, package)
+
+
+@router.post(
+    "/import",
+    operation_id="import_expert_package",
+    status_code=201,
+    dependencies=[Depends(require_expert_portability_flag)],
+    responses={
+        400: {"description": "The upload or the edits are not valid"},
+        409: {"description": "Active expert limit reached"},
+        413: {"description": "The upload is too large"},
+    },
+)
+async def import_expert_package(
+    file: UploadFile = File(..., description="A .expert.zip to import"),
+    edits: str = Form("{}", description="JSON ExpertImportEdits from the dialog"),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertImportResult:
+    """Create the caller's own expert from an uploaded package.
+
+    Partial by design: a skill or workflow that could not be installed comes
+    back named rather than failing the whole import, because an expert missing
+    one of its agents is far more use than no expert at all.
+    """
+    data = await read_upload(file, MAX_ZIP_BYTES)
+    try:
+        package = await run_in_threadpool(package_from_zip, data)
+    except ExpertPackageError as exc:
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
+        )
+    try:
+        parsed = ExpertImportEdits.model_validate_json(edits)
+    except ValidationError as exc:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f"The review edits payload is not valid: {exc}"
+        )
+    try:
+        return await import_package(user_id, package, parsed)
+    except experts_db.ExpertLimitExceededError as exc:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": exc.limit},
+        )
+
+
+@router.post(
+    "/{expert_id}/publish",
+    operation_id="publish_expert",
+    status_code=201,
+    dependencies=[
+        Security(autogpt_auth_lib.requires_admin_user),
+        Depends(require_expert_portability_flag),
+    ],
+    responses={
+        400: {"description": "One of the expert's agents is not published"},
+        404: {"description": "Expert not found"},
+    },
+)
+async def publish_expert_as_template(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    """Publish one of your own experts as a marketplace template.
+
+    Admin-only, and the expert has to be the admin's own — publishing
+    somebody else's would put their soul on the marketplace. Publishing again
+    refreshes the same template rather than making a second one.
+    """
+    row = await experts_db.get_owned_expert_row(user_id, expert_id)
+    if row is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    try:
+        template = await publish_expert(row)
+    except UnpublishedWorkflowsError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": "unpublished_workflows",
+                "workflows": exc.workflows,
+                "message": "Publish this agent first",
+            },
+        )
+    published = await experts_db.get_template(template.id)
+    if published is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    return published
+
+
+@router.get(
+    "/{expert_id}/published",
+    operation_id="get_published_template",
+    dependencies=[Depends(require_expert_portability_flag)],
+)
+async def get_published_template(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert | None:
+    """The marketplace template this expert was published as, or null."""
+    if await experts_db.get_owned_expert_row(user_id, expert_id) is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    template = await published_template(expert_id)
+    return await experts_db.get_template(template.id) if template else None
+
+
 @router.get(
     "/{expert_id}/package",
     operation_id="download_expert_package",
@@ -375,6 +523,10 @@ async def download_expert_template_package(
     row = await experts_db.get_template_row(template_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    if row.publishedPackage:
+        # Exactly what was published, rather than a rebuild from an expert
+        # that has since moved on.
+        return _zip_response(row.publishedPackage.decode(), row.name)
     return await _package_response(row)
 
 
@@ -385,11 +537,15 @@ async def _package_response(row: prisma.models.Expert) -> Response:
         raise fastapi.HTTPException(
             status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
+    return _zip_response(await run_in_threadpool(zip_from_package, package), row.name)
+
+
+def _zip_response(content: bytes, name: str) -> Response:
     return Response(
-        content=await run_in_threadpool(zip_from_package, package),
+        content=content,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{package_filename(row.name)}"'
+            "Content-Disposition": f'attachment; filename="{package_filename(name)}"'
         },
     )
 
