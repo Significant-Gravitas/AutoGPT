@@ -119,7 +119,7 @@ class CreateAgentTool(BaseTool):
                 "Please provide agent_json with the complete agent graph "
                 '(inline or as an "@@agptfile:<path>" string), or '
                 "agent_json_ref pointing at the workspace agent file. "
-                "Use find_block to discover blocks, then generate the JSON."
+                'Use find_capability(context="graph") to discover blocks, then generate the JSON.'
             ),
         )
         if resolve_error is not None:

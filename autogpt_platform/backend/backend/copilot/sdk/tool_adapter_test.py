@@ -12,7 +12,7 @@ from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -1220,23 +1220,22 @@ class TestCreateCopilotMcpServerHidden:
 
     @pytest.mark.asyncio
     async def test_hidden_tools_not_registered(self):
-        # Use a named tool (find_block is stable + load-bearing in the
-        # builder flow) so the test reads as a real scenario instead of
-        # "the first key in dict insertion order".
-        hidden_name = "find_block"
-        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_block"
+        # Use a named eager tool so the test reads as a real scenario
+        # instead of "the first key in dict insertion order".
+        hidden_name = "find_capability"
+        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_capability"
         server = create_copilot_mcp_server(hidden_tool_names=[hidden_name])
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
         # Other tools still register.
-        assert len(registered) >= len(TOOL_REGISTRY) - 1
+        assert len(registered) >= len(TOOL_REGISTRY) - len(DEFERRED_TOOL_NAMES) - 1
 
     @pytest.mark.asyncio
     async def test_no_hidden_tools_registers_all(self):
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
         for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
+            if short in BASELINE_ONLY_MCP_TOOLS or short in DEFERRED_TOOL_NAMES:
                 continue
             assert short in registered
 
@@ -1260,8 +1259,8 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         for blocked in BUILDER_BLOCKED_TOOLS:
             assert blocked not in registered
-        # edit_agent must remain so the model can populate the bound graph.
-        assert "edit_agent" in registered
+        # The registry tools must remain so the model can still act.
+        assert "run_capability" in registered
 
     @pytest.mark.asyncio
     async def test_unknown_hidden_name_is_silently_ignored(self):
@@ -1274,7 +1273,7 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         # All real tools still register.
         for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
+            if short in BASELINE_ONLY_MCP_TOOLS or short in DEFERRED_TOOL_NAMES:
                 continue
             assert short in registered
 

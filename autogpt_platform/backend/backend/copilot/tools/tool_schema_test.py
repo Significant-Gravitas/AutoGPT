@@ -277,19 +277,24 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
         "memory_forget_confirm",
     }
 
-    default = {t["function"]["name"] for t in get_available_tools()}
+    default = {
+        t["function"]["name"] for t in get_available_tools(include_deferred=True)
+    }
     assert memory_tool_names.issubset(
         default
     ), "sanity: memory_* tools should be present when no groups disabled"
 
     filtered = {
-        t["function"]["name"] for t in get_available_tools(disabled_groups=["graphiti"])
+        t["function"]["name"]
+        for t in get_available_tools(
+            include_deferred=True, disabled_groups=["graphiti"]
+        )
     }
     assert not (
         memory_tool_names & filtered
     ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
     # Non-graphiti tools stay visible.
-    assert "find_block" in filtered
+    assert "find_capability" in filtered
     assert "TodoWrite" in filtered
 
 
@@ -304,8 +309,10 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         f"{MCP_TOOL_PREFIX}memory_forget_confirm",
     }
 
+    # Memory tools are deferred: never in the schema list, reached through
+    # run_capability instead.  Disabling the group must not resurrect them.
     default = set(get_copilot_tool_names())
-    assert memory_mcp_names.issubset(default)
+    assert not memory_mcp_names & default
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
     assert not (

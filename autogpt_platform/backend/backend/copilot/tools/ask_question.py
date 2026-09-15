@@ -24,7 +24,7 @@ class AskQuestionTool(BaseTool):
     """Ask the user one or more clarifying questions and wait for answers.
 
     Use this tool when the user's request is ambiguous and you need more
-    information before proceeding.  Call find_block or other discovery tools
+    information before proceeding.  Call find_capability or other discovery tools
     first to ground your questions in real platform options, then call this
     tool with concrete questions listing those options.
     """

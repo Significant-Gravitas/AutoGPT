@@ -163,7 +163,6 @@ def test_default_skills_load_from_disk():
     defaults = get_default_skills()
     names = {s.name for s in defaults}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # Bodies must be non-trivial — a zero-byte file silently kills the
     # whole feature for end users.
     for skill in defaults:
@@ -819,7 +818,6 @@ async def test_list_skills_anon_returns_defaults_only():
     assert isinstance(result, ListSkillsResponse)
     names = {s["name"] for s in result.skills}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # All anon results must be flagged as default.
     assert all(s["is_default"] for s in result.skills)
 

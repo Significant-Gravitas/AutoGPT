@@ -20,7 +20,7 @@ class MissingAutoCredentialsError(ValueError):
     """Raised when a picker-style field lacks a usable ``_credentials_id``.
 
     Distinct from generic ``ValueError`` so callers (e.g. the CoPilot
-    run_block path) can branch on "needs picker interaction" and return a
+    run_capability path) can branch on "needs picker interaction" and return a
     structured response instead of a bare error.
     """
 
@@ -91,7 +91,7 @@ async def acquire_auto_credentials(
                         f"Authentication missing for '{file_name}' in field "
                         f"'{field_name}'. The CoPilot chat will render the "
                         f"{provider.capitalize()} picker inline — pick the "
-                        f"file there; re-invoking `run_block` with a bare "
+                        f"file there; re-invoking `run_capability` with a bare "
                         f"id/URL will not authenticate."
                     )
             elif field_data is None and field_name not in input_data:
@@ -101,7 +101,7 @@ async def acquire_auto_credentials(
                 raise MissingAutoCredentialsError(
                     f"No file selected for '{field_name}'. The CoPilot chat "
                     f"will render the {provider.capitalize()} picker inline "
-                    f"— pick the file there; `run_block` will re-run "
+                    f"— pick the file there; `run_capability` will re-run "
                     f"automatically with the populated value."
                 )
             else:

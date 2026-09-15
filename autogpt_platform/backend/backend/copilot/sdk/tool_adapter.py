@@ -35,7 +35,12 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
+from backend.copilot.tools import (
+    DEFERRED_TOOL_NAMES,
+    TOOL_REGISTRY,
+    ToolGroup,
+    tool_names_in_groups,
+)
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -878,7 +883,12 @@ def create_copilot_mcp_server(
         # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
-        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
+        # Deferred tools are reached through run_capability, not by name.
+        if (
+            tool_name in hidden
+            or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or tool_name in DEFERRED_TOOL_NAMES
+        ):
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
@@ -1109,7 +1119,9 @@ def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
     return [
         f"{MCP_TOOL_PREFIX}{name}"
         for name in TOOL_REGISTRY.keys()
-        if name not in BASELINE_ONLY_MCP_TOOLS and name not in hidden
+        if name not in BASELINE_ONLY_MCP_TOOLS
+        and name not in DEFERRED_TOOL_NAMES
+        and name not in hidden
     ]
 
 
