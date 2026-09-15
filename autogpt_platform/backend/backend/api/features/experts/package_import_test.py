@@ -456,6 +456,35 @@ async def test_a_workflow_the_user_removed_is_not_installed(server: SpinTestServ
     assert [w.store_listing_version_id for w in result.expert.workflows] == [version_id]
 
 
+async def test_a_workflows_listing_is_resolved_once_per_import(
+    server: SpinTestServer, mocker
+):
+    """Asking twice let an unpublish between the two answers install the agent
+    from the marketplace and then stamp the row with no listing at all, and
+    cost a query per workflow to reach the same answer."""
+    resolve = mocker.spy(package_import, "_listing_version_id")
+    user = await _create_seed_user()
+    version_id = await _seed_store_listing(server)
+
+    result = await _import(
+        user.id,
+        _package(
+            PackagedWorkflow(
+                name="From the store", store_listing_version_id=version_id
+            ),
+            PackagedWorkflow(name="From the file", graph=_two_node_graph()),
+        ),
+    )
+
+    # Once each, not twice each: the row and the library agent now read the
+    # same answer instead of asking for it separately.
+    assert resolve.call_count == 2
+    assert [w.store_listing_version_id for w in result.expert.workflows] == [
+        version_id,
+        None,
+    ]
+
+
 async def test_a_workflow_that_cannot_be_installed_is_reported_not_fatal(
     server: SpinTestServer,
 ):

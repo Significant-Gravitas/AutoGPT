@@ -352,11 +352,16 @@ async def _install_workflows(
     installed: list[tuple[str, PackagedWorkflow, library_model.LibraryAgent]] = []
     for index, workflow in workflows:
         try:
-            agent = await _library_agent(user_id, workflow, index)
+            # Resolved once and reused: asking twice let an unpublish between
+            # the two answers install the agent from the marketplace and then
+            # stamp the row with no listing at all, and cost a query per
+            # workflow to arrive at the same answer.
+            version_id = await _listing_version_id(workflow)
+            agent = await _library_agent(user_id, workflow, index, version_id)
             row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
                     "expertId": expert_id,
-                    "storeListingVersionId": await _listing_version_id(workflow),
+                    "storeListingVersionId": version_id,
                     "libraryAgentId": agent.id,
                     "scheduleCron": workflow.schedule_cron,
                 }
@@ -388,11 +393,15 @@ async def _install_workflows(
 
 
 async def _library_agent(
-    user_id: str, workflow: PackagedWorkflow, index: int
+    user_id: str, workflow: PackagedWorkflow, index: int, version_id: str | None
 ) -> library_model.LibraryAgent:
     """The importer's own library agent for this workflow: the published one
-    when this marketplace has it, else a private copy of the embedded graph."""
-    if version_id := await _listing_version_id(workflow):
+    when this marketplace has it, else a private copy of the embedded graph.
+
+    ``version_id`` is resolved by the caller rather than here, so the agent and
+    the row it hangs off can never disagree about where the workflow came from.
+    """
+    if version_id:
         return await library_db.add_store_agent_to_library(version_id, user_id)
     if workflow.graph is None:
         raise ValueError(f"workflow {index} has no source to install")
