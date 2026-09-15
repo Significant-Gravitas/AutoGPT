@@ -179,7 +179,8 @@ async def test_a_reviewer_reads_a_pending_submission_through_the_admin_route(
 async def test_a_pending_submission_lists_its_files_for_the_reviewer(creator: str):
     await _publish(creator, [SCRIPT, PNG], approved_by=None)
 
-    [submission] = await skill_submission_db.list_pending_skill_submissions()
+    pending = await skill_submission_db.list_pending_skill_submissions()
+    [submission] = [s for s in pending if s.slug == SLUG]
 
     assert [(f.path, f.is_executable) for f in submission.files] == [
         (PNG.relative_path, False),
@@ -203,7 +204,11 @@ async def test_the_detail_response_names_each_file_type_and_mode(
 
     stored = {
         row.relativePath: row
-        for row in await prisma.models.SkillListingFile.prisma().find_many()
+        for row in await prisma.models.SkillListingFile.prisma().find_many(
+            where={
+                "SkillListingVersion": {"is": {"SkillListing": {"is": {"slug": SLUG}}}}
+            }
+        )
     }
     assert [(f.path, f.mime_type, f.is_executable) for f in details.files] == [
         (PNG.relative_path, stored[PNG.relative_path].mimeType, False),
@@ -243,9 +248,8 @@ async def _publish(
 
 
 @pytest.fixture
-async def creator(setup_test_user, server: SpinTestServer) -> str:
-    await prisma.models.SkillListingVersion.prisma().delete_many()
-    await prisma.models.SkillListing.prisma().delete_many()
+async def creator(setup_test_user, server: SpinTestServer):
+    await _drop_our_listing()
     await prisma.models.Profile.prisma().upsert(
         where={"userId": setup_test_user},
         data={
@@ -259,7 +263,19 @@ async def creator(setup_test_user, server: SpinTestServer) -> str:
             "update": {},
         },
     )
-    return setup_test_user
+    yield setup_test_user
+    # Left behind, these rows fail the emptiness guard in the store suites that
+    # sort after this one.
+    await _drop_our_listing()
+
+
+async def _drop_our_listing() -> None:
+    """By slug, not wholesale: this table is shared with every other checkout
+    here, where the starter listings are real rows."""
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"SkillListing": {"is": {"slug": SLUG}}}
+    )
+    await prisma.models.SkillListing.prisma().delete_many(where={"slug": SLUG})
 
 
 @pytest.fixture
