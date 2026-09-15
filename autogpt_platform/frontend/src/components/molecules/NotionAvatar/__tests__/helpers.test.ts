@@ -213,6 +213,18 @@ describe("colour tokens", () => {
     expect(discs.every(Boolean)).toBe(true);
   });
 
+  it("keeps every disc close to white", () => {
+    for (const { disc } of NOTION_COLORS) {
+      const channels = disc
+        .match(/[\da-f]{2}/gi)
+        ?.map((value) => Number.parseInt(value, 16));
+
+      expect(channels).toHaveLength(3);
+      const mean = (channels ?? []).reduce((sum, value) => sum + value, 0) / 3;
+      expect(mean).toBeGreaterThanOrEqual(244);
+    }
+  });
+
   it("has no opinion about a family it does not know", () => {
     expect(colorForToken("chartreuse-300")).toBeNull();
     expect(colorForToken(null)).toBeNull();
