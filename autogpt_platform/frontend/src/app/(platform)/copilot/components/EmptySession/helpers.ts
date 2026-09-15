@@ -1,4 +1,5 @@
 import type { User } from "@/lib/auth/types";
+import { getExpertRoleLabel as getExpertDisplayRoleLabel } from "@/services/experts/expert-role-label";
 
 export const AUTOPILOT_INTRO =
   "Tell me about your work — I'll find what to automate.";
@@ -32,7 +33,8 @@ function namesAPerson(role: string) {
 }
 
 export function getExpertRoleLabel(role: string) {
-  return namesAPerson(role) ? role : `${role} expert`;
+  const displayRole = getExpertDisplayRoleLabel(role);
+  return namesAPerson(displayRole) ? displayRole : `${displayRole} expert`;
 }
 
 export function getIntroLine(

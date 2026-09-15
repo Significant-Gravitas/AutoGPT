@@ -129,6 +129,7 @@ def seeded_avatar(name: str) -> tuple[dict[str, int], str]:
             parts[category] = 0
         else:
             parts[category] = 1 + int(random() * (count - 1))
+    parts["details"] = 0
     color = AVATAR_COLORS[int(random() * len(AVATAR_COLORS))]
     return parts, color
 

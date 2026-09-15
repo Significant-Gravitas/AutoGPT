@@ -1,5 +1,5 @@
 import {
-  notionAvatarUrlFor,
+  notionAvatarImageUrlFor,
   notionConfigForLegacyUrl,
 } from "@/components/molecules/NotionAvatar/helpers";
 
@@ -18,7 +18,7 @@ export async function GET(
   if (!config) return new Response("Not found", { status: 404 });
 
   return Response.redirect(
-    new URL(notionAvatarUrlFor(config), _request.url),
+    new URL(notionAvatarImageUrlFor(config), _request.url),
     308,
   );
 }

@@ -19,6 +19,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
@@ -183,7 +184,7 @@ export function ExpertTeamCard({
             )}
           >
             <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
-            <span className="truncate">{expert.role}</span>
+            <span className="truncate">{getExpertRoleLabel(expert.role)}</span>
           </Text>
           <Text
             variant="body"
