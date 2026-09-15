@@ -434,6 +434,23 @@ class TestTransfer:
         assert mock_sessions[0].metadata.origin == expected
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, roster, mock_turn, mock_sessions
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.handoff_to_expert.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_never_waits_for_a_result(self, roster, mock_turn, mock_sessions):
         await HandoffToExpertTool()._execute(
             user_id="alice",
@@ -509,7 +526,7 @@ class TestTerminalResponse:
     async def test_response_names_the_new_owner(self, roster, mock_turn, mock_sessions):
         r = await self._handoff()
         assert r.expert is not None and r.expert.name == "Bea"
-        assert "Sub-AutoPilot" not in r.message
+        assert "Subtask" not in r.message
         assert "Bea owns this now" in r.message
 
     @pytest.mark.asyncio
@@ -722,6 +739,7 @@ class TestExecuteToolEnforcesDisabledGroups:
                 session=session,
                 tool_call_id="call-1",
                 disabled_groups=["expert_admin"],
+                disabled_tools=(),
             )
 
         execute_mock.assert_not_awaited()
@@ -745,6 +763,7 @@ class TestExecuteToolEnforcesDisabledGroups:
                 session=session,
                 tool_call_id="call-1",
                 disabled_groups=(),
+                disabled_tools=(),
             )
 
         execute_mock.assert_awaited_once()

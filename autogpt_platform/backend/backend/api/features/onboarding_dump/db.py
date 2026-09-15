@@ -43,9 +43,10 @@ _IN_FLIGHT_STATUSES = frozenset(
 
 # Everything a single take owns. One row per user means a new take
 # inherits whatever the last one left here, so unless these are cleared
-# ``/recording``, ``/intro`` and ``/recommended-providers`` keep serving
-# the *previous* take's audio, transcript, greeting and picks whenever the
-# new one fails, is skipped or is abandoned half-recorded.
+# ``/recording``, ``/intro``, ``/recommended-providers`` and
+# ``/recommended-experts`` keep serving the *previous* take's audio,
+# transcript, greeting, picks and team whenever the new one fails, is
+# skipped or is abandoned half-recorded.
 #
 # ``greetingSeen`` belongs with them. It is only ever written True and
 # short-circuits the intro endpoint, so a new take that inherited it would
@@ -63,6 +64,7 @@ _TAKE_OWNED_RESET: dict[str, Any] = {
     "greeting": None,
     "suggestedPrompts": Json([]),
     "recommendedProviders": Json(None),
+    "recommendedExperts": Json(None),
     "greetingSeen": False,
 }
 

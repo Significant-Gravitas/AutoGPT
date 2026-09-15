@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import prisma.models
 
+from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
@@ -50,29 +51,6 @@ async def _user_credentials(user_id: str) -> list[Credentials]:
     from backend.integrations.creds_manager import IntegrationCredentialsManager
 
     return await IntegrationCredentialsManager().store.get_all_creds(user_id)
-
-
-def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
-    """Credential id → provider for picker-populated fields (``_credentials_id``).
-
-    These never appear in ``match_user_credentials_to_graph``, which only sees
-    explicit credential fields, yet the executor holds them to the same grants.
-    """
-    found: dict[str, str] = {}
-    for part in [graph, *graph.sub_graphs]:
-        for node in part.nodes:
-            if not node.input_default:
-                continue
-            fields = node.block.input_schema.get_auto_credentials_fields()
-            for info in fields.values():
-                value = node.input_default.get(info["field_name"])
-                if isinstance(value, dict) and isinstance(
-                    value.get("_credentials_id"), str
-                ):
-                    found[value["_credentials_id"]] = str(
-                        info.get("config", {}).get("provider", "unknown")
-                    )
-    return found
 
 
 async def _derive_from_workflows(
@@ -128,6 +106,28 @@ async def _derive_from_workflows(
             ):
                 derived.setdefault(credential_id, provider)
     return derived, is_complete
+
+
+def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
+    """Credential id → provider for picker-populated fields (``_credentials_id``).
+
+    These never appear in ``match_user_credentials_to_graph``, which only sees
+    explicit credential fields, yet the executor holds them to the same grants.
+    """
+    found: dict[str, str] = {}
+    for part in [graph, *graph.sub_graphs]:
+        for node in part.nodes:
+            if not node.input_default:
+                continue
+            for info in node.block.input_schema.get_auto_credentials_fields().values():
+                value = node.input_default.get(info["field_name"])
+                if isinstance(value, dict) and isinstance(
+                    value.get("_credentials_id"), str
+                ):
+                    found[value["_credentials_id"]] = str(
+                        info.get("config", {}).get("provider", "unknown")
+                    )
+    return found
 
 
 async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
@@ -253,6 +253,9 @@ async def grant_expert_credentials(
             ],
             skip_duplicates=True,
         )
+        # A missing grant is what usually kept a scheduled workflow from
+        # getting its schedule at install time; now is the moment to retry.
+        await scheduling.create_pending_workflow_schedules(user_id, expert_id)
     return _to_refs(await _grants(expert_id), credentials)
 
 

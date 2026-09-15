@@ -140,8 +140,8 @@ make help
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 **Notes:**
- 
-By default the application for different services run on the following ports: 
+
+By default the application for different services run on the following ports:
 
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
@@ -462,7 +462,7 @@ make format
 To run the tests:
 
 ```sh
-poetry run pytest -s 
+poetry run pytest -s
 ```
 
 ## Adding a New Agent Block

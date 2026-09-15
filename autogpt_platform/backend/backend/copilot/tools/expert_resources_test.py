@@ -5,6 +5,7 @@ import pytest
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.expert_resources import (
+    CredentialGrantRequestedResponse,
     ExpertCredentialsResponse,
     ExpertWorkflowResponse,
     GrantExpertCredentialTool,
@@ -47,7 +48,7 @@ def experts():
     )
     db.install_workflow = AsyncMock(return_value=_ref())
     db.settle_credential_seed = AsyncMock()
-    db.remove_workflow = AsyncMock()
+    db.remove_workflow = AsyncMock(return_value=[])
     db.grant_expert_credentials = AsyncMock(return_value=[_cred()])
     db.revoke_expert_credential = AsyncMock(return_value=[])
     with (
@@ -61,14 +62,30 @@ def _session(expert_id: str | None) -> ChatSession:
     return ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
 
 
-async def test_expert_installs_library_agent_onto_itself(experts):
+async def test_expert_cannot_install_out_of_the_accounts_library(experts):
+    """An unrestricted library_agent_id would let an expert reach any agent the
+    owner has — another expert's private workflows included — and then run it."""
     result = await InstallExpertWorkflowTool()._execute(
         "user-1", _session("expert-a"), library_agent_id="lib-1"
     )
+    assert isinstance(result, ErrorResponse) and result.error == "access_denied"
+    experts.install_workflow.assert_not_awaited()
+
+
+async def test_expert_installs_a_marketplace_agent_onto_itself(experts):
+    """A marketplace agent is public, so self-install stays open."""
+    details = MagicMock(store_listing_version_id="slv-9")
+    with patch(
+        f"{_PATH}.fetch_graph_from_store_slug",
+        new=AsyncMock(return_value=(MagicMock(), details)),
+    ):
+        result = await InstallExpertWorkflowTool()._execute(
+            "user-1", _session("expert-a"), username_agent_slug="creator/digest"
+        )
     assert isinstance(result, ExpertWorkflowResponse)
     assert result.expert_id == "expert-a"
     experts.install_workflow.assert_awaited_once_with(
-        "user-1", "expert-a", library_agent_id="lib-1", store_listing_version_id=None
+        "user-1", "expert-a", library_agent_id=None, store_listing_version_id="slv-9"
     )
 
 
@@ -259,9 +276,14 @@ async def test_expert_install_settles_its_grants_before_the_workflow_lands(exper
     experts.install_workflow.side_effect = lambda *_, **__: (
         order.append("install") or _ref()
     )
-    result = await InstallExpertWorkflowTool()._execute(
-        "user-1", _session("expert-a"), library_agent_id="lib-1"
-    )
+    details = MagicMock(store_listing_version_id="slv-9")
+    with patch(
+        f"{_PATH}.fetch_graph_from_store_slug",
+        new=AsyncMock(return_value=(MagicMock(), details)),
+    ):
+        result = await InstallExpertWorkflowTool()._execute(
+            "user-1", _session("expert-a"), username_agent_slug="creator/digest"
+        )
     assert isinstance(result, ExpertWorkflowResponse)
     assert order == ["settle", "install"]
     experts.settle_credential_seed.assert_awaited_once_with("user-1", "expert-a")
@@ -273,3 +295,24 @@ async def test_autopilot_install_does_not_touch_the_experts_grants(experts):
     )
     assert isinstance(result, ExpertWorkflowResponse)
     experts.settle_credential_seed.assert_not_awaited()
+
+
+async def test_a_grant_request_is_a_different_response_type_from_a_grant_list():
+    """Both carried ResponseType.EXPERT_CREDENTIALS while holding different
+    fields, so a consumer discriminating on `type` could not tell a request
+    for one credential from the list of everything granted."""
+    assert (
+        CredentialGrantRequestedResponse.model_fields["type"].default
+        != ExpertCredentialsResponse.model_fields["type"].default
+    )
+
+
+async def test_remove_says_which_triggers_it_stopped(experts):
+    """A cron that survives the uninstall keeps spending, so the tool has to
+    name what it stopped rather than report a clean removal."""
+    experts.remove_workflow = AsyncMock(return_value=["Daily wire transfer"])
+    result = await RemoveExpertWorkflowTool()._execute(
+        "user-1", _session("expert-a"), library_agent_id="lib-1"
+    )
+    assert isinstance(result, ExpertWorkflowResponse)
+    assert "Also stopped: Daily wire transfer." in result.message

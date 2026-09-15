@@ -120,6 +120,8 @@ def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
 class AgentOutputTool(BaseTool):
     """Tool for retrieving execution outputs from user's library agents."""
 
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "view_agent_output"

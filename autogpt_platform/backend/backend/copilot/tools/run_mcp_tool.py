@@ -21,12 +21,24 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
 )
-from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url_host
+from backend.copilot.tools.utils import (
+    build_missing_credentials_from_field_info,
+    sanitize_provider_message,
+)
+from backend.data.db_accessors import experts_db
+from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    validate_url_host,
+)
 
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants
 from .models import (
+    CredentialRejection,
     ErrorResponse,
     MCPToolInfo,
     MCPToolOutputResponse,
@@ -36,7 +48,6 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import scope_credentials_to_expert
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +59,6 @@ _TOOL_DESCRIPTION_MAX_CHARS = 300
 _ERROR_SCHEMA_MAX_CHARS = 4000
 _DISCOVERY_MAX_TOOLS = 100
 _PARAMS_SUMMARY_MAX_CHARS = 400
-
-# HTTP status codes that indicate authentication is required
-_AUTH_STATUS_CODES = {401, 403}
 
 
 def _service_name(host: str) -> str:
@@ -217,11 +225,25 @@ class RunMCPToolTool(BaseTool):
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
-        creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        if creds is not None and session.expert_id is not None:
-            if not await scope_credentials_to_expert(
-                user_id, session.expert_id, [creds]
-            ):
+        normalized_url = normalize_mcp_url(server_url)
+        # Narrow before ranking, not after: an ungranted manual token outranks a
+        # granted OAuth row, so checking the single best match would refuse an
+        # expert that does have usable access to this server.
+        allowed_ids: set[str] | None = None
+        if session.expert_id is not None:
+            allowed_ids = set(
+                await experts_db().expert_allowed_credential_ids(
+                    user_id, session.expert_id
+                )
+            )
+        creds = await auto_lookup_mcp_credential(
+            user_id, normalized_url, allowed_ids=allowed_ids
+        )
+        if creds is None and allowed_ids is not None:
+            ungranted = await auto_lookup_mcp_credential(user_id, normalized_url)
+            if ungranted is not None:
+                # The card rather than a bare error: the expert can ask for the
+                # credential from it, which is what this PR adds.
                 return await self._build_setup_requirements(
                     server_url,
                     session_id,
@@ -229,9 +251,9 @@ class RunMCPToolTool(BaseTool):
                     expert_id=session.expert_id,
                     message=(
                         f"The account's credential for {server_host(server_url)} "
-                        f"(credential_id={creds.id}) is not granted to this expert. "
-                        "Ask the user to grant it from the card, on the expert's "
-                        "Integrations page, or from personal AutoPilot with "
+                        f"(credential_id={ungranted.id}) is not granted to this "
+                        "expert. Ask the user to grant it from the card, on the "
+                        "expert's Integrations page, or from personal AutoPilot with "
                         "grant_expert_credential."
                     ),
                 )
@@ -260,15 +282,21 @@ class RunMCPToolTool(BaseTool):
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
+            rejection: CredentialRejection | None = None
             if client is not None and creds is not None:
                 probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in _AUTH_STATUS_CODES:
-                            await invalidate_mcp_credential(user_id, creds.id)
+                        if probe_err.status_code in AUTH_STATUS_CODES:
                             connected = False
+                            if (
+                                probe_err.status_code
+                                in CREDENTIAL_REJECTED_STATUS_CODES
+                            ):
+                                rejection = _rejection(creds, probe_err)
+                                await invalidate_mcp_credential(user_id, creds.id)
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -302,6 +330,7 @@ class RunMCPToolTool(BaseTool):
                 server_url,
                 session_id,
                 connected=connected,
+                rejection=rejection,
                 user_id=user_id,
                 expert_id=session.expert_id,
             )
@@ -328,20 +357,28 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES:
-                # 401/403 → user needs to (re)authenticate.  Fire the setup
-                # card whether or not we have a stored credential row: when
-                # `creds` is None the user has never connected, and when it
-                # is non-None the stored token has been revoked / expired
-                # server-side without us knowing (refresh_if_needed only
-                # refreshes when local `access_token_expires_at` says so).
-                # If we have a stale row, delete it so the next attempt
-                # doesn't loop on the same dead token.
-                if creds is not None:
+            if e.status_code in AUTH_STATUS_CODES:
+                credential_rejected = e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
+                # Fire the setup card whether or not a credential row exists.
+                rejected = (
+                    _rejection(creds, e)
+                    if creds is not None and credential_rejected
+                    else None
+                )
+                if creds is not None and credential_rejected:
                     await invalidate_mcp_credential(user_id, creds.id)
+                # A 403 over a credential we deliberately kept means "this
+                # token is fine, it just may not call *this* tool". Rendering
+                # a bare Connect button there invites the user to re-paste the
+                # same working token: ``/token``'s probe 403s too, which is
+                # not a rejection, so it stores, returns 2xx and greens the
+                # pill — and the next call 403s again. Reporting it as
+                # connected breaks that loop.
                 return await self._build_setup_requirements(
                     server_url,
                     session_id,
+                    connected=creds is not None and not credential_rejected,
+                    rejection=rejected,
                     user_id=user_id,
                     expert_id=session.expert_id,
                 )
@@ -370,6 +407,9 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+        finally:
+            # Release any legacy session; a no-op on stateless servers.
+            await client.close()
 
     async def _discover_tools(
         self,
@@ -449,6 +489,7 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
             input_schema = await self._lookup_tool_schema(client, tool_name)
             try:
@@ -464,7 +505,9 @@ class RunMCPToolTool(BaseTool):
                     session_id=session_id,
                 )
 
-        result = await client.call_tool(tool_name, tool_arguments)
+        result = await client.call_tool(
+            tool_name, tool_arguments, input_schema=input_schema
+        )
 
         if result.is_error:
             error_text = " ".join(
@@ -550,6 +593,7 @@ class RunMCPToolTool(BaseTool):
         server_url: str,
         session_id: str,
         connected: bool = False,
+        rejection: CredentialRejection | None = None,
         *,
         user_id: str | None = None,
         expert_id: str | None = None,
@@ -602,11 +646,21 @@ class RunMCPToolTool(BaseTool):
 
         host = server_host(server_url)
         service = _service_name(host)
-        message = message or (
-            f"You're connected to {service}. Use Reconnect to swap accounts."
-            if connected
-            else f"To continue, sign in to {service} and approve access."
-        )
+        if message is None:
+            if rejection:
+                status = (
+                    f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+                )
+                message = (
+                    f"{service} rejected the saved credential{status}. "
+                    "Sign in again to continue."
+                )
+            elif connected:
+                message = (
+                    f"You're connected to {service}. Use Reconnect to swap accounts."
+                )
+            else:
+                message = f"To continue, sign in to {service} and approve access."
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -629,7 +683,18 @@ class RunMCPToolTool(BaseTool):
             ),
             graph_id=None,
             graph_version=None,
+            rejection=rejection,
         )
+
+
+def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
+    return CredentialRejection(
+        provider=ProviderName.MCP.value,
+        detail=sanitize_provider_message(str(error)),
+        status_code=error.status_code,
+        credential_id=creds.id,
+        credential_title=creds.title,
+    )
 
 
 def _summarize_params(schema: dict | None) -> str | None:

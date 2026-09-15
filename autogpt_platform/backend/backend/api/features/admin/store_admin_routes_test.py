@@ -350,3 +350,24 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         ]["in"]
     )
     assert SubmissionStatus.PENDING in statuses
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: client.get("/admin/skills/submissions"),
+        lambda: client.post(f"/admin/skills/submissions/{SLV_ID}/review"),
+    ],
+    ids=["list-pending", "review"],
+)
+def test_skill_review_is_404_when_the_skills_hub_flag_is_off(
+    monkeypatch: pytest.MonkeyPatch, call
+) -> None:
+    """Admin review sits behind the same gate as the creator-facing routes;
+    without it an admin could approve listings nobody can see."""
+    monkeypatch.setenv("FORCE_FLAG_SKILLS_HUB", "false")
+
+    response = call()
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Feature not available"

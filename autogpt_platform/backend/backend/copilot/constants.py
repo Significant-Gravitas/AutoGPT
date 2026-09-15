@@ -1,5 +1,10 @@
 """Shared constants for the CoPilot module."""
 
+# Otto is the account's built-in helper — the identity every session
+# without an expert speaks as, and the fixed author of the morning briefing.
+AUTOPILOT_NAME = "Otto"
+AUTOPILOT_ROLE = "Head of AI"
+
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
 # impossible, avoiding false-positive marker detection in normal conversation.

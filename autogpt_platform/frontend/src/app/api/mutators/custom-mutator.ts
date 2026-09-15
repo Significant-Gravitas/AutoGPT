@@ -36,7 +36,13 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
     return c.json();
   }
 
-  if (contentType && contentType.includes("application/pdf")) {
+  if (
+    contentType &&
+    (contentType.includes("application/pdf") ||
+      contentType.includes("application/zip") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/"))
+  ) {
     return c.blob() as Promise<T>;
   }
 
@@ -131,8 +137,23 @@ export const customMutator = async <
       responseData = { error: "Failed to parse response" };
     }
 
+    const rawDetail = responseData?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail
+          .map((e: unknown) =>
+            e && typeof e === "object" && "msg" in e
+              ? String((e as { msg: unknown }).msg)
+              : JSON.stringify(e),
+          )
+          .join("; ")
+      : typeof rawDetail === "string"
+        ? rawDetail
+        : rawDetail != null
+          ? JSON.stringify(rawDetail)
+          : undefined;
+
     const errorMessage =
-      responseData?.detail ||
+      detail ||
       responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;
@@ -151,10 +172,11 @@ export const customMutator = async <
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<T["data"]>(response);
+  const responseData = await getBody<unknown>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(responseData);
+  const transformedData =
+    responseData instanceof Blob ? responseData : transformDates(responseData);
 
   return {
     status: response.status,

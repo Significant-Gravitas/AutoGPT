@@ -37,8 +37,8 @@ async def test_rest_lists_paused_active_expert_schedules(graph_only):
             ),
         ),
         patch(
-            "backend.api.features.v1.experts_db.owns_active_expert",
-            AsyncMock(return_value=True),
+            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
         ),
     ):
         ctx = RequestContext(
@@ -77,9 +77,10 @@ async def test_paused_archived_and_finished_one_shot_schedules_stay_hidden():
     )
     finished = base.model_copy(update={"id": "finished", "cron": ""})
     with patch(
-        "backend.api.features.schedule_visibility.experts_db.owns_active_expert",
-        AsyncMock(return_value=False),
-    ) as owns:
+        "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+        AsyncMock(return_value=set()),
+    ) as active:
         result = await visible_graph_schedules([base, archived, finished], "owner")
     assert result == [base]
-    owns.assert_awaited_once_with("owner", "archived-expert")
+    # One batched call for the whole listing, not one per archived expert.
+    active.assert_awaited_once_with("owner", {"archived-expert"})

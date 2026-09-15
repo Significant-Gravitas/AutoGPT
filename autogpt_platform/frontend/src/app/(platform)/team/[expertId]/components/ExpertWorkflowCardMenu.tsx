@@ -133,7 +133,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="ghost"
-                size="xs"
+                size="small"
                 disabled={isRemoving}
                 onClick={() => setIsRemoveOpen(false)}
               >
@@ -142,7 +142,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="destructive"
-                size="xs"
+                size="small"
                 loading={isRemoving}
                 onClick={handleRemove}
               >

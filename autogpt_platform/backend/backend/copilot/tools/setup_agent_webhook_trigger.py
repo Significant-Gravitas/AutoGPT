@@ -1,6 +1,6 @@
 """Tool for setting up a webhook-triggered preset for a library agent.
 
-Wraps the same logic as the ``POST /presets/setup-trigger`` route so AutoPilot
+Wraps the same logic as the ``POST /presets/setup-trigger`` route so Otto
 can set up a webhook trigger end-to-end and hand the user the correct ingress
 URL for manual-setup webhooks.
 

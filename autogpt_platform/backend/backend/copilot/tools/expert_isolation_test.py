@@ -57,7 +57,12 @@ async def test_find_library_agent_is_unfiltered_for_personal_autopilot():
     assert isinstance(result, AgentsFoundResponse) and result.count == 2
 
 
-async def test_block_credentials_are_matched_within_the_expert_grant():
+async def test_block_credentials_reach_the_matcher_under_the_session_expert():
+    """Pins the wiring only: the matcher is patched out, so this says nothing
+    about the filter itself. That is proved in ``utils_test.py``
+    (``test_a_block_run_in_an_expert_session_uses_only_a_granted_credential``
+    and its ungranted twin), where emptying ``scope_credentials_to_expert``
+    turns them red."""
     block = MagicMock()
     with (
         patch(

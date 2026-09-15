@@ -36,8 +36,8 @@ async def acquire_auto_credentials(
 ) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
 
-    ``expert_id`` restricts the picker credentials to that expert's grants, the
-    same allow-list the explicit credential fields are held to.
+    ``expert_id`` holds the picker credentials to that expert's grants, the same
+    allow-list the explicit credential fields go through.
 
     Returns:
         (extra_exec_kwargs, locks): kwargs to inject into block execution,

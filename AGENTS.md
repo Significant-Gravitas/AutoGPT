@@ -9,7 +9,7 @@ This guide provides context for coding agents when updating the **autogpt_platfo
 - `autogpt_platform/frontend` – Next.js + Typescript frontend.
 - `autogpt_platform/docker-compose.yml` – development stack.
 
-See `docs/content/platform/getting-started.md` for setup instructions.
+See `docs/platform/getting-started.md` for setup instructions.
 
 ## Code style
 
@@ -29,7 +29,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
+4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only (through the `Icon` atom)
 5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 7. **Keyboard handling**: Use `isKey(e, "Enter")` (or `isKey(e, "Enter", " ")`) from `@/lib/keyboard` instead of comparing `e.key`. It returns false while an IME is composing (Japanese, Chinese, Korean input), when Enter/Space/arrows belong to the input method, not the app. The `Input` atom drops composing keydowns before calling `onKeyDown` as a safety net; every handler on a raw `<input>`/`<textarea>`, a container, or `document` must use `isKey` itself. That atom-level guard is deliberately unconditional, so a modifier chord wired through `<Input onKeyDown>` is dropped mid-composition too — handle chords outside the atom. For focus traps and other containment handlers, which must keep holding a key even while composing, use `isKeyIgnoringComposition`. ESLint (`no-restricted-syntax`) flags direct `.key` comparisons and switches against the IME key names only; `// eslint-disable-next-line no-restricted-syntax` is the escape hatch for a domain object that merely has a `.key` field (e.g. `column.key === "Delete"`). Modifier chords like Cmd+K, `.key.toLowerCase()` and `[...].includes(e.key)` are not checked and are out of scope, since an IME never owns them. Passing `e.key` on as a function argument (e.g. into a roving-focus helper) is also invisible to the rule — guard those handlers with `isComposingEvent(e)` at the top.
@@ -79,5 +79,7 @@ Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
 - Keep out-of-scope changes under 20% of the PR.
 - Ensure PR descriptions are complete.
 - For changes touching `data/*.py`, validate user ID checks or explain why not needed.
-- If adding protected frontend routes, update `frontend/lib/supabase/middleware.ts`.
+- If adding protected frontend routes, update `autogpt_platform/frontend/src/middleware.ts`
+  (matcher config) and `autogpt_platform/frontend/src/lib/auth/middleware.ts`
+  (better-auth protection logic).
 - Use the linear ticket branch structure if given codex/open-1668-resume-dropped-runs

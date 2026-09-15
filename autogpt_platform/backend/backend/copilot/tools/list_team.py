@@ -72,9 +72,14 @@ class ListTeamTool(BaseTool):
                 ),
                 session_id=session.session_id,
             )
+        # The grant count is the owner's view of its team: an expert picking
+        # someone to delegate to is served by the workflow count, and must not
+        # learn how much access its teammates hold.
+        show_credentials = session.expert_id is None
         lines = "; ".join(
             f"{e.name} — {e.role} (expert_id: {e.id}, "
-            f"{len(e.workflows)} workflow(s), {e.credential_count} credential(s))"
+            f"{len(e.workflows)} workflow(s)"
+            + (f", {e.credential_count} credential(s))" if show_credentials else ")")
             + (" [paused]" if e.schedules_paused_at is not None else "")
             for e in active
         )
@@ -96,7 +101,7 @@ class ListTeamTool(BaseTool):
                     avatar_url=e.avatar_url,
                     is_paused=e.schedules_paused_at is not None,
                     workflow_count=len(e.workflows),
-                    credential_count=e.credential_count,
+                    credential_count=(e.credential_count if show_credentials else None),
                 )
                 for e in active
             ],

@@ -88,6 +88,50 @@ describe("MCPToolDialog credential binding", () => {
     vi.clearAllMocks();
   });
 
+  it("surfaces a rejected authorization response instead of offering a token", async () => {
+    // The callback answers 400 when the RFC 9207 ``iss`` is missing or does
+    // not match the issuer bound at login.  That is a blocked mix-up, not an
+    // unsupported server, so it must not fall back to manual token entry.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2ExchangeOauthCodeForMcpTokens,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(200, {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      }),
+    );
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "auth-code", state: "st" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    vi.mocked(postV2ExchangeOauthCodeForMcpTokens).mockResolvedValueOnce(
+      apiResponse(400, {
+        detail:
+          "Authorization response issuer does not match the authorization server this login was started with.",
+      }),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    expect(await screen.findByText(/issuer does not match/i)).toBeDefined();
+    expect(screen.queryByLabelText("API token")).toBeNull();
+    expect(screen.queryByText(/does not support OAuth/)).toBeNull();
+  });
+
   it("attaches a manually stored credential to a tool from the same server", async () => {
     const {
       postV2DiscoverAvailableToolsOnAnMcpServer,
