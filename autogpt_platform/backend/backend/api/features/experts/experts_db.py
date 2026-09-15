@@ -1066,10 +1066,17 @@ async def create_raised_expert(
     failed_skill_installs = await raise_attachments.install_marketplace_skills(
         user_id, expert.id, resolved.skills
     )
-    uninstalled = {failure.id for failure in failed_skill_installs}
+    # Keyed on the whole attachment, not the bare id: the same slug can be
+    # attached from both the Hub and the user's own library, and a failed Hub
+    # install must not drop the library copy that succeeded.
+    uninstalled = {(f.kind, f.source, f.id) for f in failed_skill_installs}
     dropped_skills = set(
         await _copy_library_skills(user_id, expert.id, resolved.library_skill_names)
-    ) | {s.name for s in resolved.skills if s.attachment.id in uninstalled}
+    ) | {
+        s.name
+        for s in resolved.skills
+        if (s.attachment.kind, s.attachment.source, s.attachment.id) in uninstalled
+    }
     if dropped_skills:
         expert = (
             await prisma.models.Expert.prisma().update(

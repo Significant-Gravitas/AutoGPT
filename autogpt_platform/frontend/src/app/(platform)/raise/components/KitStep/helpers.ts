@@ -96,23 +96,37 @@ export function combineSearchHits({
     }
     return limitSearchHits(hits, query);
   }
-  for (const skill of marketplaceSkills) {
-    hits.push(marketplaceSkillHit(skill));
-  }
   const needle = query.trim().toLowerCase();
-  for (const skill of skills) {
-    if (!skillMatches(skill, needle)) continue;
-    hits.push({
-      key: `library:skill:${skill.name.toLowerCase()}`,
-      name: skill.name,
-      subtitle: "Library skill",
-      kind: "skill",
-      source: "library",
-      id: skill.name,
-      description: skill.description,
-    });
+  const libraryHits = skills
+    .filter((skill) => skillMatches(skill, needle))
+    .map(
+      (skill): SearchHit => ({
+        key: `library:skill:${skill.name.toLowerCase()}`,
+        name: skill.name,
+        subtitle: "Library skill",
+        kind: "skill",
+        source: "library",
+        id: skill.name,
+        description: skill.description,
+      }),
+    );
+  // Browsing with nothing typed, the Hub asks for exactly as many listings as
+  // there are slots, so pushing it first would bury the user's own skills —
+  // the half they are likeliest to be after. Interleaving keeps both visible.
+  // A typed query is ranked instead, so order in equals order out there.
+  return limitSearchHits(
+    interleave(libraryHits, marketplaceSkills.map(marketplaceSkillHit)),
+    query,
+  );
+}
+
+function interleave(left: SearchHit[], right: SearchHit[]): SearchHit[] {
+  const merged: SearchHit[] = [];
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    if (i < left.length) merged.push(left[i]);
+    if (i < right.length) merged.push(right[i]);
   }
-  return limitSearchHits(hits, query);
+  return merged;
 }
 
 export function skillMatches(skill: CopilotSkillInfo, needle: string) {

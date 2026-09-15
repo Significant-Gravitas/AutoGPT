@@ -27,8 +27,9 @@ const storeAgent = {
 
 const marketplaceSkill: MarketplaceSkill = {
   slug: "seo-playbook",
-  // The Hub pins a seeded listing's name to its slug, as the shelf does.
-  name: "seo-playbook",
+  // Deliberately unlike the slug: a listing's version name is its SKILL.md
+  // frontmatter name, and only the slug addresses the listing.
+  name: "SEO Playbook",
   description: "An SEO playbook",
   categories: ["content"],
   required_providers: [],
@@ -85,8 +86,8 @@ describe("kit helpers", () => {
     });
 
     expect(hits.map((hit) => hit.subtitle)).toEqual([
-      "Marketplace skill",
       "Library skill",
+      "Marketplace skill",
     ]);
     expect(hits.map((hit) => hit.name)).not.toContain("SEO Blog Writer");
     expect(
@@ -105,9 +106,30 @@ describe("kit helpers", () => {
     });
 
     expect(hit.id).toBe("seo-playbook");
-    expect(hit.name).toBe("Seo playbook");
+    expect(hit.name).toBe("SEO Playbook");
     expect(hit.kind).toBe("skill");
     expect(hit.source).toBe("marketplace");
+  });
+
+  test("keeps the user's own skills reachable when nothing is typed", () => {
+    const hits = combineSearchHits({
+      query: "",
+      storeAgents: [],
+      libraryAgents: [],
+      skills: [{ name: "my-skill", description: "Mine" }],
+      marketplaceSkills: [
+        marketplaceSkill,
+        { ...marketplaceSkill, slug: "cold-outreach", name: "Cold Outreach" },
+        { ...marketplaceSkill, slug: "brand-voice", name: "Brand Voice" },
+      ],
+      scope: "skills",
+    });
+
+    expect(hits.map((hit) => hit.id)).toEqual([
+      "my-skill",
+      "seo-playbook",
+      "cold-outreach",
+    ]);
   });
 
   test("limits default marketplace results to three items", () => {

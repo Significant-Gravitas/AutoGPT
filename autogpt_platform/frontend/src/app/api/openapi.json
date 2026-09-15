@@ -26981,7 +26981,7 @@
         "type": "object",
         "required": ["kind", "source", "id"],
         "title": "RaiseAttachment",
-        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace workflow), a library\nagent UUID (library workflow), or a skill slug — the caller's own skill\nfor ``library``, a Hub :class:`SkillListing` slug for ``marketplace``.\nEither skill slug ends up on ``Expert.skills``."
       },
       "RaiseAttachmentFailure": {
         "properties": {

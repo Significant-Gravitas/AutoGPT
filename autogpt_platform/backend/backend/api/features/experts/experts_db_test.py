@@ -1136,6 +1136,46 @@ async def test_a_failed_marketplace_skill_install_leaves_no_name_on_the_row(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    """The picker can attach one slug from both halves; the two differ only by
+    source, so the failed Hub install must not take the library copy with it."""
+    owner = await _create_seed_user()
+    monkeypatch.setattr(
+        raise_attachments.skill_db,
+        "install_marketplace_skill",
+        AsyncMock(side_effect=RuntimeError("storage down")),
+    )
+    with (
+        patch.object(
+            experts_db.raise_attachments,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db.raise_attachments,
+            "read_user_skill_with_body",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(name="My Own Playbook"),
+        ),
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug)
+            + _library_skill(hub_listing.slug),
+        )
+
+    assert raised.expert.skills == ["My Own Playbook"]
+    assert [(f.source, f.reason) for f in raised.failed_attachments] == [
+        ("marketplace", "installation_failed")
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_enforces_active_expert_cap(server: SpinTestServer):
     owner = await _create_seed_user()
     await prisma.models.Expert.prisma().create_many(

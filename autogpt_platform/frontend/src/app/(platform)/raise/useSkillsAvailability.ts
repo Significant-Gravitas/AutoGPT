@@ -24,14 +24,18 @@ export function useSkillsAvailability() {
     query: { select: (response) => okData(response)?.length ?? 0 },
   });
 
-  const isReady =
-    hub.ready && !library.isLoading && (!isHubOn || !marketplace.isLoading);
+  const isSettled =
+    hub.ready &&
+    !library.isLoading &&
+    !library.isError &&
+    (!isHubOn || (!marketplace.isLoading && !marketplace.isError));
 
   return {
-    isReady,
-    // An unsettled answer keeps the beat. It is the flow's last step, so
+    isReady: isSettled,
+    // An unanswered or failed query keeps the beat: a request that did not
+    // come back is not an empty catalogue. It is the flow's last step, so
     // dropping it moves the submit button — better late than flickering.
     hasSkillsToOffer:
-      !isReady || (marketplace.data ?? 0) > 0 || (library.data ?? 0) > 0,
+      !isSettled || (marketplace.data ?? 0) > 0 || (library.data ?? 0) > 0,
   };
 }

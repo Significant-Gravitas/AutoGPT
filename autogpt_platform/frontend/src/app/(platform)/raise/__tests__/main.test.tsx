@@ -1,6 +1,8 @@
 import { getCreateRaisedExpertMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { getGetV2ListMarketplaceSkillsMockHandler200 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
+import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
@@ -22,10 +24,14 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
+    useFlagStatus: (flag: string) => {
+      if (flag === "hire-experts") return setFlagStatusMock();
+      // The Hub is on here so the flow runs in the configuration production
+      // will be in: leaving it to the real hook disabled the listing query
+      // and left "Hub on and empty" — the case that drops the beat — untested.
+      if (flag === "skills-hub") return { enabled: true, ready: true };
+      return actual.useFlagStatus(flag as never);
+    },
   };
 });
 
@@ -68,6 +74,18 @@ const raisedExpert = {
 } as Expert;
 
 const LIBRARY_SKILL = { name: "seo-audit", description: "Audit landing pages" };
+
+function hubSkills(skills: MarketplaceSkill[]) {
+  return getGetV2ListMarketplaceSkillsMockHandler200({
+    skills,
+    pagination: {
+      total_items: skills.length,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 3,
+    },
+  });
+}
 
 function raiseResult(overrides: Partial<RaiseResult> = {}): RaiseResult {
   return { expert: raisedExpert, failed_attachments: [], ...overrides };
@@ -141,8 +159,8 @@ beforeEach(() => {
   pushMock.mockClear();
   notFoundMock.mockClear();
   // One library skill is enough to keep the skills beat in the flow; with
-  // none and the Hub off, the marketplace beat becomes the last one.
-  server.use(getListCopilotSkillsMockHandler([LIBRARY_SKILL]));
+  // none and an empty Hub, the marketplace beat becomes the last one.
+  server.use(getListCopilotSkillsMockHandler([LIBRARY_SKILL]), hubSkills([]));
 });
 
 afterEach(() => {
@@ -348,6 +366,8 @@ test("picking a weekly budget advances to marketplace workflows", async () => {
 
 test("drops the skills beat and raises from the marketplace step when there is nothing to add", async () => {
   let captured: unknown = null;
+  // The Hub is on for this file, so this is an empty catalogue plus an empty
+  // library — not a disabled flag.
   server.use(
     getListCopilotSkillsMockHandler([]),
     getCreateRaisedExpertMockHandler(async (info) => {
@@ -377,6 +397,35 @@ test("drops the skills beat and raises from the marketplace step when there is n
       "/copilot?expertId=raised-1&kickoff=1",
     ),
   );
+});
+
+test("keeps the skills beat when only the Hub has something to offer", async () => {
+  server.use(
+    getListCopilotSkillsMockHandler([]),
+    hubSkills([
+      {
+        slug: "cold-outreach",
+        name: "Cold Outreach",
+        description: "Write cold emails",
+        categories: ["sales"],
+        required_providers: [],
+        install_count: 2,
+      },
+    ]),
+  );
+
+  seedAtBudget();
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "$5 / week" }),
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "That's it" }, { timeout: 5000 }),
+  ).toBeDefined();
+  expect(
+    screen.queryByRole("button", { name: /Bring Otto to life/ }),
+  ).toBeNull();
 });
 
 test("back returns to the previous step and the draft survives", async () => {
