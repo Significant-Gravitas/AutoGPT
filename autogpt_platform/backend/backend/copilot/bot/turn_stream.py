@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
+from backend.copilot.prompting import NO_REPLY
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
@@ -33,7 +34,7 @@ from .adapters.base import (
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .prompt import clamp_thread_name
-from .text import NO_REPLY, format_batch, split_at_boundary
+from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +313,7 @@ class TurnStreamer:
             await adapter.stop_typing(target_id)
 
         if not sent_any_content and buffer.strip() == NO_REPLY:
-            # The model chose silence, as the turn's prompt allows. This is
+            # The model chose silence, as its system prompt allows. This is
             # not the "didn't produce a response" case below: that exists for
             # a model that emitted nothing, and this one said so. Whole message
             # only, and only when nothing was already flushed mid-stream, so a

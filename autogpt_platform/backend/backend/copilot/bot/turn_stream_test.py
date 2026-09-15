@@ -4,8 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.prompting import NO_REPLY
+
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
-from .text import NO_REPLY
 from .turn_stream import DraftStreamer, TurnStreamer
 
 _MODULE = "backend.copilot.bot.turn_stream"
@@ -174,7 +175,7 @@ class TestNoReply:
     """A reply of exactly NO_REPLY is the model choosing silence.
 
     The bot had no way to not answer: an empty reply became "AutoGPT didn't
-    produce a response." Now the turn's prompt offers NO_REPLY, and a reply that
+    produce a response." Now the bot session's system prompt offers NO_REPLY, and a reply that
     is exactly that, and nothing else, is not delivered.
     """
 

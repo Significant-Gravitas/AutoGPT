@@ -3,7 +3,6 @@
 from backend.data.sharing.workspace_refs import extract_artifact_links
 
 from .text import (
-    NO_REPLY,
     _balance_code_fences,
     format_batch,
     iter_chunks,
@@ -128,21 +127,6 @@ class TestFormatBatch:
         assert "[Multiple messages" in result
         assert "[From Alice (Discord user ID: a1)]\nfirst" in result
         assert "[From Bob (Discord user ID: b2)]\nsecond" in result
-
-    def test_every_turn_opens_with_the_no_reply_rule(self):
-        """The model has to be told silence is available before it reads the
-        message; the system prompt is static and shared with web chat, so the
-        rule rides on the bot turn instead."""
-        single = format_batch([("Bently", "123", "thanks!")], "discord")
-        multi = format_batch([("A", "1", "x"), ("B", "2", "y")], "slack")
-        for result in (single, multi):
-            first_line = result.split("\n", 1)[0]
-            assert first_line.startswith("[If this message needs no response")
-            assert f"exactly {NO_REPLY} as your entire message" in first_line
-            assert result.count(NO_REPLY) == 1, "stated once, not per sender"
-
-    def test_the_rule_is_exact_and_case_sensitive(self):
-        assert NO_REPLY == "NO_REPLY"
 
     def test_platform_name_is_capitalized(self):
         result = format_batch([("u", "1", "x")], "telegram")
