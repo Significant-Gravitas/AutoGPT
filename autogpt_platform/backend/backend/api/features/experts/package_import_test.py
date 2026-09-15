@@ -1,10 +1,13 @@
 """Tests for reading an uploaded package — above all, that reading one writes
 nothing, and that each workflow is honest about which source it would land as."""
 
+import uuid
+
 import prisma.models
 import pytest
 
 from backend.api.features.experts.errors import ACTIVE_EXPERT_LIMIT
+from backend.api.features.experts.expert_zip import package_from_zip, zip_from_package
 from backend.api.features.experts.experts_db_test import (
     _create_seed_user,
     _delete_seeded_rows,
@@ -13,18 +16,32 @@ from backend.api.features.experts.experts_db_test import (
     _seeded_user_ids,
 )
 from backend.api.features.experts.package_import import (
+    ExpertImportEdits,
+    ExpertImportResult,
+    ExpertImportWorkflowEdit,
+    import_package,
     preview_package,
     resolve_workflow,
 )
 from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
+    PackagedAvatar,
     PackagedIdentity,
     PackagedSkill,
+    PackagedSoul,
     PackagedWorkflow,
 )
-from backend.copilot.tools.skills import SkillFile, SkillPackage
-from backend.data.graph import Graph
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.io import AgentInputBlock
+from backend.copilot.tools.skills import (
+    SkillFile,
+    SkillLimitError,
+    SkillPackage,
+    read_user_skill_package,
+)
+from backend.data import graph as graph_db
+from backend.data.graph import Graph, Link, Node
 from backend.util.test import SpinTestServer
 
 SKILL_MD = "---\nname: research\ndescription: Digs.\n---\n\n# Research\n"
@@ -262,3 +279,282 @@ async def test_falling_back_to_the_graph_warns_only_when_a_listing_was_lost(
     assert [w.source for w in preview.workflows] == ["graph"]
     assert [w.code for w in preview.warnings] == expected
     assert preview.errors == []
+
+
+# ---------------------------------------------------------------------------
+# Creating the expert
+# ---------------------------------------------------------------------------
+
+
+def _two_node_graph() -> Graph:
+    """A graph with a link, so a round trip proves more than an empty shell:
+    reassignment has to rewrite the link's endpoints along with the nodes."""
+    source = Node(block_id=AgentInputBlock().id, input_default={"name": "input_1"})
+    sink = Node(block_id=StoreValueBlock().id)
+    return Graph(
+        name=f"Weekly rollup {uuid.uuid4().hex[:8]}",
+        description="Rolls the week up",
+        nodes=[source, sink],
+        links=[
+            Link(
+                source_id=source.id,
+                sink_id=sink.id,
+                source_name="result",
+                sink_name="input",
+            )
+        ],
+    )
+
+
+def _skill_package() -> ExpertPackage:
+    return ExpertPackage(
+        manifest=ExpertManifest(
+            identity=PackagedIdentity(name="Maria Ops", role="Ops lead"),
+            soul=PackagedSoul(identity="Careful and brief."),
+            skills=[
+                PackagedSkill(slug="research", name="Research"),
+                PackagedSkill(slug="digest", name="Digest"),
+            ],
+        ),
+        skills={
+            "research": SkillPackage(
+                skill_md=SKILL_MD,
+                files=[SkillFile(relative_path="refs/API.md", content=b"# API\n")],
+            ),
+            "digest": SkillPackage(skill_md=SKILL_MD.replace("research", "digest")),
+        },
+    )
+
+
+async def _import(user_id: str, package: ExpertPackage, **edits) -> ExpertImportResult:
+    result = await import_package(user_id, package, ExpertImportEdits(**edits))
+    _seeded_template_ids.append(result.expert.id)
+    return result
+
+
+async def test_an_import_creates_the_callers_own_expert(server: SpinTestServer):
+    user = await _create_seed_user()
+
+    result = await _import(user.id, _package())
+
+    assert result.expert.name == "Maria Ops"
+    assert result.expert.source_template_id is None
+    assert result.expert.is_template is False
+    assert result.failed_skills == [] and result.failed_workflows == []
+
+
+async def test_the_dialogs_rename_wins_over_the_file(server: SpinTestServer):
+    user = await _create_seed_user()
+
+    result = await _import(user.id, _package(), name="Maria (imported)")
+
+    assert result.expert.name == "Maria (imported)"
+
+
+async def test_skills_are_written_into_the_experts_own_folder(server: SpinTestServer):
+    user = await _create_seed_user()
+
+    result = await _import(user.id, _skill_package())
+
+    assert result.failed_skills == []
+    stored = await read_user_skill_package(
+        user.id, "research", expert_id=result.expert.id
+    )
+    assert stored is not None
+    assert [f.relative_path for f in stored.files] == ["refs/API.md"]
+    assert sorted(result.expert.skills) == ["digest", "research"]
+
+
+async def test_a_skill_the_user_removed_is_not_written(server: SpinTestServer):
+    user = await _create_seed_user()
+
+    result = await _import(user.id, _skill_package(), removed_skill_slugs=["digest"])
+
+    assert result.expert.skills == ["research"]
+    assert (
+        await read_user_skill_package(user.id, "digest", expert_id=result.expert.id)
+        is None
+    )
+
+
+async def test_a_skill_that_cannot_be_written_is_reported_not_fatal(
+    server: SpinTestServer, mocker
+):
+    """An expert missing one of its skills is far more use than no expert."""
+    user = await _create_seed_user()
+    mocker.patch(
+        "backend.api.features.experts.package_import.store_user_skill",
+        side_effect=SkillLimitError("full"),
+    )
+
+    result = await _import(user.id, _skill_package())
+
+    assert result.failed_skills == ["Research", "Digest"]
+    assert result.expert.id
+
+
+async def test_a_published_workflow_is_installed_from_the_marketplace(
+    server: SpinTestServer,
+):
+    user = await _create_seed_user()
+    version_id = await _seed_store_listing(server)
+
+    result = await _import(
+        user.id,
+        _package(
+            PackagedWorkflow(name="Morning digest", store_listing_version_id=version_id)
+        ),
+    )
+
+    assert result.failed_workflows == []
+    workflow = result.expert.workflows[0]
+    assert workflow.store_listing_version_id == version_id
+    assert workflow.library_agent_id is not None
+
+
+async def test_an_embedded_graph_becomes_the_importers_own_agent(
+    server: SpinTestServer,
+):
+    """Ids are reassigned, links included, so the copy is the importer's own
+    graph rather than a second reference to somebody else's."""
+    user = await _create_seed_user()
+    packaged = _two_node_graph()
+
+    result = await _import(
+        user.id, _package(PackagedWorkflow(name=packaged.name, graph=packaged))
+    )
+
+    assert result.failed_workflows == []
+    workflow = result.expert.workflows[0]
+    assert workflow.store_listing_version_id is None
+    assert workflow.graph_id is not None and workflow.graph_id != packaged.id
+    stored = await graph_db.get_graph(workflow.graph_id, None, user_id=user.id)
+    assert stored is not None
+    assert len(stored.nodes) == 2 and len(stored.links) == 1
+    assert {n.id for n in stored.nodes} == {
+        stored.links[0].source_id,
+        stored.links[0].sink_id,
+    }
+    assert {n.id for n in stored.nodes}.isdisjoint({n.id for n in packaged.nodes})
+
+
+async def test_a_workflow_the_user_removed_is_not_installed(server: SpinTestServer):
+    user = await _create_seed_user()
+    version_id = await _seed_store_listing(server)
+
+    result = await _import(
+        user.id,
+        _package(
+            PackagedWorkflow(name="Kept", store_listing_version_id=version_id),
+            PackagedWorkflow(name="Dropped", graph=_two_node_graph()),
+        ),
+        removed_workflow_indices=[1],
+    )
+
+    assert [w.store_listing_version_id for w in result.expert.workflows] == [version_id]
+
+
+async def test_a_workflow_that_cannot_be_installed_is_reported_not_fatal(
+    server: SpinTestServer,
+):
+    user = await _create_seed_user()
+
+    result = await _import(
+        user.id,
+        _package(PackagedWorkflow(name="Ghost", store_listing_version_id="not-here")),
+    )
+
+    assert result.failed_workflows == ["Ghost"]
+    assert result.expert.workflows == []
+
+
+async def test_a_schedule_is_only_created_when_the_user_turned_it_on(
+    server: SpinTestServer, mocker
+):
+    """The cadence travels in the file, but starting it is the importer's
+    decision — a file should not silently begin running on upload."""
+    create = mocker.patch(
+        "backend.api.features.experts.package_import.scheduling.create_workflow_schedule",
+        return_value=True,
+    )
+    user = await _create_seed_user()
+    version_id = await _seed_store_listing(server)
+    package = _package(
+        PackagedWorkflow(
+            name="Morning digest",
+            store_listing_version_id=version_id,
+            schedule_cron="40 7 * * *",
+        )
+    )
+
+    await _import(user.id, package)
+    create.assert_not_awaited()
+
+    await _import(
+        user.id,
+        package,
+        workflows=[ExpertImportWorkflowEdit(index=0, schedule_enabled=True)],
+    )
+    assert create.await_args.kwargs["cron"] == "40 7 * * *"
+
+
+async def test_an_embedded_avatar_goes_through_the_media_pipeline(
+    server: SpinTestServer, mocker
+):
+    """A package is user-supplied input whoever it came from, so its picture
+    gets the magic-byte check and the virus scan like any other upload."""
+    upload = mocker.patch(
+        "backend.api.features.experts.package_import.upload_media",
+        return_value="/api/store/media/u/images/a.png",
+    )
+    user = await _create_seed_user()
+    package = _package(avatar=PackagedAvatar(kind="file", path="avatar.png"))
+    package = package.model_copy(update={"avatar_bytes": b"\x89PNG"})
+
+    result = await _import(user.id, package)
+
+    assert result.expert.avatar_url == "/api/store/media/u/images/a.png"
+    assert upload.await_args.args[0] == user.id
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("/experts/maria.svg", "/experts/maria.svg"),
+        ("https://cdn.example/maria.png", None),
+    ],
+    ids=["site-relative-kept", "absolute-dropped"],
+)
+async def test_a_url_avatar_is_kept_only_when_it_is_ours(
+    server: SpinTestServer, url: str, expected: str | None
+):
+    user = await _create_seed_user()
+
+    result = await _import(
+        user.id, _package(avatar=PackagedAvatar(kind="url", url=url))
+    )
+
+    assert result.expert.avatar_url == expected
+
+
+async def test_an_exported_expert_survives_the_whole_round_trip(
+    server: SpinTestServer,
+):
+    """Export, zip, parse, import — with a real multi-node graph, which is the
+    only way the embedded-graph path is proven end to end."""
+    user = await _create_seed_user()
+    packaged = _two_node_graph()
+    original = _package(
+        PackagedWorkflow(name=packaged.name, graph=packaged),
+        skills=[PackagedSkill(slug="research", name="Research")],
+    ).model_copy(update={"skills": {"research": SkillPackage(skill_md=SKILL_MD)}})
+
+    restored = package_from_zip(zip_from_package(original))
+    preview = await preview_package(user.id, restored)
+    result = await _import(user.id, restored)
+
+    assert [w.source for w in preview.workflows] == ["graph"]
+    assert result.failed_workflows == [] and result.failed_skills == []
+    assert result.expert.name == "Maria Ops"
+    assert len(result.expert.workflows) == 1
+    assert result.expert.skills == ["research"]

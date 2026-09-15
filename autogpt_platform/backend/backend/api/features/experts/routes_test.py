@@ -43,6 +43,8 @@ from backend.api.features.experts.models import (
     RaiseResult,
 )
 from backend.api.features.experts.package_import import (
+    ExpertImportResult,
+    ExpertPackageIssue,
     ExpertPackagePreview,
     WorkflowResolution,
 )
@@ -2073,8 +2075,9 @@ def test_parse_expert_package_413s_on_a_body_over_the_cap(
         lambda: client.get("/experts/expert-1/package"),
         lambda: client.get("/experts/templates/template-1/package"),
         lambda: client.post("/experts/import/parse", files=_upload(b"not a zip")),
+        lambda: client.post("/experts/import", files=_upload(b"not a zip")),
     ],
-    ids=["download", "download-template", "parse"],
+    ids=["download", "download-template", "parse", "import"],
 )
 def test_every_portability_route_is_404_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch, call
@@ -2087,3 +2090,83 @@ def test_every_portability_route_is_404_when_the_flag_is_off(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Feature not available"
+
+
+# ─── Package import ────────────────────────────────────────────────────
+
+
+def _import_result() -> ExpertImportResult:
+    return ExpertImportResult(
+        expert=_make_expert(name="Maria Ops", source_template_id=None),
+        failed_workflows=["Ghost"],
+        warnings=[
+            ExpertPackageIssue(
+                code="workflow_not_in_marketplace",
+                message="'Digest' is not on this marketplace; a private copy "
+                "will be created instead.",
+            )
+        ],
+    )
+
+
+def test_import_expert_package_creates_the_expert_and_reports_what_failed(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_import = mocker.patch(
+        "backend.api.features.experts.routes.import_package",
+        new_callable=AsyncMock,
+        return_value=_import_result(),
+    )
+
+    response = client.post(
+        "/experts/import",
+        files=_upload(_expert_zip()),
+        data={"edits": json.dumps({"name": "Maria (imported)"})},
+    )
+
+    assert response.status_code == 201
+    assert mock_import.await_args.args[2].name == "Maria (imported)"
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_import_result"
+    )
+
+
+def test_import_expert_package_400s_on_edits_that_are_not_valid(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A dialog bug must not read as a broken package."""
+    mock_import = mocker.patch(
+        "backend.api.features.experts.routes.import_package", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/experts/import",
+        files=_upload(_expert_zip()),
+        data={"edits": json.dumps({"unknown_field": 1})},
+    )
+
+    assert response.status_code == 400
+    assert "review edits payload is not valid" in response.json()["detail"]
+    mock_import.assert_not_awaited()
+
+
+def test_import_expert_package_409s_at_the_active_expert_limit(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    """Byte-identical to what hiring and raising answer, so one frontend
+    handler covers every way of gaining an expert."""
+    mocker.patch(
+        "backend.api.features.experts.routes.import_package",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertLimitExceededError(20),
+    )
+
+    response = client.post("/experts/import", files=_upload(_expert_zip()))
+
+    assert response.status_code == 409
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_import_active_cap",
+    )

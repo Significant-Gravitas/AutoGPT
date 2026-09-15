@@ -1,9 +1,9 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 import prisma.models
-from fastapi import APIRouter, Depends, File, Response, Security, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, Security, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
@@ -44,7 +44,10 @@ from backend.api.features.experts.package_export import (
     package_filename,
 )
 from backend.api.features.experts.package_import import (
+    ExpertImportEdits,
+    ExpertImportResult,
     ExpertPackagePreview,
+    import_package,
     preview_package,
 )
 from backend.api.features.experts.package_model import ExpertPackageError
@@ -355,6 +358,50 @@ async def parse_expert_package(
             status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
     return await preview_package(user_id, package)
+
+
+@router.post(
+    "/import",
+    operation_id="import_expert_package",
+    status_code=201,
+    dependencies=[Depends(require_expert_portability_flag)],
+    responses={
+        400: {"description": "The upload or the edits are not valid"},
+        409: {"description": "Active expert limit reached"},
+        413: {"description": "The upload is too large"},
+    },
+)
+async def import_expert_package(
+    file: UploadFile = File(..., description="A .expert.zip to import"),
+    edits: str = Form("{}", description="JSON ExpertImportEdits from the dialog"),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertImportResult:
+    """Create the caller's own expert from an uploaded package.
+
+    Partial by design: a skill or workflow that could not be installed comes
+    back named rather than failing the whole import, because an expert missing
+    one of its agents is far more use than no expert at all.
+    """
+    data = await read_upload(file, MAX_ZIP_BYTES)
+    try:
+        package = await run_in_threadpool(package_from_zip, data)
+    except ExpertPackageError as exc:
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
+        )
+    try:
+        parsed = ExpertImportEdits.model_validate_json(edits)
+    except ValidationError as exc:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f"The review edits payload is not valid: {exc}"
+        )
+    try:
+        return await import_package(user_id, package, parsed)
+    except experts_db.ExpertLimitExceededError as exc:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": exc.limit},
+        )
 
 
 @router.get(
