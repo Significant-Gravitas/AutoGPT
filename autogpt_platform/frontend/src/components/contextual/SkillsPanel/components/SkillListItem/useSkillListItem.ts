@@ -8,12 +8,12 @@ import {
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import type { CopilotSkillDetail } from "@/app/api/__generated__/models/copilotSkillDetail";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { downloadFile } from "@/lib/download-file";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   buildSkillFileRows,
   describeSkill,
-  downloadFile,
   renderSkillMarkdown,
 } from "./helpers";
 

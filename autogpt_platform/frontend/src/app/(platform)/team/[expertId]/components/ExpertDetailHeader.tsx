@@ -5,7 +5,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { useExpertPackageDownload } from "@/services/experts/useExpertPackageDownload";
+import {
+  BubbleChatIcon,
+  Download01Icon,
+  PencilEdit02Icon,
+} from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
@@ -14,13 +19,28 @@ import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
 
 interface Props {
   expert: Expert;
+  /** ``EXPERT_PORTABILITY``: without it the export route 404s, so the button
+   *  would only ever produce an error toast. */
+  canExport: boolean;
   onEditSoul: () => void;
   onChat: () => void;
 }
 
-export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
+export function ExpertDetailHeader({
+  expert,
+  canExport,
+  onEditSoul,
+  onChat,
+}: Props) {
   const accent = getRaisedExpertAccent(expert.role, expert.color);
   const cover = getExpertCover(expert);
+  const { isDownloading, download } = useExpertPackageDownload({
+    kind: "expert",
+    id: expert.id,
+    name: expert.name,
+    workflowCount: expert.workflows.length,
+    skillCount: expert.skills.length,
+  });
 
   return (
     <header>
@@ -54,6 +74,19 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Icon-only: the atom shows the aria-label as a hover tooltip. */}
+          {canExport ? (
+            <Button
+              variant="icon"
+              size="icon"
+              aria-label="Download as file"
+              loading={isDownloading}
+              onClick={download}
+              data-testid="expert-export-button"
+            >
+              <Icon icon={Download01Icon} size={16} />
+            </Button>
+          ) : null}
           <Button
             variant="secondary"
             size="small"

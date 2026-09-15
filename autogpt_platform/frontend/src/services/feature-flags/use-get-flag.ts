@@ -22,6 +22,10 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  // Child of HIRE_EXPERTS: moving an expert in and out of the product as a
+  // ``.expert.zip``. Mirror of the backend ``Flag`` enum — the package
+  // endpoints 404 when off, so both sides must agree. Fail-closed.
+  EXPERT_PORTABILITY = "expert-portability",
   // Reveals the marketplace Skills shelf and the skill listing pages.
   SKILLS_HUB = "skills-hub",
   // Reveals the notification-preferences card on /settings/account. The card
@@ -80,6 +84,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.EXPERT_PORTABILITY]: false,
   [Flag.SKILLS_HUB]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
@@ -154,6 +159,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.HIRE_EXPERTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.EXPERT_PORTABILITY:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_EXPERT_PORTABILITY;
     case Flag.SETTINGS_NOTIFICATIONS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.ONBOARDING_BRAIN_DUMP:

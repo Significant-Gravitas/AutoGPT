@@ -49,6 +49,7 @@ export function ExpertPage() {
     hiredExpert,
     isLoggedIn,
     isHiringOpen,
+    canDownload,
     isActionReady,
     systemProviders,
     isLoading,
@@ -115,6 +116,7 @@ export function ExpertPage() {
         expert={expert}
         hiredExpert={hiredExpert}
         isLoggedIn={isLoggedIn}
+        canDownload={canDownload}
         isHiring={isHiring}
         onHire={hire}
       />
