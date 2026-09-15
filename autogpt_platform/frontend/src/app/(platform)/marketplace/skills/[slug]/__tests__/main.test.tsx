@@ -140,6 +140,29 @@ describe("Marketplace skill page", () => {
     ).toHaveLength(1);
   });
 
+  test("links a vendored skill to the repo it came from, with its licence", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: "coreyhaines31/marketingskills",
+        source_url:
+          "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+        license: "MIT",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const source = await screen.findByRole("link", {
+      name: "coreyhaines31/marketingskills",
+    });
+    expect(source.getAttribute("href")).toBe(
+      "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+    );
+    expect(source.parentElement?.textContent).toContain("(MIT)");
+  });
+
   test("installs in one click and offers the connect step afterwards", async () => {
     renderPage([]);
 

@@ -2,7 +2,12 @@ import prisma.enums
 import prisma.models
 import pytest
 
-from backend.copilot.tools.skills import ParsedSkill
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillFile,
+    SkillPackage,
+    render_skill_markdown,
+)
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 from backend.util.test import SpinTestServer
 
@@ -14,6 +19,18 @@ LIBRARY_SKILL = ParsedSkill(
     body="# Brand voice\nLead with positioning.\n",
     triggers=("brand voice",),
 )
+LIBRARY_FILES = [
+    SkillFile(relative_path="references/voice.md", content=b"# Voice\n"),
+]
+
+
+def _package(
+    skill: ParsedSkill | None, files: list[SkillFile] | None = None
+) -> SkillPackage | None:
+    """What the library hands a submission: the rendered SKILL.md plus siblings."""
+    if skill is None:
+        return None
+    return SkillPackage(skill_md=render_skill_markdown(skill), files=files or [])
 
 
 def _request(**overrides) -> skill_model.SkillSubmissionRequest:
@@ -29,7 +46,9 @@ def _request(**overrides) -> skill_model.SkillSubmissionRequest:
 @pytest.fixture(autouse=True)
 async def library_skill(mocker, server: SpinTestServer):
     mocker.patch.object(
-        skill_submission_db, "read_user_skill_with_body", return_value=LIBRARY_SKILL
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_package(LIBRARY_SKILL, LIBRARY_FILES),
     )
     await prisma.models.SkillListingVersion.prisma().delete_many()
     await prisma.models.SkillListing.prisma().delete_many()
@@ -80,11 +99,23 @@ async def test_publishing_without_a_marketplace_profile_is_refused(setup_test_us
     assert await prisma.models.SkillListing.prisma().count() == 0
 
 
+async def test_publishing_snapshots_the_package_files_with_the_version(creator):
+    """The files beside the SKILL.md are what its instructions point at, so a
+    submission without them would install a skill that cites missing docs."""
+    submission = await skill_submission_db.submit_skill(creator, _request())
+
+    files = await skill_db.version_files(submission.skill_listing_version_id)
+
+    assert [(f.relative_path, f.content) for f in files] == [
+        ("references/voice.md", b"# Voice\n")
+    ]
+
+
 async def test_publishing_a_skill_that_is_not_in_the_library_is_refused(
     creator, mocker
 ):
     mocker.patch.object(
-        skill_submission_db, "read_user_skill_with_body", return_value=None
+        skill_submission_db, "read_user_skill_package", return_value=_package(None)
     )
 
     with pytest.raises(NotFoundError):
@@ -146,12 +177,14 @@ async def test_republishing_leaves_the_live_version_serving_until_approved(
     )
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="brand-voice-guide",
-            description="Rewritten.",
-            body="# Rewritten\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=_package(
+            ParsedSkill(
+                name="brand-voice-guide",
+                description="Rewritten.",
+                body="# Rewritten\n",
+                triggers=(),
+            )
         ),
     )
 
@@ -167,12 +200,14 @@ async def test_editing_re_snapshots_the_library_skill(creator, mocker):
     submission = await skill_submission_db.submit_skill(creator, _request())
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="brand-voice-guide",
-            description="Tightened.",
-            body="# Tightened\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=_package(
+            ParsedSkill(
+                name="brand-voice-guide",
+                description="Tightened.",
+                body="# Tightened\n",
+                triggers=(),
+            )
         ),
     )
 
@@ -231,12 +266,14 @@ async def test_editing_cannot_repoint_the_submission_at_another_skill(creator, m
     submission = await skill_submission_db.submit_skill(creator, _request())
     mocker.patch.object(
         skill_submission_db,
-        "read_user_skill_with_body",
-        return_value=ParsedSkill(
-            name="other-skill",
-            description="Someone else's content.",
-            body="# Other\n",
-            triggers=(),
+        "read_user_skill_package",
+        return_value=_package(
+            ParsedSkill(
+                name="other-skill",
+                description="Someone else's content.",
+                body="# Other\n",
+                triggers=(),
+            )
         ),
     )
 

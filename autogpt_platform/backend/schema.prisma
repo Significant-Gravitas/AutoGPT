@@ -2144,6 +2144,12 @@ model SkillListingVersion {
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
 
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
+
   isDeleted   Boolean @default(false)
   isAvailable Boolean @default(true)
 
@@ -2154,6 +2160,7 @@ model SkillListingVersion {
   SkillListing   SkillListing @relation("SkillListingVersions", fields: [skillListingId], references: [id], onDelete: Cascade)
 
   ActiveFor SkillListing? @relation("SkillActiveVersion")
+  Files     SkillListingFile[]
 
   changesSummary String?
 
@@ -2171,6 +2178,24 @@ model SkillListingVersion {
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+// A file that ships beside a listing version's SKILL.md: the references and
+// templates its instructions point at. Snapshotted with the version, like the
+// body. The bytes sit in the row because a listing has no workspace to keep
+// them in, and a package is small text within the caps the copilot enforces.
+model SkillListingFile {
+  id String @id @default(uuid())
+
+  skillListingVersionId String
+  Version               SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  relativePath String
+  content      Bytes
+  sizeBytes    Int
+  isExecutable Boolean @default(false)
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs

@@ -12,8 +12,9 @@ not counted again.
 import prisma.enums
 import prisma.models
 import prisma.types
+from prisma import Base64
 
-from backend.copilot.tools.skills import list_user_skills, store_user_skill
+from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -80,14 +81,16 @@ async def get_live_skills(
 async def install_marketplace_skill(
     user_id: str, slug: str, *, expert_id: str | None = None
 ) -> skill_model.InstalledSkill:
-    """Copy a listing's SKILL.md into *expert_id*'s skill folder, or the
-    caller's own library when ``None``.
+    """Copy a listing's package — its SKILL.md and the files beside it — into
+    *expert_id*'s skill folder, or the caller's own library when ``None``.
 
     The listing's slug becomes the installed skill's name, so an install is
-    idempotent and a re-install picks up a newer approved version.
+    idempotent and a re-install picks up a newer approved version. The whole
+    package is passed, so a file the new version dropped is removed too.
     """
     listing = await _find_live_listing(slug)
     active = skill_model.active_version(listing)
+    files = await version_files(active.id)
     # A re-install overwrites the existing copy, so counting it again would
     # report installs rather than installers. Counting only: no healing.
     owned = await list_user_skills(user_id, expert_id, heal_missing=False)
@@ -99,6 +102,7 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        files=files,
         expert_id=expert_id,
     )
     if is_new:
@@ -108,6 +112,48 @@ async def install_marketplace_skill(
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
     )
+
+
+async def version_files(skill_listing_version_id: str) -> list[SkillFile]:
+    """The package files snapshotted with a version, ready to install."""
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": skill_listing_version_id},
+        order={"relativePath": "asc"},
+    )
+    return [
+        SkillFile(
+            relative_path=row.relativePath,
+            content=row.content.decode(),
+            is_executable=row.isExecutable,
+        )
+        for row in rows
+    ]
+
+
+async def replace_version_files(
+    skill_listing_version_id: str, files: list[SkillFile], tx=None
+) -> None:
+    """Make *files* the version's whole package, dropping what it had before.
+
+    Kept separate from the version row because the bytes would otherwise ride
+    along on every browse query that includes the version.
+    """
+    await prisma.models.SkillListingFile.prisma(tx).delete_many(
+        where={"skillListingVersionId": skill_listing_version_id}
+    )
+    if files:
+        await prisma.models.SkillListingFile.prisma(tx).create_many(
+            data=[
+                {
+                    "skillListingVersionId": skill_listing_version_id,
+                    "relativePath": f.relative_path,
+                    "content": Base64.encode(f.content),
+                    "sizeBytes": f.size_bytes,
+                    "isExecutable": f.is_executable,
+                }
+                for f in files
+            ]
+        )
 
 
 async def _find_live_listing(slug: str) -> prisma.models.SkillListing:

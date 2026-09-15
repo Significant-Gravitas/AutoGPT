@@ -1,9 +1,10 @@
 """Publishing a library skill as a marketplace listing, and reviewing it.
 
-A submission snapshots the creator's own ``SKILL.md`` at submit time, so
-editing the library copy afterwards never changes what installers get — only
-a new submission does. The live version stays served throughout: approval is
-what promotes a pending version, and a rejection leaves the shelf untouched.
+A submission snapshots the creator's whole skill package — the ``SKILL.md``
+and the files beside it — at submit time, so editing the library copy
+afterwards never changes what installers get — only a new submission does.
+The live version stays served throughout: approval is what promotes a pending
+version, and a rejection leaves the shelf untouched.
 """
 
 import datetime
@@ -11,11 +12,17 @@ import datetime
 import prisma.enums
 import prisma.models
 
-from backend.copilot.tools.skills import read_user_skill_with_body
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillFile,
+    parse_skill_markdown,
+    read_user_skill_package,
+)
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 
 from . import skill_model
+from .skill_db import replace_version_files
 
 
 async def submit_skill(
@@ -27,9 +34,7 @@ async def submit_skill(
     the live one, so what the marketplace serves only changes on approval.
     """
     slug = request.skill_name.strip().lower()
-    skill = await read_user_skill_with_body(user_id, slug)
-    if skill is None:
-        raise NotFoundError(f"Skill '{slug}' is not in your library")
+    skill, files = await _snapshot(user_id, slug)
     await _require_profile(user_id)
 
     async with transaction() as tx:
@@ -56,11 +61,13 @@ async def submit_skill(
                 "categories": request.categories,
                 "requiredProviders": request.required_providers,
                 "sourceSkillSlug": slug,
+                "license": _license_of(skill),
                 "changesSummary": request.changes_summary or "Initial submission",
                 "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                 "submittedAt": datetime.datetime.now(datetime.timezone.utc),
             }
         )
+        await replace_version_files(version.id, files, tx)
     return skill_model.SkillSubmission.from_db(version, listing)
 
 
@@ -103,25 +110,42 @@ async def edit_skill_submission(
             f"This submission publishes '{listing.slug}'. Publish '{slug}' as "
             "its own listing instead."
         )
-    skill = await read_user_skill_with_body(user_id, slug)
-    if skill is None:
-        raise NotFoundError(f"Skill '{slug}' is not in your library")
+    skill, files = await _snapshot(user_id, slug)
 
-    updated = await prisma.models.SkillListingVersion.prisma().update(
-        where={"id": version.id},
-        data={
-            "name": skill.name,
-            "description": skill.description,
-            "body": skill.body,
-            "triggers": list(skill.triggers),
-            "categories": request.categories,
-            "requiredProviders": request.required_providers,
-            "changesSummary": request.changes_summary or version.changesSummary,
-        },
-    )
-    if updated is None:
-        raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
+    async with transaction() as tx:
+        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
+            where={"id": version.id},
+            data={
+                "name": skill.name,
+                "description": skill.description,
+                "body": skill.body,
+                "triggers": list(skill.triggers),
+                "categories": request.categories,
+                "requiredProviders": request.required_providers,
+                "license": _license_of(skill),
+                "changesSummary": request.changes_summary or version.changesSummary,
+            },
+        )
+        if updated is None:
+            raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
+        await replace_version_files(updated.id, files, tx)
     return skill_model.SkillSubmission.from_db(updated, listing)
+
+
+async def _snapshot(user_id: str, slug: str) -> tuple[ParsedSkill, list[SkillFile]]:
+    """The caller's library skill as the package a submission publishes."""
+    package = await read_user_skill_package(user_id, slug)
+    skill = parse_skill_markdown(package.skill_md) if package else None
+    if package is None or skill is None:
+        raise NotFoundError(f"Skill '{slug}' is not in your library")
+    return skill, package.files
+
+
+def _license_of(skill: ParsedSkill) -> str | None:
+    value = skill.extra.get("license")
+    if value is None:
+        return None
+    return str(value).strip() or None
 
 
 async def review_skill_submission(
