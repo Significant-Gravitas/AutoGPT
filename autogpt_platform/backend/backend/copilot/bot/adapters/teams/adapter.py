@@ -687,21 +687,26 @@ def _mentions_bot(activity: dict[str, Any]) -> bool:
 def _mentionable_users(
     activity: dict[str, Any],
 ) -> tuple[tuple[str, str], ...]:
-    """Users the bot may ping back — those @mentioned in this message.
+    """Users the bot may ping back: the author, and those @mentioned in this
+    message.
 
-    Teams offers no cheap roster read, so the allowlist is exactly who the
-    author already addressed, which is the conservative reading of the shared
-    mention-safety contract.
+    Teams offers no cheap roster read, so beyond the author the allowlist is
+    exactly who the author already addressed, which is the conservative
+    reading of the shared mention-safety contract.
     """
     users: list[tuple[str, str]] = []
     own = _bot_identities(activity)
+    sender = activity.get("from") or {}
+    if sender.get("id") and sender.get("name") and not _is_own_id(sender["id"], own):
+        users.append((sender["name"], sender["id"]))
     for entity in activity.get("entities") or []:
         if entity.get("type") != "mention":
             continue
         mentioned = entity.get("mentioned") or {}
         user_id, name = mentioned.get("id"), mentioned.get("name")
         if user_id and name and not _is_own_id(user_id, own):
-            users.append((name, user_id))
+            if (name, user_id) not in users:
+                users.append((name, user_id))
     return tuple(users)
 
 

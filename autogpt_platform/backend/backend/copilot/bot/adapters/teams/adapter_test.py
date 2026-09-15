@@ -342,7 +342,7 @@ async def test_a_users_mention_is_not_mistaken_for_the_bot(app_id):
     ctx = await TeamsAdapter(MagicMock())._build_context(activity)
     assert ctx is not None
     assert ctx.bot_mentioned is False
-    assert ctx.mentionable_users == (("Bob", "29:bob"),)
+    assert ctx.mentionable_users == (("Ada", "29:user"), ("Bob", "29:bob"))
 
 
 @pytest.mark.asyncio
@@ -363,7 +363,16 @@ async def test_mentionable_users_exclude_the_bot(app_id):
     )
     ctx = await TeamsAdapter(MagicMock())._build_context(activity)
     assert ctx is not None
-    assert ctx.mentionable_users == (("Grace", "29:grace"),)
+    assert ctx.mentionable_users == (("Ada", "29:user"), ("Grace", "29:grace"))
+
+
+@pytest.mark.asyncio
+async def test_the_author_can_be_pinged_back_by_name_or_id(app_id):
+    """The bot is answering the author, so "@Ada" or "<@29:user>" back to
+    them must ping, even when the message mentioned nobody."""
+    ctx = await TeamsAdapter(MagicMock())._build_context(_activity())
+    assert ctx is not None
+    assert ctx.mentionable_users == (("Ada", "29:user"),)
 
 
 # ── Threading ──────────────────────────────────────────────────────
