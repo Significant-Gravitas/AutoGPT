@@ -3716,16 +3716,16 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
 ):
     """A rescope must reach hires that never diverged, and only those.
 
-    ``_backfill_hired_copies`` leaves role and identity alone because owners
-    edit them through the Soul tools, which would otherwise leave an existing
-    hire advertising the new bio while behaving like the old persona. The
-    migration closes that gap without overwriting anyone's edit."""
+    On a rescoped template the presentation and the persona move in one
+    write, so an edited hire keeps the old bio as well as the old role —
+    rather than advertising the new scope while behaving like the old one."""
     old_role, old_identity = "Marketing", "You are Maria, a generalist."
     template = await prisma.models.Expert.prisma().create(
         data={
             "name": f"Maria {uuid.uuid4().hex[:8]}",
             "role": old_role,
             "identity": old_identity,
+            "tagline": "Does all of marketing.",
             "isTemplate": True,
         }
     )
@@ -3749,10 +3749,14 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
     )
     rescoped = await prisma.models.Expert.prisma().update(
         where={"id": template.id},
-        data={"role": "SEO & Content", "identity": "You are Maria, an SEO lead."},
+        data={
+            "role": "SEO & Content",
+            "identity": "You are Maria, an SEO lead.",
+            "tagline": "Takes a keyword from brief to article.",
+        },
     )
     assert rescoped is not None
-    assert await seed._migrate_rescoped_hires(rescoped) == 1
+    assert await seed._backfill_hired_copies(rescoped) == 1
 
     moved = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
@@ -3762,6 +3766,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
         "SEO & Content",
         "You are Maria, an SEO lead.",
     )
+    assert moved.tagline == "Takes a keyword from brief to article."
 
     spared = await prisma.models.Expert.prisma().find_unique(
         where={"id": edited.expert.id}
@@ -3769,6 +3774,99 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
     assert spared is not None
     assert spared.identity == "You are Maria, and you only do webinars."
     assert spared.role == old_role
+    # The edit spares the whole persona, presentation included: a hire that
+    # still behaves like the generalist must not advertise the new scope.
+    assert spared.tagline == "Does all of marketing."
+
+    # A later cosmetic edit still reaches the hire the rescope already moved,
+    # which no longer matches the old role and identity.
+    refreshed_template = await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"tagline": "Briefs, drafts, and page copy."}
+    )
+    assert refreshed_template is not None
+    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    moved_again = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved_again is not None
+    assert moved_again.tagline == "Briefs, drafts, and page copy."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
+    server: SpinTestServer, test_user, other_user, monkeypatch
+):
+    """The same guarantee through the entry point that production runs.
+
+    The helper test drives ``_backfill_hired_copies`` directly; this one goes
+    through ``seed_roster`` so a future split back into two passes — one
+    pushing presentation to everyone, one moving only the untouched — fails
+    here rather than shipping half-migrated hires."""
+    entry: seed.RosterEntry = {
+        "name": f"Maria {uuid.uuid4().hex[:8]}",
+        "role": "Marketing",
+        "tagline": "Does all of marketing.",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a generalist marketer.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "You are Maria, a generalist.",
+        "voice_preferences": "Clear and confident.",
+        "voice_samples": [],
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [],
+        "preloads": [],
+    }
+    monkeypatch.setattr(seed, "ROSTER", [entry])
+    (template_id,) = await seed.seed_roster()
+    untouched = await experts_db.hire_expert(test_user.id, template_id, None)
+    edited = await experts_db.hire_expert(other_user.id, template_id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": edited.expert.id}, data={"role": "Webinars"}
+    )
+
+    monkeypatch.setattr(
+        seed,
+        "ROSTER",
+        [
+            {
+                **entry,
+                "role": "SEO & Content",
+                "identity": "You are Maria, an SEO lead.",
+                "tagline": "Takes a keyword from brief to article.",
+                "bio": "Maria is an SEO and content strategist.",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        seed,
+        "RESCOPED_TEMPLATES",
+        [
+            {
+                "name": entry["name"],
+                "old_role": entry["role"],
+                "old_identity": entry["identity"],
+            }
+        ],
+    )
+    assert await seed.seed_roster() == [template_id]
+
+    moved = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved is not None
+    assert moved.role == "SEO & Content"
+    assert moved.identity == "You are Maria, an SEO lead."
+    assert moved.bio == "Maria is an SEO and content strategist."
+
+    spared = await prisma.models.Expert.prisma().find_unique(
+        where={"id": edited.expert.id}
+    )
+    assert spared is not None
+    assert spared.role == "Webinars"
+    assert spared.identity == entry["identity"]
+    assert spared.bio == entry["bio"]
+    assert spared.tagline == entry["tagline"]
 
 
 def test_rescoped_templates_name_real_roster_entries():

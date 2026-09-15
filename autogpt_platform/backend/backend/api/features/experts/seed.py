@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from typing import TypedDict
 
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts.models import (
     ExpertDayOneItem,
@@ -334,14 +335,15 @@ class RescopedTemplate(TypedDict):
 #
 # ``_backfill_hired_copies`` deliberately leaves ``role`` and ``identity``
 # alone: they drive live behaviour, and owners edit them through the Soul
-# tools. That is right for a cosmetic roster edit, but a rescope leaves
+# tools. That is right for a cosmetic roster edit, but a rescope would leave
 # existing hires advertising the new bio while still behaving like the old
 # persona — worse than either consistent outcome.
 #
-# So this migrates only the untouched ones: a hire whose role and identity
-# still match what the template shipped with has never been customised, and
-# an owner who edited either no longer matches and is left exactly as they
-# are. Same shape as REMOVED_TEMPLATE_CADENCES, and just as safe to delete
+# So on a rescoped template the backfill moves the presentation and the
+# persona together, and only for hires that are still recognisably the
+# template's: see ``_backfill_hired_copies``. An owner who edited role or
+# identity keeps the whole of the old persona, bio included, rather than half
+# of each. Same shape as REMOVED_TEMPLATE_CADENCES, and just as safe to delete
 # once every environment has been seeded past it.
 RESCOPED_TEMPLATES: list[RescopedTemplate] = [
     {
@@ -354,25 +356,6 @@ Your day-to-day work spans content strategy, social copy, email campaigns, and S
 You are direct about trade-offs. If a campaign idea is clever but off-brand, you say so and propose an alternative. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
     },
 ]
-
-
-async def _migrate_rescoped_hires(template: prisma.models.Expert) -> int:
-    """Move untouched hires onto a rescoped template's role and identity."""
-    rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
-    if rescope is None:
-        return 0
-    moved = await prisma.models.Expert.prisma().update_many(
-        where={
-            "sourceTemplateId": template.id,
-            "isTemplate": False,
-            "role": rescope["old_role"],
-            "identity": rescope["old_identity"],
-        },
-        data={"role": template.role, "identity": template.identity},
-    )
-    if moved:
-        logger.info(f"Moved {moved} untouched '{template.name}' hires onto the rescope")
-    return moved
 
 
 async def _resolve_active_version_id(slug: str) -> str | None:
@@ -511,16 +494,34 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
     users may have renamed their hire — as are ``role``/``identity``, which
     drive live persona behaviour, and ``skills``, which the owner edits after
     hire.
+
+    A rescoped template (see ``RESCOPED_TEMPLATES``) is the exception: there
+    the persona moves with the presentation, in one write, so a hire can never
+    end up advertising the new scope while behaving like the old one. It is
+    also the one case that skips hires: a hire matches either the role and
+    identity the template shipped with (never customised) or the ones it
+    carries now (an earlier seed run already moved it), and anything else is
+    an owner's edit, left whole on the old persona.
     """
-    return await prisma.models.Expert.prisma().update_many(
-        where={"sourceTemplateId": template.id, "isTemplate": False},
-        data={
-            "avatarUrl": template.avatarUrl,
-            "tagline": template.tagline,
-            "bio": template.bio,
-            "categories": template.categories,
-        },
-    )
+    where: prisma.types.ExpertWhereInput = {
+        "sourceTemplateId": template.id,
+        "isTemplate": False,
+    }
+    data: prisma.types.ExpertUpdateManyMutationInput = {
+        "avatarUrl": template.avatarUrl,
+        "tagline": template.tagline,
+        "bio": template.bio,
+        "categories": template.categories,
+    }
+    rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
+    if rescope is not None:
+        where["OR"] = [
+            {"role": rescope["old_role"], "identity": rescope["old_identity"]},
+            {"role": template.role, "identity": template.identity},
+        ]
+        data["role"] = template.role
+        data["identity"] = template.identity
+    return await prisma.models.Expert.prisma().update_many(where=where, data=data)
 
 
 async def _sync_preloads(
@@ -684,11 +685,10 @@ async def seed_roster() -> list[str]:
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
         refreshed = await _backfill_hired_copies(template)
-        rescoped = await _migrate_rescoped_hires(template)
         template_ids.append(template.id)
         logger.info(
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
-            f"refreshed {refreshed} hired copies, rescoped {rescoped}"
+            f"refreshed {refreshed} hired copies"
         )
     await _clear_removed_cadences()
     return template_ids
