@@ -1,3 +1,5 @@
+import { isLocalStoreMediaUrl } from "./store-media";
+
 /** The hosts `next.config.mjs` lets `next/image` load from.
  *
  *  `next/image` throws while rendering — it never reaches `onError` — when
@@ -20,6 +22,7 @@ export function isRenderableImageUrl(
   url: string | null | undefined,
 ): url is string {
   if (!url) return false;
+  if (isLocalStoreMediaUrl(url)) return true;
   if (url.startsWith("/")) return true;
   try {
     return ALLOWED_IMAGE_HOSTS.includes(new URL(url).hostname);

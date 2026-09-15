@@ -51,7 +51,7 @@ export function RateLimitResetDialog({
 
   return (
     <Dialog
-      title="Daily Otto limit reached"
+      title="Daily usage limit reached"
       styling={{ maxWidth: "28rem", minWidth: "auto" }}
       controlled={{
         isOpen,

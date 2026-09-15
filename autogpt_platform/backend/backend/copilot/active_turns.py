@@ -77,7 +77,7 @@ def running_turn_limit_message(limit: int | None = None) -> str:
     inflight one."""
     resolved = get_running_turn_limit() if limit is None else limit
     return (
-        f"You have {resolved} Otto tasks already running. "
+        f"You have {resolved} tasks already running. "
         "Please wait for one of them to finish before starting a new one."
     )
 
