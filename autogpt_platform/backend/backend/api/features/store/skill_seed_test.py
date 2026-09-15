@@ -9,12 +9,13 @@ import pytest
 from backend.api.features.store.skill_seed import (
     STARTER_SKILLS,
     CatalogEntry,
+    _attribution_value,
     _extract_catalog_archive,
     _load,
     _load_starter,
     load_catalog,
 )
-from backend.copilot.tools.skills import SkillPackageError
+from backend.copilot.tools.skills import ParsedSkill, SkillPackageError
 
 SKILL_MD = "---\nname: demo\ndescription: A demo skill.\n---\n\n# Demo\n"
 ENTRY = CatalogEntry(slug="demo", categories=["content"], required_providers=[])
@@ -68,6 +69,20 @@ def test_a_listed_skill_without_a_skill_md_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="is missing"):
         _load(tmp_path, ENTRY)
+
+
+def test_attribution_accepts_top_level_fields_but_prefers_metadata():
+    parsed = ParsedSkill(
+        name="demo",
+        description="Demo",
+        body="# Demo\n",
+        extra={"source": "top/repo", "source_url": "https://example.com/top"},
+    )
+
+    assert _attribution_value(parsed, {"source": "nested/repo"}, "source") == (
+        "nested/repo"
+    )
+    assert _attribution_value(parsed, {}, "source_url") == "https://example.com/top"
 
 
 @pytest.mark.parametrize("entry", STARTER_SKILLS, ids=lambda entry: entry["slug"])

@@ -205,9 +205,16 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
-# Spec frontmatter the platform has no use for.  Dropping it rewrites the
-# author's SKILL.md on every store, so it rides through parse and render.
-_CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
+# Frontmatter outside the core skill fields. Dropping it rewrites the author's
+# SKILL.md on every store, so it rides through parse and render.
+_CARRIED_FRONTMATTER_KEYS = (
+    "license",
+    "compatibility",
+    "allowed-tools",
+    "metadata",
+    "source",
+    "source_url",
+)
 
 
 @dataclass(frozen=True)

@@ -282,8 +282,8 @@ async def _upsert_version(
         "categories": entry["categories"],
         "requiredProviders": entry["required_providers"],
         "sourceSkillSlug": entry["slug"],
-        "sourceRepo": _optional_str(metadata.get("source")),
-        "sourceUrl": _optional_str(metadata.get("source_url")),
+        "sourceRepo": _attribution_value(parsed, metadata, "source"),
+        "sourceUrl": _attribution_value(parsed, metadata, "source_url"),
         "license": _optional_str(license_value),
         "isAvailable": True,
         "isDeleted": False,
@@ -307,6 +307,12 @@ async def _upsert_version(
 def _optional_str(value: object) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _attribution_value(
+    parsed: ParsedSkill, metadata: dict[object, object], key: str
+) -> str | None:
+    return _optional_str(metadata.get(key)) or _optional_str(parsed.extra.get(key))
 
 
 def _load(root: Path, entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]]:
