@@ -4900,3 +4900,89 @@ async def test_get_template_row_serves_live_templates_only(server: SpinTestServe
         where={"id": template.id}, data={"isArchived": True}
     )
     assert await experts_db.get_template_row(template.id) is None
+
+
+# ─── The row an import creates ─────────────────────────────────────────
+
+
+async def _import_row(user_id: str, **overrides) -> prisma.models.Expert:
+    values = {
+        "name": "Maria Ops",
+        "role": "Ops lead",
+        "tagline": "Keeps the week moving",
+        "bio": "Runs the weekly rhythm.",
+        "color": "sky-300",
+        "categories": ["operations"],
+        "identity": "Careful and brief.",
+        "voice_preferences": "Short sentences.",
+        "boundaries": "Never spends without asking.",
+        "avatar_url": None,
+        "day_one": [],
+        "tool_profile": None,
+    }
+    values.update(overrides)
+    row = await experts_db.create_imported_expert(user_id, **values)
+    _seeded_template_ids.append(row.id)
+    return row
+
+
+async def test_an_imported_expert_is_owned_and_belongs_to_no_template(
+    server: SpinTestServer, test_user
+):
+    """Like a raise, not a hire: the file it came from is not a roster
+    template and may not even have come from here."""
+    row = await _import_row(test_user.id)
+
+    assert row.ownerUserId == test_user.id
+    assert row.sourceTemplateId is None
+    assert row.isTemplate is False
+    assert row.visibility == prisma.enums.ResourceVisibility.PRIVATE
+    assert row.tagline == "Keeps the week moving"
+    assert row.categories == ["operations"]
+
+
+async def test_an_imported_experts_unknown_categories_are_dropped_not_refused(
+    server: SpinTestServer, test_user
+):
+    """A package written against a different canonical set should arrive with
+    the categories we recognise, not fail."""
+    row = await _import_row(
+        test_user.id, categories=["operations", "interdimensional travel"]
+    )
+
+    assert row.categories == ["operations"]
+
+
+async def test_importing_is_not_stopped_by_the_lifetime_raise_cap(
+    server: SpinTestServer, monkeypatch, test_user
+):
+    """An import moves an expert the user already had rather than inventing a
+    new one, so only the active cap applies to it."""
+    monkeypatch.setattr(experts_db, "LIFETIME_RAISED_EXPERT_LIMIT", 1)
+
+    first = await _import_row(test_user.id)
+    second = await _import_row(test_user.id)
+
+    assert first.id != second.id
+
+
+async def test_an_import_at_the_active_cap_is_refused(
+    server: SpinTestServer, monkeypatch, test_user
+):
+    monkeypatch.setattr(experts_db, "ACTIVE_EXPERT_LIMIT", 1)
+    await _import_row(test_user.id)
+
+    with pytest.raises(experts_db.ExpertLimitExceededError):
+        await _import_row(test_user.id)
+
+
+async def test_two_imports_of_the_same_expert_are_both_kept(
+    server: SpinTestServer, test_user
+):
+    """Re-importing a file you already imported is a copy, not an error — the
+    user may well want two."""
+    first = await _import_row(test_user.id)
+    second = await _import_row(test_user.id)
+
+    assert first.id != second.id
+    assert first.name == second.name

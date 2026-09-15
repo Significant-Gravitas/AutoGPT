@@ -38,6 +38,7 @@ from backend.api.features.experts.models import (
     ExpertActivity,
     ExpertActivityDay,
     ExpertBundledSkill,
+    ExpertDayOneItem,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -52,6 +53,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
     decode_day_one,
     decode_voice_preferences,
+    encode_day_one,
 )
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
@@ -61,7 +63,10 @@ from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store import skill_db
-from backend.api.features.store.categories import category_match_values
+from backend.api.features.store.categories import (
+    category_match_values,
+    normalize_categories,
+)
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
@@ -95,6 +100,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -1170,6 +1176,56 @@ async def _create_raised_expert_row(
                 "boundaries": boundaries or "",
                 "weeklyBudget": weekly_budget,
                 "skills": skills or [],
+            },
+            include=_WORKFLOW_INCLUDE,
+        )
+
+
+async def create_imported_expert(
+    user_id: str,
+    *,
+    name: str,
+    role: str,
+    tagline: str | None,
+    bio: str | None,
+    color: str,
+    categories: list[str],
+    identity: str,
+    voice_preferences: str,
+    boundaries: str,
+    avatar_url: str | None,
+    day_one: list[ExpertDayOneItem],
+    tool_profile: JsonValue | None,
+) -> prisma.models.Expert:
+    """The row an imported package becomes: a new expert this user owns.
+
+    Like a raise, not like a hire — ``sourceTemplateId`` stays null because the
+    file it came from is not a roster template and may not even have come from
+    here. The active cap applies, taken under the same advisory lock every other
+    creation path uses; the lifetime raise cap deliberately does not, because an
+    import is moving an expert the user already had rather than making a new one.
+
+    Categories are folded tolerantly: a package written against a different
+    canonical set should arrive with the categories we recognise, not fail.
+    """
+    async with transaction() as tx:
+        await _lock_expert_creation(tx, user_id)
+        await _ensure_active_expert_capacity(tx, user_id)
+        return await tx.expert.create(
+            data={
+                "ownerUserId": user_id,
+                "name": name,
+                "avatarUrl": avatar_url,
+                "color": color,
+                "role": role,
+                "tagline": tagline,
+                "bio": bio,
+                "categories": [c.value for c in normalize_categories(categories)],
+                "identity": identity or _raised_identity(name),
+                "voicePreferences": voice_preferences,
+                "boundaries": boundaries,
+                "dayOne": SafeJson(encode_day_one(day_one)),
+                "toolProfile": SafeJson(tool_profile),
             },
             include=_WORKFLOW_INCLUDE,
         )
