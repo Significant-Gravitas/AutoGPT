@@ -1331,6 +1331,8 @@ async def _read_package_files(
     infos = await _list_package_files(manager, folder, slug)
     if len(infos) > MAX_PACKAGE_FILES:
         # Written before the cap existed, or by hand.
+        # Keep both branches: raising repairs a failed read, but not a documented
+        # cap — so the download refuses and the copy truncates.
         if complete:
             raise SkillPackageError(
                 f"stored package has more than {MAX_PACKAGE_FILES} files and "
