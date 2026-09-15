@@ -35,7 +35,8 @@ export function useRaisePage() {
     draftWithPrefilledRole(loadDraft(), searchParams.get("role")),
   );
   const { hasSkillsToOffer } = useSkillsAvailability();
-  const progress = useFlowProgress(beatTriggers(draft, hasSkillsToOffer));
+  const hasSkillsBeat = draft.marketplace !== null || hasSkillsToOffer;
+  const progress = useFlowProgress(beatTriggers(draft, hasSkillsBeat));
   const { finish: submitRaise, isSubmitting } = useRaiseSubmission();
 
   function finish(kit: RaiseKit) {
@@ -175,7 +176,7 @@ export function useRaisePage() {
     marketplace: draft.marketplace,
     skills: draft.skills,
     kit: assembledKit(draft),
-    isMarketplaceFinal: !hasSkillsToOffer,
+    isMarketplaceFinal: !hasSkillsBeat,
     isSubmitting,
     canGoBack: lastAnsweredBeat(draft) !== null,
     startRaising,

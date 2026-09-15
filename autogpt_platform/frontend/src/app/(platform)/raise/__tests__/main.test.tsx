@@ -428,6 +428,42 @@ test("keeps the skills beat when only the Hub has something to offer", async () 
   ).toBeNull();
 });
 
+test("keeps the skills beat when availability settles empty after marketplace submit", async () => {
+  let captured: unknown = null;
+  let settleLibrary!: (skills: (typeof LIBRARY_SKILL)[]) => void;
+  const pendingLibrary = new Promise<(typeof LIBRARY_SKILL)[]>((resolve) => {
+    settleLibrary = resolve;
+  });
+  server.use(
+    getListCopilotSkillsMockHandler(() => pendingLibrary),
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return raiseResult();
+    }),
+  );
+
+  seedAtBudget();
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "$5 / week" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "That's it" }),
+  );
+  settleLibrary([]);
+
+  await userEvent.click(
+    await screen.findByRole(
+      "button",
+      { name: /Bring Otto to life/ },
+      { timeout: 5000 },
+    ),
+  );
+
+  await waitFor(() => expect(captured).not.toBeNull());
+  expect(captured).toMatchObject({ weekly_budget: 500, attachments: [] });
+});
+
 test("back returns to the previous step and the draft survives", async () => {
   seedAtBudget();
   renderRaise();
