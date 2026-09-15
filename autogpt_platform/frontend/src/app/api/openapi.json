@@ -24728,6 +24728,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "default": []
           }
         },
         "type": "object",
@@ -28331,6 +28337,16 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkillPackageFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "SkillPackageFile",
+        "description": "One file beside the published ``SKILL.md``, by its path relative to the\nskill folder. The contents are not inlined — a package runs to 20 MiB."
       },
       "SkillReviewRequest": {
         "properties": {
