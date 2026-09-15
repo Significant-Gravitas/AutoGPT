@@ -2,10 +2,16 @@
 the files beside it, and a broken one fails the seed rather than the install."""
 
 import pathlib
+import tarfile
 
 import pytest
 
-from backend.api.features.store.skill_seed import CatalogEntry, _load, load_catalog
+from backend.api.features.store.skill_seed import (
+    CatalogEntry,
+    _extract_catalog_archive,
+    _load,
+    load_catalog,
+)
 from backend.copilot.tools.skills import SkillPackageError
 
 SKILL_MD = "---\nname: demo\ndescription: A demo skill.\n---\n\n# Demo\n"
@@ -132,3 +138,28 @@ def test_a_malformed_catalog_fails_before_anything_is_written(
 
     with pytest.raises(ValueError, match=message):
         load_catalog(tmp_path)
+
+
+def test_archive_fallback_extracts_checked_files(mocker, monkeypatch, tmp_path):
+    monkeypatch.delattr(tarfile, "data_filter")
+    archive = mocker.Mock()
+    member = tarfile.TarInfo("repo/catalog.yml")
+    archive.getmembers.return_value = [member]
+
+    _extract_catalog_archive(archive, tmp_path)
+
+    archive.extractall.assert_called_once_with(tmp_path, members=[member])
+
+
+def test_archive_fallback_rejects_paths_outside_the_target(
+    mocker, monkeypatch, tmp_path
+):
+    monkeypatch.delattr(tarfile, "data_filter")
+    archive = mocker.Mock()
+    member = tarfile.TarInfo("../outside")
+    archive.getmembers.return_value = [member]
+
+    with pytest.raises(RuntimeError, match="unsafe catalog archive member"):
+        _extract_catalog_archive(archive, tmp_path)
+
+    archive.extractall.assert_not_called()

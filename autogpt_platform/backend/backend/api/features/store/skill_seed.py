@@ -296,13 +296,29 @@ def _download_catalog(into: Path) -> Path:
     )
     response.raise_for_status()
     with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
-        # "data" refuses links and paths that escape the target directory.
-        tar.extractall(into, filter="data")
+        _extract_catalog_archive(tar, into)
     # GitHub wraps the tree in one "<owner>-<repo>-<sha>" directory.
     roots = [p for p in into.iterdir() if p.is_dir()]
     if len(roots) != 1:
         raise RuntimeError(f"unexpected tarball layout for {repo}: {roots}")
     return roots[0]
+
+
+def _extract_catalog_archive(archive: tarfile.TarFile, into: Path) -> None:
+    """Extract with the data filter, including on Python versions before its backport."""
+    if hasattr(tarfile, "data_filter"):
+        archive.extractall(into, filter="data")
+        return
+
+    root = into.resolve()
+    members = archive.getmembers()
+    for member in members:
+        target = (into / member.name).resolve()
+        if not (member.isfile() or member.isdir()) or (
+            target != root and root not in target.parents
+        ):
+            raise RuntimeError(f"unsafe catalog archive member: {member.name}")
+    archive.extractall(into, members=members)
 
 
 async def main() -> None:
