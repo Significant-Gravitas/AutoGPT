@@ -2,6 +2,10 @@
 
 The AutoGPT Platform is a groundbreaking system that revolutionizes AI utilization for businesses and individuals. It enables the creation, deployment, and management of continuous agents that work tirelessly on your behalf, bringing unprecedented efficiency and innovation to your workflows.
 
+{% hint style="success" %}
+**See it in action:** [**Sign up free →**](https://platform.agpt.co/signup?utm_source=docs_platform_overview) no install required, or [**take the interactive tour →**](https://platform.agpt.co/tour/chat?utm_source=docs_platform_overview) to watch AutoPilot build and run an agent in your browser.
+{% endhint %}
+
 ## Key Features
 
 * **Seamless Integration and Low-Code Workflows**: Rapidly create complex workflows without extensive coding knowledge.
@@ -78,5 +82,6 @@ This strategy allows us to share previously closed-source components, fostering 
 
 ## Ready to Get Started?
 
-* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
+* **Just want to try it?** [**Sign up free**](https://platform.agpt.co/signup?utm_source=docs_platform_getstarted) and start building in your browser — no install required. Prefer to watch first? [**Take the interactive tour**](https://platform.agpt.co/tour/chat?utm_source=docs_platform_getstarted).
+* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide for a full walkthrough of the hosted platform.
 * **Self-Host:** Read the [Self-Hosting Guide](getting-started.md) to run the platform on your own infrastructure.
