@@ -31,12 +31,13 @@ from backend.copilot.tools.workspace_files import (
 )
 from backend.util.test import SpinTestServer
 
-from . import skill_db, skill_model, skill_submission_db
+from . import skill_db, skill_model, skill_seed, skill_submission_db
 
 FIXTURE_DIR = (
     Path(__file__).parents[4] / "test" / "fixtures" / "skills" / "webapp-testing"
 )
 SLUG = "webapp-testing"
+STARTER_SLUG = "starter-with-a-package"
 
 
 def _fixture_files() -> list[SkillFile]:
@@ -94,9 +95,8 @@ async def _publish(user_id: str, reviewer_id: str) -> skill_model.SkillSubmissio
 
 
 @pytest.fixture
-async def creator(setup_test_user, server: SpinTestServer) -> str:
-    await prisma.models.SkillListingVersion.prisma().delete_many()
-    await prisma.models.SkillListing.prisma().delete_many()
+async def creator(setup_test_user, server: SpinTestServer):
+    await _drop_our_listings()
     await prisma.models.Profile.prisma().upsert(
         where={"userId": setup_test_user},
         data={
@@ -110,7 +110,21 @@ async def creator(setup_test_user, server: SpinTestServer) -> str:
             "update": {},
         },
     )
-    return setup_test_user
+    yield setup_test_user
+    # Left behind, these rows fail the emptiness guard in the suites that sort
+    # after this one.
+    await _drop_our_listings()
+
+
+async def _drop_our_listings() -> None:
+    """By slug, not wholesale: this table is shared with every other checkout
+    here, where the starter listings are real rows."""
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"SkillListing": {"is": {"slug": {"in": [SLUG, STARTER_SLUG]}}}}
+    )
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"slug": {"in": [SLUG, STARTER_SLUG]}}
+    )
 
 
 @pytest.fixture
@@ -244,3 +258,122 @@ async def test_installing_a_single_file_listing_clears_a_package_left_behind(
     await skill_db.install_marketplace_skill(creator, SLUG, expert_id=expert)
 
     assert await list_user_skill_files(creator, SLUG, expert_id=expert) == []
+
+
+async def test_a_seeded_starter_package_installs_its_siblings(
+    creator: str, expert: str, monkeypatch, tmp_path
+):
+    """The seed is the other writer of a listing version, and a starter whose
+    package never reached the shelf would install as a bare SKILL.md."""
+    directory = tmp_path / STARTER_SLUG
+    (directory / "scripts").mkdir(parents=True)
+    (directory / "SKILL.md").write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a script.\n---\n\n# Body\n",
+        encoding="utf-8",
+    )
+    script = directory / "scripts" / "run.sh"
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.setattr(skill_seed, "_CONTENT_DIR", tmp_path)
+    # Never the shipped list: seeding that upserts the real starter listings.
+    monkeypatch.setattr(
+        skill_seed,
+        "STARTER_SKILLS",
+        [{"slug": STARTER_SLUG, "categories": ["content"], "required_providers": []}],
+    )
+
+    await skill_seed.seed_starter_skills()
+    await skill_db.install_marketplace_skill(creator, STARTER_SLUG, expert_id=expert)
+
+    rows = await _starter_file_rows()
+    assert [(r.relativePath, r.isExecutable) for r in rows] == [
+        ("scripts/run.sh", True)
+    ]
+    installed = {
+        f.path
+        for f in await list_user_skill_files(creator, STARTER_SLUG, expert_id=expert)
+    }
+    assert f"/experts/{expert}/skills/{STARTER_SLUG}/scripts/run.sh" in installed
+
+
+async def test_re_seeding_a_starter_that_lost_a_file_drops_its_row(
+    creator: str, monkeypatch, tmp_path
+):
+    """The seed rewrites its version in place, so the package has to be
+    replaced rather than added to."""
+    directory = tmp_path / STARTER_SLUG
+    directory.mkdir()
+    (directory / "SKILL.md").write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a script.\n---\n\n# Body\n",
+        encoding="utf-8",
+    )
+    (directory / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    monkeypatch.setattr(skill_seed, "_CONTENT_DIR", tmp_path)
+    monkeypatch.setattr(
+        skill_seed,
+        "STARTER_SKILLS",
+        [{"slug": STARTER_SLUG, "categories": ["content"], "required_providers": []}],
+    )
+    await skill_seed.seed_starter_skills()
+    # Asserted before the removal: a seed that stores nothing at all would
+    # satisfy the empty assertion below without ever replacing anything.
+    assert [r.relativePath for r in await _starter_file_rows()] == ["notes.md"]
+
+    (directory / "notes.md").unlink()
+    await skill_seed.seed_starter_skills()
+
+    assert await _starter_file_rows() == []
+
+
+async def test_a_seed_that_cannot_write_the_package_leaves_the_version_alone(
+    creator: str, monkeypatch, tmp_path
+):
+    """The live version and its files are replaced together, so a failed package
+    write cannot leave new instructions on the shelf beside the old package."""
+    directory = tmp_path / STARTER_SLUG
+    directory.mkdir()
+    root = directory / "SKILL.md"
+    root.write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a note.\n---\n\n# First\n",
+        encoding="utf-8",
+    )
+    (directory / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    monkeypatch.setattr(skill_seed, "_CONTENT_DIR", tmp_path)
+    monkeypatch.setattr(
+        skill_seed,
+        "STARTER_SKILLS",
+        [{"slug": STARTER_SLUG, "categories": ["content"], "required_providers": []}],
+    )
+    await skill_seed.seed_starter_skills()
+
+    root.write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a note.\n---\n\n# Second\n",
+        encoding="utf-8",
+    )
+
+    async def fails(*_args, **_kwargs):
+        raise RuntimeError("the package write failed")
+
+    monkeypatch.setattr(skill_seed, "snapshot_version_files", fails)
+    with pytest.raises(RuntimeError):
+        await skill_seed.seed_starter_skills()
+
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": STARTER_SLUG}, include={"ActiveVersion": True}
+    )
+    assert listing is not None and listing.ActiveVersion is not None
+    assert listing.ActiveVersion.body.strip() == "# First"
+    assert [r.relativePath for r in await _starter_file_rows()] == ["notes.md"]
+
+
+async def _starter_file_rows() -> list[prisma.models.SkillListingFile]:
+    """The seeded starter's own file rows — never the whole table, which this
+    suite shares with every other one that publishes a package."""
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": STARTER_SLUG}
+    )
+    assert listing is not None and listing.activeVersionId is not None
+    return await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": listing.activeVersionId},
+        order={"relativePath": "asc"},
+    )
