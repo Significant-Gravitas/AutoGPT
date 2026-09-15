@@ -5,6 +5,7 @@ import json
 import pytest
 
 from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
+from backend.integrations.mcp_catalog import get_mcp_catalog
 
 from .index import CapabilityIndex
 from .registry import MERGED_IMPLEMENTATIONS, build_entries
@@ -75,6 +76,17 @@ def test_catalog_servers_are_entries_keyed_by_host(index):
     assert linear is not None and linear.kind == "mcp_server"
     assert linear.connection.key_type == "server_url"
     assert index.search("sentry").ids[0] == "mcp:mcp.sentry.dev"
+
+
+def test_every_catalog_preset_survives_as_an_entry(index):
+    """Atlassian ships two servers on ``mcp.atlassian.com`` (v2 and Forge).
+    Keying both by host dropped one of them, so entries on a shared host fall
+    back to their slug and every preset keeps an id of its own."""
+    presets = get_mcp_catalog()
+    mcp_ids = [e.id for e in index.entries if e.id.startswith("mcp:")]
+    assert len(mcp_ids) == len(presets)
+    assert len(set(mcp_ids)) == len(mcp_ids)
+    assert {"mcp:atlassian", "mcp:atlassian_forge"} <= set(mcp_ids)
 
 
 def test_listing_stays_compact(index):
