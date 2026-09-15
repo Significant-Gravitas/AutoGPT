@@ -19,6 +19,7 @@ from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
     _current_envelope,
+    _current_hidden_tools,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -136,6 +137,7 @@ def set_execution_context(
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
     envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -149,6 +151,8 @@ def set_execution_context(
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
         envelope: The turn's tree envelope; spawn tools derive children from it.
+        hidden_tools: Short tool names hidden from the model this turn;
+            ``run_capability`` refuses to reach them by id.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -157,6 +161,7 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
     _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})

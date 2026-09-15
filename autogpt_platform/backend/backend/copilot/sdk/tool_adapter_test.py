@@ -1374,3 +1374,18 @@ class TestEmptyArgsCircuitBreaker:
         text = _text_from_mcp_result(result)
         assert "STOP" in text
         assert "Do NOT retry" in text
+
+
+def test_set_execution_context_carries_hidden_tools():
+    """The SDK engine hands its per-turn hidden tool set through this
+    adapter's ``set_execution_context`` (not ``context.set_execution_context``),
+    so the keyword must exist here too — run_capability reads it back."""
+    from backend.copilot.context import get_current_hidden_tools
+
+    session = MagicMock(spec=ChatSession)
+    set_execution_context("user", session, hidden_tools=frozenset({"list_schedules"}))
+    try:
+        assert get_current_hidden_tools() == frozenset({"list_schedules"})
+    finally:
+        set_execution_context(None, session)
+    assert get_current_hidden_tools() == frozenset()
