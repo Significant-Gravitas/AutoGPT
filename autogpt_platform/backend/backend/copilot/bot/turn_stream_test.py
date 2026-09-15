@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.prompting import NO_REPLY
+
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
 from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
 
@@ -169,6 +171,104 @@ class TestStreamBatchDrafts:
         adapter.send_stream_draft.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == "Hello world"
+
+
+class TestNoReply:
+    """A reply of exactly NO_REPLY is the model choosing silence.
+
+    The bot had no way to not answer: an empty reply became "AutoGPT didn't
+    produce a response." Now the bot session's system prompt offers NO_REPLY, and a reply that
+    is exactly that, and nothing else, is not delivered.
+    """
+
+    @pytest.mark.asyncio
+    async def test_exact_no_reply_sends_nothing_and_is_not_the_empty_case(self):
+        adapter = _adapter()
+        api = _api([NO_REPLY])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "thanks!")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_link.assert_not_awaited()
+        kinds = [c.kwargs.get("event_type") for c in api.track_event.call_args_list]
+        assert "reply_suppressed" in kinds
+        assert "reply_sent" not in kinds
+        assert not any(
+            c.kwargs.get("error_kind") == "empty_reply"
+            for c in api.track_event.call_args_list
+        ), "silence on purpose is not a stream error"
+
+    @pytest.mark.asyncio
+    async def test_surrounding_whitespace_still_counts(self):
+        adapter = _adapter()
+        api = _api(["\n  ", NO_REPLY, "\n"])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_streamed_in_pieces_is_still_suppressed_and_never_previewed(self):
+        adapter = _adapter(drafts=True)
+        api = _api(["NO", "_RE", "PLY"])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_stream_draft.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_reply_that_merely_contains_the_word_is_delivered(self):
+        """Toran's false-positive concern: whole message only."""
+        adapter = _adapter()
+        text = f"{NO_REPLY} is what I'd say if this needed nothing, but it does."
+        api = _api([text])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[1] == text
+
+    @pytest.mark.asyncio
+    async def test_it_is_case_sensitive(self):
+        adapter = _adapter()
+        api = _api(["no_reply"])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[1] == "no_reply"
+
+    @pytest.mark.asyncio
+    async def test_after_a_mid_stream_flush_the_word_is_delivered(self):
+        """Once part of a long reply has already gone out, a trailing NO_REPLY
+        is content, not a decision: the user has already been answered."""
+        adapter = _adapter()
+        adapter.chunk_flush_at = 20
+        api = _api(["a paragraph long enough to flush.\n\n", NO_REPLY])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+            )
+        sent = [c.args[1] for c in adapter.send_message.await_args_list]
+        assert any(NO_REPLY in s for s in sent)
+
+    @pytest.mark.asyncio
+    async def test_an_empty_reply_still_gets_the_fallback(self):
+        """The old behaviour for a model that said nothing at all is kept."""
+        adapter = _adapter()
+        api = _api([])
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_awaited_once()
+        assert "didn't produce a response" in adapter.send_message.await_args.args[1]
 
 
 # -- Native choice buttons: the branch the feature is named after --
