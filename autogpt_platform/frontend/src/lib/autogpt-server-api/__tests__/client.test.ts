@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import BackendAPI, { buildOAuthLoginQuery } from "../client";
+import BackendAPI, {
+  buildOAuthLoginQuery,
+  formatWsCloseEvent,
+  redactWsUrl,
+} from "../client";
 
 describe("BackendAPI.oAuthLogin", () => {
   it("passes credentialID through to buildOAuthLoginQuery", async () => {
@@ -116,5 +120,75 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
     const result = await (api as any)._makeClientRequest("GET", "/x");
 
     expect(result).toEqual({ ok: true });
+  });
+});
+
+describe("formatWsCloseEvent", () => {
+  it("returns code, reason, and wasClean from a CloseEvent-like object", () => {
+    expect(
+      formatWsCloseEvent({ code: 1006, reason: "abnormal", wasClean: false }),
+    ).toEqual({
+      code: 1006,
+      reason: "abnormal",
+      wasClean: false,
+    });
+  });
+
+  it("coerces a missing reason to an empty string", () => {
+    expect(
+      formatWsCloseEvent({
+        code: 1000,
+        reason: undefined as unknown as string,
+        wasClean: true,
+      }),
+    ).toEqual({
+      code: 1000,
+      reason: "",
+      wasClean: true,
+    });
+  });
+
+  it("includes readyState when provided", () => {
+    expect(
+      formatWsCloseEvent(
+        { code: 1001, reason: "going away", wasClean: true },
+        WebSocket.CLOSED,
+      ),
+    ).toEqual({
+      code: 1001,
+      reason: "going away",
+      wasClean: true,
+      readyState: WebSocket.CLOSED,
+    });
+  });
+
+  it("never returns an Event instance (logs stay structured)", () => {
+    const info = formatWsCloseEvent({
+      code: 1011,
+      reason: "",
+      wasClean: false,
+    });
+    expect(info).not.toBeInstanceOf(Event);
+    expect(Object.keys(info).sort()).toEqual(["code", "reason", "wasClean"]);
+  });
+});
+
+describe("redactWsUrl", () => {
+  it("replaces the token query param with [redacted]", () => {
+    expect(
+      redactWsUrl("ws://127.0.0.1:3000/_agpt/ws?token=super-secret-jwt"),
+    ).toBe("ws://127.0.0.1:3000/_agpt/ws?token=[redacted]");
+  });
+
+  it("leaves URLs without a token unchanged", () => {
+    expect(redactWsUrl("ws://127.0.0.1:3000/_agpt/ws")).toBe(
+      "ws://127.0.0.1:3000/_agpt/ws",
+    );
+  });
+
+  it("redacts token even on non-URL strings", () => {
+    expect(redactWsUrl("not-a-url?token=abc&x=1")).toBe(
+      "not-a-url?token=[redacted]&x=1",
+    );
   });
 });
