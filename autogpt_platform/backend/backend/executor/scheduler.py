@@ -2011,17 +2011,17 @@ class Scheduler(AppService):
         """Parking is recoverable but silent — startup has to say it happened."""
         for alias, store in self._persistent_jobstores.items():
             try:
-                healed = store.reconcile_repaired_jobs(limit=self._PARKED_SCAN_LIMIT)
                 parked = store.get_parked_job_ids(limit=self._PARKED_SCAN_LIMIT)
             except Exception as e:
                 logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
                 continue
-            if healed:
-                logger.info(
-                    f"{len(healed)} repaired job(s) in jobstore '{alias}' are now "
-                    f"paused and can be resumed: {healed}"
+            if len(parked) == self._PARKED_SCAN_LIMIT:
+                logger.error(
+                    f"at least {len(parked)} job(s) in jobstore '{alias}' are PARKED "
+                    "and will not run until repaired; the startup scan stopped at "
+                    f"its cap: {parked}"
                 )
-            if parked:
+            elif parked:
                 logger.error(
                     f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
                     f"not run until repaired: {parked}"
@@ -2504,6 +2504,18 @@ class Scheduler(AppService):
         }
 
     @expose
+    def reconcile_parked_jobs(self) -> dict[str, list[str]]:
+        """Make repaired rows resumable again, per jobstore.
+
+        For a repair made without ``jobstore_backfill``, which already does
+        this for the rows it rewrites.
+        """
+        return {
+            alias: store.reconcile_repaired_jobs()
+            for alias, store in self._persistent_jobstores.items()
+        }
+
+    @expose
     def execute_report_late_executions(self):
         return report_late_executions()
 
@@ -2918,6 +2930,7 @@ class SchedulerClient(AppServiceClient):
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
 
     get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
+    reconcile_parked_jobs = endpoint_to_async(Scheduler.reconcile_parked_jobs)
 
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule

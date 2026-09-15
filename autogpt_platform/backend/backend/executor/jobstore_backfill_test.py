@@ -173,6 +173,29 @@ def test_a_row_that_changed_under_the_scan_is_left_alone():
         assert _job_state(engine, "job1") == newer
 
 
+def test_repairing_a_parked_row_also_clears_its_pickled_next_run_time():
+    """A parked row is paused in the COLUMN only, because parking could not
+    deserialize it to rewrite the copy. Repairing it without clearing that copy
+    strands the row — nothing reports it, nothing runs it, resume refuses it —
+    so the repair has to finish the job."""
+    with _db() as engine:
+        _insert_raw(engine, "parked", _state(1234.0), next_run_time=None)
+
+        changed, _, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
+
+        assert changed == 1
+        assert pickle.loads(_job_state(engine, "parked"))["next_run_time"] is None
+
+
+def test_repairing_a_running_row_leaves_its_next_run_time_alone():
+    with _db() as engine:
+        _insert_raw(engine, "live", _state(1234.0), next_run_time=99.0)
+
+        _normalize_table(engine, MetaData(), TABLE, apply=True)
+
+        assert pickle.loads(_job_state(engine, "live"))["next_run_time"] == 1234.0
+
+
 @contextmanager
 def _db():
     fd, path = tempfile.mkstemp(suffix=".sqlite")
@@ -194,16 +217,30 @@ def _db():
         os.unlink(path)
 
 
+def _state(next_run_time: float) -> bytes:
+    return pickle.dumps(
+        {
+            "id": "x",
+            "args": (),
+            "kwargs": {"provider": Provider.GITHUB},
+            "next_run_time": next_run_time,
+        },
+        pickle.HIGHEST_PROTOCOL,
+    )
+
+
 def _insert(engine, job_id: str, kwargs: dict) -> None:
     state = {"id": job_id, "args": (), "kwargs": kwargs}
     _insert_raw(engine, job_id, pickle.dumps(state, pickle.HIGHEST_PROTOCOL))
 
 
-def _insert_raw(engine, job_id: str, job_state: bytes) -> None:
+def _insert_raw(engine, job_id: str, job_state: bytes, next_run_time=1.0) -> None:
     table = Table(TABLE, MetaData(), autoload_with=engine)
     with engine.begin() as conn:
         conn.execute(
-            table.insert().values(id=job_id, next_run_time=1.0, job_state=job_state)
+            table.insert().values(
+                id=job_id, next_run_time=next_run_time, job_state=job_state
+            )
         )
 
 

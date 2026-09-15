@@ -89,7 +89,11 @@ def _normalize_table(
 
     changed = unreadable = skipped = 0
     with engine.begin() as connection:
-        rows = list(connection.execute(select(table.c.id, table.c.job_state)))
+        rows = list(
+            connection.execute(
+                select(table.c.id, table.c.job_state, table.c.next_run_time)
+            )
+        )
         for row in rows:
             try:
                 state = pickle.loads(row.job_state)
@@ -110,6 +114,12 @@ def _normalize_table(
             new_state = dict(state)
             new_state["args"] = _strip_enums(args)
             new_state["kwargs"] = _strip_enums(kwargs)
+            if row.next_run_time is None:
+                # The row is paused, and parking is what pauses an unrestorable
+                # one -- but parking could only clear the COLUMN, so this copy
+                # still holds the old time. Leaving them disagreed strands the
+                # row: nothing reports it, nothing runs it, resume refuses it.
+                new_state["next_run_time"] = None
 
             logger.info(f"{tablename}: {row.id} carries pickled enum(s)")
             if not apply:

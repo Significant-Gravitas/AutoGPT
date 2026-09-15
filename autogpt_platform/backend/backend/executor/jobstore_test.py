@@ -195,21 +195,6 @@ def test_reconcile_leaves_a_row_that_changed_under_the_scan_alone():
         assert _next_run_time(store, "poisoned") == 1.0
 
 
-def test_reconcile_limit_bounds_the_rows_read():
-    """Startup calls this too, so leaving it unbounded would defeat the limit
-    on the parked-job scan beside it."""
-    with _store() as (store, scheduler):
-        for i in range(4):
-            scheduler.add_job(noop, "interval", seconds=3600, id=f"j{i}")
-            healthy = _job_state(store, f"j{i}")
-            _poison(store, f"j{i}")
-            store._get_jobs()
-            _set_job_state(store, f"j{i}", healthy)
-
-        assert len(store.reconcile_repaired_jobs(limit=2)) == 2
-        assert len(store.reconcile_repaired_jobs()) == 2
-
-
 def test_parked_scan_limit_bounds_the_rows_read():
     with _store() as (store, scheduler):
         for i in range(5):

@@ -103,7 +103,7 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
                     parked.append(row.id)
         return parked
 
-    def reconcile_repaired_jobs(self, limit: int | None = None) -> list[str]:
+    def reconcile_repaired_jobs(self) -> list[str]:
         """Finish parking rows whose payload has since been repaired.
 
         Parking can only clear the ``next_run_time`` COLUMN: the row is by
@@ -113,14 +113,17 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         longer reported as parked; the column still reads paused, so
         ``get_due_jobs`` skips it; and ``resume`` reads the stale non-None
         copy and refuses. Writing that copy back to None makes it an
-        ordinary paused job, which resume revives. *limit* caps the rows
-        scanned, for the same reason ``get_parked_job_ids`` takes one.
+        ordinary paused job, which resume revives.
+
+        ``jobstore_backfill`` already repairs the rows it rewrites, so this is
+        the path for a repair made some other way. It is deliberately
+        unbounded and deliberately NOT run at startup: a capped scan of a
+        backlog nothing ever deletes would keep re-reading its first page and
+        never reach a repaired row behind it.
         """
         selectable = select(self.jobs_t.c.id, self.jobs_t.c.job_state).where(
             self.jobs_t.c.next_run_time.is_(None)
         )
-        if limit is not None:
-            selectable = selectable.limit(limit)
         healed = []
         with self.engine.begin() as connection:
             for row in connection.execute(selectable):
