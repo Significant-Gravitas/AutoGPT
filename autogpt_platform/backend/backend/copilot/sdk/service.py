@@ -117,6 +117,7 @@ from ..permissions import (
     apply_tool_permissions,
 )
 from ..prompting import (
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -1745,6 +1746,7 @@ async def _apply_building_mode_restart(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + get_chat_platform_supplement(session.metadata.source_platform)
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -4812,6 +4814,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         team_building_supplement = get_team_building_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        chat_platform_supplement = get_chat_platform_supplement(
+            session.metadata.source_platform
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4829,6 +4834,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
+            + chat_platform_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix

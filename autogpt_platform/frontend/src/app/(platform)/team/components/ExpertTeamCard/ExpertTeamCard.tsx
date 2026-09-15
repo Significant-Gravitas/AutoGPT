@@ -24,11 +24,8 @@ import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
@@ -62,6 +59,11 @@ export function ExpertTeamCard({
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
+  const avatarConfig = expertNotionConfig({
+    name: expert.name,
+    avatarUrl: expert.avatar_url,
+    color: expert.color,
+  });
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
@@ -106,7 +108,15 @@ export function ExpertTeamCard({
 
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">
-            {isUploadedAvatar(expert.avatar_url) ? (
+            {avatarConfig ? (
+              <span className="flex size-[5.5rem] items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-white ring-4 ring-white">
+                <NotionAvatarImage
+                  config={avatarConfig}
+                  size={88}
+                  title={expert.name}
+                />
+              </span>
+            ) : (
               <Avatar className="size-[5.5rem] rounded-full border border-stone-500 ring-4 ring-white">
                 <AvatarImage
                   src={expert.avatar_url ?? undefined}
@@ -119,20 +129,6 @@ export function ExpertTeamCard({
                   {expert.name}
                 </AvatarFallback>
               </Avatar>
-            ) : (
-              <span className="flex size-[5.5rem] items-center justify-center rounded-full border border-stone-500 bg-white ring-4 ring-white">
-                <BotAvatar
-                  config={expertAvatarConfig({
-                    name: expert.name,
-                    avatarUrl: expert.avatar_url,
-                    color: expert.color,
-                  })}
-                  status="idle"
-                  trackPointer
-                  size={80}
-                  title={expert.name}
-                />
-              </span>
             )}
           </span>
 

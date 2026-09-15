@@ -73,6 +73,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="openai", display_name="OpenAI"),
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
+            CatalogCreator(name="sakana", display_name="Sakana AI"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
             CatalogCreator(name="z.ai", display_name="Z.ai"),
@@ -1560,6 +1561,25 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=660.0,
                 ),
             ),
+            # ----- Sakana AI -----
+            CatalogModel(
+                slug="sakana/fugu-ultra-v2",
+                display_name="Fugu Ultra v2",
+                provider="open_router",
+                creator="sakana",
+                context_window=1048576,
+                max_output_tokens=1048576,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=750.0,
+                    output_credits_per_1m=4500.0,
+                    cache_read_credits_per_1m=75.0,
+                ),
+            ),
             # ----- v0 by Vercel -----
             CatalogModel(
                 slug="v0-1.0-md",
@@ -1599,11 +1619,11 @@ def _build_catalog() -> CatalogPayload:
             "copilot_codex": {
                 "fast": {
                     "standard": "gpt-5.6-luna",
-                    "advanced": "gpt-5.6-terra",
+                    "advanced": "gpt-6-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-5.6-sol",
+                    "advanced": "gpt-6-astra",
                 },
             }
         },

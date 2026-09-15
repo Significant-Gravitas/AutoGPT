@@ -29,14 +29,11 @@ from backend.copilot.tools.skills import (
 
 # The skills layer's own test owns the in-memory workspace these round-trip
 # tests need; a second copy here would drift from the real manager's surface.
-from backend.copilot.tools.skills_test import (  # noqa: E402
-    _FakeWorkspaceManager,
-    _patch_skills_path,
-)
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import ConflictError, InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
@@ -60,6 +57,10 @@ app.include_router(v1_router)
 # Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
 # tests below verify the same behaviour the real app exposes.
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same reason: ConflictError is mapped app-wide, never on the route, so without
+# this a conflict reads here as an unhandled error rather than the 409 a client
+# actually gets.
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1852,6 +1853,22 @@ def test_download_refuses_a_stored_package_over_the_files_cap() -> None:
 
     assert response.status_code == 413
     assert str(MAX_PACKAGE_FILES) in response.json()["detail"]
+
+
+def test_download_of_a_package_being_rewritten_is_409_not_a_bad_request(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A tree that will not hold still is a conflict the caller can retry, not
+    a malformed package: 400 or 413 would blame the user for their own
+    concurrent edit."""
+    mocker.patch(
+        "backend.api.features.v1.read_user_skill_package",
+        AsyncMock(side_effect=ConflictError("changed while it was read")),
+    )
+
+    response = client.get("/skills/oauth_flow/package")
+
+    assert response.status_code == 409, response.text
 
 
 def test_download_package_returns_404_for_a_missing_skill(
