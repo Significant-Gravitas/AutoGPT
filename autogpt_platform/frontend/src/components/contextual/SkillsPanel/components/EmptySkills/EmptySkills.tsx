@@ -15,10 +15,9 @@ export function EmptySkills() {
         No skills yet
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
-        Your Otto distills reusable procedures from past sessions. Hit{" "}
-        <strong>New skill</strong> to teach it one in chat, or{" "}
-        <strong>Upload skill</strong> to import one you&apos;ve saved — then
-        it&apos;ll reach for it automatically.
+        Give your experts a repeatable process to follow. Select{" "}
+        <strong>New skill</strong> to create one in chat, or{" "}
+        <strong>Upload skill</strong> to import one you&apos;ve saved.
       </Text>
     </div>
   );

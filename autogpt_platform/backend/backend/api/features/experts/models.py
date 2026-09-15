@@ -136,8 +136,10 @@ class ExpertSetupItem(BaseModel):
 
     Rendered on the Team page as a row with a single fix. ``connect``: the
     user has no credential for any of ``providers``. ``allow``: they have one
-    (``credential_id``) that this expert may not use yet. ``workflow``: no
-    credential is missing, so the schedule needs creating from the workflow.
+    (``credential_id``) that this expert may not use yet. ``inputs``: the
+    workflow needs the values in ``missing_inputs`` before it can run
+    unattended. ``workflow``: nothing is missing, so the schedule needs
+    creating from the workflow.
     """
 
     expert_id: str
@@ -147,8 +149,11 @@ class ExpertSetupItem(BaseModel):
     workflow_name: str | None
     library_agent_id: str | None
     providers: list[str]
-    resolution: Literal["connect", "allow", "workflow"]
+    resolution: Literal["connect", "allow", "inputs", "workflow"]
     credential_id: str | None = None
+    # Titles of the graph inputs a scheduled run cannot supply; only set on
+    # an ``inputs`` item.
+    missing_inputs: list[str] = Field(default_factory=list)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -201,6 +206,8 @@ class Expert(BaseModel):
     tagline: str | None
     bio: str | None
     skills: list[str]
+    # Canonical marketplace categories the roster is filtered by.
+    categories: list[str] = []
     identity: str
     voice_preferences: str
     # Populated only on roster templates so the hire flow can offer a voice
@@ -232,6 +239,22 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+
+
+class ExpertBundledSkill(BaseModel):
+    """A live Skills Hub listing a roster template comes with."""
+
+    id: str
+    slug: str
+    name: str
+    description: str
+
+
+class ExpertTemplate(Expert):
+    """A roster template as the marketplace shows it."""
+
+    # What a hire gets installed, in roster order; a template's `skills` is unused.
+    bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 
 # Membership is deliberately not embedded: clients already hold the expert

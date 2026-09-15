@@ -180,7 +180,6 @@ describe("Marketplace expert page", () => {
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
-    expect(screen.getByText("Content strategy")).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
         "LinkedIn Post Generator",
@@ -198,6 +197,81 @@ describe("Marketplace expert page", () => {
     expect(mockRouterPush).toHaveBeenCalledWith(
       `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
     );
+  });
+
+  test("says when a bundled workflow runs on a schedule, before hiring", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          workflows: [
+            { ...mariaTemplate.workflows[0], schedule_cron: "40 7 * * *" },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Runs every day at 07:40")).toBeDefined();
+  });
+
+  test("says nothing about a cadence for a workflow that has none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    await screen.findByText("LinkedIn Post Generator");
+    expect(screen.queryByText(/^Runs /)).toBeNull();
+  });
+
+  test("shows only the Hub skills a hire comes with, as links", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          skills: ["Content strategy", "brand-voice-guide", "Positioning"],
+          bundled_skills: [
+            {
+              id: "listing-1",
+              slug: "brand-voice-guide",
+              name: "brand-voice-guide",
+              description: "Keeps every draft on-brand.",
+            },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: "Brand voice guide" });
+    expect(link.getAttribute("href")).toBe(
+      "/marketplace/skills/brand-voice-guide",
+    );
+    expect(screen.queryByText("brand-voice-guide")).toBeNull();
+    expect(screen.queryByText("Content strategy")).toBeNull();
+    expect(screen.queryByText("Positioning")).toBeNull();
+  });
+
+  test("shows no Skills section when a hire comes with no Hub skills", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, bundled_skills: [] },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    await screen.findByRole("heading", { level: 1, name: "Maria" });
+    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
+    expect(screen.queryByText("Content strategy")).toBeNull();
   });
 
   test("renders the services, plan and disclosure sections", async () => {
@@ -255,7 +329,19 @@ describe("Marketplace expert page", () => {
   test("lists the creator's day-one rows above the skills", async () => {
     server.use(
       getListExpertTemplatesMockHandler([
-        { ...mariaTemplate, day_one: mariaDayOne },
+        // The Skills section only renders for a bundled Hub skill.
+        {
+          ...mariaTemplate,
+          day_one: mariaDayOne,
+          bundled_skills: [
+            {
+              id: "listing-1",
+              slug: "brand-voice-guide",
+              name: "brand-voice-guide",
+              description: "Keeps every draft on-brand.",
+            },
+          ],
+        },
       ]),
       getListExpertsMockHandler([]),
     );

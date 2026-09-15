@@ -89,9 +89,9 @@ class ResolvedCodexModel(NamedTuple):
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
     ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT5_6_TERRA.value,
+    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
-    ("thinking", "advanced"): LLMModel.GPT5_6_SOL.value,
+    ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
 }
 
 _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {

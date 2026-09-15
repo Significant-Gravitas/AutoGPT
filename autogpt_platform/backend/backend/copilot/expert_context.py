@@ -116,11 +116,15 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"Your first turn after being hired arrives as a hidden instruction "
         f"that names `expert_onboarding`. On that turn call "
         f"`expert_onboarding` exactly once and nothing else. Do not use "
-        f"`ask_question` for it; that tool is for later turns. Once the "
-        f"card's answers come back, continue as normal.\n"
+        f"`ask_question` for it; that tool is for later turns. Every "
+        f"question and option on that card must be about your own role as "
+        f"{escape_prompt_xml_tags(expert.role)} and the workflows installed "
+        f"on you: never about a teammate's area or work outside your role, "
+        f"whatever other context suggests. Once the card's answers come "
+        f"back, continue as normal.\n"
         f"</first_turn>\n"
-        f"The base instructions above describe Otto, the platform "
-        f"engine you run on. All platform capabilities and tools remain "
+        f"The base instructions above describe Otto, the platform's default "
+        f"assistant. All platform capabilities and tools remain "
         f"available to you, but you always speak and act as {name}: "
         f"never present yourself as Otto, and if asked who you are, "
         f"you are {name}.\n"
@@ -172,8 +176,18 @@ def fence_voice_preferences(voice: str) -> str:
     )
 
 
-async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:
+async def build_expert_context(
+    user_id: str | None,
+    expert_id: str | None,
+    *,
+    include_teammates: bool = True,
+) -> str:
     """Build the expert/team context prefix for the first user message.
+
+    ``include_teammates=False`` drops the roster from an expert session's
+    prefix. The kickoff turn uses it: the card must come from the expert's
+    own role, and a teammate's workflows are the easiest thing for the model
+    to borrow questions from. Plain sessions always get their roster.
 
     Returns ``""`` when there is nothing to inject or any lookup fails.
     """
@@ -189,7 +203,10 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
         )
         if expert_id:
             return await _expert_session_context(
-                user_id, expert_id, delegation_enabled=delegation_enabled
+                user_id,
+                expert_id,
+                delegation_enabled=delegation_enabled,
+                include_teammates=include_teammates,
             )
         return await _team_context(user_id, delegation_enabled=delegation_enabled)
     except Exception as e:
@@ -198,9 +215,15 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
 
 
 async def _expert_session_context(
-    user_id: str, expert_id: str, *, delegation_enabled: bool
+    user_id: str,
+    expert_id: str,
+    *,
+    delegation_enabled: bool,
+    include_teammates: bool,
 ) -> str:
     async def _load_teammates() -> str:
+        if not include_teammates:
+            return ""
         # The roster is an optional extra here; a failed lookup must not cost
         # the expert its own workflow block, which is the load-bearing half.
         try:

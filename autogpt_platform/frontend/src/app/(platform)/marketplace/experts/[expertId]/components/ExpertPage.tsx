@@ -134,7 +134,7 @@ export function ExpertPage() {
           accent={accent}
         />
         <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
-        <ExpertSkills skills={expert.skills ?? []} accent={accent} />
+        <ExpertSkills skills={expert.bundled_skills ?? []} accent={accent} />
         <ExpertWorkflowList
           name={expert.name}
           workflows={expert.workflows}

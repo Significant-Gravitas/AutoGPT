@@ -39,6 +39,7 @@ from backend.copilot.baseline.reasoning import (
     reasoning_extra_body,
 )
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -81,6 +82,7 @@ from backend.copilot.pending_messages import (
 from backend.copilot.prompting import (
     AUTO_MODE_SUPPLEMENT,
     SHARED_TOOL_NOTES,
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
@@ -1716,6 +1718,9 @@ async def stream_chat_completion_baseline(
                 user_id=user_id,
                 session_id=session_id,
                 message_length=len(message or ""),
+                expert_id=session.expert_id,
+                origin=session.metadata.origin,
+                surface=session.metadata.source_platform,
             )
 
     # Capture count *before* the pending drain so is_first_turn and the
@@ -1895,6 +1900,9 @@ async def stream_chat_completion_baseline(
     team_building_supplement = get_team_building_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
     )
+    chat_platform_supplement = get_chat_platform_supplement(
+        session.metadata.source_platform
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1907,6 +1915,7 @@ async def stream_chat_completion_baseline(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + chat_platform_supplement
         + graphiti_supplement
         + auto_mode_supplement
         + builder_session_suffix
@@ -1991,7 +2000,9 @@ async def stream_chat_completion_baseline(
         # here MUST NOT block the turn; log and proceed with empty index.
         skills_ctx = ""
         try:
-            skills_ctx = await build_skills_context(user_id)
+            skills_ctx = await build_skills_context(
+                user_id, expert_id=session.expert_id
+            )
         except Exception:
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"
@@ -2054,6 +2065,18 @@ async def stream_chat_completion_baseline(
             )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    # Live budget, every turn — the first-turn ``<budget_context>`` above is
+    # stale from turn two onward and says nothing about the tree. After the
+    # pending fold so it lands on the message the model reads last, and never
+    # on ``user_message_for_transcript``: that would persist one stale figure
+    # per turn, the same trap the warm-context injection below names.
+    budget_status = await build_turn_budget_block(envelope, user_id)
+    if budget_status:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                msg["content"] = budget_status + str(msg.get("content") or "")
+                break
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.

@@ -91,9 +91,36 @@ function lockedChatgpt(): AIConnectionOffer {
   };
 }
 
+function microsoft(isDefault: boolean, id = "cred-msft"): AIConnectionOffer {
+  return {
+    offer_id: `microsoft_365_copilot:${id}`,
+    auth_provider: "microsoft_365_copilot",
+    provider_family: "microsoft",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "device_oauth",
+    credential_id: id,
+    backed_by_label: "Your Microsoft Copilot plan",
+    description:
+      "New chats are backed by your Microsoft Copilot subscription and work context.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+interface MockCredential {
+  id: string;
+  username?: string;
+  provider?: string;
+  title?: string;
+  scopes?: string[];
+}
+
 function mockTransports(
   offers: AIConnectionOffer[],
-  credentials: { id: string; username: string }[] = [],
+  credentials: MockCredential[] = [],
 ) {
   server.use(
     getGetV2ListChatConnectionsMockHandler200({ offers }),
@@ -101,11 +128,11 @@ function mockTransports(
     getGetV1ListCredentialsMockHandler200(
       credentials.map((credential) => ({
         id: credential.id,
-        provider: "codex",
+        provider: credential.provider ?? "codex",
         type: "oauth2" as const,
-        title: "ChatGPT for Codex",
-        scopes: [],
-        username: credential.username,
+        title: credential.title ?? "ChatGPT for Codex",
+        scopes: credential.scopes ?? [],
+        username: credential.username ?? null,
       })),
     ),
   );
@@ -200,6 +227,89 @@ describe("AIConnectionsSection", () => {
         connected: true,
         requires_openai_auth: false,
       }),
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("force") === "true"
+          ? { deleted: true, revoked: true }
+          : {
+              deleted: false,
+              need_confirmation: true,
+              message: "Used by an active schedule",
+            },
+      ),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Force remove" }),
+    ).toBeDefined();
+    expect(await screen.findByText("Used by an active schedule")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Force remove" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
+  });
+
+  it("shows the Microsoft account and its granted access", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+          title: "Nick Example",
+          scopes: ["User.Read", "Mail.Read", "Chat.Read"],
+        },
+      ],
+    );
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("nick@example.com")).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+
+    expect(await screen.findByText("Nick Example")).toBeDefined();
+    expect(screen.getByText("Basic account profile")).toBeDefined();
+    expect(screen.getByText("Outlook mail")).toBeDefined();
+    expect(screen.getByText("Teams chats")).toBeDefined();
+  });
+
+  it("keeps the Microsoft manage dialog open when disconnect fails", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+        },
+      ],
+    );
+    server.use(
+      getDeleteV1DeleteCredentialsMockHandler401({ detail: "Not authorized" }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined(),
+    );
+  });
+
+  it("asks before force-removing an in-use Microsoft connection", async () => {
+    mockTransports([platform(false), microsoft(true)]);
+    server.use(
       getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
         new URL(request.url).searchParams.get("force") === "true"
           ? { deleted: true, revoked: true }

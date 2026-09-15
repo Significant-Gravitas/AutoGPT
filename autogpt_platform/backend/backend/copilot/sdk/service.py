@@ -48,6 +48,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -118,6 +119,7 @@ from ..permissions import (
 )
 from ..prompting import (
     AUTO_MODE_SUPPLEMENT,
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -252,7 +254,7 @@ _EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
-    "Otto was unable to complete the tool call "
+    "Unable to complete the tool call "
     "— this usually happens when the response is "
     "too large to fit in a single tool call. "
     "Try breaking your request into smaller parts."
@@ -447,7 +449,7 @@ async def _consume_sdk_until_done(
                     else ""
                 )
                 loop_state.stream_error_msg = (
-                    f"Otto stopped responding{tool_phrase}. "
+                    f"The response stopped{tool_phrase}. "
                     "This usually means a tool got stuck. Please try again."
                 )
                 _append_error_marker(
@@ -1747,6 +1749,7 @@ async def _apply_building_mode_restart(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + get_chat_platform_supplement(session.metadata.source_platform)
         + graphiti_supplement
         + auto_mode_supplement
         + building_suffix
@@ -4577,6 +4580,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             session_id=session_id,
             message_length=len(message or ""),
+            expert_id=session.expert_id,
+            origin=session.metadata.origin,
+            surface=session.metadata.source_platform,
         )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
@@ -4815,6 +4821,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         team_building_supplement = get_team_building_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        chat_platform_supplement = get_chat_platform_supplement(
+            session.metadata.source_platform
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4832,6 +4841,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
+            + chat_platform_supplement
             + graphiti_supplement
             + auto_mode_supplement
             + builder_session_suffix
@@ -5229,7 +5239,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # NOT block the turn — log and continue with an empty index.
             skills_ctx_content = ""
             try:
-                skills_ctx_content = await build_skills_context(user_id)
+                skills_ctx_content = await build_skills_context(
+                    user_id, expert_id=session.expert_id
+                )
             except Exception:
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
@@ -5305,8 +5317,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             for ev in compaction.emit_pre_query_start(forecast.tokens_before):
                 yield ev
 
+        # Live budget, every turn — the CLI's own ``max_budget_usd`` reminder is
+        # per-query and knows nothing of the tree. Prepended to the query only,
+        # never to ``current_message``: that is what the transcript records and
+        # the next turn replays, and it must not accumulate one stale figure
+        # per turn.
+        budget_status = await build_turn_budget_block(envelope, user_id)
+
         query_message, compaction_stats = await _build_query_message(
-            current_message,
+            budget_status + current_message,
             session,
             use_resume,
             transcript_msg_count,
@@ -5509,11 +5528,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
+                # Keep the ``budget_status +`` prefix through any reflow of this
+                # call: dropping it silently un-ships the retry path's budget line.
                 (
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    current_message,
+                    budget_status + current_message,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,

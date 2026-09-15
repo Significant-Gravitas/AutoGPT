@@ -50,7 +50,7 @@ export function AutopilotSkillsSection({ skills }: Props) {
           {visible.map((skill) => (
             <li key={skill.name}>
               <ExpertSkillListItem
-                entry={{ name: skill.name, library: skill }}
+                entry={{ name: skill.name, skill, library: skill }}
                 accentClassName={AUTOPILOT_PILL_CLASS}
               />
             </li>

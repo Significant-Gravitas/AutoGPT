@@ -680,6 +680,36 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     return base + _USER_FOLLOW_UP_NOTE
 
 
+# The one reply a chat-platform bot does not deliver. A message on Discord,
+# Slack, Telegram or Teams can genuinely need no answer: an acknowledgement,
+# two humans talking in a thread the bot is subscribed to, a bare ping. Whole
+# message, exact case: a reply that merely contains the word is delivered.
+NO_REPLY = "NO_REPLY"
+
+
+def get_chat_platform_supplement(source_platform: str | None) -> str:
+    """The silence rule, appended only for sessions that a chat bot opened.
+
+    Lives in the system prompt rather than the per-turn message so the web
+    chat view of a linked session shows what the person typed and nothing
+    else. Gated on the session's source platform: a web session has none,
+    and there a human is waiting, so silence would be a bug. Constant across
+    every bot session, so the prompt cache stays warm across them.
+    """
+    if not source_platform:
+        return ""
+    return f"""
+
+### Staying silent
+You are answering through a chat platform, where not every message needs a
+reply: an acknowledgement, a message not addressed to you, people talking to
+each other in a thread you are in. When a message needs no response from you,
+reply with exactly `{NO_REPLY}` as your entire message and nothing else, and
+nothing will be posted. Otherwise answer normally. You may use tools first to
+decide. Never write `{NO_REPLY}` inside a real reply.
+"""
+
+
 def get_delegation_supplement() -> str:
     """Delegation rules, appended only when the expert-team tools are enabled.
 

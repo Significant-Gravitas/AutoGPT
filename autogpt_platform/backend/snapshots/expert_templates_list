@@ -3,6 +3,8 @@
     "avatar_url": null,
     "bio": null,
     "boundaries": "Ask before external actions.",
+    "bundled_skills": [],
+    "categories": [],
     "color": "",
     "credential_count": 0,
     "credential_providers": [],

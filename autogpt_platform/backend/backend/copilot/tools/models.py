@@ -349,7 +349,7 @@ class ErrorResponse(ToolResponseBase):
 
 
 class SubSessionProgressSnapshot(BaseModel):
-    """Mid-flight snapshot of a running sub-Otto.
+    """Mid-flight snapshot of a running child session.
 
     Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
     caller passes ``include_progress=true`` while the sub is still running.
@@ -372,7 +372,7 @@ class WorkspaceFileInfoData(BaseModel):
 
     Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
     on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
-    sub-Otto wrote, ``path`` is already session-qualified
+    child session wrote, ``path`` is already session-qualified
     (``/sessions/<sub_id>/...``) and can be passed straight to
     ``read_workspace_file(path=...)`` for cross-session retrieval.
     """
@@ -389,7 +389,7 @@ class DelegatedExpertInfo(BaseModel):
 
     Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
     both the model and the ToolChain card can name who is doing the work
-    instead of rendering a generic "Sub-Otto".
+    instead of rendering a generic "Subtask".
     """
 
     id: str
@@ -400,7 +400,7 @@ class DelegatedExpertInfo(BaseModel):
 
 
 class SubSessionStatusResponse(ToolResponseBase):
-    """Status / result of a sub-Otto run started by ``run_sub_session``.
+    """Status / result of a child session started by ``run_sub_session``.
 
     Returned by both ``run_sub_session`` (synchronously when the sub finishes
     within ``wait_for_result``, else with ``status='running'``) and
@@ -412,7 +412,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         "running", "completed", "cancelled", "error", "queued", "transferred"
     ] = Field(
         description=(
-            "Current state of the sub-Otto run.  ``queued`` means the "
+            "Current state of the child session.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
             "existing turn on its next drain.  ``transferred`` is terminal "
@@ -434,7 +434,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-Otto conversation. Use with "
+            "The session_id of the child session. Use with "
             "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
             "to continue it."
         ),
@@ -442,8 +442,8 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_link: str | None = Field(
         default=None,
         description=(
-            "Relative URL the user can click to open the sub-Otto "
-            "conversation in the CoPilot UI. Always set when "
+            "Relative URL the user can click to open the child session "
+            "in the CoPilot UI. Always set when "
             "``sub_autopilot_session_id`` is set."
         ),
     )
@@ -451,7 +451,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description=(
             "Teammate the work was delegated to. Set only for "
-            "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
+            "``delegate_to_expert`` runs; None for same-scope child sessions."
         ),
     )
     sub_tool_call_count: int | None = Field(
@@ -478,7 +478,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     )
     elapsed_seconds: float | None = Field(
         default=None,
-        description="How long the sub-Otto has been running (or took).",
+        description="How long the child session has been running (or took).",
     )
     progress: SubSessionProgressSnapshot | None = Field(
         default=None,

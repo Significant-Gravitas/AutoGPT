@@ -4,8 +4,9 @@ Browse is rooted at :class:`SkillListingVersion` rather than the listing because
 every filter and the ordering read version columns; ``ActiveFor`` constrains the
 row to the listing's live version. Install count is displayed but is not a sort
 key — a catalogue this size gains nothing from it, and it lives on the listing
-because installs accumulate across versions. It counts distinct installers: a
-re-install overwrites the user's copy and is not counted again.
+because installs accumulate across versions. It counts distinct installs per
+owner (personal library or expert): a re-install overwrites that copy and is
+not counted again.
 """
 
 import prisma.enums
@@ -60,21 +61,37 @@ async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetail
     return skill_model.MarketplaceSkillDetails.from_db(listing)
 
 
+async def get_live_skills(
+    listing_ids: list[str],
+) -> dict[str, skill_model.MarketplaceSkill]:
+    """The live listings among *listing_ids*, keyed by id, in one query."""
+    if not listing_ids:
+        return {}
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where=_live_listing_where({"id": {"in": listing_ids}}),
+        include=_LISTING_INCLUDE,
+    )
+    return {
+        listing.id: skill_model.MarketplaceSkill.from_db(listing)
+        for listing in listings
+    }
+
+
 async def install_marketplace_skill(
-    user_id: str, slug: str
+    user_id: str, slug: str, *, expert_id: str | None = None
 ) -> skill_model.InstalledSkill:
-    """Copy a listing's SKILL.md into the caller's own skill library.
+    """Copy a listing's SKILL.md into *expert_id*'s skill folder, or the
+    caller's own library when ``None``.
 
     The listing's slug becomes the installed skill's name, so an install is
     idempotent and a re-install picks up a newer approved version.
     """
     listing = await _find_live_listing(slug)
     active = skill_model.active_version(listing)
-    # A re-install overwrites the user's existing copy, so counting it again
-    # would report installs rather than installers.
-    is_new = all(s.name != listing.slug for s in await list_user_skills(user_id))
-    # #14414 makes this the expert-owned install's call site, adding both the
-    # `expert_id` argument here and the keyword on `store_user_skill`.
+    # A re-install overwrites the existing copy, so counting it again would
+    # report installs rather than installers. Counting only: no healing.
+    owned = await list_user_skills(user_id, expert_id, heal_missing=False)
+    is_new = all(s.name != listing.slug for s in owned)
     await store_user_skill(
         user_id,
         name=listing.slug,
@@ -82,6 +99,7 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        expert_id=expert_id,
     )
     if is_new:
         await prisma.models.SkillListing.prisma().update(
@@ -94,19 +112,28 @@ async def install_marketplace_skill(
 
 async def _find_live_listing(slug: str) -> prisma.models.SkillListing:
     listing = await prisma.models.SkillListing.prisma().find_first(
-        where={"slug": slug, "isDeleted": False, "hasApprovedVersion": True},
-        include=_LISTING_INCLUDE,
+        where=_live_listing_where({"slug": slug}), include=_LISTING_INCLUDE
     )
-    if listing is None or listing.ActiveVersion is None:
-        raise NotFoundError(f"Skill '{slug}' not found")
-    active = listing.ActiveVersion
-    if (
-        active.submissionStatus != prisma.enums.SubmissionStatus.APPROVED
-        or not active.isAvailable
-        or active.isDeleted
-    ):
+    if listing is None:
         raise NotFoundError(f"Skill '{slug}' not found")
     return listing
+
+
+def _live_listing_where(
+    match: prisma.types.SkillListingWhereInput,
+) -> prisma.types.SkillListingWhereInput:
+    return {
+        **match,
+        "isDeleted": False,
+        "hasApprovedVersion": True,
+        "ActiveVersion": {
+            "is": {
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                "isAvailable": True,
+                "isDeleted": False,
+            }
+        },
+    }
 
 
 def _live_version_where(
