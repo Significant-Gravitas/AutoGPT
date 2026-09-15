@@ -177,6 +177,74 @@ async def test_autopilot_block_rejects_invalid_session_route(
     execute_copilot.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_autopilot_origin_mismatch_clears_pending_question():
+    """Interactive resume reject clears Home pending_question (#14118)."""
+    from datetime import datetime, timezone
+
+    from backend.copilot.model import PendingQuestion
+
+    block = AutoPilotBlock()
+    execute_copilot = AsyncMock()
+    pending = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    existing = SimpleNamespace(
+        session_id="session-1",
+        user_id="user-1",
+        metadata=SimpleNamespace(
+            origin="interactive",
+            llm_auth_provider="codex",
+            llm_credential_id="cred-1",
+            pending_question=pending,
+        ),
+    )
+    clear_db = AsyncMock()
+    input_data = AutoPilotBlock.Input(
+        prompt="continue",
+        session_id="session-1",
+        codex_credentials={
+            "id": "cred-1",
+            "provider": "codex",
+            "type": "oauth2",
+            "title": "Personal ChatGPT",
+        },
+    )
+    context = ExecutionContext(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_exec_id="graph-exec-1",
+        node_id="node-1",
+        node_exec_id="node-exec-1",
+    )
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=existing),
+        ),
+        patch(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
+        ),
+        patch.object(block, "execute_copilot", execute_copilot),
+    ):
+        outputs = [
+            item
+            async for item in block.run(
+                input_data,
+                execution_context=context,
+            )
+        ]
+
+    assert outputs[0] == ("session_id", "session-1")
+    assert outputs[1][0] == "error"
+    assert "started by a person" in outputs[1][1]
+    execute_copilot.assert_not_awaited()
+    assert existing.metadata.pending_question is None
+    clear_db.assert_awaited_once_with("session-1", "user-1")
+
+
 def _persisted_metadata(raw_json: str) -> ChatSessionMetadata:
     """Parse metadata the way ``ChatSessionInfo.from_db`` does.
 

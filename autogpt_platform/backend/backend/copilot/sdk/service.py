@@ -4571,6 +4571,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Clear Home "Needs You" *before* identity guards. Org/team mismatch and
+    # other ExpertSessionUnavailableError paths raise inside
+    # build_expert_identity_suffix; clearing after that left cards stuck
+    # forever (#14118). Unconditional on the append result: the HTTP path
+    # pre-saves the user message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -4623,12 +4631,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Only the server-injected prefix on the first message is trusted.
     if message:
         message = strip_user_context_tags(message)
-
-    # A reply is the only thing that clears a Home "Needs You" question.
-    # Unconditional on the append result: the HTTP path pre-saves the user
-    # message, so the append is a no-op dedup there.
-    if is_user_message and message and message.strip():
-        await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
         session, message, is_user_message, message_metadata
