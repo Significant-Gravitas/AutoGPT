@@ -27,6 +27,8 @@ interface Args {
 
 export function useNotionAvatarPicker({ name, color, onPick }: Args) {
   const [colorId, setColorId] = useState(() => color ?? seedColorToken(name));
+  const colorIdRef = useRef(colorId);
+  colorIdRef.current = colorId;
   const [config, setConfig] = useState<NotionAvatarConfig>(() =>
     seedConfig(name),
   );
@@ -80,7 +82,7 @@ export function useNotionAvatarPicker({ name, color, onPick }: Args) {
     setIsUploading(true);
     try {
       const response = await uploadMedia({ data: { file } });
-      onPick(response.data as string, colorId);
+      onPick(response.data as string, colorIdRef.current);
     } catch {
       toast({
         title: "Couldn't save that picture",

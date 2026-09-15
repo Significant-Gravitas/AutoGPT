@@ -155,10 +155,12 @@ export function parseNotionAvatarUrl(
   return match ? decodeNotionConfig(match[1]) : null;
 }
 
+// Iterates by code point (not UTF-16 code unit) so names with characters
+// outside the BMP, like emoji, hash the same way as the backend's ord().
 export function hashSeed(input: string) {
   let hash = 2166136261;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
+  for (const character of input) {
+    hash ^= character.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;

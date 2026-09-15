@@ -23,6 +23,9 @@ FRONTEND_SEEDED = {
     "Jules": "/avatars/notion/12-5-13-13-3-9-2-0-4-2.yellow.svg",
     "Priya": "/avatars/notion/2-12-18-1-15-2-55-11-0-11.indigo.svg",
     "Sam": "/avatars/notion/4-11-0-1-13-0-0-6-0-16.red.svg",
+    # Non-BMP character (emoji): pins hashSeed/_hash_seed to hash by code
+    # point on both sides, not by UTF-16 code unit.
+    "Otto 🤖": "/avatars/notion/7-10-18-11-6-5-37-3-4-1.teal.svg",
 }
 
 

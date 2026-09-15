@@ -116,6 +116,14 @@ describe("seeding", () => {
     expect(bare("glasses")).toBeGreaterThan(0.4);
     expect(bare("beard")).toBeGreaterThan(0.45);
   });
+
+  it("hashes a name the same way regardless of characters outside the BMP", () => {
+    // "🤖" is a surrogate pair in UTF-16; hashing by code point keeps this
+    // in sync with the backend's ord()-based _hash_seed.
+    expect(notionAvatarUrlFor(notionConfigForName("Otto 🤖"))).toBe(
+      "/avatars/notion/7-10-18-11-6-5-37-3-4-1.teal.svg",
+    );
+  });
 });
 
 describe("what to draw for an expert", () => {

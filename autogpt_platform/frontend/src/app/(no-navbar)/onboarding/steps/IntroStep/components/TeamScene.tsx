@@ -177,6 +177,7 @@ export function TeamScene() {
                     ...notionConfigForName(member.name),
                     color: member.color,
                   }}
+                  status={member.status}
                   size={member.size}
                   title={member.name}
                 />
