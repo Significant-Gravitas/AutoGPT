@@ -155,7 +155,7 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "With no tasks the component returns null so the above-input area stays clean until Otto populates a list.",
+          "With no tasks the component returns null so the above-input area stays clean until a task list is created.",
       },
     },
   },

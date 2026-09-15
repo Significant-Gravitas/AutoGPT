@@ -110,8 +110,8 @@ export function SelectedTriggerAgentView({
                     >
                       This schedule is running version {schedule.graph_version}{" "}
                       of the trigger agent, but the latest version is{" "}
-                      {triggerAgent.graph_version}. Ask Otto to recreate the
-                      schedule to pick up your latest edits.
+                      {triggerAgent.graph_version}. Ask your expert to recreate
+                      the schedule to pick up your latest edits.
                     </Text>
                   )}
                   <div className="flex flex-col gap-1.5">

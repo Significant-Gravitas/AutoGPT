@@ -124,9 +124,13 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("Otto Skills", undefined, {
-        timeout: 10000,
-      }),
+      await screen.findByRole(
+        "heading",
+        { name: "Skills" },
+        {
+          timeout: 10000,
+        },
+      ),
     ).toBeDefined();
     // The API returns the frontmatter name, which the seed pins to the slug.
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
@@ -140,9 +144,13 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const skills = await screen.findByText("Otto Skills", undefined, {
-      timeout: 10000,
-    });
+    const skills = await screen.findByRole(
+      "heading",
+      { name: "Skills" },
+      {
+        timeout: 10000,
+      },
+    );
     const workflows = await screen.findByText("All AI Workflows");
     // Node.DOCUMENT_POSITION_FOLLOWING === 4: the workflows heading comes after.
     expect(skills.compareDocumentPosition(workflows) & 4).toBe(4);
@@ -218,9 +226,13 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("Otto Skills", undefined, {
-        timeout: 10000,
-      }),
+      await screen.findByRole(
+        "heading",
+        { name: "Skills" },
+        {
+          timeout: 10000,
+        },
+      ),
     ).toBeDefined();
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
   });
@@ -248,7 +260,9 @@ describe("Marketplace SkillsSection", () => {
     await userEvent.click(await findCategoryChip("Sales"));
 
     // Without the category guard this falls through to the signed-in empty state.
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
     expect(screen.queryByTestId("skills-shelf-empty")).toBeNull();
   });
 
@@ -277,7 +291,7 @@ describe("Marketplace SkillsSection", () => {
 
     // A failure is not an answer about the category, so the shelf stays.
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
-    expect(screen.getByText("Otto Skills")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Skills" })).toBeDefined();
   });
 
   test("points a signed-in user at their own skills when none are published", async () => {
@@ -299,7 +313,9 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
   });
 
   test("stays hidden and fetches nothing outside the beta", async () => {
@@ -323,7 +339,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("Otto Skills")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
     await waitFor(() => expect(requested).toBe(false));
   });
 
@@ -334,7 +350,9 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
   });
 });
 
