@@ -9,6 +9,13 @@ from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# OrcaRouter — an OpenAI-compatible model routing gateway (meta-router).
+# Same wire protocol shape as OpenRouter: ``provider/model`` namespaces and
+# a ``/v1`` chat-completions endpoint. Unlike OpenRouter it rejects the
+# ``usage: {"include": True}`` extra_body, so the caller must not send it —
+# only the attribution headers apply.
+ORCAROUTER_BASE_URL = "https://api.orcarouter.ai/v1"
+
 settings = Settings()
 
 if TYPE_CHECKING:
