@@ -369,8 +369,8 @@ async def suspend_workflow_triggers(
             await scheduler.pause_schedule(schedule.id, user_id=user_id)
             stopped.append(schedule.name or schedule.cron or schedule.id)
         except Exception as e:
-            # Same reasoning as detach: a schedule that refuses to pause keeps
-            # firing, so log it by id rather than lose it.
+            # Unlike detach, no run-time gate catches a survivor: the expert
+            # stays active and execution never checks membership (#14607).
             logger.warning(
                 f"Failed to pause schedule #{schedule.id} while removing graph "
                 f"#{graph_id} from expert #{expert_id}: {type(e).__name__}: {e}"
