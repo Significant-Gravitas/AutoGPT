@@ -97,7 +97,7 @@ export function ConnectIntegrationTool({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
-          Otto to retry connecting {providerName}.
+          your expert to retry connecting {providerName}.
         </p>
       )}
 

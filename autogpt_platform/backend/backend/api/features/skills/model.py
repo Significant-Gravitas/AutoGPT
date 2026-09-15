@@ -14,6 +14,15 @@ class CopilotSkillInfo(BaseModel):
     triggers: list[str] = []
 
 
+class CopilotSkillFile(BaseModel):
+    """One file of a skill package, by its path relative to the skill folder
+    (``scripts/run.py``) — the path the SKILL.md body references it by."""
+
+    path: str
+    size_bytes: int
+    is_executable: bool = False
+
+
 class CopilotSkillDetail(BaseModel):
     """Full SKILL.md content surfaced to the library expand-to-view UI."""
 
@@ -23,11 +32,9 @@ class CopilotSkillDetail(BaseModel):
     body: str
     version: str | None = None
     is_default: bool = False
-    # Sibling files in the same skill folder (references/, scripts/,
-    # assets/, etc.) — the workspace paths the model can reach via
-    # ``read_workspace_file``.  Empty for built-in defaults since they
-    # ship as on-disk markdown and have no sibling artefacts.
-    sibling_files: list[str] = []
+    # The package's other files (references/, scripts/, assets/).  Empty for
+    # built-in defaults, which ship as one on-disk markdown file.
+    files: list[CopilotSkillFile] = []
 
 
 class UploadCopilotSkillRequest(BaseModel):

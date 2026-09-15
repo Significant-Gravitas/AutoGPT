@@ -53,6 +53,50 @@ async def test_agent_schedule(server: SpinTestServer):
     assert len(schedules) == 0
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestServer):
+    """AUTOGPT-SERVER-9NB regression: get_execution_schedules must exclude a
+    paused schedule via the SQL-level ``next_run_time IS NOT NULL`` filter
+    (Scheduler._get_active_jobs_cached), not just via the old in-Python
+    check — and ``include_paused=True`` must still find it through the
+    unfiltered ``_get_jobs_cached`` path used by pause/resume lifecycle
+    callers. Exercised against the real apscheduler_jobs table."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=test_user.id,
+        graph_version=1,
+        cron="0 0 * * *",
+        input_data={"input": "data"},
+        input_credentials={},
+    )
+
+    assert await scheduler.pause_schedule(schedule.id, user_id=test_user.id) is True
+
+    active_only = await scheduler.get_execution_schedules(
+        graph_id=test_graph.id, user_id=test_user.id
+    )
+    assert len(active_only) == 0
+
+    with_paused = await scheduler.get_execution_schedules(
+        graph_id=test_graph.id, user_id=test_user.id, include_paused=True
+    )
+    assert [s.id for s in with_paused] == [schedule.id]
+
+    assert await scheduler.resume_schedule(schedule.id, user_id=test_user.id) is True
+    active_after_resume = await scheduler.get_execution_schedules(
+        graph_id=test_graph.id, user_id=test_user.id
+    )
+    assert [s.id for s in active_after_resume] == [schedule.id]
+
+
 # ---------------------------------------------------------------------------
 # Community rebuild @expose methods — lightweight unit tests
 #
@@ -855,20 +899,20 @@ def _counter(name: str, **labels) -> float:
     return REGISTRY.get_sample_value(name, labels) or 0.0
 
 
-def test_get_jobs_cached_sets_the_scheduler_jobs_gauge():
+def test_get_active_jobs_cached_sets_the_scheduler_jobs_gauge():
     """autogpt_scheduler_jobs has an alert on it and was never set."""
     from unittest.mock import MagicMock
 
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._jobs_cache = None
-    s._jobs_cache_expires_at = 0.0
+    s._active_jobs_cache = None
+    s._active_jobs_cache_expires_at = 0.0
     s._jobs_cache_version = 0
-    s.scheduler = MagicMock()
-    s.scheduler.get_jobs.return_value = [object(), object(), object()]
+    s._execution_jobstore = MagicMock()
+    s._execution_jobstore._get_jobs.return_value = [object(), object(), object()]
 
-    assert len(s._get_jobs_cached()) == 3
+    assert len(s._get_active_jobs_cached()) == 3
     assert (
         _counter("autogpt_scheduler_jobs", job_type="execution", status="scheduled")
         == 3
@@ -876,7 +920,7 @@ def test_get_jobs_cached_sets_the_scheduler_jobs_gauge():
 
 
 def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
-    """An invalidation that lands while get_jobs() is in flight rejects the
+    """An invalidation that lands while the DB query is in flight rejects the
     cache write; the gauge must be rejected with it, or a slow stale read can
     overwrite a newer count that another reader already published."""
     from unittest.mock import MagicMock
@@ -884,14 +928,14 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._jobs_cache = None
-    s._jobs_cache_expires_at = 0.0
+    s._active_jobs_cache = None
+    s._active_jobs_cache_expires_at = 0.0
     s._jobs_cache_version = 0
-    s.scheduler = MagicMock()
+    s._execution_jobstore = MagicMock()
 
     # A fresh, accepted read publishes 5.
-    s.scheduler.get_jobs.return_value = [object()] * 5
-    s._get_jobs_cached()
+    s._execution_jobstore._get_jobs.return_value = [object()] * 5
+    s._get_active_jobs_cached()
 
     def gauge() -> float:
         return _counter(
@@ -902,14 +946,14 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     # Now a read whose query is interrupted by an invalidation: it returns a
     # different count, but the version moved, so the cache write is skipped.
-    s._jobs_cache = None
-    s._jobs_cache_expires_at = 0.0
+    s._active_jobs_cache = None
+    s._active_jobs_cache_expires_at = 0.0
 
-    def _slow_query_then_invalidated(**_):
+    def _slow_query_then_invalidated(*_args, **_kwargs):
         s._invalidate_jobs_cache()
         return [object()] * 2
 
-    s.scheduler.get_jobs.side_effect = _slow_query_then_invalidated
-    assert len(s._get_jobs_cached()) == 2  # caller still gets the list
-    assert s._jobs_cache is None  # write-back was rejected
+    s._execution_jobstore._get_jobs.side_effect = _slow_query_then_invalidated
+    assert len(s._get_active_jobs_cached()) == 2  # caller still gets the list
+    assert s._active_jobs_cache is None  # write-back was rejected
     assert gauge() == 5  # and so was the gauge update
