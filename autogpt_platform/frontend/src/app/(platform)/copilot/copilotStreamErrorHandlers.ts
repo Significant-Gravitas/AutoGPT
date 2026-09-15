@@ -2,6 +2,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
   describeProviderFailure,
+  parseProviderFailure,
   type ProviderFailure,
 } from "./providerFailure";
 
@@ -97,6 +98,32 @@ function extractErrorDetail(error: Error): string {
   return error.message;
 }
 
+/**
+ * A typed provider-failure envelope, when FastAPI's `{"detail": ...}` wraps
+ * an object instead of a string (e.g. the 429 raised for the platform usage
+ * cap). `extractErrorDetail` above only unwraps string details, so a
+ * structured refusal used to fall through to substring guessing and never
+ * reached the "switch connection" UI. Checked separately so the string path
+ * stays untouched for every other error shape.
+ */
+function extractProviderFailureDetail(error: Error): ProviderFailure | null {
+  try {
+    const parsed = JSON.parse(error.message) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "detail" in parsed &&
+      typeof (parsed as { detail: unknown }).detail === "object" &&
+      (parsed as { detail: unknown }).detail !== null
+    ) {
+      return parseProviderFailure((parsed as { detail: unknown }).detail);
+    }
+  } catch {
+    // Not JSON
+  }
+  return null;
+}
+
 interface HandleStreamErrorArgs {
   error: Error;
   onRateLimit: (message: string, providerFailure?: ProviderFailure) => void;
@@ -130,9 +157,13 @@ export function handleStreamError({
   onRateLimit,
   onReconnect,
   isUserStoppingRef,
-  providerFailure,
+  providerFailure: streamedProviderFailure,
 }: HandleStreamErrorArgs): void {
   const errorDetail = extractErrorDetail(error);
+  // The live stream's typed envelope wins when present; otherwise recover
+  // one from a structured 429/etc. body raised before streaming started.
+  const providerFailure =
+    streamedProviderFailure ?? extractProviderFailureDetail(error);
 
   // 0. The server said what went wrong, so stop guessing.
   if (providerFailure) {
