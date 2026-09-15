@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { agentGraphExportFilename, setNestedProperty } from "../utils";
+import {
+  agentGraphExportFilename,
+  matchesRoute,
+  setNestedProperty,
+} from "../utils";
 
 const testCases = [
   {
@@ -130,4 +134,53 @@ describe("agentGraphExportFilename", () => {
       "agent_v1.json",
     );
   });
+});
+
+const matchesRouteCases = [
+  { name: "null pathname", pathname: null, base: "/build", expected: false },
+  {
+    name: "undefined pathname",
+    pathname: undefined,
+    base: "/build",
+    expected: false,
+  },
+  { name: "exact match", pathname: "/build", base: "/build", expected: true },
+  {
+    name: "sub-route match",
+    pathname: "/admin/bots",
+    base: "/admin",
+    expected: true,
+  },
+  {
+    name: "deep sub-route match",
+    pathname: "/admin/bots/42",
+    base: "/admin",
+    expected: true,
+  },
+  {
+    name: "partial prefix is not a match",
+    pathname: "/builder",
+    base: "/build",
+    expected: false,
+  },
+  {
+    name: "sibling route sharing a prefix is not a match",
+    pathname: "/admin-legacy/bots",
+    base: "/admin",
+    expected: false,
+  },
+  {
+    name: "unrelated route",
+    pathname: "/copilot",
+    base: "/build",
+    expected: false,
+  },
+];
+
+describe("matchesRoute", () => {
+  for (const { name, pathname, base, expected } of matchesRouteCases) {
+    test(name, () => {
+      expect(matchesRoute(pathname, base)).toBe(expected);
+    });
+  }
 });

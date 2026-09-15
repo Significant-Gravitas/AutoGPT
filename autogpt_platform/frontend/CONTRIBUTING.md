@@ -834,6 +834,7 @@ Common scripts (see `package.json` for full list):
 - `pnpm lint` — ESLint + Prettier check
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
+- `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests

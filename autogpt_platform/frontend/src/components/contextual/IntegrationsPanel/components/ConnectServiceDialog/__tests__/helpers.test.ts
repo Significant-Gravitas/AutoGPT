@@ -56,6 +56,31 @@ describe("toConnectableProviders", () => {
     expect(github?.supportedAuthTypes).toEqual(["oauth2"]);
     expect(openai?.supportedAuthTypes).toEqual([]);
   });
+
+  test("merges ChatGPT sign-in into OpenAI while preserving backend auth targets", () => {
+    const result = toConnectableProviders([
+      makeMeta({
+        name: "codex",
+        description: "Use your ChatGPT plan",
+        supported_auth_types: ["oauth2"],
+      }),
+      makeMeta({
+        name: "openai",
+        description: "GPT models and embeddings",
+        supported_auth_types: ["api_key"],
+      }),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "openai",
+      name: "OpenAI",
+      description: "OpenAI models via API key or your ChatGPT subscription",
+      supportedAuthTypes: ["oauth2", "api_key"],
+      authProviderByType: { oauth2: "codex" },
+      searchTerms: ["codex"],
+    });
+  });
 });
 
 describe("filterConnectableProviders", () => {
@@ -107,5 +132,15 @@ describe("filterConnectableProviders", () => {
 
   test("returns an empty list when nothing matches", () => {
     expect(filterConnectableProviders(providers, "nope")).toEqual([]);
+  });
+
+  test("matches presentation aliases", () => {
+    const openai = toConnectableProviders([
+      makeMeta({ name: "codex", supported_auth_types: ["oauth2"] }),
+      makeMeta({ name: "openai", supported_auth_types: ["api_key"] }),
+    ]);
+
+    expect(filterConnectableProviders(openai, "chatgpt")).toEqual(openai);
+    expect(filterConnectableProviders(openai, "codex")).toEqual(openai);
   });
 });

@@ -52,6 +52,7 @@ from typing import Any, Awaitable, Callable, Literal
 from e2b import AsyncSandbox, SandboxLifecycle
 
 from backend.data.redis_client import get_redis_async
+from backend.util.e2b_template import ensure_template, forget_template
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,13 @@ async def get_or_create_sandbox(
             await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
             continue
 
-        # No sandbox and no active creation — atomically claim the creation slot.
+        # No sandbox and no active creation.  Our own image is built on the
+        # team the first time it is needed; that happens before the creation
+        # slot is claimed because a build can outlive the slot's TTL.  Cached
+        # per process after the first check, so the repeat is free.
+        await ensure_template(template, api_key)
+
+        # Atomically claim the creation slot.
         claimed = await redis.set(
             key, _CREATING_SENTINEL, nx=True, ex=_CREATION_LOCK_TTL
         )
@@ -228,6 +235,9 @@ async def get_or_create_sandbox(
                         await asyncio.sleep(2 ** (attempt - 1))  # 1 s, 2 s
 
             if last_exc is not None:
+                # The template may have gone away since this process last
+                # confirmed it; make the next attempt look again.
+                forget_template(template, api_key)
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit

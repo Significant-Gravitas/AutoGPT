@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { isKey } from "@/lib/keyboard";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -39,7 +40,7 @@ export function useVoiceRecording({
 
   const [isSupported, setIsSupported] = useState(false);
   // Sending the draft as transcription context ships with the brain-dump
-  // experience (Path B records a dump on top of AutoPilot's intro text).
+  // experience (Path B records a dump on top of Otto's intro text).
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
   isBrainDumpEnabledRef.current = isBrainDumpEnabled;
@@ -232,7 +233,7 @@ export function useVoiceRecording({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // Allow space to toggle recording (start when empty, stop when recording)
-      if (event.key === " " && !isTranscribing) {
+      if (isKey(event, " ") && !isTranscribing) {
         if (isRecordingRef.current) {
           // Stop recording on space
           event.preventDefault();

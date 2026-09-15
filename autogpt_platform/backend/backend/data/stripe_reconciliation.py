@@ -15,7 +15,6 @@ in ``_reconcile_one``), so a steady-state run does no DB writes.
 import logging
 
 import stripe
-from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel
@@ -25,7 +24,9 @@ from backend.data.credit import (
     build_price_to_tier_map,
     log_tier_reconciliation_discrepancy,
     set_subscription_tier,
+    sync_subscription_from_stripe,
 )
+from backend.data.stripe_client import stripe_call
 
 logger = logging.getLogger(__name__)
 
@@ -213,14 +214,15 @@ async def _collect_status_page(
     tiers: dict[str, SubscriptionTier],
 ) -> bool:
     """Accumulate one Stripe status's subscriptions into ``tiers``. Returns
-    True if pagination was capped before exhausting the dataset."""
+    True if a list or trial sync failed, or pagination was capped."""
     starting_after: str | None = None
+    incomplete = False
     for _ in range(_MAX_SUBSCRIPTION_PAGES):
         list_kwargs: dict = {"status": status, "limit": _PAGE_SIZE}
         if starting_after:
             list_kwargs["starting_after"] = starting_after
         try:
-            subs = await run_in_threadpool(stripe.Subscription.list, **list_kwargs)
+            subs = await stripe_call(stripe.Subscription.list_async, **list_kwargs)
         except stripe.StripeError:
             # A Stripe outage/rate-limit must not abort the whole sweep. Stop
             # this status and flag the run incomplete so we don't downgrade users
@@ -232,9 +234,28 @@ async def _collect_status_page(
             )
             return True
         for sub in subs.data:
+            if (sub.get("metadata") or {}).get("trial_enrollment_id"):
+                try:
+                    await sync_subscription_from_stripe(dict(sub))
+                except (ValueError, stripe.StripeError):
+                    logger.exception(
+                        "Trial reconciliation failed for subscription %s; snapshot is incomplete",
+                        sub.id,
+                    )
+                    incomplete = True
+                    continue
+                user = await User.prisma().find_first(
+                    where={"stripeCustomerId": str(sub.customer)}
+                )
+                if user:
+                    tier = SubscriptionTier(user.subscriptionTier)
+                    existing = tiers.get(str(sub.customer))
+                    if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
+                        tiers[str(sub.customer)] = tier
+                continue
             _record_subscription(sub, price_to_tier, tiers)
         if not subs.has_more or not subs.data:
-            return False
+            return incomplete
         starting_after = subs.data[-1].id
     logger.warning(
         "reconcile_all_stripe_tiers: hit %d-page cap for status=%s; remaining"
@@ -268,6 +289,7 @@ def _record_subscription(
 
 _TIER_RANK: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 0,
+    SubscriptionTier.TRIAL: 0,
     SubscriptionTier.BASIC: 1,
     SubscriptionTier.PRO: 2,
     SubscriptionTier.MAX: 3,

@@ -100,6 +100,30 @@ describe("groupCredentialsByProvider", () => {
     expect(groups[0].credentials.map((c) => c.id)).toEqual(["b", "c"]);
   });
 
+  test("groups ChatGPT and API-key credentials under OpenAI without changing their providers", () => {
+    const groups = groupCredentialsByProvider([
+      makeCred({
+        id: "api-key",
+        provider: "openai",
+        type: "api_key",
+        title: "OpenAI key",
+      }),
+      makeCred({
+        id: "chatgpt",
+        provider: "codex",
+        type: "oauth2",
+        title: "ChatGPT for Codex",
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe("openai");
+    expect(groups[0].name).toBe("OpenAI");
+    expect(
+      groups[0].credentials.map((credential) => credential.provider),
+    ).toEqual(["openai", "codex"]);
+  });
+
   test("falls back to formatted provider name when title is missing", () => {
     const groups = groupCredentialsByProvider([
       makeCred({ provider: "github", title: null }),

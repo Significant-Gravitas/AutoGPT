@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional
@@ -84,3 +85,13 @@ class BaseOAuthHandler(ABC):
             logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
             scopes = self.DEFAULT_SCOPES
         return scopes
+
+
+def parse_granted_scopes(scope: str | None, fallback: list[str]) -> list[str]:
+    """Scopes the provider says it granted, or `fallback` if it says nothing.
+
+    Accepts either delimiter providers use: a wrong per-provider separator
+    stores the whole string as one nonexistent scope.
+    """
+    granted = [s for s in re.split(r"[\s,]+", scope or "") if s]
+    return granted or fallback

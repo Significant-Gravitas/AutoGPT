@@ -85,13 +85,23 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
   },
 }));
 
+// These tests navigate by NO_PAYWALL_STEPS, which is the layout for a
+// deployment with neither a paywall nor a self-host connect step. isLocal()
+// is true for anything not explicitly CLOUD, including the test environment,
+// so it is pinned here rather than left to the default.
+vi.mock("@/services/environment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: { ...actual.environment, isLocal: () => false },
+  };
+});
+
 vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
 }));
 
-vi.mock("../steps/WelcomeStep", () => ({
-  WelcomeStep: () => <div data-testid="step-welcome" />,
-}));
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => <div data-testid="step-role" />,
 }));
@@ -154,6 +164,8 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
     ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
+    HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => mockFlags[flag] ?? false,
 }));
@@ -167,7 +179,8 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const PILLBOX_HEADING = "What's eating your time?";
-const DUMP_HEADLINE = "What keeps stealing your week?";
+const DUMP_HEADLINE = "Talk to me about your work";
+const TYPING_HEADLINE = "Write to me about your work";
 
 class FakeMediaRecorder {
   static isTypeSupported() {
@@ -195,6 +208,40 @@ class FakeMediaRecorder {
   }
 }
 
+class FakeAudioContext {
+  state: AudioContextState = "running";
+  sampleRate = 48_000;
+
+  createAnalyser() {
+    return {
+      fftSize: 256,
+      frequencyBinCount: 128,
+      smoothingTimeConstant: 0,
+      getByteTimeDomainData(samples: Uint8Array) {
+        samples.fill(128);
+      },
+      getByteFrequencyData(samples: Uint8Array) {
+        samples.fill(0);
+      },
+    } as unknown as AnalyserNode;
+  }
+
+  createMediaStreamSource() {
+    return {
+      connect() {},
+      disconnect() {},
+    } as unknown as MediaStreamAudioSourceNode;
+  }
+
+  resume() {
+    return Promise.resolve();
+  }
+
+  close() {
+    return Promise.resolve();
+  }
+}
+
 const getUserMedia = vi.fn();
 
 function installBrowserRecordingAPIs() {
@@ -202,6 +249,11 @@ function installBrowserRecordingAPIs() {
     configurable: true,
     writable: true,
     value: FakeMediaRecorder,
+  });
+  Object.defineProperty(globalThis, "AudioContext", {
+    configurable: true,
+    writable: true,
+    value: FakeAudioContext,
   });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -243,6 +295,12 @@ function recordBrainDumpTraffic() {
         return HttpResponse.json({});
       },
     ),
+    // Answered by default so the preparing step's team gate never stalls a
+    // wizard test; the section itself is exercised on the greeting page.
+    http.get(
+      "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-experts",
+      () => HttpResponse.json({ ready: true, team: null }),
+    ),
   );
   return calls;
 }
@@ -262,11 +320,11 @@ function finalizeReturns(response: {
 }
 
 function stepDots(container: HTMLElement) {
-  return container.querySelectorAll("div.h-2.rounded-full").length;
+  return container.querySelectorAll("div.h-1\\.5.rounded-full").length;
 }
 
 function progressWidth(container: HTMLElement) {
-  const bar = container.querySelector<HTMLElement>("div.bg-purple-400");
+  const bar = container.querySelector<HTMLElement>("div.bg-zinc-900");
   return bar?.style.width ?? null;
 }
 
@@ -308,10 +366,19 @@ describe("onboarding brain dump — flag gating", () => {
     render(<OnboardingPage />);
 
     expect(await screen.findByText(DUMP_HEADLINE)).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Start recording" }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
     expect(screen.queryByText(PILLBOX_HEADING)).toBeNull();
+  });
+
+  it("renders Otto as the visual, waiting at rest", async () => {
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+
+    const avatar = await screen.findByTestId("autopilot-avatar");
+    expect(avatar.dataset.screen).toBe("rest");
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
   });
 
   it("leaves the pillboxes untouched and makes no brain-dump request when the flag is off", async () => {
@@ -323,12 +390,10 @@ describe("onboarding brain dump — flag gating", () => {
 
     expect(await screen.findByText(PILLBOX_HEADING)).toBeDefined();
     expect(
-      screen.getByText("Pick the tasks you'd love to hand off to AutoPilot"),
+      screen.getByText("Pick the tasks you'd love to hand off to your experts"),
     ).toBeDefined();
     expect(screen.queryByText(DUMP_HEADLINE)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Start recording" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
     expect(screen.queryByText("Skip for now")).toBeNull();
 
     // Give any stray effect a chance to fire before declaring silence.
@@ -355,7 +420,7 @@ describe("onboarding brain dump — flag gating", () => {
 });
 
 describe("onboarding brain dump — typed fallback", () => {
-  it("opens the typed composer under the same headline when mic permission is denied", async () => {
+  it("opens the typed composer under a writing headline when mic permission is denied", async () => {
     getUserMedia.mockRejectedValue(
       new DOMException("denied", "NotAllowedError"),
     );
@@ -365,26 +430,22 @@ describe("onboarding brain dump — typed fallback", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start recording" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
 
     expect(
       await screen.findByPlaceholderText(
         "What repeats every week? What would you hand off first?",
       ),
     ).toBeDefined();
-    // Same headline, not a dead end.
-    expect(screen.getByText(DUMP_HEADLINE)).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Start recording" }),
-    ).toBeNull();
+    // The headline turns to writing; the step itself is not a dead end.
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
     // Offering a way back to the orb would be a dead end here: the browser
     // has already refused the microphone.
     expect(screen.queryByRole("button", { name: "record instead" })).toBeNull();
   });
 
-  it("opens the typed composer from the rest state via 'type instead'", async () => {
+  it("opens the typed composer from the rest state via Write", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
@@ -396,7 +457,7 @@ describe("onboarding brain dump — typed fallback", () => {
       ),
     ).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "type instead" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
 
     expect(
       await screen.findByPlaceholderText(
@@ -453,14 +514,16 @@ describe("onboarding brain dump — finishing a take", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start recording" }),
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("autopilot-avatar").dataset.screen).toBe(
+        "recording",
+      ),
     );
     await waitFor(() => expect(partUploads).toHaveLength(1));
-    const doneButtons = await screen.findAllByRole("button", {
-      name: "I'm done",
-    });
-    await userEvent.click(doneButtons[doneButtons.length - 1]);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Send recording" }),
+    );
 
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(bodies).toHaveLength(1);
@@ -500,17 +563,95 @@ describe("onboarding brain dump — finishing a take", () => {
     await screen.findByText(DUMP_HEADLINE);
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start recording" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
     await waitFor(() => expect(partUploads).toHaveLength(1));
-    const doneButtons = await screen.findAllByRole("button", {
-      name: "I'm done",
-    });
-    await userEvent.click(doneButtons[doneButtons.length - 1]);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Send recording" }),
+    );
 
     expect(await screen.findByText("Got it. One second…")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+  });
+
+  it("shows immediate progress while canceling a recording", async () => {
+    let finishDiscard: (() => void) | undefined;
+    recordBrainDumpTraffic();
+    server.use(
+      getDiscardBrainDumpMockHandler200(async () => {
+        await new Promise<void>((resolve) => {
+          finishDiscard = resolve;
+        });
+        return { status: null };
+      }),
+    );
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Cancel recording" }),
+    );
+
+    expect(await screen.findByText("Discard recording?")).toBeDefined();
+    expect(
+      screen.getByText(/This permanently deletes your current take/),
+    ).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Keep recording" }),
+    );
+    expect(screen.queryByText("Discard recording?")).toBeNull();
+    expect(finishDiscard).toBeUndefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancel recording" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Discard recording" }),
+    );
+
+    expect(screen.getByTestId("recording-feedback-slot")).toBeDefined();
+    const cancelingButton = (await screen.findByRole("button", {
+      name: "Canceling recording",
+    })) as HTMLButtonElement;
+    expect(cancelingButton.getAttribute("aria-busy")).toBe("true");
+    expect(await screen.findByTestId("recording-control-loader")).toBeDefined();
+    expect(await screen.findByText("Discarding this take…")).toBeDefined();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Send recording",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Send recording" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Retry recording",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Retry recording" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(cancelingButton.disabled).toBe(false);
+    expect(cancelingButton.getAttribute("aria-disabled")).toBe("true");
+    await waitFor(() => expect(document.activeElement).toBe(cancelingButton));
+    await userEvent.click(cancelingButton);
+    expect(screen.queryByText("Discard recording?")).toBeNull();
+
+    await waitFor(() => expect(finishDiscard).toBeDefined());
+    finishDiscard!();
+    expect(await screen.findByRole("button", { name: "Talk" })).toBeDefined();
   });
 });
 
@@ -576,9 +717,7 @@ describe("onboarding brain dump — recovery", () => {
     await waitFor(() =>
       expect(screen.queryByText("Pick up where you left off?")).toBeNull(),
     );
-    expect(
-      screen.getByRole("button", { name: "Start recording" }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
   });
 });
 
@@ -606,17 +745,14 @@ describe("onboarding brain dump — failure", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Start recording" }),
-    );
-    // Wait for the first chunk to reach the server so "I'm done" is not
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    // Wait for the first chunk to reach the server so sending is not
     // racing the upload queue.
     await waitFor(() => expect(partUploads).toHaveLength(1));
 
-    const doneButtons = await screen.findAllByRole("button", {
-      name: "I'm done",
-    });
-    await userEvent.click(doneButtons[doneButtons.length - 1]);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Send recording" }),
+    );
 
     expect(await screen.findByText("That didn't go through.")).toBeDefined();
     // The failure has to come from finalize reporting `failed`, not from the
@@ -642,20 +778,82 @@ describe("onboarding brain dump — failure", () => {
   });
 });
 
+describe("onboarding brain dump — insufficient content", () => {
+  async function recordAndSend() {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+    );
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    await waitFor(() => expect(partUploads).toHaveLength(1));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Send recording" }),
+    );
+  }
+
+  it("shows the recovery choices without advancing or losing the take", async () => {
+    finalizeReturns({ status: "failed", error_code: "insufficient_content" });
+
+    await recordAndSend();
+
+    expect(
+      await screen.findByText("We didn't catch enough of that."),
+    ).toBeDefined();
+    // Its own copy, not the transcription-failure screen's.
+    expect(screen.queryByText("That didn't go through.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Record again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Continue without it" }),
+    ).toBeDefined();
+    // No accidental advance to the personalized greeting...
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+    // ...and the local parts survive until the user picks a next move.
+    expect(recordingStoreState.parts).toHaveLength(1);
+  });
+
+  it("opens the typed composer from the recovery screen", async () => {
+    finalizeReturns({ status: "failed", error_code: "no_usable_speech" });
+
+    await recordAndSend();
+    await screen.findByText("We didn't catch enough of that.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+    ).toBeDefined();
+  });
+});
+
 describe("onboarding step map integrity", () => {
   it("keeps the step constants identical regardless of the brain-dump flag", () => {
     expect(PAYWALL_FIRST_STEPS).toEqual({
       subscription: 1,
-      welcome: 2,
-      role: 3,
-      painPoints: 4,
-      preparing: 5,
-    });
-    expect(NO_PAYWALL_STEPS).toEqual({
-      welcome: 1,
       role: 2,
       painPoints: 3,
       preparing: 4,
+    });
+    expect(NO_PAYWALL_STEPS).toEqual({
+      role: 1,
+      painPoints: 2,
+      preparing: 3,
     });
   });
 
@@ -680,8 +878,8 @@ describe("onboarding step map integrity", () => {
     const onWidth = progressWidth(on.container);
     const onUrl = routerReplace.mock.calls.map((c) => c[0]);
 
-    expect(offDots).toBe(3);
-    expect(offWidth).toBe("75%");
+    expect(offDots).toBe(2);
+    expect(offWidth).toBe(`${(2 / 3) * 100}%`);
     expect(onDots).toBe(offDots);
     expect(onWidth).toBe(offWidth);
     expect(onUrl).toEqual(offUrl);

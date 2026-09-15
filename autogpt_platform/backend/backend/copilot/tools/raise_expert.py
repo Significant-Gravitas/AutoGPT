@@ -1,0 +1,332 @@
+"""Preview raising a brand-new expert from a charter (never writes).
+
+Step 1 of the confirm-gated raise flow. The parameters mirror the raise API
+(``name`` / ``role`` / ``color`` / ``about`` / ``voice_preferences`` /
+``weekly_budget``) plus ``boundaries``, so the model has to collect a full
+charter — what the expert owns, what good looks like, and where they stop —
+before the user is ever asked to approve.
+"""
+
+import logging
+import uuid
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
+
+from backend.api.features.experts.models import (
+    EXPERT_COLOR_MAX_LENGTH,
+    EXPERT_NAME_MAX_LENGTH,
+    EXPERT_TAGLINE_MAX_LENGTH,
+    WEEKLY_BUDGET_MAX_CREDITS,
+    Expert,
+    ExpertSoulFieldsPatch,
+)
+from backend.copilot.model import ChatSession
+from backend.data.db_accessors import experts_db
+from backend.data.redis_client import get_redis_async
+
+from .base import BaseTool
+from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
+from .expert_proposal import (
+    ExpertChangeProposal,
+    autopilot_session_guard,
+    capacity_error,
+    store_proposal,
+    user_turn_watermark,
+)
+from .models import (
+    ErrorResponse,
+    ExpertChangePreview,
+    ExpertChangeProposedResponse,
+    ToolResponseBase,
+)
+
+# The accent palette the raise flow's color step offers, as opaque design
+# tokens the client maps to swatches. Kept in the tool schema as an enum so
+# the model picks a real swatch instead of inventing CSS.
+COLOR_TOKENS = [
+    "rose-300",
+    "red-300",
+    "orange-300",
+    "amber-300",
+    "yellow-300",
+    "lime-300",
+    "green-300",
+    "emerald-300",
+    "teal-300",
+    "cyan-300",
+    "sky-300",
+    "blue-300",
+    "indigo-300",
+    "violet-300",
+    "fuchsia-300",
+]
+
+
+logger = logging.getLogger(__name__)
+
+
+class _RaiseParams(BaseModel):
+    """Non-Soul raise fields, validated with the same bounds as the API."""
+
+    name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
+    role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
+    color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+
+
+class RaiseExpertTool(BaseTool):
+    """Propose raising a new expert written from scratch."""
+
+    @property
+    def name(self) -> str:
+        return "raise_expert"
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def description(self) -> str:
+        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Personal first name, not a job title (use role for that)."
+                    ),
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Short title for what they own.",
+                },
+                "tagline": {
+                    "type": "string",
+                    "description": (
+                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                    ),
+                },
+                "color": {
+                    "type": "string",
+                    "enum": COLOR_TOKENS,
+                    "description": ("Accent token for the avatar and chat theme."),
+                },
+                "avatar_shape": {
+                    "type": "string",
+                    "enum": AVATAR_SHAPES,
+                    "description": ("Avatar silhouette; omit for a name-seeded shape."),
+                },
+                "avatar_accessory": {
+                    "type": "string",
+                    "enum": AVATAR_ACCESSORIES,
+                    "description": (
+                        "One accessory suited to their role or personality; omit for a name-seeded choice."
+                    ),
+                },
+                "about": {
+                    "type": "string",
+                    "description": (
+                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                    ),
+                },
+                "boundaries": {
+                    "type": "string",
+                    "description": (
+                        "Where they stop: what they never do, and what they "
+                        "escalate instead."
+                    ),
+                },
+                "voice_preferences": {
+                    "type": "string",
+                    "description": "How they should sound; omit if unknown.",
+                },
+                "weekly_budget": {
+                    "type": "integer",
+                    "description": "Weekly credit cap (100 = $1); omit for default.",
+                },
+            },
+            "required": ["name", "tagline", "about", "boundaries"],
+        }
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        *,
+        name: str = "",
+        role: str = "",
+        tagline: str = "",
+        color: str = "",
+        avatar_shape: str = "",
+        avatar_accessory: str = "",
+        about: str = "",
+        boundaries: str = "",
+        voice_preferences: str = "",
+        weekly_budget: int | None = None,
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id
+        if error := autopilot_session_guard(user_id, session):
+            return error
+        assert user_id is not None
+
+        color = color.strip()
+        if color and color not in COLOR_TOKENS:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — color must be one of: "
+                    + ", ".join(COLOR_TOKENS)
+                ),
+                session_id=session_id,
+            )
+        avatar_shape = avatar_shape.strip()
+        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_shape must be one of: "
+                    + ", ".join(AVATAR_SHAPES)
+                ),
+                session_id=session_id,
+            )
+        avatar_accessory = avatar_accessory.strip()
+        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_accessory must be one of: "
+                    + ", ".join(AVATAR_ACCESSORIES)
+                ),
+                session_id=session_id,
+            )
+        try:
+            params = _RaiseParams(
+                # Collapsed, not just stripped: the roster block in
+                # ``expert_context`` renders one line per teammate, so an
+                # embedded newline in either field forges extra roster
+                # entries that ``escape_prompt_xml_tags`` cannot neutralise.
+                name=" ".join(name.split()),
+                role=" ".join(role.split()),
+                tagline=" ".join(tagline.split()),
+                color=color,
+                weekly_budget=weekly_budget,
+            )
+            soul = ExpertSoulFieldsPatch(
+                identity=about,
+                boundaries=boundaries,
+                voice_preferences=voice_preferences,
+            )
+        except ValidationError as e:
+            return ErrorResponse(
+                message=f"Invalid expert charter — {_validation_detail(e)}",
+                session_id=session_id,
+            )
+        if not soul.boundaries:
+            return ErrorResponse(
+                message=(
+                    "boundaries is required — say where this expert stops and "
+                    "what they escalate instead."
+                ),
+                session_id=session_id,
+            )
+        try:
+            duplicate = await _active_expert_named(user_id, params.name)
+        except _RosterUnavailable as e:
+            # Nothing downstream enforces name uniqueness, so a roster read we
+            # could not perform must not pass for "no duplicate".
+            logger.warning(f"raise_expert duplicate-name check failed: {e}")
+            return ErrorResponse(
+                message="Could not check the team roster right now. Try again.",
+                session_id=session_id,
+            )
+        if duplicate:
+            return ErrorResponse(
+                message=(
+                    f"An active expert named {duplicate.name} already exists "
+                    f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
+                    "do not raise them again. Delegate work to them with "
+                    "delegate_to_expert, or change their charter with "
+                    "update_expert. Only propose a differently-named expert "
+                    "if the user truly wants a second, separate one."
+                ),
+                session_id=session_id,
+            )
+        if error := await capacity_error(user_id, session_id, "raise"):
+            return error
+
+        preview = ExpertChangePreview(
+            kind="raise",
+            name=params.name,
+            role=params.role,
+            tagline=params.tagline,
+            color=params.color,
+            avatar_url=build_avatar_url(
+                params.name,
+                shape=avatar_shape or None,
+                accessory=avatar_accessory or None,
+                color_token=params.color or None,
+            ),
+            about=soul.identity or "",
+            boundaries=soul.boundaries,
+            voice_preferences=soul.voice_preferences or "",
+            weekly_budget=params.weekly_budget,
+        )
+        confirmation_id = str(uuid.uuid4())
+        await store_proposal(
+            await get_redis_async(),
+            confirmation_id,
+            ExpertChangeProposal(
+                user_id=user_id,
+                session_id=session_id,
+                preview=preview,
+                user_turn_watermark=user_turn_watermark(session),
+            ),
+        )
+        return ExpertChangeProposedResponse(
+            message=(
+                "Nothing created yet. The user is looking at this charter on "
+                "a card with Approve and Decline buttons — do not repeat any "
+                "of it in text. Reply with one short line at most and wait. "
+                "Only after they explicitly approve, call "
+                "confirm_expert_change with this confirmation_id."
+            ),
+            session_id=session_id,
+            preview=preview,
+            confirmation_id=confirmation_id,
+        )
+
+
+class _RosterUnavailable(Exception):
+    """The roster could not be read — distinct from "nobody has this name"."""
+
+
+async def _active_expert_named(user_id: str, name: str) -> Expert | None:
+    """The active expert already carrying *name*, or None.
+
+    Only the read is treated as recoverable: a bug in the matching below is
+    not a roster outage and propagates instead of being retried forever.
+    """
+    try:
+        experts = await experts_db().list_experts(user_id, with_metrics=False)
+    except Exception as e:
+        raise _RosterUnavailable(str(e)) from e
+    wanted = name.strip().casefold()
+    return next(
+        (
+            expert
+            for expert in experts
+            if not expert.is_archived and expert.name.strip().casefold() == wanted
+        ),
+        None,
+    )
+
+
+def _validation_detail(error: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}"
+        for err in error.errors()
+    )

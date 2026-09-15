@@ -9,8 +9,18 @@ rather than a Sentry alert flood.
 
 from __future__ import annotations
 
+import json
 import sys
 
+import sentry_sdk
+from sentry_sdk.consts import DEFAULT_OPTIONS
+from sentry_sdk.utils import event_from_exception
+
+# Imported at module scope on purpose: AppProcess calls sentry_init() in its
+# class body, so the guard has to hold at collection time, not just in a test.
+import backend.util.process
+from backend.util import metrics
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
     _FALKORDB_TEARDOWN_SIGNATURES,
@@ -133,6 +143,109 @@ def test_pika_reconnect_signatures_cover_all_four_known_patterns() -> None:
     assert expected == set(_PIKA_RECONNECT_SIGNATURES)
 
 
+def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
+    secrets = {
+        "id": "FAKE-ID-SECRET-991",
+        "access": "FAKE-ACCESS-SECRET-992",
+        "refresh": "FAKE-REFRESH-SECRET-993",
+        "bearer": "FAKE-BEARER-SECRET-994",
+        "provider": "FAKE-PROVIDER-SECRET-995",
+        "device_code": "FAKE-DEVICE-CODE-996",
+    }
+    payload = {
+        "tokens": {
+            "id_token": secrets["id"],
+            "access_token": secrets["access"],
+            "refresh_token": secrets["refresh"],
+        },
+        "safe": "safe-frame-value",
+    }
+    try:
+        raise RuntimeError("materialization failed")
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(),
+            client_options=DEFAULT_OPTIONS,
+        )
+
+    event.update(
+        {
+            "extra": {"payload": payload},
+            "breadcrumbs": {
+                "values": [
+                    {
+                        "data": {
+                            "message": f"Authorization: Bearer {secrets['bearer']}",
+                            "safe": "safe-breadcrumb-value",
+                        }
+                    }
+                ]
+            },
+            "contexts": {
+                "codex": {
+                    "provider_state": secrets["provider"],
+                    "user_code": secrets["device_code"],
+                    "safe": "safe-context-value",
+                }
+            },
+            "request": {
+                "data": {"access_token": secrets["access"]},
+                "headers": {"Authorization": f"Bearer {secrets['bearer']}"},
+            },
+        }
+    )
+
+    scrubbed = _before_send(event, hint)
+
+    assert scrubbed is event
+    serialized = json.dumps(scrubbed, default=str)
+    for name, secret in secrets.items():
+        assert secret not in serialized, name
+    assert "safe-frame-value" in serialized
+    assert "safe-breadcrumb-value" in serialized
+    assert "safe-context-value" in serialized
+
+
+def test_before_send_keeps_untyped_balance_message() -> None:
+    try:
+        raise RuntimeError("Third-party API reported insufficient balance")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
+def test_before_send_drops_typed_insufficient_balance_error() -> None:
+    try:
+        raise InsufficientBalanceError(
+            message="New producer wording without legacy keywords",
+            user_id="user-1",
+            balance=0,
+            amount=1,
+        )
+    except InsufficientBalanceError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
+
+
+def test_before_send_keeps_wrapper_around_insufficient_balance_error() -> None:
+    try:
+        try:
+            raise InsufficientBalanceError(
+                message="New producer wording without legacy keywords",
+                user_id="user-1",
+                balance=0,
+                amount=1,
+            )
+        except InsufficientBalanceError as error:
+            raise RuntimeError("Unexpected execution wrapper") from error
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
 # ---------- FalkorDB connection-teardown noise → dropped ----------
 
 
@@ -204,3 +317,56 @@ def test_falkordb_teardown_signatures_cover_known_patterns() -> None:
     graphiti FalkorDB driver docstring pairs together."""
     expected = {"buffer is closed", "connection closed by server"}
     assert expected == set(_FALKORDB_TEARDOWN_SIGNATURES)
+
+
+# ---------- pytest runs must not reach Sentry ----------
+
+_FAKE_DSN = "https://key@o1.ingest.us.sentry.io/1"
+
+
+def _spy_on_sentry_init(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+    monkeypatch.setattr(metrics, "_sentry_init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(metrics.settings.secrets, "sentry_dsn", _FAKE_DSN)
+    return calls
+
+
+def test_no_sentry_client_is_active_under_pytest() -> None:
+    """End-to-end. AppProcess runs sentry_init() in its class body, so this
+    module's import above is what a live client here would have come from."""
+    assert backend.util.process.AppProcess
+    assert sentry_sdk.get_client().is_active() is False
+
+
+def test_sentry_init_skipped_at_collection_time(monkeypatch) -> None:
+    """pytest only sets PYTEST_CURRENT_TEST once a test item runs, so the
+    import-time call that AppProcess makes is covered by sys.modules alone."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls == []
+
+
+def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    assert calls[0]["dsn"] == _FAKE_DSN
+
+
+def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
+    """A spawned service subprocess does not inherit sys.modules, but does
+    inherit PYTEST_CURRENT_TEST from the environment."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "backend/util/metrics_test.py::t (call)")
+
+    metrics.sentry_init()
+
+    assert calls == []

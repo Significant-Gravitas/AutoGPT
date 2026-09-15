@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { RecentChats } from "../RecentChats";
 
+const mockEnabledFlags = new Set<string>(["chat-sharing"]);
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -20,7 +22,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === "chat-sharing",
+    useGetFlag: (flag: string) => mockEnabledFlags.has(flag),
   };
 });
 
@@ -28,6 +30,7 @@ interface SessionSeed {
   id: string;
   title: string;
   updated_at: string;
+  is_pinned?: boolean;
 }
 
 function makeSession(seed: SessionSeed) {
@@ -35,6 +38,7 @@ function makeSession(seed: SessionSeed) {
     id: seed.id,
     title: seed.title,
     is_processing: false,
+    is_pinned: seed.is_pinned ?? false,
     created_at: seed.updated_at,
     updated_at: seed.updated_at,
   };
@@ -60,6 +64,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   server.resetHandlers();
+  mockEnabledFlags.delete("chat-pinning");
 });
 
 describe("RecentChats — empty + loading", () => {
@@ -89,6 +94,61 @@ describe("RecentChats — grouped list", () => {
     expect(screen.getByText("Yesterday chat")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("Yesterday")).toBeDefined();
+  });
+});
+
+describe("RecentChats — pinned split", () => {
+  const pinnedAndDated = [
+    makeSession({
+      id: "pinned",
+      title: "Pinned chat",
+      updated_at: YESTERDAY,
+      is_pinned: true,
+    }),
+    makeSession({ id: "loose", title: "Loose chat", updated_at: TODAY }),
+  ];
+
+  it("lifts pinned sessions out of the date groups", async () => {
+    mockEnabledFlags.add("chat-pinning");
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: pinnedAndDated,
+        total: pinnedAndDated.length,
+      }),
+    );
+    renderRecentChats();
+
+    const pinnedGroup = (await screen.findByText("Pinned")).closest(
+      "div",
+    )?.parentElement;
+    if (!pinnedGroup) throw new Error("pinned group not found");
+    expect(within(pinnedGroup).getByText("Pinned chat")).toBeDefined();
+
+    // The only "Yesterday" session is pinned, so that date group disappears.
+    expect(screen.queryByText("Yesterday")).toBeNull();
+
+    const todayGroup = screen.getByText("Today").closest("div")?.parentElement;
+    if (!todayGroup) throw new Error("today group not found");
+    expect(within(todayGroup).getByText("Loose chat")).toBeDefined();
+    expect(within(todayGroup).queryByText("Pinned chat")).toBeNull();
+  });
+
+  it("keeps pinned sessions in their date group when the flag is off", async () => {
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: pinnedAndDated,
+        total: pinnedAndDated.length,
+      }),
+    );
+    renderRecentChats();
+
+    await screen.findByText("Pinned chat");
+    expect(screen.queryByText("Pinned")).toBeNull();
+    const yesterdayGroup = screen
+      .getByText("Yesterday")
+      .closest("div")?.parentElement;
+    if (!yesterdayGroup) throw new Error("yesterday group not found");
+    expect(within(yesterdayGroup).getByText("Pinned chat")).toBeDefined();
   });
 });
 

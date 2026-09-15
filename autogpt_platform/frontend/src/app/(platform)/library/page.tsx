@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { AgentsTabIntro } from "./components/AgentsTabIntro/AgentsTabIntro";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { useLibraryListPage } from "./components/useLibraryListPage";
@@ -61,6 +62,7 @@ export default function LibraryPage() {
           briefingAgents={isAgentBriefingEnabled ? agents : undefined}
         />
       </main>
+      <AgentsTabIntro />
     </FavoriteAnimationProvider>
   );
 }

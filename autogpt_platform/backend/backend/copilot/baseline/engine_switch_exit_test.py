@@ -25,7 +25,7 @@ def test_pending_switch_emits_mode_change_then_status():
         assert isinstance(events[0], StreamModeChanged)
         assert events[0].mode == "extended_thinking"
         assert isinstance(events[1], StreamStatus)
-        assert "Thinking" in events[1].message
+        assert "agent building" in events[1].message.lower()
     finally:
         engine_switch.pop_switch("sess-exit-1")
 

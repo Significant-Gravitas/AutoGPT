@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useDraftManager } from "../FlowEditor/Flow/useDraftManager";
+import { isKey } from "@/lib/keyboard";
 
 export const useDraftRecoveryPopup = (isInitialLoadComplete: boolean) => {
   const popupRef = useRef<HTMLDivElement>(null);
@@ -40,7 +41,7 @@ export const useDraftRecoveryPopup = (isInitialLoadComplete: boolean) => {
     if (!isOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (isKey(event, "Escape")) {
         onDiscard();
       }
     };

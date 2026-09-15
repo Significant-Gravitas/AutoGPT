@@ -7,12 +7,18 @@ interface Props {
   swapKey: string;
   children: ReactNode;
   className?: string;
+  mode?: "sync" | "wait" | "popLayout";
 }
 
 // Swaps one piece of content for another in place: the outgoing content
 // lifts and blurs away before the incoming one settles, so a state change
 // reads as a change rather than a re-render.
-export function SwapFade({ swapKey, children, className }: Props) {
+export function SwapFade({
+  swapKey,
+  children,
+  className,
+  mode = "wait",
+}: Props) {
   const prefersReducedMotion = useReducedMotion();
 
   const states = prefersReducedMotion
@@ -28,7 +34,7 @@ export function SwapFade({ swapKey, children, className }: Props) {
       };
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
+    <AnimatePresence mode={mode} initial={false}>
       <motion.div
         key={swapKey}
         initial={states.initial}

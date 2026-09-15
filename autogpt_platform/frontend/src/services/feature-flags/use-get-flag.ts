@@ -22,10 +22,21 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  // Reveals the marketplace Skills shelf and the skill listing pages.
+  SKILLS_HUB = "skills-hub",
+  // Reveals the notification-preferences card on /settings/account. The card
+  // is built but its design is still being reworked, so it ships dark and is
+  // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
+  // /profile/settings stays un-redirected (``useNewSettingsRedirect``) so the
+  // toggles remain reachable for everyone else — flip both together.
+  SETTINGS_NOTIFICATIONS = "settings-notifications",
   // Replaces the onboarding pillbox step with the voice brain dump.
   // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
   // both sides must agree. Off renders the pillbox flow untouched.
   ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
+  // Child of HIRE_EXPERTS: the greeting page builds a team from the brain
+  // dump. Mirror of the backend ``Flag`` enum; both must be on.
+  ONBOARDING_EXPERT_TEAM = "onboarding-expert-team",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -44,6 +55,10 @@ export enum Flag {
   // Marketplace review is pending) without a deploy. Missing keys default to
   // visible — only an explicit ``false`` hides a card.
   COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
+  // Voice mode on /copilot: hands-free listen → send → speak → listen.
+  // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
+  // so both sides must agree. Fail-closed.
+  COPILOT_VOICE_MODE = "copilot-voice-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -65,17 +80,23 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.SKILLS_HUB]: false,
+  // Off by default so a LaunchDarkly outage or a missing key hides the card
+  // rather than exposing the in-progress design to everyone.
+  [Flag.SETTINGS_NOTIFICATIONS]: false,
   // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
   // the wizard falls back to this map, and a ``true`` here renders the
   // brain dump for everyone — which is what the backend 404s are meant to
   // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
   [Flag.ONBOARDING_BRAIN_DUMP]: false,
+  [Flag.ONBOARDING_EXPERT_TEAM]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
+  [Flag.COPILOT_VOICE_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -105,6 +126,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
+    case Flag.SKILLS_HUB:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
     case Flag.ARTIFACTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
     case Flag.ARTIFACTS_PAGE:
@@ -131,8 +154,12 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.HIRE_EXPERTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.SETTINGS_NOTIFICATIONS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.ONBOARDING_BRAIN_DUMP:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
+    case Flag.ONBOARDING_EXPERT_TEAM:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_EXPERT_TEAM;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:
@@ -143,6 +170,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_VOICE_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }
@@ -159,12 +188,23 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.COPILOT_BOT_PLATFORMS,
 ]);
 
+// Master local-dev switch: ``NEXT_PUBLIC_FORCE_ALL_FLAGS=true`` turns every
+// boolean flag on without listing them individually. A per-flag
+// ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
+// with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
+// their LaunchDarkly / default values.
+const isForceAllFlags = ["1", "true", "yes", "on"].includes(
+  (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
+);
+
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
   if (ARRAY_TYPED_FLAGS.has(flag)) return undefined;
   const raw = readEnvOverride(flag);
-  if (raw === undefined) return undefined;
+  if (raw === undefined) {
+    return isForceAllFlags ? (true as FlagValues[T]) : undefined;
+  }
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {
     return true as FlagValues[T];
@@ -172,7 +212,7 @@ export function envFlagOverride<T extends Flag>(
   if (["0", "false", "no", "off"].includes(normalized)) {
     return false as FlagValues[T];
   }
-  return undefined;
+  return isForceAllFlags ? (true as FlagValues[T]) : undefined;
 }
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {

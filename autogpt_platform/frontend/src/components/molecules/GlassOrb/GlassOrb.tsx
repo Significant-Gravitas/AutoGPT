@@ -11,9 +11,10 @@ import styles from "./GlassOrb.module.css";
 interface Props {
   params: GlassParams;
   children?: ReactNode;
+  showRim?: boolean;
 }
 
-export function GlassOrb({ params, children }: Props) {
+export function GlassOrb({ params, children, showRim = true }: Props) {
   return (
     <div className="relative h-full w-full" aria-hidden>
       <svg className="absolute h-0 w-0" aria-hidden>
@@ -58,7 +59,7 @@ export function GlassOrb({ params, children }: Props) {
         </div>
       </div>
 
-      <GlassSurface params={params} />
+      <GlassSurface params={params} showRim={showRim} />
 
       {children && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

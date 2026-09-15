@@ -55,6 +55,18 @@ class PendingHumanReviewModel(BaseModel):
     review_message: str | None = Field(
         description="Optional message from the reviewer", default=None
     )
+    expert_id: str | None = Field(
+        default=None, description="Expert attributed to the requesting run"
+    )
+    expert_name: str | None = Field(default=None)
+    expert_avatar_url: str | None = Field(default=None)
+    agent_name: str | None = Field(
+        default=None, description="Display name of the agent that requested the review"
+    )
+    library_agent_id: str | None = Field(default=None, description="For run deep links")
+    session_id: str | None = Field(
+        default=None, description="Chat session id for copilot run_block reviews"
+    )
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None
     )

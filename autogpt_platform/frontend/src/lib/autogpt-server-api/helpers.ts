@@ -159,6 +159,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
       .join("; ");
 
     const baseURL =
+      process.env.BETTER_AUTH_INTERNAL_URL ||
       process.env.BETTER_AUTH_URL ||
       process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
       "http://localhost:3000";

@@ -1,0 +1,16 @@
+{
+  "detail": [
+    {
+      "ctx": {
+        "max_length": 32
+      },
+      "input": "ccccccccccccccccccccccccccccccccc",
+      "loc": [
+        "body",
+        "color"
+      ],
+      "msg": "String should have at most 32 characters",
+      "type": "string_too_long"
+    }
+  ]
+}

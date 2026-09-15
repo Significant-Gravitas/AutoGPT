@@ -1,0 +1,3 @@
+scripts:
+  setup: node .orca/hooks.mjs setup
+  archive: node .orca/hooks.mjs archive
