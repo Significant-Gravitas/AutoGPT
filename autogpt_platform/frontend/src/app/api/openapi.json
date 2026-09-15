@@ -6650,6 +6650,46 @@
         }
       }
     },
+    "/api/experts/templates/{template_id}/package": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Download Expert Template Package",
+        "description": "The marketplace version of the same download, built live from the\nroster template.",
+        "operationId": "download_expert_template_package",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Template Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "413": { "description": "Expert is too large to package" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}": {
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7024,6 +7064,46 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/package": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Download Expert Package",
+        "description": "Return the expert as a ``.expert.zip``: identity, soul, skills,\nworkflows and an avatar.\n\nMemory, conversations and workspace files are not in the format, so a\ndownload is a portable copy of the expert rather than of its history.",
+        "operationId": "download_expert_package",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "413": { "description": "Expert is too large to package" },
           "422": {
             "description": "Validation Error",
             "content": {
