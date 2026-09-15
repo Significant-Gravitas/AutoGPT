@@ -190,7 +190,7 @@ describe("customMutator — Sentry trace propagation", () => {
   });
 });
 
-describe("customMutator — empty body handling", () => {
+describe("customMutator — response body handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsClientSide.mockReturnValue(true);
@@ -267,6 +267,36 @@ describe("customMutator — empty body handling", () => {
     }>("/api/foo", { method: "GET" });
 
     expect(result.data).toEqual({ ok: true });
+  });
+
+  it.each([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+  ])("preserves %s bytes as a Blob", async (contentType) => {
+    const bytes = new Uint8Array([0, 255, 128, 10, 42]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(bytes, {
+          headers: { "content-type": contentType },
+        }),
+      ),
+    );
+
+    const result = await customMutator<{
+      data: Blob;
+      status: number;
+      headers: Headers;
+    }>("/api/store/media/user/images/image.png", { method: "GET" });
+
+    expect(result.data).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await result.data.arrayBuffer())).toEqual(bytes);
+    expect(result.data.type).toBe(contentType);
   });
 });
 
