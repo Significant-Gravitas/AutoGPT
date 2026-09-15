@@ -24,7 +24,7 @@ from backend.copilot.tools.skills import (
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 
-from . import skill_model
+from . import skill_db, skill_model
 
 
 async def submit_skill(
@@ -196,8 +196,11 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
         include={"SkillListing": True},
         order={"createdAt": "asc"},
     )
+    # In one query rather than per row: a reviewer sees what a package ships
+    # without opening it, and the bytes stay behind the file route.
+    files = await skill_db.file_meta_by_version([v.id for v in versions])
     return [
-        skill_model.SkillSubmission.from_db(v, v.SkillListing)
+        skill_model.SkillSubmission.from_db(v, v.SkillListing, files.get(v.id, []))
         for v in versions
         if v.SkillListing is not None
     ]

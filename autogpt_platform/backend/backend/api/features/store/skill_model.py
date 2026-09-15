@@ -55,6 +55,10 @@ class SkillPackageFile(pydantic.BaseModel):
 
     path: str
     size_bytes: int
+    # Null for an extension `mimetypes` cannot name — a `Makefile`, a `.toml`
+    # — which the viewer still serves, deciding on the bytes instead.
+    mime_type: str | None = None
+    is_executable: bool = False
 
 
 class MarketplaceSkillDetails(MarketplaceSkill):
@@ -142,12 +146,20 @@ class SkillSubmission(pydantic.BaseModel):
     is_live: bool = pydantic.Field(
         description="Whether this version is the one the marketplace serves."
     )
+    files: list[SkillPackageFile] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Files beside the submitted SKILL.md, so a reviewer sees what a "
+            "package ships before approving it."
+        ),
+    )
 
     @classmethod
     def from_db(
         cls,
         version: prisma.models.SkillListingVersion,
         listing: prisma.models.SkillListing,
+        files: list[SkillPackageFile] | None = None,
     ) -> "SkillSubmission":
         return cls(
             skill_listing_version_id=version.id,
@@ -160,4 +172,5 @@ class SkillSubmission(pydantic.BaseModel):
             status=version.submissionStatus,
             review_comments=version.reviewComments,
             is_live=listing.activeVersionId == version.id,
+            files=files or [],
         )
