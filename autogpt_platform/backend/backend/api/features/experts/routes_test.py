@@ -21,6 +21,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
+from backend.api.features.experts.expert_zip import package_from_zip
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     WEEKLY_BUDGET_MAX_CREDITS,
@@ -39,6 +40,12 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
+from backend.api.features.experts.package_model import (
+    ExpertManifest,
+    ExpertPackage,
+    ExpertPackageError,
+    PackagedIdentity,
+)
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
@@ -52,6 +59,19 @@ app.include_router(router)
 app.add_exception_handler(ConflictError, rest_app.exception_handlers[ConflictError])
 
 client = fastapi.testclient.TestClient(app)
+
+
+# ``require_expert_portability_flag`` runs the real ``is_feature_enabled``,
+# which consults this env override before LaunchDarkly — so the gate is driven
+# here exactly the way it is driven locally, with no mock in the path.
+PORTABILITY_FLAG_ENV_VAR = "FORCE_FLAG_EXPERT_PORTABILITY"
+
+
+@pytest.fixture(autouse=True)
+def expert_portability_on(monkeypatch: pytest.MonkeyPatch):
+    """Every portability route is gated; the flag-off case is its own test,
+    which sets this the other way."""
+    monkeypatch.setenv(PORTABILITY_FLAG_ENV_VAR, "true")
 
 
 @pytest.fixture(autouse=True)
@@ -1855,3 +1875,117 @@ def test_list_expert_setup_items_is_not_swallowed_by_the_expert_route(
     assert response.json()[0]["resolution"] == "connect"
     assert response.json()[0]["providers"] == ["notion"]
     mock_list.assert_awaited_once()
+
+
+# ─── Package download ──────────────────────────────────────────────────
+
+
+def _package_row() -> prisma.models.Expert:
+    return prisma.models.Expert.model_construct(id="expert-1", name="Maria Ops")
+
+
+def _mock_package(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    package = ExpertPackage(
+        manifest=ExpertManifest(identity=PackagedIdentity(name="Maria Ops"))
+    )
+    return mocker.patch(
+        "backend.api.features.experts.routes.build_expert_package",
+        new_callable=AsyncMock,
+        return_value=package,
+    )
+
+
+def test_download_expert_package_returns_a_named_zip(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = _package_row()
+    _mock_package(mocker)
+
+    response = client.get("/experts/expert-1/package")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="maria-ops.expert.zip"'
+    )
+    assert package_from_zip(response.content).manifest.identity.name == "Maria Ops"
+
+
+def test_download_expert_package_404s_for_an_expert_the_caller_does_not_own(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The same answer as a missing expert, so the route never confirms that
+    someone else's expert exists."""
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = None
+
+    assert client.get("/experts/expert-1/package").status_code == 404
+
+
+def test_download_expert_package_413s_when_the_expert_is_over_a_cap(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = _package_row()
+    mocker.patch(
+        "backend.api.features.experts.routes.build_expert_package",
+        new_callable=AsyncMock,
+        side_effect=ExpertPackageError("too big", over_limit=True),
+    )
+
+    response = client.get("/experts/expert-1/package")
+
+    assert response.status_code == 413
+    assert "too big" in response.json()["detail"]
+
+
+def test_download_expert_template_package_serves_the_marketplace_copy(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_row = mocker.patch.object(
+        experts_db, "get_template_row", new_callable=AsyncMock
+    )
+    mock_row.return_value = _package_row()
+    _mock_package(mocker)
+
+    response = client.get("/experts/templates/template-1/package")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    mock_row.assert_awaited_once_with("template-1")
+
+
+def test_download_expert_template_package_404s_for_an_unknown_template(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(
+        experts_db, "get_template_row", new_callable=AsyncMock
+    ).return_value = None
+
+    assert client.get("/experts/templates/nope/package").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: client.get("/experts/expert-1/package"),
+        lambda: client.get("/experts/templates/template-1/package"),
+    ],
+    ids=["download", "download-template"],
+)
+def test_every_portability_route_is_404_when_the_flag_is_off(
+    monkeypatch: pytest.MonkeyPatch, call
+) -> None:
+    """Off means the feature does not exist: a guessed URL must not confirm
+    that it one day will."""
+    monkeypatch.setenv(PORTABILITY_FLAG_ENV_VAR, "false")
+
+    response = call()
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Feature not available"
