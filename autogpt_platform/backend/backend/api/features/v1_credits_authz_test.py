@@ -5,14 +5,17 @@ their credit model through the request's org context, so for a real (pooled)
 org they read/mutate the shared ``OrgBalance``. They must therefore require
 org-level ``MANAGE_BILLING`` (owner or billing_manager) — a plain org member
 must be rejected with 403. Personal-org owners always carry ``is_org_owner``,
-so the gate is a no-op for them.
+so the gate is a no-op for them. The ``/credits`` routes that serve the
+caller's own data rather than the org's are exempt, and say why in
+``UNGATED_CREDITS_ROUTES``.
 
 The gate is applied as an independent per-route dependency (there is no
 shared router-level enforcement), so every gated route is asserted here:
 dropping the dependency from any single route must fail this suite. Route
 coverage is not left to the hand-maintained ``GATED_ROUTES`` list either —
-``test_every_credits_route_is_gated_or_explicitly_exempt`` introspects the
-mounted app, so a *newly added* ungated ``/credits`` route also fails.
+two introspection tests walk the mounted app, so both a *newly added* ungated
+``/credits`` route and a route reaching ``get_credit_model`` under any other
+prefix fail.
 """
 
 import inspect
