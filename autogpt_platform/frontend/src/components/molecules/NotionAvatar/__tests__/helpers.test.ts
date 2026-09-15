@@ -10,6 +10,7 @@ import {
   expertNotionConfig,
   isLegacyAvatarUrl,
   notionAvatarUrlFor,
+  notionAvatarImageUrlFor,
   notionConfigForLegacyUrl,
   notionConfigForName,
   parseNotionAvatarUrl,
@@ -26,6 +27,14 @@ describe("config encoding", () => {
     const config = notionConfigForName("Maria");
 
     expect(parseNotionAvatarUrl(notionAvatarUrlFor(config))).toEqual(config);
+  });
+
+  it("adds a render version to the image URL without changing stored URLs", () => {
+    const config = notionConfigForName("Maria");
+
+    expect(notionAvatarImageUrlFor(config)).toBe(
+      `${notionAvatarUrlFor(config)}?v=2`,
+    );
   });
 
   it("writes the slots in draw order", () => {

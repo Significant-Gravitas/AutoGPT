@@ -141,9 +141,14 @@ export function decodeNotionConfig(value: string): NotionAvatarConfig | null {
 }
 
 const NOTION_URL_PATTERN = /^\/avatars\/notion\/([\d-]+\.[a-z]+)\.svg$/;
+const NOTION_AVATAR_RENDER_VERSION = 2;
 
 export function notionAvatarUrlFor(config: NotionAvatarConfig): string {
   return `/avatars/notion/${encodeNotionConfig(config)}.svg`;
+}
+
+export function notionAvatarImageUrlFor(config: NotionAvatarConfig): string {
+  return `${notionAvatarUrlFor(config)}?v=${NOTION_AVATAR_RENDER_VERSION}`;
 }
 
 export function parseNotionAvatarUrl(
