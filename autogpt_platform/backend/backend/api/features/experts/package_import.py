@@ -26,7 +26,11 @@ from starlette.datastructures import Headers
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.errors import ACTIVE_EXPERT_LIMIT
 from backend.api.features.experts.experts_db import count_active_experts
-from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, Expert
+from backend.api.features.experts.models import (
+    EXPERT_NAME_MAX_LENGTH,
+    Expert,
+    validate_avatar_url,
+)
 from backend.api.features.experts.package_model import (
     MAX_PACKAGE_SKILLS,
     MAX_PACKAGE_WORKFLOWS,
@@ -404,6 +408,36 @@ async def _library_agent(
     return (await library_db.create_library_agent(graph, user_id))[0]
 
 
+def _site_relative_avatar(
+    url: str | None,
+) -> tuple[str | None, list[ExpertPackageIssue]]:
+    """A URL avatar is kept only when it points at us.
+
+    ``startswith("/")`` on its own is not that test: ``//evil.com`` and
+    ``/\\evil.com`` both pass it and both resolve to a third-party origin once
+    the row is rendered in an ``<img src>``. ``validate_avatar_url`` is where
+    those two forms are already refused, so the fix is to call it.
+
+    It also accepts an absolute https URL, which is right for a user typing one
+    in and wrong here — the URL came out of a file, and nothing in a package may
+    point the expert's picture at somebody else's server. Hence the second test
+    on top of it.
+    """
+    try:
+        validated = validate_avatar_url(url)
+    except ValueError:
+        validated = None
+    if validated is not None and validated.startswith("/"):
+        return validated, []
+    return None, [
+        ExpertPackageIssue(
+            code="avatar_not_imported",
+            message="The expert's picture could not be imported.",
+            path=url,
+        )
+    ]
+
+
 async def _avatar(
     user_id: str, package: ExpertPackage
 ) -> tuple[str | None, list[ExpertPackageIssue]]:
@@ -414,7 +448,7 @@ async def _avatar(
     if avatar is None:
         return None, []
     if avatar.kind == "url":
-        return (avatar.url if (avatar.url or "").startswith("/") else None), []
+        return _site_relative_avatar(avatar.url)
     if package.avatar_bytes is None:
         return None, []
     upload = UploadFile(

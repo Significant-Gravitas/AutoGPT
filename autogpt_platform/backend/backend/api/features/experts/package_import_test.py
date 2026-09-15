@@ -5,7 +5,9 @@ import uuid
 
 import prisma.models
 import pytest
+from pydantic import ValidationError
 
+from backend.api.features.experts import package_import
 from backend.api.features.experts.errors import ACTIVE_EXPERT_LIMIT
 from backend.api.features.experts.expert_zip import package_from_zip, zip_from_package
 from backend.api.features.experts.experts_db_test import (
@@ -535,6 +537,41 @@ async def test_a_url_avatar_is_kept_only_when_it_is_ours(
     )
 
     assert result.expert.avatar_url == expected
+    dropped = [w for w in result.warnings if w.code == "avatar_not_imported"]
+    assert bool(dropped) is (expected is None)
+
+
+@pytest.mark.parametrize("url", ["//evil.com/maria.png", "/\\evil.com/maria.png"])
+def test_the_manifest_refuses_a_url_that_only_looks_site_relative(url: str):
+    """First line of defence: these never reach the importer, because a
+    protocol-relative or backslash URL fails manifest validation and the whole
+    package is refused."""
+    with pytest.raises(ValidationError):
+        PackagedAvatar(kind="url", url=url)
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("/experts/maria.svg", "/experts/maria.svg"),
+        ("//evil.com/maria.png", None),
+        ("/\\evil.com/maria.png", None),
+        ("https://cdn.example/maria.png", None),
+        (None, None),
+    ],
+    ids=["ours", "protocol-relative", "backslash", "absolute-https", "missing"],
+)
+def test_only_a_site_relative_avatar_url_survives(
+    url: str | None, expected: str | None
+):
+    """Second line: ``startswith("/")`` alone would keep the first two, which
+    resolve to a third-party origin once the row renders in an ``<img src>``.
+    An https URL is refused here even though validate_avatar_url allows it,
+    because this one came out of a file rather than from a user typing it."""
+    kept, issues = package_import._site_relative_avatar(url)
+
+    assert kept == expected
+    assert [i.code for i in issues] == ([] if expected else ["avatar_not_imported"])
 
 
 async def test_an_exported_expert_survives_the_whole_round_trip(
