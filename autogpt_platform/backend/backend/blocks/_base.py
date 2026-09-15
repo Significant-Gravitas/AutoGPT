@@ -13,6 +13,7 @@ from typing import (
     TypeAlias,
     TypeVar,
     cast,
+    get_args,
     get_origin,
 )
 
@@ -370,17 +371,29 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def get_credentials_fields(cls) -> dict[str, type[CredentialsMetaInput]]:
-        return {
-            field_name: info.annotation
-            for field_name, info in cls.model_fields.items()
-            if (
-                inspect.isclass(info.annotation)
-                and issubclass(
-                    get_origin(info.annotation) or info.annotation,
-                    CredentialsMetaInput,
-                )
+        result = {}
+        for field_name, info in cls.model_fields.items():
+            annotation = info.annotation
+            # Conditional credentials can be nullable at runtime while their
+            # JSON schema remains the credential object shape. Inspect union
+            # members so those fields are still discovered and validated.
+            candidates = [annotation, *get_args(annotation)]
+
+            credentials_model = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if inspect.isclass(candidate)
+                    and issubclass(
+                        get_origin(candidate) or candidate,
+                        CredentialsMetaInput,
+                    )
+                ),
+                None,
             )
-        }
+            if credentials_model is not None:
+                result[field_name] = credentials_model
+        return result
 
     @classmethod
     def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
