@@ -11,11 +11,10 @@ from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgentPresetCreatable
-from backend.api.features.library.model import (
-    TriggeredPresetSetupRequest as _TriggeredPresetSetupRequest,
-)
+from backend.api.features.library.triggers import setup_triggered_preset
 from backend.executor import utils as execution_utils
 
 from ..idempotency import idempotency_key, idempotent_run, replayed_run
@@ -128,23 +127,20 @@ async def setup_trigger(
     schema and credentials. Use it to populate `trigger_config` and
     `credentials_inputs`.
     """
-    # Use internal trigger setup endpoint to avoid logic duplication:
-    from backend.api.features.library.routes.presets import (
-        setup_trigger as _internal_setup_trigger,
-    )
-
-    internal_request = _TriggeredPresetSetupRequest(
-        name=request.name,
-        description=request.description,
+    # The shared service, not the internal route handler: that handler's
+    # `user_id` is a `Security()` parameter, so the first `Depends` added to
+    # its signature would reach this call as a sentinel object.
+    preset = await setup_triggered_preset(
+        user_id=auth.user_id,
         graph_id=request.graph_id,
         graph_version=request.graph_version,
+        name=request.name,
+        description=request.description,
         trigger_config=request.trigger_config,
         agent_credentials=request.credentials_inputs,
-    )
-
-    preset = await _internal_setup_trigger(
-        params=internal_request,
-        user_id=auth.user_id,
+        expert_id=await experts_db.resolve_expert_for_graph(
+            auth.user_id, request.graph_id
+        ),
     )
     return AgentPreset.from_internal(preset)
 

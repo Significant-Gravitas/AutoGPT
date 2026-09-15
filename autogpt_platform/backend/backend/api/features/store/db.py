@@ -429,6 +429,22 @@ async def get_store_agent_by_version_id(
         raise DatabaseError("Failed to fetch agent details") from e
 
 
+async def get_store_agent_by_graph_id(graph_id: str) -> store_model.StoreAgentDetails:
+    """Get the marketplace listing for a graph (APPROVED agents only)."""
+    try:
+        agent = await prisma.models.StoreAgent.prisma().find_first(
+            where={"graph_id": graph_id}
+        )
+        if not agent:
+            raise NotFoundError(f"No marketplace listing for graph {graph_id}")
+        return store_model.StoreAgentDetails.from_db(agent)
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting store agent details: {e}")
+        raise DatabaseError("Failed to fetch agent details") from e
+
+
 async def get_store_agent_details_as_admin(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:

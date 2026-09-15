@@ -83,7 +83,7 @@ async def list_agents(
     auth: TenantContext = Security(require_auth),
 ) -> Page[MarketplaceAgent]:
     """List agents available in the marketplace, with optional filtering and sorting."""
-    result = await store_cache._get_cached_store_agents(
+    result = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=StoreAgentsSortOptions(sorted_by) if sorted_by else None,
@@ -129,7 +129,7 @@ async def get_agent_details(
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
 
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name
     )
 
@@ -151,7 +151,7 @@ async def add_agent_to_library(
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
 
-    agent_details = await store_cache._get_cached_agent_details(
+    agent_details = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name
     )
 
@@ -188,7 +188,7 @@ async def list_creators(
     auth: TenantContext = Security(require_auth),
 ) -> Page[MarketplaceCreatorDetails]:
     """List or search marketplace creators."""
-    result = await store_cache._get_cached_store_creators(
+    result = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=StoreCreatorsSortOptions(sorted_by) if sorted_by else None,
@@ -214,7 +214,7 @@ async def get_creator_details(
 ) -> MarketplaceCreatorDetails:
     """Get a marketplace creator's profile w/ stats."""
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return MarketplaceCreatorDetails.from_internal(creator)
 
 
@@ -239,7 +239,7 @@ async def get_profile(
             detail="Profile not found",
         )
 
-    creator = await store_cache._get_cached_creator_details(username=profile.username)
+    creator = await store_cache.get_cached_creator_details(username=profile.username)
     return MarketplaceCreatorDetails.from_internal(creator)
 
 

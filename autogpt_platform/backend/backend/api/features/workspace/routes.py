@@ -4,7 +4,6 @@ Workspace API routes for managing user file storage.
 
 import asyncio
 import logging
-import os
 import re
 from typing import Annotated, Literal
 from urllib.parse import quote
@@ -15,8 +14,8 @@ from fastapi import Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
+from backend.api.features.workspace.service import store_workspace_upload
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
@@ -26,8 +25,7 @@ from backend.data.workspace import (
     get_workspace_file,
     get_workspace_total_size,
 )
-from backend.util.settings import Config
-from backend.util.workspace import WorkspaceManager, format_bytes
+from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import get_workspace_storage
 
 
@@ -270,72 +268,9 @@ async def upload_file(
     so the agent's session-scoped tools can discover them automatically.
     """
     # Empty-string session_id drops session scoping; normalize to None.
-    session_id = session_id or None
-
-    config = Config()
-
-    # Sanitize filename — strip any directory components
-    filename = os.path.basename(file.filename or "upload") or "upload"
-
-    # Read file content with early abort on size limit
-    max_file_bytes = config.max_file_size_mb * 1024 * 1024
-    chunks: list[bytes] = []
-    total_size = 0
-    while chunk := await file.read(64 * 1024):  # 64KB chunks
-        total_size += len(chunk)
-        if total_size > max_file_bytes:
-            raise fastapi.HTTPException(
-                status_code=413,
-                detail=f"File exceeds maximum size of {config.max_file_size_mb} MB",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
-
-    # Get or create workspace
-    workspace = await get_or_create_workspace(user_id)
-
-    # Write file via WorkspaceManager (handles virus scan, per-file size,
-    # and per-user tier-based storage quota internally).
-    manager = WorkspaceManager(user_id, workspace.id, session_id)
-    try:
-        workspace_file = await manager.write_file(
-            content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
-        )
-    except VirusDetectedError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
-    except VirusScanError as e:
-        raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
-    except ValueError as e:
-        # write_file raises ValueError for path-conflict, size-limit, and
-        # storage-quota cases; map each to its correct HTTP status.
-        message = str(e)
-        if message.startswith(("File too large", "Storage limit exceeded")):
-            raise fastapi.HTTPException(status_code=413, detail=message) from e
-        raise fastapi.HTTPException(status_code=409, detail=message) from e
-
-    # Post-write storage check — eliminates TOCTOU race on the quota.
-    # If a concurrent upload pushed us over the limit, undo this write.
-    storage_limit_bytes = await get_workspace_storage_limit_bytes(user_id)
-    new_total = await get_workspace_total_size(workspace.id)
-    if storage_limit_bytes and new_total > storage_limit_bytes:
-        try:
-            # Route through WorkspaceManager so the storage backend blob is
-            # removed too — soft_delete_workspace_file alone leaks the blob.
-            await manager.delete_file(workspace_file.id)
-        except Exception as e:
-            logger.warning(
-                f"Failed to delete over-quota file {workspace_file.id} "
-                f"in workspace {workspace.id}: {e}"
-            )
-        raise fastapi.HTTPException(
-            status_code=413,
-            detail=(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(new_total)} of your "
-                f"{format_bytes(storage_limit_bytes)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            ),
-        )
+    workspace_file = await store_workspace_upload(
+        user_id, file, session_id=session_id or None, overwrite=overwrite
+    )
 
     return UploadFileResponse(
         file_id=workspace_file.id,

@@ -216,10 +216,10 @@ def test_list_files_null_metadata_coerced_to_empty_dict(
 # -- upload_file metadata tests --
 
 
-@patch("backend.api.features.workspace.routes.get_workspace_storage_limit_bytes")
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
+@patch("backend.api.features.workspace.service.get_workspace_storage_limit_bytes")
+@patch("backend.api.features.workspace.service.get_or_create_workspace")
+@patch("backend.api.features.workspace.service.get_workspace_total_size")
+@patch("backend.api.features.workspace.service.WorkspaceManager")
 def test_upload_passes_user_upload_origin_metadata(
     mock_manager_cls, mock_total_size, mock_get_workspace, mock_storage_limit
 ):
@@ -242,9 +242,9 @@ def test_upload_passes_user_upload_origin_metadata(
     assert call_kwargs.kwargs.get("metadata") == {"origin": "user-upload"}
 
 
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
+@patch("backend.api.features.workspace.service.get_or_create_workspace")
+@patch("backend.api.features.workspace.service.get_workspace_total_size")
+@patch("backend.api.features.workspace.service.WorkspaceManager")
 def test_upload_returns_409_on_file_conflict(
     mock_manager_cls, mock_total_size, mock_get_workspace
 ):
@@ -291,21 +291,21 @@ _MOCK_FILE = WorkspaceFile(
 
 def test_upload_happy_path(mocker):
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
+        "backend.api.features.workspace.service.get_workspace_total_size",
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -319,7 +319,7 @@ def test_upload_happy_path(mocker):
 
 def test_upload_exceeds_max_file_size(mocker):
     """Files larger than max_file_size_mb should be rejected with 413."""
-    cfg = mocker.patch("backend.api.features.workspace.routes.Config")
+    cfg = mocker.patch("backend.api.features.workspace.service.Config")
     cfg.return_value.max_file_size_mb = 0  # 0 MB → any content is too big
 
     response = _upload(content=b"x" * 1024)
@@ -329,7 +329,7 @@ def test_upload_exceeds_max_file_size(mocker):
 def test_upload_storage_quota_exceeded(mocker):
     """WorkspaceManager.write_file raises ValueError when quota exceeded → 413."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
@@ -337,7 +337,7 @@ def test_upload_storage_quota_exceeded(mocker):
         side_effect=ValueError("Storage limit exceeded: 500 MB used of 250 MB (200.0%)")
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -349,23 +349,23 @@ def test_upload_storage_quota_exceeded(mocker):
 def test_upload_post_write_quota_race(mocker):
     """Concurrent upload tipping over limit after write should delete + 413."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     # Post-write total exceeds the tier-based limit (250 MB for FREE).
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
+        "backend.api.features.workspace.service.get_workspace_total_size",
         return_value=600 * 1024 * 1024,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -379,21 +379,21 @@ def test_upload_post_write_quota_race(mocker):
 def test_upload_any_extension(mocker):
     """Any file extension should be accepted — ClamAV is the security layer."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
+        "backend.api.features.workspace.service.get_workspace_total_size",
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -406,7 +406,7 @@ def test_upload_blocked_by_virus_scan(mocker):
     from backend.api.features.store.exceptions import VirusDetectedError
 
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
@@ -414,7 +414,7 @@ def test_upload_blocked_by_virus_scan(mocker):
         side_effect=VirusDetectedError("Eicar-Test-Signature"),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -425,21 +425,21 @@ def test_upload_blocked_by_virus_scan(mocker):
 def test_upload_file_without_extension(mocker):
     """Files without an extension should be accepted and stored as-is."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
+        "backend.api.features.workspace.service.get_workspace_total_size",
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -456,21 +456,21 @@ def test_upload_file_without_extension(mocker):
 def test_upload_strips_path_components(mocker):
     """Path-traversal filenames should be reduced to their basename."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
+        "backend.api.features.workspace.service.get_workspace_total_size",
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -547,7 +547,7 @@ def test_delete_file_no_workspace(mocker):
 def test_upload_write_file_too_large_returns_413(mocker):
     """write_file raises ValueError("File too large: …") → must map to 413."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
@@ -555,7 +555,7 @@ def test_upload_write_file_too_large_returns_413(mocker):
         side_effect=ValueError("File too large: 900 bytes exceeds 1MB limit")
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -567,7 +567,7 @@ def test_upload_write_file_too_large_returns_413(mocker):
 def test_upload_write_file_conflict_returns_409(mocker):
     """Non-'File too large' ValueErrors from write_file stay as 409."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
@@ -575,7 +575,7 @@ def test_upload_write_file_conflict_returns_409(mocker):
         side_effect=ValueError("File already exists at path: /sessions/x/a.txt")
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 
@@ -901,7 +901,7 @@ def test_upload_virus_scan_infrastructure_error_returns_500(mocker):
     from backend.api.features.store.exceptions import VirusScanError
 
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
@@ -909,7 +909,7 @@ def test_upload_virus_scan_infrastructure_error_returns_500(mocker):
         side_effect=VirusScanError("ClamAV connection refused"),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
+        "backend.api.features.workspace.service.WorkspaceManager",
         return_value=mock_manager,
     )
 

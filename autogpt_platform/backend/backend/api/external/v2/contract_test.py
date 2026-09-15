@@ -8,6 +8,7 @@ transport exercises.
 """
 
 import base64
+import inspect
 import json
 import logging
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ from starlette.routing import Match
 
 from backend.api.external.middleware import resolve_auth_info
 from backend.api.external.v2.errors import add_v2_exception_handlers
+from backend.api.external.v2.models import AgentTriggerSetupRequest
 from backend.api.external.v2.pagination import (
     MAX_PAGE,
     Page,
@@ -186,8 +188,226 @@ async def test_a_review_id_from_another_run_is_rejected(
     with pytest.raises(HTTPException) as exc_info:
         await _submit({"node_exec_id": "node-from-another-run", "approved": True})
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
     assert "node-from-another-run" in str(exc_info.value.detail)
+
+
+async def test_trigger_setup_calls_the_service_not_the_internal_route_handler(
+    mocker: pytest_mock.MockFixture,
+):
+    """A `Security()` default reaches a direct call as a sentinel, not a value.
+
+    The internal handler takes `user_id: str = Security(...)`; calling it from
+    here worked only while nothing else in its signature was a dependency.
+    """
+    from backend.api.features.library.routes import presets as internal_presets
+
+    from .library import presets as v2_presets
+
+    service = mocker.patch.object(
+        v2_presets, "setup_triggered_preset", new=mock.AsyncMock()
+    )
+    mocker.patch.object(
+        v2_presets.experts_db, "resolve_expert_for_graph", new=mock.AsyncMock()
+    )
+    mocker.patch.object(
+        v2_presets.AgentPreset, "from_internal", return_value=mock.Mock()
+    )
+    internal = mocker.patch.object(
+        internal_presets, "setup_trigger", new=mock.AsyncMock()
+    )
+
+    await v2_presets.setup_trigger(
+        request=AgentTriggerSetupRequest(
+            name="n",
+            description="d",
+            graph_id="graph-1",
+            graph_version=1,
+            trigger_config={},
+            credentials_inputs={},
+        ),
+        auth=_tenant,
+    )
+
+    internal.assert_not_awaited()
+    assert service.await_args.kwargs["user_id"] == _tenant.user_id
+
+
+async def test_deleting_an_unknown_schedule_is_a_404_by_type_not_by_message(
+    mocker: pytest_mock.MockFixture,
+):
+    """The route matched "not found" in the message; a reworded error broke it."""
+    from backend.util.exceptions import NotFoundError
+
+    from . import schedules
+
+    mocker.patch.object(
+        schedules,
+        "_assert_schedule_in_tenant",
+        new=mock.AsyncMock(),
+    )
+    mocker.patch.object(
+        schedules,
+        "get_scheduler_client",
+        return_value=mock.Mock(
+            delete_schedule=mock.AsyncMock(side_effect=NotFoundError("Job #s-1 gone."))
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await schedules.delete_schedule(schedule_id="s-1", auth=_tenant)
+
+    assert exc_info.value.status_code == 404
+
+
+async def test_listing_runs_passes_the_status_and_time_filters_through(
+    mocker: pytest_mock.MockFixture,
+):
+    from backend.data.execution import ExecutionStatus
+
+    from . import runs
+
+    paginated = mocker.patch.object(
+        runs.execution_db,
+        "get_graph_executions_paginated",
+        new=mock.AsyncMock(
+            return_value=mock.Mock(executions=[], pagination=mock.Mock(total_items=0))
+        ),
+    )
+    since = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+    await runs.list_runs(
+        graph_id=None,
+        statuses=["RUNNING", "FAILED"],
+        started_after=since,
+        started_before=None,
+        page=PageRequest(limit=25),
+        auth=_tenant,
+    )
+
+    kwargs = paginated.await_args.kwargs
+    assert kwargs["statuses"] == [ExecutionStatus.RUNNING, ExecutionStatus.FAILED]
+    assert kwargs["created_time_gte"] == since
+
+
+async def test_the_review_status_filter_keeps_its_wire_name(
+    mocker: pytest_mock.MockFixture,
+):
+    """The parameter is `status` on the wire; naming it that in Python shadowed
+    the `starlette.status` the rest of the module raises through."""
+    from . import runs
+
+    parameter = next(
+        p
+        for p in inspect.signature(runs.list_reviews).parameters.values()
+        if p.name == "review_status"
+    )
+    assert parameter.default.alias == "status"
+
+
+async def test_the_marketplace_listing_lookup_goes_through_the_store_db(
+    mocker: pytest_mock.MockFixture,
+):
+    """The route held a raw Prisma query, so the store's own view was bypassed."""
+    from backend.util.exceptions import NotFoundError
+
+    from . import graphs
+
+    mocker.patch.object(
+        graphs.store_db,
+        "get_store_agent_by_graph_id",
+        new=mock.AsyncMock(side_effect=NotFoundError("nope")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await graphs.get_marketplace_listing_for_graph(graph_id="graph-1", auth=_tenant)
+
+    assert exc_info.value.status_code == 404
+    assert "#graph-1" in str(exc_info.value.detail)
+
+
+async def test_a_review_belonging_to_another_run_is_not_reachable_through_this_one(
+    mocker: pytest_mock.MockFixture,
+):
+    """The URL's run is tenancy-checked; the reviews must be that run's own.
+
+    `get_reviews_by_node_exec_ids` scopes to the user, not to the org, so a
+    review of a run in another tenant would otherwise be decidable here.
+    """
+    elsewhere = _review("node-a", ReviewStatus.WAITING)
+    elsewhere.graph_exec_id = "run-2"
+    _mock_review_db(mocker, pending=[elsewhere], processed={}, still_pending=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert exc_info.value.status_code == 404
+
+
+async def test_reviews_are_refused_on_a_run_that_is_not_awaiting_them(
+    mocker: pytest_mock.MockFixture,
+):
+    """v2 had no status check where the internal route answers 409."""
+    from backend.api.features.executions.review import service as review_service
+    from backend.data.execution import ExecutionStatus
+
+    _mock_review_db(
+        mocker,
+        pending=[_review("node-a", ReviewStatus.WAITING)],
+        processed={},
+        still_pending=True,
+    )
+    mocker.patch.object(
+        review_service,
+        "get_graph_execution_meta",
+        new=mock.AsyncMock(return_value=mock.Mock(status=ExecutionStatus.COMPLETED)),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert exc_info.value.status_code == 409
+
+
+async def test_an_auto_approved_review_records_the_node_and_ignores_edits(
+    mocker: pytest_mock.MockFixture,
+):
+    """The internal route has always supported this; v2 dropped it silently."""
+    from backend.api.features.executions.review import service as review_service
+
+    approved = _review("node-a", ReviewStatus.APPROVED)
+    _mock_review_db(
+        mocker,
+        pending=[approved],
+        processed={"node-a": approved},
+        still_pending=True,
+    )
+    mocker.patch.object(
+        review_service,
+        "get_node_executions",
+        new=mock.AsyncMock(
+            return_value=[mock.Mock(node_exec_id="node-a", node_id="node-def-1")]
+        ),
+    )
+    record = mocker.patch.object(
+        review_service, "create_auto_approval_record", new=mock.AsyncMock()
+    )
+
+    await _submit(
+        {
+            "node_exec_id": "node-a",
+            "approved": True,
+            "edited_payload": {"ignored": True},
+            "auto_approve_future": True,
+        }
+    )
+
+    record.assert_awaited_once()
+    assert record.await_args.kwargs["node_id"] == "node-def-1"
+    decisions = review_service.process_all_reviews_for_execution.await_args.kwargs[
+        "review_decisions"
+    ]
+    assert decisions["node-a"][1] is None
 
 
 async def test_a_failed_resume_does_not_fail_the_submission(
@@ -269,9 +489,11 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
         return_value=_api_key_auth,
     )
     authenticated = mocker.patch.object(
-        global_rate_limit._authenticated_limiter, "check"
+        global_rate_limit._authenticated_limiter, "check", return_value=None
     )
-    anonymous = mocker.patch.object(global_rate_limit._anonymous_limiter, "check")
+    anonymous = mocker.patch.object(
+        global_rate_limit._anonymous_limiter, "check", return_value=None
+    )
 
     await _call_rate_limit_middleware(headers=[(b"authorization", b"Bearer agpt_test")])
 
@@ -634,8 +856,9 @@ def _mock_review_db(
     processed: dict[str, PendingHumanReviewModel],
     still_pending: bool,
 ) -> None:
+    from backend.api.features.executions.review import service as review_service
     from backend.data import execution as execution_db
-    from backend.data import human_review
+    from backend.data.execution import ExecutionStatus
 
     # The run carries the tenancy the reviews are checked against.
     mocker.patch.object(
@@ -646,17 +869,22 @@ def _mock_review_db(
         ),
     )
     mocker.patch.object(
-        human_review,
-        "get_pending_reviews_for_execution",
-        new=mock.AsyncMock(return_value=pending),
+        review_service,
+        "get_reviews_by_node_exec_ids",
+        new=mock.AsyncMock(return_value={r.node_exec_id: r for r in pending}),
     )
     mocker.patch.object(
-        human_review,
+        review_service,
+        "get_graph_execution_meta",
+        new=mock.AsyncMock(return_value=mock.Mock(status=ExecutionStatus.REVIEW)),
+    )
+    mocker.patch.object(
+        review_service,
         "process_all_reviews_for_execution",
         new=mock.AsyncMock(return_value=processed),
     )
     mocker.patch.object(
-        human_review,
+        review_service,
         "has_pending_reviews_for_graph_exec",
         new=mock.AsyncMock(return_value=still_pending),
     )
@@ -664,26 +892,26 @@ def _mock_review_db(
 
 def _mock_resume_path(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
     """Stub everything the resume needs; returns the enqueue mock to assert on."""
+    from backend.api.features.executions.review import service as review_service
     from backend.data.graph import GraphSettings
-    from backend.executor import utils as execution_utils
-
-    from . import runs
 
     mocker.patch.object(
-        runs,
+        review_service,
         "get_user_by_id",
         new=mock.AsyncMock(return_value=mock.Mock(timezone="Europe/Amsterdam")),
     )
     mocker.patch.object(
-        runs, "get_graph_settings", new=mock.AsyncMock(return_value=GraphSettings())
+        review_service,
+        "get_graph_settings",
+        new=mock.AsyncMock(return_value=GraphSettings()),
     )
     mocker.patch.object(
-        runs,
+        review_service,
         "get_or_create_workspace",
         new=mock.AsyncMock(return_value=mock.Mock(id="workspace-1")),
     )
     enqueue = mock.AsyncMock()
-    mocker.patch.object(execution_utils, "add_graph_execution", new=enqueue)
+    mocker.patch.object(review_service, "add_graph_execution", new=enqueue)
     return enqueue
 
 
