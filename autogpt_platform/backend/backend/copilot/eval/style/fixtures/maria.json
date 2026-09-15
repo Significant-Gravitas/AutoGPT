@@ -18,7 +18,7 @@
     {
       "id": "maria-briefing-01",
       "kind": "briefing",
-      "prompt": "Give me a brief on our LinkedIn content for next week. We launch the Slack integration on Tuesday. Audience is ops leads at 20 to 200 person companies. We sell employee onboarding software."
+      "prompt": "Give me a brief on the content we need for the Slack integration launch on Tuesday. Audience is ops leads at 20 to 200 person companies. We sell employee onboarding software."
     },
     {
       "id": "maria-briefing-02",
@@ -58,7 +58,7 @@
     {
       "id": "maria-reply-03",
       "kind": "reply_draft",
-      "prompt": "Draft a LinkedIn post announcing we reached 500 customers. Keep it human, no confetti."
+      "prompt": "Draft a reply to this comment on our onboarding-checklist article: \"This is the fourth post I've read today that lists the same five steps. Is there anything here you actually learned the hard way?\""
     },
     {
       "id": "maria-reply-04",
@@ -123,12 +123,12 @@
     {
       "id": "maria-failure-01",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: LinkedIn Post Generator\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nWhat happened to my post? I needed it this morning."
+      "prompt": "<run_result>\nWorkflow: YouTube Video to SEO Blog Writer\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nWhat happened to the post from Tuesday's video? I needed it this morning."
     },
     {
       "id": "maria-failure-02",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Source URL https://example.com/research/onboarding-2026 returned 404 Not Found\n</run_result>\nWhy is there no article?"
+      "prompt": "<run_result>\nWorkflow: Automated SEO Blog Writer\nStatus: FAILED\nError: Source URL https://example.com/research/onboarding-2026 returned 404 Not Found\n</run_result>\nWhy is there no article?"
     },
     {
       "id": "maria-failure-03",
@@ -138,17 +138,17 @@
     {
       "id": "maria-failure-04",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: COMPLETED\nOutput: draft is empty (0 words)\n</run_result>\nThe blog run says completed but there is nothing in it. Explain."
+      "prompt": "<run_result>\nWorkflow: Automated SEO Blog Writer\nStatus: COMPLETED\nOutput: draft is empty (0 words)\n</run_result>\nThe blog run says completed but there is nothing in it. Explain."
     },
     {
       "id": "maria-failure-05",
       "kind": "failure",
-      "prompt": "The LinkedIn draft you produced says 'trusted by 10,000 teams'. We have about 500 customers. What went wrong, and give me a corrected version."
+      "prompt": "The blog draft you produced says 'trusted by 10,000 teams'. We have about 500 customers. What went wrong, and give me a corrected version."
     },
     {
       "id": "maria-failure-06",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Missing credentials for Google Search Console\n</run_result>\nWhy didn't the article get written this week?"
+      "prompt": "<run_result>\nWorkflow: Automated SEO Blog Writer\nStatus: FAILED\nError: Missing credentials for Google Search Console\n</run_result>\nWhy didn't the article get written this week?"
     }
   ]
 }
