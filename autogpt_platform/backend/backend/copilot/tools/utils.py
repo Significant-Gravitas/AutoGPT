@@ -287,6 +287,15 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id)
 
     for field_name, field_info in requirements.items():
+        # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+        # Per-field attribution: joins matcher lines to a user + requirement.
+        logger.warning(
+            "[SCOPEDEBUG] user=%s field=%s provider=%s scopes=%s",
+            user_id,
+            field_name,
+            sorted(str(p) for p in field_info.provider),
+            sorted(field_info.required_scopes or []),
+        )
         matching_cred = find_matching_credential(available_creds, field_info)
 
         if matching_cred:
@@ -360,8 +369,6 @@ def find_matching_credential(
             continue
         if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
             continue
-        # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
-        logger.warning("[SCOPEDEBUG] MATCH row=%s", cred.id)
         return cred
     # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
     logger.warning("[SCOPEDEBUG] no row matched")
