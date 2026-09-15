@@ -7,7 +7,10 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
-import type { ExpertAccent } from "../../../components/ExpertsSection/helpers";
+import {
+  getExpertRoleLabel,
+  type ExpertAccent,
+} from "../../../components/ExpertsSection/helpers";
 
 interface Props {
   expert: Expert;
@@ -36,7 +39,7 @@ export function ExpertPageHeader({ expert, accent, actions }: Props) {
             )}
           >
             <Icon icon={accent.roleIcon} size={12} />
-            {expert.role}
+            {getExpertRoleLabel(expert.role)}
           </span>
         </div>
         <div className="w-full sm:w-auto">{actions}</div>

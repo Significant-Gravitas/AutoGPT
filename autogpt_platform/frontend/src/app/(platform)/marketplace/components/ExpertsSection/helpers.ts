@@ -68,10 +68,18 @@ const ACCENTS: Record<string, ExpertAccent> = {
 };
 
 const ROLE_ACCENTS: Array<[RegExp, string]> = [
-  [/marketing|growth|brand/i, "violet"],
+  [
+    /marketing|growth|brand|seo|content|social|market|competitor|email|lifecycle/i,
+    "violet",
+  ],
   [/sales|revenue/i, "amber"],
   [/ops|operations|support/i, "sky"],
 ];
+
+const ROLE_LABELS: Record<string, string> = {
+  "Social & Content Repurposing": "Social Media",
+  "Market & Competitor Intelligence": "Market Intelligence",
+};
 
 /** A skill's category is its identity mark, the way an expert's role is:
  *  the eight canonical categories fold onto the same four accents, so
@@ -102,6 +110,10 @@ export function getExpertAccent(role: string): ExpertAccent {
     if (pattern.test(role)) return ACCENTS[key];
   }
   return ACCENTS.zinc;
+}
+
+export function getExpertRoleLabel(role: string): string {
+  return ROLE_LABELS[role] ?? role;
 }
 
 /** An expert raised through /raise carries the color its owner picked, which

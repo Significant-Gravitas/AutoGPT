@@ -4,14 +4,38 @@ import {
   getExpertAccent,
   getExpertAccessProviders,
   getExpertFirstName,
+  getExpertRoleLabel,
 } from "./helpers";
 
 describe("getExpertAccent", () => {
   test("themes known roles and falls back to zinc", () => {
     expect(getExpertAccent("Marketing").pill).toContain("violet");
+    expect(getExpertAccent("SEO & Content").pill).toContain("violet");
+    expect(getExpertAccent("Social & Content Repurposing").pill).toContain(
+      "violet",
+    );
+    expect(getExpertAccent("Market & Competitor Intelligence").pill).toContain(
+      "violet",
+    );
+    expect(getExpertAccent("Email & Lifecycle").pill).toContain("violet");
     expect(getExpertAccent("Sales").pill).toContain("amber");
     expect(getExpertAccent("Ops").pill).toContain("sky");
     expect(getExpertAccent("Astrologer").pill).toContain("zinc");
+  });
+});
+
+describe("getExpertRoleLabel", () => {
+  test("shortens long roster roles used in pills", () => {
+    expect(getExpertRoleLabel("Social & Content Repurposing")).toBe(
+      "Social Media",
+    );
+    expect(getExpertRoleLabel("Market & Competitor Intelligence")).toBe(
+      "Market Intelligence",
+    );
+  });
+
+  test("keeps other roles unchanged", () => {
+    expect(getExpertRoleLabel("Email & Lifecycle")).toBe("Email & Lifecycle");
   });
 });
 
