@@ -8,12 +8,16 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth.models import RequestContext
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.features.credits.routes import router
+from backend.api.features.billing.credits.routes import get_credit_history, router
 from backend.api.rest_api import app as real_app
-from backend.data.credit import AutoTopUpConfig
+from backend.api.rest_api import handle_internal_http_error
+from backend.data.credit import AutoTopUpConfig, UserCreditBase
+from backend.data.model import TransactionHistory
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -85,7 +89,7 @@ def test_credit_surface_has_no_other_operations():
         (method.lower(), route.path)
         for route in real_app.routes
         if isinstance(route, APIRoute)
-        and route.endpoint.__module__ == "backend.api.features.credits.routes"
+        and route.endpoint.__module__ == "backend.api.features.billing.credits.routes"
         for method in route.methods
         if method != "HEAD"
     }
@@ -99,20 +103,20 @@ def test_credit_surface_has_no_other_operations():
     [
         (
             "/api/credits/subscription",
-            "backend.api.features.subscriptions.routes",
+            "backend.api.features.billing.subscriptions.routes",
         ),
         (
             "/api/credits/manage",
-            "backend.api.features.subscriptions.routes",
+            "backend.api.features.billing.subscriptions.routes",
         ),
         (
             "/api/credits/stripe_webhook",
-            "backend.api.features.subscriptions.routes",
+            "backend.api.features.billing.subscriptions.routes",
         ),
-        ("/api/credits/transactions", "backend.api.features.credits.routes"),
+        ("/api/credits/transactions", "backend.api.features.billing.credits.routes"),
         (
             "/api/credits/{transaction_key}/refund",
-            "backend.api.features.credits.routes",
+            "backend.api.features.billing.credits.routes",
         ),
     ],
 )
@@ -133,7 +137,7 @@ def test_get_user_credits(
     mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -160,7 +164,7 @@ def test_request_top_up(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -188,7 +192,7 @@ def test_request_top_up_forwards_datafast_headers(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -218,7 +222,7 @@ def test_get_auto_top_up(
     mock_config = AutoTopUpConfig(threshold=100, amount=500)
 
     mocker.patch(
-        "backend.api.features.credits.routes.get_auto_top_up",
+        "backend.api.features.billing.credits.routes.get_auto_top_up",
         return_value=mock_config,
     )
 
@@ -243,7 +247,7 @@ def test_configure_auto_top_up(
     """Test configure auto top-up endpoint - this test would have caught the enum casting bug"""
     # Mock the set_auto_top_up function to avoid database operations
     mocker.patch(
-        "backend.api.features.credits.routes.set_auto_top_up",
+        "backend.api.features.billing.credits.routes.set_auto_top_up",
         return_value=None,
     )
 
@@ -253,7 +257,7 @@ def test_configure_auto_top_up(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -274,7 +278,7 @@ def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     set_auto_top_up = mocker.patch(
-        "backend.api.features.credits.routes.set_auto_top_up"
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
     )
 
     mock_credit_model = mocker.AsyncMock()
@@ -283,7 +287,7 @@ def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
         "Org-level Stripe top-up not yet implemented"
     )
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -300,7 +304,7 @@ def test_configure_auto_top_up_validation_errors(
 ) -> None:
     """Test configure auto top-up endpoint validation"""
     # Mock set_auto_top_up to avoid database operations for successful case
-    mocker.patch("backend.api.features.credits.routes.set_auto_top_up")
+    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
 
     # Mock credit model to avoid Stripe API calls for the successful case
     mock_credit_model = mocker.AsyncMock()
@@ -308,7 +312,7 @@ def test_configure_auto_top_up_validation_errors(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -352,7 +356,7 @@ def test_list_invoices_returns_mapped_payload(
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[invoice])
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -377,7 +381,7 @@ def test_list_invoices_clamps_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -392,7 +396,7 @@ def test_list_invoices_default_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -411,7 +415,7 @@ def test_refund_top_up_forwards_the_transaction_key_and_metadata(
     credit_model = Mock()
     credit_model.top_up_refund = AsyncMock(return_value=500)
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=credit_model),
     )
 
@@ -431,7 +435,7 @@ def test_fulfill_checkout_credits_the_calling_user(
     credit_model = Mock()
     credit_model.fulfill_checkout = AsyncMock()
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=credit_model),
     )
 
@@ -448,7 +452,7 @@ def test_get_refund_requests_is_scoped_to_the_caller(
     credit_model = Mock()
     credit_model.get_refund_requests = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=credit_model),
     )
 
@@ -466,7 +470,7 @@ def test_configure_auto_top_up_maps_an_unavailable_backend_to_501(
     credit_model.get_credits = AsyncMock(return_value=0)
     credit_model.top_up_credits = AsyncMock(side_effect=NotImplementedError)
     mocker.patch(
-        "backend.api.features.credits.routes.get_credit_model",
+        "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=credit_model),
     )
 
@@ -482,3 +486,80 @@ def test_request_top_up_rejects_a_missing_amount() -> None:
     response = client.post("/credits", json={})
 
     assert response.status_code == 422
+
+
+# The credit-history route is exercised against its own app: it needs the
+# ValueError -> 400 handler the real app installs, which the module-level
+# client above does not carry.
+HISTORY_CONTEXT = RequestContext(
+    user_id="user",
+    org_id="org",
+    team_id=None,
+    is_org_owner=True,
+    is_org_admin=False,
+    is_org_billing_manager=False,
+    is_team_admin=False,
+    is_team_billing_manager=False,
+    seat_status="ACTIVE",
+)
+
+
+@pytest.fixture
+def history_client():
+    history_app = fastapi.FastAPI()
+    history_app.include_router(router)
+    history_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    history_app.dependency_overrides[requires_user] = lambda: None
+    history_app.dependency_overrides[get_user_id] = lambda: "user"
+    history_app.dependency_overrides[get_request_context] = lambda: HISTORY_CONTEXT
+    return fastapi.testclient.TestClient(history_app)
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1001])
+def test_invalid_history_limit_returns_400(history_client, limit):
+    response = history_client.get(
+        "/credits/transactions", params={"transaction_count_limit": limit}
+    )
+    assert response.status_code == 400
+    assert "Transaction count limit" in response.json()["detail"]
+    assert response.json()["message"] == "Failed to process GET /credits/transactions"
+
+
+def test_invalid_cursor_returns_400(history_client, monkeypatch):
+    model = AsyncMock(spec=UserCreditBase)
+    model.get_transaction_history.side_effect = ValueError(
+        "Invalid credit history cursor"
+    )
+    monkeypatch.setattr(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=model),
+    )
+    response = history_client.get("/credits/transactions", params={"cursor": "invalid"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid credit history cursor"
+    assert response.json()["message"] == "Failed to process GET /credits/transactions"
+
+
+@pytest.mark.asyncio
+async def test_history_route_forwards_cursor_and_org_context(monkeypatch):
+    model = AsyncMock(spec=UserCreditBase)
+    model.get_transaction_history.return_value = TransactionHistory(
+        transactions=[], next_transaction_time=None
+    )
+    get_model = AsyncMock(return_value=model)
+    monkeypatch.setattr(
+        "backend.api.features.billing.credits.routes.get_credit_model", get_model
+    )
+    result = await get_credit_history(
+        user_id="user", ctx=HISTORY_CONTEXT, cursor="cursor", transaction_count_limit=50
+    )
+    get_model.assert_awaited_once_with("user", "org")
+    model.get_transaction_history.assert_awaited_once_with(
+        user_id="user",
+        transaction_time_ceiling=None,
+        transaction_count_limit=50,
+        transaction_type=None,
+        cursor="cursor",
+        viewer_organization_id="org",
+    )
+    assert result.transactions == []
