@@ -4,7 +4,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 
-from . import skill_routes, skill_submission_db
+from . import skill_model, skill_routes, skill_submission_db
 
 app = fastapi.FastAPI()
 app.include_router(skill_routes.router, prefix="/api/store/skills")
@@ -86,3 +86,46 @@ def test_submissions_is_a_route_of_its_own_not_a_skill_slug(
     assert response.status_code == 200
     listed.assert_awaited_once()
     detail.assert_not_called()
+
+
+@pytest.mark.parametrize("expert_id", [None, "expert-1"], ids=["library", "expert"])
+def test_install_targets_the_expert_the_caller_named(
+    monkeypatch: pytest.MonkeyPatch, mocker, authenticated, test_user_id, expert_id
+):
+    monkeypatch.setenv(FLAG_ENV_VAR, "true")
+    mocker.patch.object(
+        skill_routes.experts_db, "owns_private_active_expert", return_value=True
+    )
+    install = mocker.patch.object(
+        skill_routes.skill_db,
+        "install_marketplace_skill",
+        return_value=skill_model.InstalledSkill(name="a-skill", required_providers=[]),
+    )
+
+    response = client.post(
+        "/api/store/skills/a-skill/install",
+        params={"expert_id": expert_id} if expert_id else {},
+    )
+
+    assert response.status_code == 200
+    install.assert_awaited_once_with(test_user_id, "a-skill", expert_id=expert_id)
+
+
+def test_install_onto_someone_elses_expert_is_a_404_that_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, mocker, authenticated, test_user_id
+):
+    """A 403 would confirm the expert exists, so an unowned id reads as missing."""
+    monkeypatch.setenv(FLAG_ENV_VAR, "true")
+    owns = mocker.patch.object(
+        skill_routes.experts_db, "owns_private_active_expert", return_value=False
+    )
+    install = mocker.patch.object(skill_routes.skill_db, "install_marketplace_skill")
+
+    response = client.post(
+        "/api/store/skills/a-skill/install", params={"expert_id": "not-mine"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Expert 'not-mine' not found"
+    owns.assert_awaited_once_with(test_user_id, "not-mine")
+    install.assert_not_awaited()

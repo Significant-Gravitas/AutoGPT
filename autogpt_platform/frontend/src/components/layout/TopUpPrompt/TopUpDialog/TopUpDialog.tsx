@@ -45,8 +45,8 @@ export function TopUpDialog({
       <Dialog.Content>
         <Text variant="large">
           {isOutOfCredits
-            ? "Top up to keep your agents and Otto running. You can also "
-            : "Credits are used to run your agents and Otto. You can also "}
+            ? "Top up to keep your agents and experts running. You can also "
+            : "Credits are used to run your agents and experts. You can also "}
           <Link href="/settings/billing" className="underline">
             enable auto-refill in billing settings
           </Link>

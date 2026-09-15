@@ -122,6 +122,16 @@ end
 return 0
 """
 
+# ``HEXISTS`` then ``HSETNX`` is two round-trips, and a ledger expiring between
+# them leaves the second recreating the hash with only ``wrapup`` and no TTL —
+# a tree every later ``admit`` reads as closed and nothing ever reaps.
+_CLAIM_WRAPUP_SCRIPT = """
+if redis.call("HEXISTS", KEYS[1], "ceiling") == 0 then
+    return 0
+end
+return redis.call("HSETNX", KEYS[1], "wrapup", "1")
+"""
+
 
 class TreeRefusal(Exception):
     """A turn may not start; ``message`` is written for the model."""
@@ -322,10 +332,7 @@ class TreeLedger:
         # so concurrent admits can overshoot by up to ``max_nodes`` turns — see
         # the module docstring; the node cap is the bound that holds.
         if envelope.depth > 0 and int(spent) >= int(ceiling):
-            raise TreeRefusal(
-                "This task has spent its budget; report what you have instead "
-                "of starting more work."
-            )
+            raise TreeRefusal(_spend_refusal(int(spent), int(ceiling)))
         nodes = await self._hincrby(key, "nodes", 1)
         if nodes > int(max_nodes):
             await self._hincrby(key, "nodes", -1)
@@ -347,6 +354,20 @@ class TreeLedger:
         if not await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
             return
         await self._hincrby(key, "spent", microdollars)
+
+    async def claim_wrapup(self, tree_id: str) -> bool:
+        """True for the one turn that first crosses the wrap-up threshold.
+
+        ``HSETNX`` is what makes it once-per-tree under concurrent turns; the
+        ``ceiling`` check rides in the same script so a tree that never spawned
+        — or whose ledger has expired — is not conjured back without a TTL.
+        """
+        return bool(
+            await cast(
+                Awaitable[int],
+                self._redis.eval(_CLAIM_WRAPUP_SCRIPT, 1, self.key(tree_id)),
+            )
+        )
 
     async def snapshot(self, tree_id: str) -> dict[str, int]:
         raw = await cast(
@@ -371,6 +392,26 @@ class TreeLedger:
         pipe.expire(key, MAX_TURN_LIFETIME_SECONDS)
         value, _ = await cast(Awaitable[list], pipe.execute())
         return int(value)
+
+
+def _spend_refusal(spent: int, ceiling: int) -> str:
+    """Say what is left and what to do instead — an error the model can act on.
+
+    A zero ceiling is not an empty wallet: it is a tier that may not spend at
+    all, and telling that model to "wrap up with what you have" hides why.
+    """
+    if ceiling <= 0:
+        return (
+            "This account has no subscription, so it cannot start sub-sessions. "
+            "Complete the remaining work directly with your tools, or wrap up "
+            "with the results you already have. Do not retry."
+        )
+    return (
+        f"Budget limit reached (${spent / 1_000_000:.2f} spent of the "
+        f"${ceiling / 1_000_000:.2f} maximum for this task). New sub-sessions "
+        "cannot be started. Complete the remaining work directly with your "
+        "tools, or wrap up with the results you already have. Do not retry."
+    )
 
 
 async def get_tree_ledger() -> TreeLedger:
