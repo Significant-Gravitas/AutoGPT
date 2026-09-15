@@ -740,20 +740,14 @@ async def upload_file(
 ########################################################
 
 
-# SECRT-2449: the credits routes below resolve their credit model through
-# ``ctx.org_id``, so for a real (pooled) org they read/mutate the shared
-# ``OrgBalance``. They are therefore restricted to org roles holding
-# ``MANAGE_BILLING`` (owner or billing_manager); a plain member — and
-# deliberately also an org admin — gets 403 during dependency resolution,
-# before any billing data is touched. Personal-org membership rows are always
-# ``isOwner=True``, so the gate is a no-op for personal orgs.
+# MANAGE_BILLING excludes org admins by design; personal-org membership rows
+# are always isOwner=True, so this gate is a no-op for personal orgs.
 #
-# RELEASE-ORDERING CONSTRAINT (SECRT-2450): the frontend currently never
-# forwards ``X-Org-Id``, so every call resolves to the caller's personal org
-# and this gate is inert. Real-org header forwarding MUST NOT ship before
-# SECRT-2450's graceful no-permission handling lands — ``GET /credits`` feeds
-# the global nav Wallet, so plain members of a shared org would otherwise 403
-# on every page load. Enforcement of that ordering lives in SECRT-2450.
+# Release ordering (SECRT-2449): the frontend never sends X-Org-Id, so the gate
+# is inert today. Forwarding it must not ship before the billing UI handles 403
+# for plain members — they would otherwise lose the nav Wallet (GET /credits)
+# and the settings billing page (/credits/transactions, /credits/refunds,
+# /credits/invoices).
 BillingManagerContext = Annotated[
     RequestContext,
     Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
@@ -898,7 +892,7 @@ async def configure_user_auto_top_up(
 )
 async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: BillingManagerContext,
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -1752,7 +1746,7 @@ async def stripe_webhook(request: Request):
 )
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: BillingManagerContext,
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, str]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"url": await credit_model.create_billing_portal_session(user_id)}

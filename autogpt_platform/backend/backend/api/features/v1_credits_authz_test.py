@@ -33,6 +33,7 @@ from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
 from backend.data.model import AutoTopUpConfig, TransactionHistory
+from backend.data.org_credit import OrgCreditModel
 
 from .v1 import v1_router
 
@@ -93,10 +94,6 @@ class GatedRoute(pydantic.BaseModel):
     # Predicate on the success response, to prove the route body really ran.
     check_ok: Callable[[Any], bool]
     body: dict | None = None
-    # Attribute on ``CreditStubs`` for the first data-layer call the route body
-    # makes. On a 403 it must never have been awaited — proving the gate
-    # rejects during dependency resolution, before any billing data is touched.
-    guard: str = "get_credit_model"
 
 
 # Every route in v1.py carrying
@@ -139,20 +136,6 @@ GATED_ROUTES: list[GatedRoute] = [
         check_ok=lambda r: r.json() == "Auto top-up settings updated",
     ),
     GatedRoute(
-        name="get_user_auto_top_up",
-        method="GET",
-        path="/credits/auto-top-up",
-        check_ok=lambda r: r.json() == {"amount": 500, "threshold": 100},
-        # This route reads the config helper directly, not the org credit model.
-        guard="get_auto_top_up",
-    ),
-    GatedRoute(
-        name="manage_payment_method",
-        method="GET",
-        path="/credits/manage",
-        check_ok=lambda r: r.json() == {"url": "https://billing.example.com/portal"},
-    ),
-    GatedRoute(
         name="get_credit_history",
         method="GET",
         path="/credits/transactions",
@@ -181,6 +164,11 @@ UNGATED_CREDITS_ROUTES: dict[str, str] = {
     "get_subscription_status": "subscriptions are user-level, not org-pooled",
     "update_subscription_tier": "subscriptions are user-level, not org-pooled",
     "stripe_webhook": "unauthenticated by design; verified by Stripe signature",
+    "get_user_auto_top_up": "reads the caller's own User.top_up_config, not org data",
+    "manage_payment_method": (
+        "opens the caller's own Stripe portal; OrgCreditModel does not override "
+        "create_billing_portal_session"
+    ),
 }
 
 
@@ -260,16 +248,64 @@ def test_credits_route_requires_manage_billing(
     assert resp.status_code == expected, resp.text
     if expected == 200:
         assert route.check_ok(resp), resp.text
-        if route.guard == "get_credit_model":
-            # The org the gate resolved is what the credit model is scoped to,
-            # so a wrong-org regression fails here on every gated route — not
-            # only in the single personal-org resolution test below.
-            assert credit_stubs.get_credit_model.await_args.args[1] == ORG_ID
+        # The org the gate resolved is what the credit model is scoped to, so a
+        # wrong-org regression fails here on every gated route — not only in the
+        # single personal-org resolution test below.
+        assert credit_stubs.get_credit_model.await_args.args[1] == ORG_ID
     else:
         assert resp.json()["detail"] == "Missing org permission: MANAGE_BILLING"
         # The gate rejects during dependency resolution, before the route body
         # ever reaches the org-pooled balance.
-        getattr(credit_stubs, route.guard).assert_not_awaited()
+        credit_stubs.get_credit_model.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "path, expected_json",
+    [
+        ("/credits/auto-top-up", {"amount": 500, "threshold": 100}),
+        ("/credits/manage", {"url": "https://billing.example.com/portal"}),
+    ],
+    ids=["get_user_auto_top_up", "manage_payment_method"],
+)
+def test_user_scoped_credits_route_allows_plain_member(
+    path: str, expected_json: dict, test_user_id: str, credit_stubs: CreditStubs
+):
+    """The two GETs that serve the caller's own data must stay ungated.
+
+    ``get_auto_top_up`` reads the caller's ``User.top_up_config`` and
+    ``create_billing_portal_session`` is not overridden by ``OrgCreditModel``,
+    so it mints a portal for the caller's own Stripe customer. Gating either
+    would deny a plain member their own settings while protecting no org data.
+    """
+    _use_role("plain_member", test_user_id)
+
+    resp = client.get(path)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == expected_json
+
+
+@pytest.mark.parametrize(
+    "route_name, call",
+    [
+        ("request_top_up", lambda m: m.top_up_intent("user-1", 500)),
+        ("refund_top_up", lambda m: m.top_up_refund("user-1", "key", {})),
+        ("fulfill_checkout", lambda m: m.fulfill_checkout(user_id="user-1")),
+    ],
+    ids=["request_top_up", "refund_top_up", "fulfill_checkout"],
+)
+async def test_gated_top_up_route_is_unimplemented_for_pooled_orgs(
+    route_name: str, call: Callable[[OrgCreditModel], Any]
+):
+    """The 200 rows above run on a mocked model; a real pooled org cannot.
+
+    ``OrgCreditModel`` has no Stripe top-up, so a billing manager who passes the
+    gate still cannot top up a pooled org. Asserting it here keeps the mocked
+    happy path above from reading as a working feature.
+    """
+    assert route_name in {route.name for route in GATED_ROUTES}
+    with pytest.raises(NotImplementedError):
+        await call(OrgCreditModel(ORG_ID))
 
 
 def _enforced_org_actions(dependant: Dependant) -> set[OrgAction]:
@@ -321,6 +357,40 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
         "MANAGE_BILLING dependency; add the new route to GATED_ROUTES so the "
         "role matrix exercises it: "
         f"{sorted(gated ^ {route.name for route in GATED_ROUTES})}"
+    )
+
+
+# Routes that resolve the org-pooled credit model without the gate, with the
+# reason. Anything else reaching ``get_credit_model`` must be gated.
+ORG_BALANCE_UNGATED: dict[str, str] = {
+    "execute_graph": (
+        "the executor spends the pooled balance; gating it would stop plain "
+        "members running agents, and it reveals no balance (402 only)"
+    ),
+    "manage_payment_method": UNGATED_CREDITS_ROUTES["manage_payment_method"],
+}
+
+
+def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
+    """Catch org-pooled balance access outside the ``/credits`` prefix.
+
+    The path-prefix test above cannot see ``execute_graph``, which already reads
+    the pooled balance from ``/graphs/{id}/execute``, nor a future org-billing
+    route under another prefix.
+    """
+    ungated = {
+        route.name
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and "get_credit_model" in inspect.getsource(route.endpoint)
+        and OrgAction.MANAGE_BILLING not in _enforced_org_actions(route.dependant)
+    }
+
+    assert ungated == set(ORG_BALANCE_UNGATED), (
+        "A route resolves the org-pooled credit model without MANAGE_BILLING. "
+        "Gate it with `ctx: BillingManagerContext`, or — if it genuinely serves "
+        "the caller's own data — add it to ORG_BALANCE_UNGATED with the reason. "
+        f"Unexpected: {sorted(ungated - set(ORG_BALANCE_UNGATED))}"
     )
 
 
