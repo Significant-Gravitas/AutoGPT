@@ -14,11 +14,15 @@ const MAX_EXECUTIONS_CAP = 1000;
 
 export function getExecutionDuration(
   execution: GeneratedGraphExecutionMeta,
+  now: Date = new Date(),
 ): string {
   if (!execution.started_at) return "Unknown";
 
   const start = new Date(execution.started_at);
-  const end = execution.ended_at ? new Date(execution.ended_at) : new Date();
+  // While RUNNING/QUEUED, prefer live elapsed from started_at→now.
+  // When finished, prefer ended_at (stats.duration is applied at call sites
+  // that have it — Activity dropdown metas may only carry timestamps).
+  const end = execution.ended_at ? new Date(execution.ended_at) : now;
 
   // Check if dates are valid
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
