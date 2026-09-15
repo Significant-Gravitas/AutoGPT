@@ -28,7 +28,9 @@ export const config = {
      * Feel free to modify this pattern to include more paths.
      *
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need
-     * middleware to run for authentication checks.
+     * middleware to run for authentication checks. /avatar (the avatar maker)
+     * is protected too and is matched by this catch-all; the generated
+     * /avatars/<config>.svg images stay public via the .svg exclusion below.
      */
     "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|api/proxy|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

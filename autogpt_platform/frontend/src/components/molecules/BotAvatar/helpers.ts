@@ -11,16 +11,28 @@ export type ColorId =
 export type AccessoryId =
   | "none"
   | "glasses"
+  | "roundglasses"
+  | "sunglasses"
+  | "monocle"
   | "headset"
-  | "star"
-  | "bow"
-  | "badge"
+  | "headphones"
   | "crown"
-  | "propeller"
+  | "halo"
+  | "cap"
+  | "beanie"
+  | "tophat"
+  | "partyhat"
+  | "bandana"
+  | "headband"
   | "ears"
+  | "antenna"
+  | "propeller"
   | "flower"
+  | "bow"
   | "bowtie"
-  | "headband";
+  | "earrings"
+  | "badge"
+  | "star";
 export type AvatarStatus =
   | "idle"
   | "thinking"
@@ -194,16 +206,28 @@ export const COLORS: ColorOption[] = [
 export const ACCESSORIES: AccessoryOption[] = [
   { id: "none", label: "None", hint: "plain" },
   { id: "glasses", label: "Glasses", hint: "research, review" },
+  { id: "roundglasses", label: "Round glasses", hint: "studious, careful" },
+  { id: "sunglasses", label: "Sunglasses", hint: "cool under pressure" },
+  { id: "monocle", label: "Monocle", hint: "audits, fine detail" },
   { id: "headset", label: "Headset", hint: "support, ops" },
-  { id: "star", label: "Star pin", hint: "a raised favourite" },
-  { id: "bow", label: "Bow", hint: "marketing, events" },
-  { id: "badge", label: "Badge", hint: "finance, admin" },
+  { id: "headphones", label: "Headphones", hint: "deep focus" },
   { id: "crown", label: "Crown", hint: "the lead of a pod" },
-  { id: "propeller", label: "Propeller", hint: "playful, experiments" },
-  { id: "ears", label: "Cat ears", hint: "curious, alert" },
-  { id: "flower", label: "Flower", hint: "people, community" },
-  { id: "bowtie", label: "Bow tie", hint: "formal, legal" },
+  { id: "halo", label: "Halo", hint: "always behaves" },
+  { id: "cap", label: "Cap", hint: "hands-on, shipping" },
+  { id: "beanie", label: "Beanie", hint: "cosy, long runs" },
+  { id: "tophat", label: "Top hat", hint: "formal, board-ready" },
+  { id: "partyhat", label: "Party hat", hint: "launches and wins" },
+  { id: "bandana", label: "Bandana", hint: "field work" },
   { id: "headband", label: "Headband", hint: "focus, sprints" },
+  { id: "ears", label: "Cat ears", hint: "curious, alert" },
+  { id: "antenna", label: "Antenna", hint: "listening for signals" },
+  { id: "propeller", label: "Propeller", hint: "playful, experiments" },
+  { id: "flower", label: "Flower", hint: "people, community" },
+  { id: "bow", label: "Bow", hint: "marketing, events" },
+  { id: "bowtie", label: "Bow tie", hint: "formal, legal" },
+  { id: "earrings", label: "Earrings", hint: "polished, front of house" },
+  { id: "badge", label: "Badge", hint: "finance, admin" },
+  { id: "star", label: "Star pin", hint: "a raised favourite" },
 ];
 
 export const STATUSES: StatusOption[] = [
@@ -244,7 +268,7 @@ function isColorId(value: string): value is ColorId {
   return COLORS.some((color) => color.id === value);
 }
 
-function isAccessoryId(value: string): value is AccessoryId {
+export function isAccessoryId(value: string): value is AccessoryId {
   return ACCESSORIES.some((accessory) => accessory.id === value);
 }
 

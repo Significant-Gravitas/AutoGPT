@@ -58,6 +58,14 @@ describe("isProtectedPage", () => {
   it("rejects public pages", () => {
     expect(isProtectedPage("/marketplace")).toBe(false);
   });
+
+  it("protects the avatar maker", () => {
+    expect(isProtectedPage("/avatar")).toBe(true);
+  });
+
+  it("leaves the generated avatar images public", () => {
+    expect(isProtectedPage("/avatars/round.sky.crown.svg")).toBe(false);
+  });
 });
 
 describe("isAdminPage", () => {
