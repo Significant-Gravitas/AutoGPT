@@ -22,7 +22,7 @@ BUILDER_SESSION_TAG = "builder_session"
 # Tools hidden from builder-bound sessions: ``create_agent`` /
 # ``customize_agent`` would mint a new graph (panel is bound to one),
 # and ``get_agent_building_guide`` duplicates bytes already in the
-# system-prompt suffix. Everything else (find_block, find_agent, …)
+# system-prompt suffix. Everything else (find_capability, find_agent, …)
 # stays available so the LLM can look up ids instead of hallucinating.
 BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
     "create_agent",
@@ -96,7 +96,7 @@ _BUILDER_TOOL_GUIDANCE = (
     "including populating an empty graph (version=1, no nodes) — "
     "`edit_agent` accepts the same node/link payload that `create_agent` "
     "would, so there is no reason to reach for `create_agent` here. "
-    "Typical sequence for a new request: call `find_block` to discover "
+    'Typical sequence for a new request: call `find_capability(context="graph")` to discover '
     "the block ids and input schemas you need, then call `edit_agent` "
     "once with the full set of nodes and links. "
     "Never ask the user to approve or allow a tool — there is no "

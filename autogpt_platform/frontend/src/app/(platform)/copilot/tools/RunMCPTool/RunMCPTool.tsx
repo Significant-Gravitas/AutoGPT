@@ -99,7 +99,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {setupRequirementsOutput && (
         <MCPSetupCard
           output={setupRequirementsOutput}
-          retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+          retryInstruction="I've connected the integration. Please retry the same call."
         />
       )}
 

@@ -5,17 +5,24 @@
 - ``AutoPilotBlock`` reads four block-input fields and builds one instance.
 - ``stream_chat_completion_sdk`` applies it when constructing
   ``ClaudeAgentOptions.allowed_tools`` / ``disallowed_tools``.
-- ``run_block`` reads it from the contextvar to gate block execution.
+- ``run_capability`` reads it from the contextvar to gate block execution.
 - Recursive (sub-agent) invocations merge parent and child so children
   can only be *more* restrictive, never more permissive.
 
 Tool names
 ----------
 Users specify the **short name** as it appears in ``TOOL_REGISTRY`` (e.g.
-``run_block``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
+``run_capability``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
 ``Task``, ``WebSearch``).  Internally these are mapped to the full SDK
-format (``mcp__copilot__run_block``, ``Read``, …) by
+format (``mcp__copilot__run_capability``, ``Read``, …) by
 :func:`apply_tool_permissions`.
+
+Two names are **capability gates** rather than tools: ``run_block`` and
+``run_mcp_tool`` no longer exist as tools (blocks and MCP servers run through
+``run_capability``), but denying them still denies that whole kind of
+capability, so saved graphs keep their meaning.  Retired discovery names
+(``find_block``, ``get_mcp_guide``, ``continue_run_block``) are accepted for
+saved graphs and mapped to their registry equivalents.
 
 Block identifiers
 -----------------
@@ -79,7 +86,6 @@ ToolName = Literal[
     "confirm_expert_change",
     "confirm_expert_soul_update",
     "connect_integration",
-    "continue_run_block",
     "create_agent",
     "create_feature_request",
     "create_folder",
@@ -91,16 +97,16 @@ ToolName = Literal[
     "delete_schedule",
     "delete_skill",
     "delete_workspace_file",
+    "describe_capability",
     "edit_agent",
     "enter_agent_building_mode",
     "expert_onboarding",
     "find_agent",
-    "find_block",
+    "find_capability",
     "find_library_agent",
     "fix_agent_graph",
     "get_agent_building_guide",
     "get_doc_page",
-    "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
     "handoff_to_expert",
@@ -125,9 +131,9 @@ ToolName = Literal[
     "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "resume_capability",
     "run_agent",
-    "run_block",
-    "run_mcp_tool",
+    "run_capability",
     "run_sub_session",
     "schedule_followup",
     "search_docs",
@@ -143,6 +149,9 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability gates (not tools): deny to withhold a whole kind of capability
+    "run_block",
+    "run_mcp_tool",
     # SDK built-ins
     "Agent",
     "Edit",
@@ -158,7 +167,21 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
+# Capability gates: names a permission list may deny to withhold every block
+# (``run_block``) or every MCP server (``run_mcp_tool``) from ``run_capability``.
+BLOCK_GATE = "run_block"
+MCP_GATE = "run_mcp_tool"
+CAPABILITY_GATE_NAMES: frozenset[str] = frozenset({BLOCK_GATE, MCP_GATE})
+
+# Retired tool names -> the registry tool that replaced them.  Accepted in
+# saved ``AutoPilotBlock`` permission lists and translated on evaluation.
+LEGACY_TOOL_ALIASES: dict[str, str] = {
+    "find_block": "find_capability",
+    "get_mcp_guide": "find_capability",
+    "continue_run_block": "resume_capability",
+}
+
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -179,8 +202,10 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in.
-PLATFORM_TOOL_NAMES: frozenset[str] = ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES
+# Platform tool names — everything that isn't an SDK built-in or a gate.
+PLATFORM_TOOL_NAMES: frozenset[str] = (
+    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+)
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -220,7 +245,7 @@ class CopilotPermissions(BaseModel):
     """Capability filter for a single copilot execution.
 
     Attributes:
-        tools: Tool names to filter (short names, e.g. ``run_block``).
+        tools: Tool names to filter (short names, e.g. ``run_capability``).
         tools_exclude: When True (default) ``tools`` is a blacklist;
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
@@ -251,7 +276,7 @@ class CopilotPermissions(BaseModel):
         """
         if not self.tools:
             return frozenset(all_tools)
-        tool_set = frozenset(self.tools)
+        tool_set = frozenset(LEGACY_TOOL_ALIASES.get(t, t) for t in self.tools)
         if self.tools_exclude:
             return all_tools - tool_set
         return all_tools & tool_set
@@ -351,6 +376,14 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:
+    """Short names *permissions* withholds from the turn (empty when none)."""
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _assert_tool_names_consistent() -> None:

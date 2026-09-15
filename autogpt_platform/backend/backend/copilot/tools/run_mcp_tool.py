@@ -99,7 +99,7 @@ class RunMCPToolTool(BaseTool):
         return (
             "Discover and execute MCP server tools. "
             "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
-            "Call get_mcp_guide first for server URLs and auth."
+            "Reached through run_capability on an MCP server entry."
         )
 
     @property
@@ -379,7 +379,7 @@ class RunMCPToolTool(BaseTool):
     ) -> MCPToolsDiscoveredResponse:
         """List available tools from an already-initialized MCPClient.
 
-        Called when the agent invokes run_mcp_tool with only server_url (no
+        Called when run_capability targets an MCP server with no tool (no
         tool_name). Returns MCPToolsDiscoveredResponse so the agent can
         inspect tool schemas and choose one to execute in a follow-up call.
         """
@@ -413,7 +413,7 @@ class RunMCPToolTool(BaseTool):
                 f"{truncation_note} Full input "
                 "schemas are omitted to save context — `params` lists each "
                 "tool's argument names with required ones marked `*`. Call "
-                "run_mcp_tool again with tool_name and tool_arguments to "
+                "run_capability again with input {tool, arguments} to "
                 "execute one; if the arguments are wrong, the error response "
                 "includes a schema hint for that tool. Do NOT re-run "
                 "discovery after an argument error."

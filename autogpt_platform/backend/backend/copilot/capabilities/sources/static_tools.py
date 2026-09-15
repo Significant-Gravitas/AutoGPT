@@ -6,6 +6,7 @@ hands its registry over at call time instead of at import time.
 """
 
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from backend.copilot.capabilities.models import (
     CapabilityEntry,
@@ -13,7 +14,9 @@ from backend.copilot.capabilities.models import (
     clip_purpose,
 )
 from backend.copilot.capabilities.text import tokenize
-from backend.copilot.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from backend.copilot.tools.base import BaseTool
 
 # Tools that stay in the model's tool list.  Everything else in the registry
 # is reached through find/describe/run_capability.  The registry tools are
@@ -48,7 +51,7 @@ RETIRED_TOOLS: frozenset[str] = frozenset(
 
 
 def tool_entries(
-    tools: Mapping[str, BaseTool], groups: Mapping[str, str]
+    tools: "Mapping[str, BaseTool]", groups: Mapping[str, str]
 ) -> list[CapabilityEntry]:
     """One entry per available tool, skipping the retired discovery tools."""
     return [
@@ -58,7 +61,7 @@ def tool_entries(
     ]
 
 
-def _tool_entry(name: str, tool: BaseTool, group: str | None) -> CapabilityEntry:
+def _tool_entry(name: str, tool: "BaseTool", group: str | None) -> CapabilityEntry:
     properties = (tool.parameters or {}).get("properties") or {}
     tags = sorted(set(tokenize(name)))
     if group:

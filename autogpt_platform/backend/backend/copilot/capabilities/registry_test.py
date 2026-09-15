@@ -9,6 +9,7 @@ from backend.integrations.mcp_catalog import get_mcp_catalog
 
 from .index import CapabilityIndex
 from .registry import MERGED_IMPLEMENTATIONS, build_entries
+from .resolve import resolve_entry
 from .sources import RETIRED_TOOLS
 
 EXPLICIT_PRIMITIVES = {
@@ -87,6 +88,9 @@ def test_every_catalog_preset_survives_as_an_entry(index):
     assert len(mcp_ids) == len(presets)
     assert len(set(mcp_ids)) == len(mcp_ids)
     assert {"mcp:atlassian", "mcp:atlassian_forge"} <= set(mcp_ids)
+    v2 = resolve_entry(index, "https://mcp.atlassian.com/v2/mcp")
+    forge = resolve_entry(index, "https://mcp.atlassian.com/v1/forge/mcp")
+    assert v2 is not None and forge is not None and v2.id != forge.id
 
 
 def test_listing_stays_compact(index):

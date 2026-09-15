@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.capabilities.registry import configure_tools
+from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -18,23 +20,22 @@ from .bash_exec import BashExecTool
 from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
-from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
+from .describe_capability import DescribeCapabilityTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
 from .expert_onboarding import ExpertOnboardingTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
-from .find_block import FindBlockTool
+from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
-from .get_mcp_guide import GetMCPGuideTool
 from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
@@ -56,9 +57,9 @@ from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .resume_capability import ResumeCapabilityTool
 from .run_agent import RunAgentTool
-from .run_block import RunBlockTool
-from .run_mcp_tool import RunMCPToolTool
+from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
 from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
@@ -91,8 +92,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "decompose_goal": DecomposeGoalTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
-    "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Capability registry: one discovery/execution surface for blocks, MCP
+    # servers and the deferred platform tools (see EAGER_CORE).
+    "find_capability": FindCapabilityTool(),
+    "describe_capability": DescribeCapabilityTool(),
+    "run_capability": RunCapabilityTool(),
+    "resume_capability": ResumeCapabilityTool(),
     # Graphiti memory tools
     "memory_forget_confirm": MemoryForgetConfirmTool(),
     "memory_forget_search": MemoryForgetSearchTool(),
@@ -121,15 +127,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_presets": ListPresetsTool(),
     "update_preset": UpdatePresetTool(),
     "delete_preset": DeletePresetTool(),
-    "run_block": RunBlockTool(),
-    "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
-    "run_mcp_tool": RunMCPToolTool(),
-    "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
@@ -188,6 +190,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
+# Tools the model does not see in its tool list; they are reached by id
+# through ``run_capability`` (their schema arrives via ``describe_capability``).
+# Keeping the prefix to the eager core is what makes the cold prompt cheap.
+DEFERRED_TOOL_NAMES: frozenset[str] = frozenset(TOOL_REGISTRY) - EAGER_CORE
+
 
 # Capability groups a tool may belong to.  The service layer can hide all
 # tools in a group when the backing capability isn't available to this user
@@ -229,6 +236,11 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # team to list.
     "list_team": "delegation",
 }
+
+
+# The capability registry indexes this registry; hand it over now that both
+# exist (the registry package cannot import them without a cycle).
+configure_tools(TOOL_REGISTRY, TOOL_GROUPS)
 
 
 def expert_tool_disabled_groups(
@@ -278,6 +290,7 @@ def get_available_tools(
     *,
     disabled_groups: Iterable[ToolGroup] = (),
     disabled_tools: Iterable[str] = (),
+    include_deferred: bool = False,
 ) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
@@ -288,8 +301,12 @@ def get_available_tools(
     ``graphiti`` when the memory backend is off for the current user).
     *disabled_tools* hides individual tools for gates that don't follow the
     group split, e.g. ``kickoff_turn_disabled_tools`` on a hire's first turn.
+    ``DEFERRED_TOOL_NAMES`` are left out unless *include_deferred*: the model
+    reaches them through ``run_capability``.
     """
     hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    if not include_deferred:
+        hidden |= DEFERRED_TOOL_NAMES
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()

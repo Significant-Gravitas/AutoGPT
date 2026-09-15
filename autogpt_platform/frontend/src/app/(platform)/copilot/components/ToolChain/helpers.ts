@@ -87,6 +87,13 @@ const ACTION_RESPONSE_TYPES = new Set([
   "suggested_goal",
 ]);
 
+const BLOCK_ACTION_TOOLS = new Set([
+  "run_block",
+  "continue_run_block",
+  "run_capability",
+  "resume_capability",
+]);
+
 function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   const output = tool.output;
   const data = asObject(output);
@@ -94,7 +101,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
-  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
+  const isBlock = BLOCK_ACTION_TOOLS.has(toolName);
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"

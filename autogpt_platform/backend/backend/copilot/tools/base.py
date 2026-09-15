@@ -12,7 +12,6 @@ from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -32,9 +31,9 @@ _LARGE_OUTPUT_THRESHOLD = 80_000
 # to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
 _PREVIEW_CHARS = 95_000
 
-# Threshold and budget for the digest, which fires when AUTOPILOT_CONTEXT_TRIMMING
-# is on and the tool opts in.  The budget is derived from the trigger so a digest
-# can never be larger than the output it replaces.
+# Threshold and budget for the digest, which fires when the tool opts in.  The
+# budget is derived from the trigger so a digest can never be larger than the
+# output it replaces.
 _DIGEST_THRESHOLD = 8_000
 _DIGEST_PREVIEW_CHARS = _DIGEST_THRESHOLD // 4
 _OUTLINE_SCALAR_CHARS = 120
@@ -425,15 +424,10 @@ class BaseTool:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = result.model_dump_json(exclude_none=True)
 
-            # Consult the flag only once the output could plausibly be digested,
-            # so the common small-output path stays a pure local check.
             digest = (
                 self.digest_large_output
                 and len(raw_output) > _DIGEST_THRESHOLD
                 and user_id is not None
-                and await is_feature_enabled(
-                    Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
-                )
             )
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
             if len(raw_output) > threshold and user_id and session.session_id:

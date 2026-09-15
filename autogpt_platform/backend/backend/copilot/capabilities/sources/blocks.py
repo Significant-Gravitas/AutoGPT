@@ -10,6 +10,10 @@ import logging
 
 from backend.blocks import get_blocks
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities.block_meta import (
+    get_block_provider,
+    is_graph_only_block,
+)
 from backend.copilot.capabilities.models import (
     CapabilityEntry,
     Connection,
@@ -17,11 +21,6 @@ from backend.copilot.capabilities.models import (
     clip_purpose,
 )
 from backend.copilot.capabilities.text import tokenize
-from backend.copilot.tools.find_block import (
-    COPILOT_EXCLUDED_BLOCK_IDS,
-    COPILOT_EXCLUDED_BLOCK_TYPES,
-)
-from backend.copilot.tools.helpers import get_block_provider
 from backend.data.model import CredentialsFieldInfo
 
 logger = logging.getLogger(__name__)
@@ -43,10 +42,7 @@ def block_entries() -> list[CapabilityEntry]:
 
 
 def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
-    graph_only = (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    )
+    graph_only = is_graph_only_block(block)
     provider = get_block_provider(block)
     # Credentials may sit inside a nested input (the Google Sheets picker),
     # which ``get_credentials_fields`` does not see; the info view does.
