@@ -1,113 +1,200 @@
-"""Seed the platform-authored starter skill listings.
+"""Seed the platform-authored skill listings from the skills catalog.
 
 Run as ``python -m backend.api.features.store.skill_seed``, like the expert
-roster seed. Idempotent: re-running updates the live version in place rather
-than stacking a new one, so the catalogue can be edited by editing the
-markdown.
+roster seed. Idempotent: re-running rewrites each listing's live version in
+place rather than stacking a new one, so the marketplace is edited by editing
+the catalog and seeding again.
 
-Each listing's content is its ``SKILL.md`` under ``starter_skills/`` — either a
-flat ``<slug>.md`` or a ``<slug>/`` package directory — parsed with the same
+The catalog is the private ``Significant-Gravitas/skills-catalog`` repo. Its
+``catalog.yml`` names every listing with its categories and the integrations
+its instructions assume; ``skills/<slug>/`` holds the SKILL.md beside the
+references it points at. Each SKILL.md is parsed with the same
 :func:`parse_skill_markdown` the copilot and the upload endpoint use, so a
-starter skill cannot drift from the format an installed skill has. The seed
-adds only what a listing needs beyond the file: its categories and the
-integrations its instructions assume.
+seeded skill cannot drift from the format an installed skill has, and the
+package files go through the same :func:`validate_package` an upload does.
+
+Environment:
+
+``SKILLS_CATALOG_PATH``
+    A local checkout to seed from instead of GitHub.
+``SKILLS_CATALOG_REPO`` / ``SKILLS_CATALOG_REF``
+    The repo (``owner/name``) and branch, tag or commit to download.
+``SKILLS_CATALOG_TOKEN``
+    A GitHub token that can read the repo; ``GITHUB_TOKEN`` is the fallback.
 """
 
 import asyncio
+import io
 import logging
 import os
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import TypedDict
 
+import httpx
+import prisma
 import prisma.enums
 import prisma.models
+import yaml
 
 from backend.copilot.tools.skills import (
     ParsedSkill,
     SkillFile,
     SkillPackage,
+    _validate_name,
     parse_skill_markdown,
     validate_package,
 )
 from backend.data import db as database
 
+from .categories import validate_canonical_categories
 from .skill_submission_db import snapshot_version_files
 
 logger = logging.getLogger(__name__)
 
-_CONTENT_DIR = Path(__file__).parent / "starter_skills"
+DEFAULT_CATALOG_REPO = "Significant-Gravitas/skills-catalog"
+DEFAULT_CATALOG_REF = "main"
+CATALOG_FILE = "catalog.yml"
+SKILLS_DIR = "skills"
 
 
-class StarterSkill(TypedDict):
+class CatalogEntry(TypedDict):
     slug: str
     categories: list[str]
     required_providers: list[str]
 
 
-STARTER_SKILLS: list[StarterSkill] = [
-    {
-        "slug": "brand-voice-guide",
-        "categories": ["content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "outreach-playbook",
-        "categories": ["sales"],
-        "required_providers": ["google"],
-    },
-]
+async def seed_catalog_skills(catalog_dir: Path | None = None) -> list[str]:
+    """Upsert every catalog listing. Returns the listing ids.
 
+    With no *catalog_dir* the catalog is downloaded from GitHub, or read from
+    ``SKILLS_CATALOG_PATH`` when that is set.
+    """
+    if catalog_dir is None:
+        local = os.environ.get("SKILLS_CATALOG_PATH")
+        if local:
+            return await seed_catalog_skills(Path(local))
+        with tempfile.TemporaryDirectory() as tmp:
+            return await seed_catalog_skills(_download_catalog(Path(tmp)))
 
-async def seed_starter_skills() -> list[str]:
-    """Upsert every starter listing. Returns the listing ids."""
+    entries = load_catalog(catalog_dir)
+    # Every package is loaded and validated before the first write, so a bad
+    # entry fails the run rather than leaving the shelf half updated.
+    loaded = [(entry, *_load(catalog_dir, entry)) for entry in entries]
     listing_ids = []
-    for entry in STARTER_SKILLS:
-        parsed, files = _load(entry["slug"])
+    for entry, parsed, files in loaded:
         listing = await _upsert_listing(entry, parsed, files)
         listing_ids.append(listing.id)
         logger.info(
-            f"Seeded starter skill '{entry['slug']}' (#{listing.id})"
+            f"Seeded skill '{entry['slug']}' (#{listing.id})"
             + (f" with {len(files)} package files" if files else "")
         )
     return listing_ids
 
 
+def load_catalog(root: Path) -> list[CatalogEntry]:
+    """The catalog's entries, each with a canonical category set."""
+    raw = yaml.safe_load((root / CATALOG_FILE).read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{CATALOG_FILE} must contain a mapping")
+    skills = raw.get("skills") or []
+    if not isinstance(skills, list):
+        raise ValueError(f"{CATALOG_FILE}: skills must be a list")
+    entries: list[CatalogEntry] = []
+    seen: set[str] = set()
+    for item in skills:
+        if not isinstance(item, dict):
+            raise ValueError(f"{CATALOG_FILE}: every skill must be a mapping")
+        slug = str(item.get("slug") or "").strip()
+        if not slug:
+            raise ValueError(f"{CATALOG_FILE}: an entry has no slug")
+        if error := _validate_name(slug):
+            raise ValueError(f"{CATALOG_FILE}: '{slug}' {error}")
+        if slug in seen:
+            raise ValueError(f"{CATALOG_FILE}: '{slug}' is listed twice")
+        seen.add(slug)
+        categories = item.get("categories") or []
+        if not isinstance(categories, list) or not all(
+            isinstance(category, str) for category in categories
+        ):
+            raise ValueError(
+                f"{CATALOG_FILE}: '{slug}' categories must be a list of strings"
+            )
+        required_providers = item.get("required_providers") or []
+        if not isinstance(required_providers, list) or not all(
+            isinstance(provider, str) for provider in required_providers
+        ):
+            raise ValueError(
+                f"{CATALOG_FILE}: '{slug}' required_providers must be a list of strings"
+            )
+        entries.append(
+            CatalogEntry(
+                slug=slug,
+                categories=validate_canonical_categories(categories),
+                required_providers=required_providers,
+            )
+        )
+    if not entries:
+        raise ValueError(f"{CATALOG_FILE} lists no skills")
+    return entries
+
+
 async def _upsert_listing(
-    entry: StarterSkill, parsed: ParsedSkill, files: list[SkillFile]
+    entry: CatalogEntry, parsed: ParsedSkill, files: list[SkillFile]
 ) -> prisma.models.SkillListing:
-    listing = await prisma.models.SkillListing.prisma().upsert(
-        where={"slug": entry["slug"]},
-        data={
-            "create": {"slug": entry["slug"], "hasApprovedVersion": True},
-            "update": {"hasApprovedVersion": True, "isDeleted": False},
-        },
-        include={"ActiveVersion": True},
-    )
-    version = await _upsert_version(listing, entry, parsed, files)
-    if listing.activeVersionId != version.id:
-        listing = (
-            await prisma.models.SkillListing.prisma().update(
-                where={"id": listing.id},
-                data={"activeVersionId": version.id},
+    async with database.transaction() as tx:
+        listing = await prisma.models.SkillListing.prisma(tx).find_unique(
+            where={"slug": entry["slug"]}, include={"ActiveVersion": True}
+        )
+        if listing is None:
+            listing = await prisma.models.SkillListing.prisma(tx).create(
+                data={"slug": entry["slug"], "hasApprovedVersion": True},
                 include={"ActiveVersion": True},
             )
-            or listing
-        )
-    return listing
+        else:
+            if listing.owningUserId is not None or listing.owningOrgId is not None:
+                raise ValueError(
+                    f"catalog skill '{entry['slug']}' conflicts with an owned listing"
+                )
+            listing = (
+                await prisma.models.SkillListing.prisma(tx).update(
+                    where={"id": listing.id},
+                    data={"hasApprovedVersion": True, "isDeleted": False},
+                    include={"ActiveVersion": True},
+                )
+                or listing
+            )
+        version = await _upsert_version(tx, listing, entry, parsed, files)
+        if listing.activeVersionId != version.id:
+            listing = (
+                await prisma.models.SkillListing.prisma(tx).update(
+                    where={"id": listing.id},
+                    data={"activeVersionId": version.id},
+                    include={"ActiveVersion": True},
+                )
+                or listing
+            )
+        return listing
 
 
 async def _upsert_version(
+    tx: prisma.Prisma,
     listing: prisma.models.SkillListing,
-    entry: StarterSkill,
+    entry: CatalogEntry,
     parsed: ParsedSkill,
     files: list[SkillFile],
 ) -> prisma.models.SkillListingVersion:
     """Rewrite the listing's live version in place, package and all.
 
-    A starter skill is platform-authored, so there is no review to preserve and
-    no creator waiting on a version history — editing the markdown should change
-    what installers get, not add a row.
+    A catalog skill is platform-authored, so there is no review to preserve
+    and no creator waiting on a version history — editing the catalog should
+    change what installers get, not add a row.
     """
+    metadata = parsed.extra.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    license_value = parsed.extra.get("license")
     content: dict = {
         "name": parsed.name,
         "description": parsed.description,
@@ -116,46 +203,52 @@ async def _upsert_version(
         "categories": entry["categories"],
         "requiredProviders": entry["required_providers"],
         "sourceSkillSlug": entry["slug"],
+        "sourceRepo": _optional_str(metadata.get("source")),
+        "sourceUrl": _optional_str(metadata.get("source_url")),
+        "license": _optional_str(license_value),
         "isAvailable": True,
         "isDeleted": False,
         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
     }
     existing = listing.ActiveVersion
-    # One transaction: an install reads a version's instructions and its package
-    # together, so neither may become visible without the other.
-    async with database.transaction() as tx:
-        if existing is not None:
-            updated = await prisma.models.SkillListingVersion.prisma(tx).update(
-                where={"id": existing.id}, data=content
-            )
-            if updated is not None:
-                await snapshot_version_files(updated.id, files, tx)
-                return updated
-        created = await prisma.models.SkillListingVersion.prisma(tx).create(
-            data={**content, "skillListingId": listing.id}
+    if existing is not None:
+        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
+            where={"id": existing.id}, data=content
         )
-        await snapshot_version_files(created.id, files, tx)
-        return created
+        if updated is not None:
+            await snapshot_version_files(updated.id, files, tx)
+            return updated
+    created = await prisma.models.SkillListingVersion.prisma(tx).create(
+        data={**content, "skillListingId": listing.id}
+    )
+    await snapshot_version_files(created.id, files, tx)
+    return created
 
 
-def _load(slug: str) -> tuple[ParsedSkill, list[SkillFile]]:
-    """A starter skill's root and its package files, from either layout: a
-    flat ``<slug>.md``, or a ``<slug>/`` directory whose ``SKILL.md`` sits
-    beside the resources it references."""
-    directory = _CONTENT_DIR / slug
-    is_package = directory.is_dir()
-    root = directory / "SKILL.md" if is_package else _CONTENT_DIR / f"{slug}.md"
-    named = f"starter_skills/{root.relative_to(_CONTENT_DIR)}"
-    text = root.read_text(encoding="utf-8")
+def _optional_str(value: object) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _load(root: Path, entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]]:
+    """A catalog skill's SKILL.md and the files beside it, validated as the
+    package an installer will receive."""
+    slug = entry["slug"]
+    directory = root / SKILLS_DIR / slug
+    skill_md = directory / "SKILL.md"
+    named = f"{SKILLS_DIR}/{slug}/SKILL.md"
+    if not skill_md.is_file():
+        raise ValueError(f"{named} is missing")
+    text = skill_md.read_text(encoding="utf-8")
     parsed = parse_skill_markdown(text)
     if parsed is None:
         raise ValueError(f"{named} is not a valid SKILL.md")
     if parsed.name != slug:
         raise ValueError(
             f"{named} declares name '{parsed.name}'; the frontmatter name is "
-            "the installed skill's name and must match the listing slug"
+            "the installed skill's name and must match the catalog slug"
         )
-    files = _package_files(directory) if is_package else []
+    files = _package_files(directory)
     validate_package(SkillPackage(skill_md=text, files=files))
     return parsed, files
 
@@ -175,10 +268,43 @@ def _package_files(directory: Path) -> list[SkillFile]:
     ]
 
 
+def _download_catalog(into: Path) -> Path:
+    """Fetch the catalog repo's tarball from GitHub and unpack it under *into*,
+    returning the checkout root."""
+    repo = os.environ.get("SKILLS_CATALOG_REPO") or DEFAULT_CATALOG_REPO
+    ref = os.environ.get("SKILLS_CATALOG_REF") or DEFAULT_CATALOG_REF
+    token = os.environ.get("SKILLS_CATALOG_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "SKILLS_CATALOG_TOKEN (or GITHUB_TOKEN) is required to download "
+            f"{repo}; set SKILLS_CATALOG_PATH to seed from a local checkout"
+        )
+    logger.info(f"Downloading {repo}@{ref}")
+    response = httpx.get(
+        f"https://api.github.com/repos/{repo}/tarball/{ref}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "autogpt-platform-skill-seed",
+        },
+        follow_redirects=True,
+        timeout=60,
+    )
+    response.raise_for_status()
+    with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
+        # "data" refuses links and paths that escape the target directory.
+        tar.extractall(into, filter="data")
+    # GitHub wraps the tree in one "<owner>-<repo>-<sha>" directory.
+    roots = [p for p in into.iterdir() if p.is_dir()]
+    if len(roots) != 1:
+        raise RuntimeError(f"unexpected tarball layout for {repo}: {roots}")
+    return roots[0]
+
+
 async def main() -> None:
     await database.connect()
     try:
-        await seed_starter_skills()
+        await seed_catalog_skills()
     finally:
         await database.disconnect()
 

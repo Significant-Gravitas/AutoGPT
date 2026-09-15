@@ -65,6 +65,7 @@ async def submit_skill(
                 "categories": request.categories,
                 "requiredProviders": request.required_providers,
                 "sourceSkillSlug": slug,
+                "license": _license_of(skill),
                 "changesSummary": request.changes_summary or "Initial submission",
                 "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                 "submittedAt": datetime.datetime.now(datetime.timezone.utc),
@@ -125,6 +126,7 @@ async def edit_skill_submission(
                 "triggers": list(skill.triggers),
                 "categories": request.categories,
                 "requiredProviders": request.required_providers,
+                "license": _license_of(skill),
                 "changesSummary": request.changes_summary or version.changesSummary,
             },
         )
@@ -132,6 +134,13 @@ async def edit_skill_submission(
             raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
         await snapshot_version_files(updated.id, files, tx)
     return skill_model.SkillSubmission.from_db(updated, listing)
+
+
+def _license_of(skill: ParsedSkill) -> str | None:
+    value = skill.extra.get("license")
+    if value is None:
+        return None
+    return str(value).strip() or None
 
 
 async def review_skill_submission(
