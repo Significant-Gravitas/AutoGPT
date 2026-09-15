@@ -60,10 +60,10 @@ def create_es256_token(payload, private_key, kid: str = "test-key-1") -> str:
 
 @pytest.fixture
 def jwks_config(mocker: MockerFixture):
-    """Configure both the legacy shared secret and a JWKS endpoint."""
+    """Configure a JWKS endpoint serving a single ES256 signing key."""
     mocker.patch.dict(
         os.environ,
-        {"JWT_VERIFY_KEY": MOCK_JWT_SECRET, "JWT_JWKS_URL": MOCK_JWKS_URL},
+        {"JWT_JWKS_URL": MOCK_JWKS_URL},
         clear=True,
     )
     mocker.patch.object(config, "_settings", Settings())
