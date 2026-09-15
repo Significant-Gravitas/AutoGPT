@@ -796,9 +796,9 @@ async def store_user_skill(
                     ),
                 )
         except Exception:
-            # Undo only what this call created: a file that was already
-            # there has lost its old bytes either way, and deleting it would
-            # turn a failed write into a lost file.
+            # Not a rollback: a file already here keeps the new bytes, so an
+            # upsert can fail mixed. Undo only what this call created — deleting
+            # the rest would turn a failed write into a lost file.
             await _delete_paths(manager, written - existing_paths)
             raise
         await manager.write_file(
@@ -2234,10 +2234,8 @@ async def _sync_skill_package(
         for c in copied
     }
 
-    # The manifest is what a later activation trusts instead of re-doing work,
-    # so it records only what actually happened. A mode that would not apply or
-    # a file that would not go is left out of it, and the next activation tries
-    # again; committing them would make a transient failure permanent.
+    # A later activation trusts this instead of re-doing the work, so it records
+    # only what happened — committing a failure would make it permanent.
     settled = dict(written)
 
     # Only files this pass wrote carry a ``target``; a manifest hit needs no

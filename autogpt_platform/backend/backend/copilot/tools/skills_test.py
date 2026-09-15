@@ -1761,6 +1761,48 @@ async def test_a_failed_file_write_leaves_no_skill_and_no_tree():
 
 
 @pytest.mark.asyncio
+async def test_a_failed_re_store_undoes_only_what_it_wrote():
+    """The rollback deletes what this call created, never what was already
+    there: a file that existed has lost its old bytes to the overwrite either
+    way, so deleting it would turn a failed write into a lost file."""
+    fake = _FailingWorkspaceManager(fail_on=6)
+    with _patch_skills_path(fake):
+        # Writes 1-2 the siblings, 3 the SKILL.md.
+        fake.fail_on = 0
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path="kept.md", content=b"old"),
+                SkillFile(relative_path="untouched.md", content=b"old too"),
+            ],
+        )
+        # Writes 4 kept.md (already there), 5 added.md (new), 6 fails.
+        fake.fail_on = 6
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            await store_user_skill(
+                "user-1",
+                name="pkg",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(relative_path="kept.md", content=b"new"),
+                    SkillFile(relative_path="added.md", content=b"new"),
+                    SkillFile(relative_path="doomed.md", content=b"never"),
+                ],
+            )
+
+    assert "/skills/pkg/kept.md" in fake.files, "an existing file was deleted"
+    assert "/skills/pkg/untouched.md" in fake.files
+    assert "/skills/pkg/added.md" not in fake.files
+    assert "/skills/pkg/doomed.md" not in fake.files
+    # The skill itself survives: the root was never rewritten.
+    assert "/skills/pkg/SKILL.md" in fake.files
+
+
+@pytest.mark.asyncio
 async def test_re_storing_with_fewer_files_removes_the_orphans():
     fake = _FakeWorkspaceManager()
     with _patch_skills_path(fake):
