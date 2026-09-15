@@ -50,6 +50,7 @@ from backend.api.features.skill_zip import (
     zip_from_package,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.upload_limits import read_upload
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateGraph,
@@ -2910,7 +2911,7 @@ async def upload_copilot_skill_package(
     exactly as it does for a package copied from another skill.
     """
     await _require_skill_owner(user_id, expert_id)
-    data = await _read_upload(file, MAX_ZIP_BYTES)
+    data = await read_upload(file, MAX_ZIP_BYTES)
     try:
         package = await run_in_threadpool(package_from_zip, data)
     except SkillPackageError as exc:
@@ -2967,22 +2968,6 @@ async def _store_uploaded_skill(
         raise HTTPException(status_code=413 if exc.over_limit else 400, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-
-async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
-    """Read an upload with an early abort, so a body over the cap is refused
-    without ever being held whole."""
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(64 * 1024):
-        total += len(chunk)
-        if total > max_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Archive is larger than the {max_bytes}-byte limit",
-            )
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 @v1_router.get(

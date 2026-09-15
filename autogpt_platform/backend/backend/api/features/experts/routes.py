@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 import prisma.models
-from fastapi import APIRouter, Depends, Response, Security
+from fastapi import APIRouter, Depends, File, Response, Security, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -9,7 +9,11 @@ from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
-from backend.api.features.experts.expert_zip import zip_from_package
+from backend.api.features.experts.expert_zip import (
+    MAX_ZIP_BYTES,
+    package_from_zip,
+    zip_from_package,
+)
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -39,10 +43,15 @@ from backend.api.features.experts.package_export import (
     build_expert_package,
     package_filename,
 )
+from backend.api.features.experts.package_import import (
+    ExpertPackagePreview,
+    preview_package,
+)
 from backend.api.features.experts.package_model import ExpertPackageError
 from backend.api.features.experts.portability_flag import (
     require_expert_portability_flag,
 )
+from backend.api.features.upload_limits import read_upload
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -318,6 +327,34 @@ async def list_expert_setup_items(
 ) -> list[ExpertSetupItem]:
     """What still stands between each expert's scheduled workflows and a schedule."""
     return await expert_setup.list_setup_items(user_id)
+
+
+@router.post(
+    "/import/parse",
+    operation_id="parse_expert_package",
+    dependencies=[Depends(require_expert_portability_flag)],
+    responses={
+        400: {"description": "The upload is not an expert package"},
+        413: {"description": "The upload is too large"},
+    },
+)
+async def parse_expert_package(
+    file: UploadFile = File(..., description="A .expert.zip to inspect"),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertPackagePreview:
+    """Describe an uploaded expert package without importing it.
+
+    Creating the expert is a second request carrying the same file plus the
+    user's edits, so nothing is written until they have seen what is in it.
+    """
+    data = await read_upload(file, MAX_ZIP_BYTES)
+    try:
+        package = await run_in_threadpool(package_from_zip, data)
+    except ExpertPackageError as exc:
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
+        )
+    return await preview_package(user_id, package)
 
 
 @router.get(

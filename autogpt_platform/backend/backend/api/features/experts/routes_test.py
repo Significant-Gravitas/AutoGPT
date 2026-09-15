@@ -5,7 +5,9 @@ app, the global `mock_jwt_user` auth override fixture, and `experts_db` mocked
 with AsyncMock at the route module's import site.
 """
 
+import io
 import json
+import zipfile
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -21,7 +23,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
-from backend.api.features.experts.expert_zip import package_from_zip
+from backend.api.features.experts.expert_zip import package_from_zip, zip_from_package
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     WEEKLY_BUDGET_MAX_CREDITS,
@@ -40,11 +42,16 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
+from backend.api.features.experts.package_import import (
+    ExpertPackagePreview,
+    WorkflowResolution,
+)
 from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
     PackagedIdentity,
+    PackagedWorkflow,
 )
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
@@ -1970,13 +1977,104 @@ def test_download_expert_template_package_404s_for_an_unknown_template(
     assert client.get("/experts/templates/nope/package").status_code == 404
 
 
+# ─── Package parse ─────────────────────────────────────────────────────
+
+
+def _expert_zip() -> bytes:
+    return zip_from_package(
+        ExpertPackage(
+            manifest=ExpertManifest(
+                identity=PackagedIdentity(name="Maria Ops", role="Ops lead"),
+                workflows=[
+                    PackagedWorkflow(
+                        name="Morning digest", store_listing_version_id="ver-1"
+                    )
+                ],
+            )
+        )
+    )
+
+
+def _upload(data: bytes) -> dict:
+    return {"file": ("maria-ops.expert.zip", data, "application/zip")}
+
+
+def test_parse_expert_package_describes_the_upload_without_importing(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    preview = ExpertPackagePreview(
+        manifest=ExpertManifest(identity=PackagedIdentity(name="Maria Ops")),
+        avatar_kind="none",
+        workflows=[
+            WorkflowResolution(
+                index=0,
+                name="Morning digest",
+                source="store",
+                store_listing_version_id="ver-1",
+            )
+        ],
+    )
+    mock_preview = mocker.patch(
+        "backend.api.features.experts.routes.preview_package",
+        new_callable=AsyncMock,
+        return_value=preview,
+    )
+
+    response = client.post("/experts/import/parse", files=_upload(_expert_zip()))
+
+    assert response.status_code == 200
+    mock_preview.assert_awaited_once()
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_package_preview",
+    )
+
+
+def test_parse_expert_package_400s_on_entries_that_are_not_part_of_the_format(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Uploading a folder full of chat logs has to say so, not 500."""
+    mock_preview = mocker.patch(
+        "backend.api.features.experts.routes.preview_package", new_callable=AsyncMock
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("expert.json", _expert_zip_manifest())
+        archive.writestr("memory/facts.json", b"{}")
+
+    response = client.post("/experts/import/parse", files=_upload(buffer.getvalue()))
+
+    assert response.status_code == 400
+    assert "memory/facts.json" in response.json()["detail"]
+    mock_preview.assert_not_awaited()
+
+
+def _expert_zip_manifest() -> bytes:
+    with zipfile.ZipFile(io.BytesIO(_expert_zip())) as archive:
+        return archive.read("expert.json")
+
+
+def test_parse_expert_package_413s_on_a_body_over_the_cap(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Refused as the body arrives, so an oversized upload is never held
+    whole."""
+    mocker.patch("backend.api.features.experts.routes.MAX_ZIP_BYTES", 32)
+
+    response = client.post("/experts/import/parse", files=_upload(b"x" * 1024))
+
+    assert response.status_code == 413
+
+
 @pytest.mark.parametrize(
     "call",
     [
         lambda: client.get("/experts/expert-1/package"),
         lambda: client.get("/experts/templates/template-1/package"),
+        lambda: client.post("/experts/import/parse", files=_upload(b"not a zip")),
     ],
-    ids=["download", "download-template"],
+    ids=["download", "download-template", "parse"],
 )
 def test_every_portability_route_is_404_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch, call
