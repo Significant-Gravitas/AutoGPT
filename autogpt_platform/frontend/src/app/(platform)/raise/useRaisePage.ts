@@ -66,19 +66,11 @@ export function useRaisePage() {
   function submitName(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    update({ name: trimmed, step: "color" });
+    update({ name: trimmed, step: "avatar" });
   }
 
-  function pickColor(colorId: string) {
-    update({ color: colorId, step: "avatar" });
-  }
-
-  function pickAvatar(avatarUrl: string) {
-    update({ avatarUrl, step: "about" });
-  }
-
-  function skipAvatar() {
-    update({ avatarUrl: "", step: "about" });
+  function pickAvatar(avatarUrl: string, colorId: string) {
+    update({ avatarUrl, color: colorId, step: "about" });
   }
 
   function submitAbout(value: string) {
@@ -184,9 +176,7 @@ export function useRaisePage() {
     revealStep: (beat: BeatKey) => progress.revealStep(beat),
     pickRole,
     submitName,
-    pickColor,
     pickAvatar,
-    skipAvatar,
     submitAbout,
     skipAbout,
     pickVoice,
