@@ -113,7 +113,12 @@ export function ExpertReviewDialog({
         </div>
 
         <Dialog.Footer>
-          <Button variant="secondary" size="small" onClick={onClose}>
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={isSubmitting}
+            onClick={() => handleOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button

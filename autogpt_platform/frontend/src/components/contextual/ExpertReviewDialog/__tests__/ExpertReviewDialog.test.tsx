@@ -194,4 +194,14 @@ describe("ExpertReviewDialog", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
   });
+
+  test("nothing closes the dialog while the request is in flight", async () => {
+    renderDialog({ isSubmitting: true });
+
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    expect(cancel.hasAttribute("disabled")).toBe(true);
+
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
