@@ -21,6 +21,7 @@ from typing import cast
 
 import prisma.models
 import prisma.types
+from fastapi.concurrency import run_in_threadpool
 from prisma import Base64
 
 from backend.api.features.experts.expert_zip import zip_from_package
@@ -50,7 +51,11 @@ async def publish_expert(row: prisma.models.Expert) -> prisma.models.Expert:
     expert as loaded by ``get_owned_expert_row``."""
     version_ids = await _listing_version_ids(row)
     package = await build_expert_package(row)
-    fields = _template_fields(row, package)
+    # Deflating up to 50 skills is CPU, not IO: on the event loop it would stall
+    # every other request this worker is serving. The download route offloads the
+    # same call for the same reason.
+    package_bytes = await run_in_threadpool(zip_from_package, package)
+    fields = _template_fields(row, package, package_bytes)
     async with transaction() as tx:
         existing = await tx.expert.find_first(where={"publishedFromExpertId": row.id})
         if existing:
@@ -90,7 +95,7 @@ async def published_template(expert_id: str) -> prisma.models.Expert | None:
 
 
 def _template_fields(
-    row: prisma.models.Expert, package: ExpertPackage
+    row: prisma.models.Expert, package: ExpertPackage, package_bytes: bytes
 ) -> prisma.types.ExpertCreateInput:
     """The template's own columns, written the way ``seed._upsert_template``
     writes the roster's, so a published template and a seeded one are the same
@@ -114,7 +119,7 @@ def _template_fields(
         "toolProfile": SafeJson(manifest.tool_profile),
         "skills": [card.slug for card in manifest.skills],
         "isArchived": False,
-        "publishedPackage": Base64.encode(zip_from_package(package)),
+        "publishedPackage": Base64.encode(package_bytes),
     }
 
 

@@ -319,11 +319,17 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     }
     # Never adopt a template an admin published: it shares the roster's shape
     # but its content belongs to the expert it came from, not to ROSTER.
+    #
+    # Keyed on publishedPackage rather than publishedFromExpertId, which is
+    # SetNull: deleting the source expert (or its owner) clears that column and
+    # would hand the orphaned template straight back to the seeder. The package
+    # is written once at publish and nothing clears it, and a roster template
+    # never has one because it is built live.
     template = await prisma.models.Expert.prisma().find_first(
         where={
             "isTemplate": True,
             "name": entry["name"],
-            "publishedFromExpertId": None,
+            "publishedPackage": None,
         },
         order=[{"createdAt": "asc"}, {"id": "asc"}],
     )

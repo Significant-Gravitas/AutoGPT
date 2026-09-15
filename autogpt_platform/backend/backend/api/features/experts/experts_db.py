@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -1053,12 +1053,17 @@ async def count_active_experts(user_id: str) -> int:
 
 
 async def count_raised_experts(user_id: str) -> int:
-    """Lifetime raised experts, archived included. Same preview-only caveat."""
+    """Lifetime raised experts, archived included. Same preview-only caveat.
+
+    An imported expert also has no source template, so ``importedAt`` is what
+    keeps it out of this count: an import moves an expert the user already had
+    and must not spend a raise."""
     return await prisma.models.Expert.prisma().count(
         where={
             "ownerUserId": user_id,
             "isTemplate": False,
             "sourceTemplateId": None,
+            "importedAt": None,
         }
     )
 
@@ -1175,6 +1180,9 @@ async def _create_raised_expert_row(
                 "ownerUserId": user_id,
                 "isTemplate": False,
                 "sourceTemplateId": None,
+                # An import has no source template either; it must not spend a
+                # raise. Kept in step with ``count_raised_experts``.
+                "importedAt": None,
             }
         )
         if lifetime_raised_count >= LIFETIME_RAISED_EXPERT_LIMIT:
@@ -1221,6 +1229,10 @@ async def create_imported_expert(
     creation path uses; the lifetime raise cap deliberately does not, because an
     import is moving an expert the user already had rather than making a new one.
 
+    ``importedAt`` is what carries that second half. Two nulls cannot say "this
+    was imported", so without it the row would be counted as a raise by every
+    later raise and the exemption would last exactly one request.
+
     Categories are folded tolerantly: a package written against a different
     canonical set should arrive with the categories we recognise, not fail.
     """
@@ -1242,6 +1254,7 @@ async def create_imported_expert(
                 "boundaries": boundaries,
                 "dayOne": SafeJson(encode_day_one(day_one)),
                 "toolProfile": SafeJson(tool_profile),
+                "importedAt": datetime.now(timezone.utc),
             },
             include=_WORKFLOW_INCLUDE,
         )

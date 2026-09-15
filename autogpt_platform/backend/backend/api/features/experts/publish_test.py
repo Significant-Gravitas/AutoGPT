@@ -1,9 +1,11 @@
 """Tests for turning an admin's own expert into a marketplace template."""
 
+import uuid
+
 import prisma.models
 import pytest
 
-from backend.api.features.experts import experts_db
+from backend.api.features.experts import experts_db, seed
 from backend.api.features.experts.expert_zip import package_from_zip
 from backend.api.features.experts.experts_db_test import (
     _create_seed_user,
@@ -13,6 +15,7 @@ from backend.api.features.experts.experts_db_test import (
     _seeded_template_ids,
     _seeded_user_ids,
 )
+from backend.api.features.experts.models import ExpertDayOneItem
 from backend.api.features.experts.publish import (
     UnpublishedWorkflowsError,
     publish_expert,
@@ -183,3 +186,52 @@ async def test_a_published_template_is_offered_on_the_roster(server: SpinTestSer
     found = await published_template(expert.id)
     assert found is not None and found.id == template.id
     _seeded_template_ids.append(template.id)
+
+
+async def test_the_seeder_leaves_a_published_template_alone_without_its_source(
+    server: SpinTestServer,
+):
+    """``publishedFromExpertId`` is SetNull, so deleting the source expert — or
+    cascading from its owner — clears it and would hand the orphan straight back
+    to the seeder, which would overwrite a published soul with roster copy. The
+    guard keys on ``publishedPackage``, which nothing clears."""
+    admin = await _create_seed_user()
+    expert = await _expert_with(admin.id)
+    template = await _published((await publish_expert(expert)).id)
+    # A name of its own, so the seeder resolves to this row and not to a
+    # same-named template another test left in the shared session database.
+    roster_name = f"Maria Ops {uuid.uuid4().hex[:8]}"
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"name": roster_name}
+    )
+
+    await prisma.models.Expert.prisma().delete(where={"id": expert.id})
+    orphan = await prisma.models.Expert.prisma().find_unique_or_raise(
+        where={"id": template.id}
+    )
+    assert orphan.publishedFromExpertId is None
+    assert orphan.publishedPackage is not None
+
+    entry: seed.RosterEntry = {
+        "name": roster_name,
+        "role": "Roster role",
+        "tagline": "Roster tagline",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Roster bio.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "Roster identity.",
+        "voice_preferences": "Clear and confident.",
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [ExpertDayOneItem(title="Social listening on your brand")],
+        "preloads": [],
+    }
+    seeded = await seed._upsert_template(entry)
+    _seeded_template_ids.append(seeded.id)
+
+    assert seeded.id != template.id
+    untouched = await prisma.models.Expert.prisma().find_unique_or_raise(
+        where={"id": template.id}
+    )
+    assert untouched.identity == orphan.identity
+    assert untouched.tagline == orphan.tagline

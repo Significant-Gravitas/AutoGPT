@@ -4980,6 +4980,25 @@ async def test_importing_is_not_stopped_by_the_lifetime_raise_cap(
     assert first.id != second.id
 
 
+async def test_an_imported_expert_never_spends_a_lifetime_raise_slot(
+    server: SpinTestServer, monkeypatch
+):
+    """The half that matters is not that the import skips the check, but that
+    every later raise still sees the slot as free. An imported row has no
+    source template either, so ``importedAt`` is the only thing telling the
+    two apart."""
+    monkeypatch.setattr(experts_db, "LIFETIME_RAISED_EXPERT_LIMIT", 1)
+    owner = await _create_seed_user()
+
+    imported = await _import_row(owner.id)
+    assert imported.importedAt is not None
+    assert await experts_db.count_raised_experts(owner.id) == 0
+
+    raised = await experts_db.create_raised_expert(owner.id, "Otto", None, None)
+    _seeded_template_ids.append(raised.expert.id)
+    assert await experts_db.count_raised_experts(owner.id) == 1
+
+
 async def test_an_import_at_the_active_cap_is_refused(
     server: SpinTestServer, monkeypatch, test_user
 ):

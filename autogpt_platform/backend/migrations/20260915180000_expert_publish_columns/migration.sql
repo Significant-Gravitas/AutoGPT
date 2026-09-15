@@ -1,6 +1,7 @@
 -- AlterTable
 ALTER TABLE "Expert" ADD COLUMN     "publishedFromExpertId" TEXT,
-ADD COLUMN     "publishedPackage" BYTEA;
+ADD COLUMN     "publishedPackage" BYTEA,
+ADD COLUMN     "importedAt" TIMESTAMP(3);
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Expert_publishedFromExpertId_key" ON "Expert"("publishedFromExpertId");

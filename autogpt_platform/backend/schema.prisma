@@ -1105,6 +1105,11 @@ model Expert {
   // skills from on hire. Null on roster templates, which are built live.
   publishedPackage Bytes?
 
+  // Set when this expert arrived from an .expert.zip. An import moves an expert
+  // the user already had, so it never consumes a lifetime raise slot; without
+  // this column an imported row is indistinguishable from a raised one.
+  importedAt DateTime?
+
   isArchived Boolean @default(false)
 
   // Weekly credit guardrail: null = platform default from config.
