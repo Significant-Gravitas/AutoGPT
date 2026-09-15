@@ -3902,6 +3902,7 @@
                     },
                     { "$ref": "#/components/schemas/ScheduleListResponse" },
                     { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
+                    { "$ref": "#/components/schemas/ScheduleToggledResponse" },
                     { "$ref": "#/components/schemas/PresetListResponse" },
                     { "$ref": "#/components/schemas/PresetUpdatedResponse" },
                     { "$ref": "#/components/schemas/PresetDeletedResponse" },
@@ -27469,6 +27470,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_toggled",
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
@@ -27909,6 +27911,11 @@
           "name": { "type": "string", "title": "Name" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "paused": { "type": "boolean", "title": "Paused", "default": false },
           "cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Cron"
@@ -27944,6 +27951,25 @@
         ],
         "title": "ScheduleSummary",
         "description": "Summary of a single schedule (either a graph run or copilot turn)."
+      },
+      "ScheduleToggledResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_toggled"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "paused": { "type": "boolean", "title": "Paused" },
+          "changed": { "type": "boolean", "title": "Changed", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id", "paused"],
+        "title": "ScheduleToggledResponse"
       },
       "SchedulesListResponse": {
         "properties": {
