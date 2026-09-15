@@ -4,7 +4,7 @@ Three groups of routes:
 
 - **Owner-only** — list linked-execution candidates, enable share with
   opt-ins, disable share.  Mirrors the ``/graphs/.../share`` shape on
-  :mod:`backend.api.features.v1` for execution sharing.
+  :mod:`backend.api.features.executions.routes` for execution sharing.
 - **Public-by-token** — the public viewer reads through these
   unauthenticated routes; the share token is the bearer credential.
   Same enumeration defenses as execution sharing (strict UUID path
