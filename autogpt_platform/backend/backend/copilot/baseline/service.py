@@ -772,6 +772,27 @@ def _apply_skills_cache_breakpoint(
     return cached_messages
 
 
+def _prepend_skills_notice_to_current_message(
+    openai_messages: list[dict[str, Any]], notice: str
+) -> None:
+    """Prepend a ``<skills_update>`` drift notice to the current turn.
+
+    Reverse scan so the notice lands on the current turn's user message,
+    not an older one when pending messages were drained. Mutates in place
+    (mirrors the builder-context prepend just below the call site) and is
+    query-only — callers must not copy this into the persisted transcript.
+    No-op for an empty notice.
+    """
+    if not notice:
+        return
+    for msg in reversed(openai_messages):
+        if msg["role"] == "user":
+            existing = msg.get("content", "")
+            if isinstance(existing, str):
+                msg["content"] = notice + existing
+            break
+
+
 def _mark_system_message_with_cache_control(
     messages: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -2124,13 +2145,9 @@ async def stream_chat_completion_baseline(
         except Exception:
             logger.exception("[skills] failed to build skills update notice")
             skills_notice = ""
-        if skills_notice:
-            for msg in reversed(openai_messages):
-                if msg["role"] == "user":
-                    existing = msg.get("content", "")
-                    if isinstance(existing, str):
-                        msg["content"] = skills_notice + existing
-                    break
+        _prepend_skills_notice_to_current_message(openai_messages, skills_notice)
+        # NOTE: keep the helper above in sync with _maybe_prepend_skills_update
+        # in sdk/service.py — both engines share the query-only contract.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
