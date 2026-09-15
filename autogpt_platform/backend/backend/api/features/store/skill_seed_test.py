@@ -7,9 +7,11 @@ import tarfile
 import pytest
 
 from backend.api.features.store.skill_seed import (
+    STARTER_SKILLS,
     CatalogEntry,
     _extract_catalog_archive,
     _load,
+    _load_starter,
     load_catalog,
 )
 from backend.copilot.tools.skills import SkillPackageError
@@ -66,6 +68,14 @@ def test_a_listed_skill_without_a_skill_md_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="is missing"):
         _load(tmp_path, ENTRY)
+
+
+@pytest.mark.parametrize("entry", STARTER_SKILLS, ids=lambda entry: entry["slug"])
+def test_every_checked_in_starter_skill_loads(entry):
+    parsed, files = _load_starter(entry)
+
+    assert parsed.name == entry["slug"]
+    assert files == []
 
 
 def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):

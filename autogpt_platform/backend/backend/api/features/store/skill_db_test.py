@@ -403,7 +403,14 @@ async def test_seed_is_idempotent_and_rewrites_the_live_package_in_place(tmp_pat
     second = await skill_seed.seed_catalog_skills(catalog)
 
     assert first == second
-    assert await prisma.models.SkillListingVersion.prisma().count() == 2
+    expected_slugs = {
+        *(entry["slug"] for entry in skill_seed.STARTER_SKILLS),
+        "brand-voice-guide",
+        "cold-email",
+    }
+    assert await prisma.models.SkillListingVersion.prisma().count() == len(
+        expected_slugs
+    )
     files = await prisma.models.SkillListingFile.prisma().find_many()
     assert [(f.relativePath, f.content.decode()) for f in files] == [
         ("references/frameworks.md", b"# Frameworks v2\n")

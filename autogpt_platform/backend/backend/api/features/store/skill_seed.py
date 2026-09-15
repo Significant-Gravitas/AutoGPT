@@ -57,12 +57,62 @@ DEFAULT_CATALOG_REPO = "Significant-Gravitas/skills-catalog"
 DEFAULT_CATALOG_REF = "main"
 CATALOG_FILE = "catalog.yml"
 SKILLS_DIR = "skills"
+_CONTENT_DIR = Path(__file__).parent / "starter_skills"
 
 
 class CatalogEntry(TypedDict):
     slug: str
     categories: list[str]
     required_providers: list[str]
+
+
+STARTER_SKILLS: list[CatalogEntry] = [
+    {
+        "slug": "brand-voice-guide",
+        "categories": ["content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "outreach-playbook",
+        "categories": ["sales"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "seo-content-brief",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "on-page-seo-audit",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "content-repurposing",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "competitor-teardown",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "icp-and-positioning",
+        "categories": ["marketing", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "lifecycle-email-map",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "email-deliverability-guardrails",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+]
 
 
 async def seed_catalog_skills(catalog_dir: Path | None = None) -> list[str]:
@@ -79,9 +129,26 @@ async def seed_catalog_skills(catalog_dir: Path | None = None) -> list[str]:
             return await seed_catalog_skills(_download_catalog(Path(tmp)))
 
     entries = load_catalog(catalog_dir)
-    # Every package is loaded and validated before the first write, so a bad
-    # entry fails the run rather than leaving the shelf half updated.
+    catalog_slugs = {entry["slug"] for entry in entries}
     loaded = [(entry, *_load(catalog_dir, entry)) for entry in entries]
+    loaded += [
+        (entry, *_load_starter(entry))
+        for entry in STARTER_SKILLS
+        if entry["slug"] not in catalog_slugs
+    ]
+    return await _seed_loaded(loaded)
+
+
+async def seed_starter_skills() -> list[str]:
+    """Upsert the checked-in skills needed by the expert roster."""
+    loaded = [(entry, *_load_starter(entry)) for entry in STARTER_SKILLS]
+    return await _seed_loaded(loaded)
+
+
+async def _seed_loaded(
+    loaded: list[tuple[CatalogEntry, ParsedSkill, list[SkillFile]]],
+) -> list[str]:
+    """Validate all packages before writing any listing."""
     listing_ids = []
     for entry, parsed, files in loaded:
         listing = await _upsert_listing(entry, parsed, files)
@@ -253,6 +320,26 @@ def _load(root: Path, entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]
             "the installed skill's name and must match the catalog slug"
         )
     files = _package_files(directory)
+    validate_package(SkillPackage(skill_md=text, files=files))
+    return parsed, files
+
+
+def _load_starter(entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]]:
+    slug = entry["slug"]
+    directory = _CONTENT_DIR / slug
+    is_package = directory.is_dir()
+    root = directory / "SKILL.md" if is_package else _CONTENT_DIR / f"{slug}.md"
+    named = f"starter_skills/{root.relative_to(_CONTENT_DIR)}"
+    text = root.read_text(encoding="utf-8")
+    parsed = parse_skill_markdown(text)
+    if parsed is None:
+        raise ValueError(f"{named} is not a valid SKILL.md")
+    if parsed.name != slug:
+        raise ValueError(
+            f"{named} declares name '{parsed.name}'; the frontmatter name is "
+            "the installed skill's name and must match the listing slug"
+        )
+    files = _package_files(directory) if is_package else []
     validate_package(SkillPackage(skill_md=text, files=files))
     return parsed, files
 
