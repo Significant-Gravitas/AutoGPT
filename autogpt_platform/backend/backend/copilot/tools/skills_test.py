@@ -227,6 +227,7 @@ class _FakeWorkspaceManager:
     def __init__(self):
         self.files: dict[str, bytes] = {}
         self.metadata: dict[str, dict] = {}
+        self.reads: list[str] = []
 
     async def write_file(
         self, *, content, filename, path, mime_type, overwrite, metadata=None
@@ -237,6 +238,7 @@ class _FakeWorkspaceManager:
     async def read_file(self, path: str) -> bytes:
         if path not in self.files:
             raise FileNotFoundError(path)
+        self.reads.append(path)
         return self.files[path]
 
     async def list_files(
@@ -263,6 +265,9 @@ class _FakeWorkspaceManager:
             info.id = f"id-{p}"
             info.size_bytes = len(self.files[p])
             info.metadata = self.metadata.get(p, {})
+            # write_file recomputes this on every write, so the row's checksum
+            # always describes the bytes that are stored right now.
+            info.checksum = hashlib.sha256(self.files[p]).hexdigest()
             result.append(info)
         result = result[offset:]
         return result if limit is None else result[:limit]
@@ -2221,3 +2226,62 @@ async def test_an_emptied_package_still_records_a_deletion_that_failed():
             )
         with open(os.path.join(patched.workdir, "skills", "pkg", ".package.json")) as f:
             assert "gone.md" in json.load(f)
+
+
+@pytest.mark.asyncio
+async def test_an_unchanged_package_is_not_re_read_on_the_next_activation():
+    """The manifest fast-path used to sit after the blob read, so it saved the
+    write and never the fetch: every activation re-read every file to compute a
+    hash the workspace had already stored."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake):
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[
+                SkillFile(relative_path=f"references/r{i}.md", content=f"c{i}".encode())
+                for i in range(20)
+            ],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        fake.reads.clear()
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+    # The SKILL.md itself is still read; none of the twenty package files are.
+    assert [r for r in fake.reads if r.startswith("/skills/pkg/references/")] == []
+
+
+@pytest.mark.asyncio
+async def test_a_file_changed_in_place_is_still_picked_up():
+    """The one way a read-skipping fast-path can be wrong: trusting a stale
+    hash. The bytes change without the size changing, so nothing but the
+    checksum distinguishes the new content from the old."""
+    fake = _FakeWorkspaceManager()
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            "user-1",
+            name="pkg",
+            description="d",
+            body="b",
+            files=[SkillFile(relative_path="references/a.md", content=b"before")],
+        )
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        materialised = os.path.join(
+            patched.workdir, "skills", "pkg", "references", "a.md"
+        )
+        with open(materialised, "rb") as f:
+            assert f.read() == b"before"
+
+        fake.files["/skills/pkg/references/a.md"] = b"after!"  # same length
+        await ReadSkillTool()._execute(
+            user_id="user-1", session=_make_session(), name="pkg"
+        )
+        with open(materialised, "rb") as f:
+            assert f.read() == b"after!"

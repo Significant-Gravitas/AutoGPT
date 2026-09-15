@@ -1503,6 +1503,9 @@ class SkillFileInfo(BaseModel):
     file_id: str
     size_bytes: int = 0
     is_executable: bool = False
+    # The workspace hashes every write with the same sha256 the manifest
+    # records, so a match means the copy is current without reading the blob.
+    checksum: str | None = None
 
 
 class ReadSkillResponse(ToolResponseBase):
@@ -2051,6 +2054,7 @@ async def _list_package_files(
                     file_id=row.id,
                     size_bytes=row.size_bytes or 0,
                     is_executable=bool(meta.get(_META_EXECUTABLE)),
+                    checksum=getattr(row, "checksum", None),
                 )
             )
             if cap is not None and len(files) > cap:
@@ -2122,6 +2126,12 @@ async def _sync_skill_package(
             logger.warning("[skills] skipping odd package path %s", info.path)
             return None
         executable = info.is_executable or relative.startswith(_EXECUTABLE_PREFIX)
+        settled = {_MANIFEST_SHA: info.checksum, _MANIFEST_EXEC: executable}
+        # The row's checksum is recomputed on every write, so it describes the
+        # bytes as stored; matching it means the copy on disk is current and the
+        # blob does not have to be fetched to find that out.
+        if info.checksum and manifest.get(relative) == settled:
+            return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
                 content = await manager.read_file(info.path)
