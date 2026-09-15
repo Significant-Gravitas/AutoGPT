@@ -126,3 +126,50 @@ async def test_remove_workflow_stops_the_triggers_the_expert_made_itself():
     # paused; another graph's is left alone.
     scheduler.pause_schedule.assert_awaited_once_with("self-made", user_id="owner-1")
     assert stopped == ["Inbox webhook", "Daily wire transfer"]
+
+
+@pytest.mark.asyncio
+async def test_a_nameless_schedule_is_reported_by_id_not_as_none():
+    """A one-shot has neither name nor cron, and the caller joins this list
+    into its message — appending None raised TypeError there."""
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=object()))
+    workflow_client = SimpleNamespace(
+        find_first=AsyncMock(
+            return_value=SimpleNamespace(
+                id="workflow-1",
+                scheduleId=None,
+                LibraryAgent=SimpleNamespace(agentGraphId="graph-1"),
+            )
+        ),
+        delete=AsyncMock(),
+    )
+    preset_client = SimpleNamespace(
+        find_many=AsyncMock(return_value=[]), update_many=AsyncMock()
+    )
+    scheduler = SimpleNamespace(
+        pause_schedule=AsyncMock(),
+        get_execution_schedules=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    id="one-shot",
+                    kind="graph",
+                    expert_id="expert-1",
+                    graph_id="graph-1",
+                    name=None,
+                    cron=None,
+                )
+            ]
+        ),
+    )
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
+        ),
+        patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client),
+        patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
+    ):
+        stopped = await experts_db.remove_workflow("owner-1", "expert-1", "workflow-1")
+
+    assert stopped == ["one-shot"]
+    assert ", ".join(stopped) == "one-shot"

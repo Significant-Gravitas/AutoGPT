@@ -367,7 +367,7 @@ async def suspend_workflow_triggers(
             continue
         try:
             await scheduler.pause_schedule(schedule.id, user_id=user_id)
-            stopped.append(schedule.name or schedule.cron)
+            stopped.append(schedule.name or schedule.cron or schedule.id)
         except Exception as e:
             # Same reasoning as detach: a schedule that refuses to pause keeps
             # firing, so log it by id rather than lose it.
