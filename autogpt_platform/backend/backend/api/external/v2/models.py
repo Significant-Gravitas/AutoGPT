@@ -10,14 +10,12 @@ Route files should import models from here rather than defining them locally.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
 
 from pydantic import BaseModel, Field, JsonValue, field_validator
 
 import backend.blocks._base as block_types
-from backend.api.features.search.hybrid_search import (
-    ContentTypeValue as SearchContentType,
-)
 
 if TYPE_CHECKING:
     from backend.api.features.executions.review.model import PendingHumanReviewModel
@@ -1159,6 +1157,9 @@ class CredentialInfo(BaseModel):
         description="Permission scopes granted to this credential"
     )
     expires_at: Optional[datetime]
+    is_managed: bool = Field(
+        description="Provided by the platform; cannot be updated or deleted"
+    )
 
     @classmethod
     def from_internal(cls, cred: Credentials) -> Self:
@@ -1179,6 +1180,7 @@ class CredentialInfo(BaseModel):
             title=cred.title,
             username=username,
             scopes=scopes,
+            is_managed=cred.is_managed,
             expires_at=(
                 datetime.fromtimestamp(expires_at, tz=timezone.utc)
                 if expires_at
@@ -1583,6 +1585,21 @@ class MarketplaceMediaUploadResponse(BaseModel):
     """Response after uploading media."""
 
     url: str = Field(description="Public URL of the uploaded media")
+
+
+class SearchContentType(str, Enum):
+    """What a v2 caller may search over.
+
+    Chat sessions are searchable internally but have no v2 surface and no scope
+    that could grant them, so they are not a value this API accepts.
+    """
+
+    STORE_AGENT = "STORE_AGENT"
+    BLOCK = "BLOCK"
+    INTEGRATION = "INTEGRATION"
+    DOCUMENTATION = "DOCUMENTATION"
+    LIBRARY_AGENT = "LIBRARY_AGENT"
+    WORKSPACE_FILE = "WORKSPACE_FILE"
 
 
 class MarketplaceSearchResult(BaseModel):

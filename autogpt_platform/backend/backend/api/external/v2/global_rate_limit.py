@@ -5,7 +5,10 @@ ASGI middleware that enforces per-user and per-IP request caps across all v2
 endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
-Reuses `resolve_auth_info` from the auth middleware to identify the user.
+Reuses `resolve_auth_info` from the auth middleware to identify the user, and
+hands the result to the route's dependency through the request scope so the
+credential is verified once per request.
+
 On auth-resolution failure or Redis errors the request passes through — the
 endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
@@ -50,6 +53,16 @@ class GlobalRateLimitMiddleware:
             auth = await resolve_auth_info(api_key=api_key, bearer=bearer)
         except HTTPException:
             auth = None
+        except Exception as exc:
+            # Fail open on anything the auth backend throws that is not a
+            # rejection; the route's own dependency will answer 401 or 500.
+            logger.warning(f"Rate-limit auth resolution failed: {exc}")
+            auth = None
+
+        # The route's auth dependency reads this instead of verifying the same
+        # credential a second time; an API key costs a Scrypt hash per check.
+        if auth:
+            scope.setdefault("state", {})["v2_auth"] = auth
 
         try:
             if auth:

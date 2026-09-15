@@ -31,6 +31,7 @@ from typing import Any
 from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
@@ -72,7 +73,8 @@ class WebSearchTool(BaseTool):
 
     @property
     def allow_external_use(self):
-        return True, []
+        # Each call bills the platform's OpenRouter account.
+        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:

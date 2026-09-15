@@ -94,6 +94,20 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "bash_exec": "sandboxed shell on platform infrastructure",
 }
 
+# Tools exposed without any permission, with the reason. A tool that spends
+# platform money or acts through a platform-owned account must name a permission
+# in its `allow_external_use` instead; mcp_server_test.py fails on any other tool
+# that opts in with an empty permission list.
+UNSCOPED_EXTERNAL_TOOLS: dict[str, str] = {
+    "get_doc_page": "serves a published documentation page",
+    "search_docs": "searches published documentation",
+    "get_mcp_guide": "returns static guidance text",
+    "get_agent_building_guide": "returns static guidance text",
+    "validate_agent_graph": "pure check over JSON the caller supplied",
+    "fix_agent_graph": "pure rewrite of JSON the caller supplied",
+    "find_agent": "public marketplace listings, as v2's own /marketplace serves",
+}
+
 
 # ---------------------------------------------------------------------------
 # Server factory

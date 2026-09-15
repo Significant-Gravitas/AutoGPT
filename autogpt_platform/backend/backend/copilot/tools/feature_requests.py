@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 
 from backend.blocks.linear._api import LinearClient
@@ -134,7 +135,8 @@ class SearchFeatureRequestsTool(BaseTool):
 
     @property
     def allow_external_use(self):
-        return True, []
+        # Reaches the platform's own Linear workspace, on the platform's key.
+        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:
@@ -234,7 +236,8 @@ class CreateFeatureRequestTool(BaseTool):
 
     @property
     def allow_external_use(self):
-        return True, []
+        # Reaches the platform's own Linear workspace, on the platform's key.
+        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:
