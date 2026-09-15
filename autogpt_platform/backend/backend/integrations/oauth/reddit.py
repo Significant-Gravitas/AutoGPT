@@ -30,6 +30,11 @@ def _granted_scopes(raw_scope: object, requested_scopes: list[str]) -> list[str]
     return granted
 
 
+def _union_scopes(existing: list[str], granted: list[str]) -> list[str]:
+    """Existing scopes plus any newly granted ones, in a stable order."""
+    return existing + [s for s in granted if s not in existing]
+
+
 class RedditOAuthHandler(BaseOAuthHandler):
     """
     Reddit OAuth 2.0 handler.
@@ -207,7 +212,16 @@ class RedditOAuthHandler(BaseOAuthHandler):
             refresh_token=refresh_token,
             access_token_expires_at=int(time.time()) + tokens.get("expires_in", 3600),
             refresh_token_expires_at=None,
-            scopes=_granted_scopes(tokens.get("scope"), credentials.scopes),
+            # Union, never replace. The credentials store refuses an update whose
+            # scopes aren't a superset of the stored ones (`credentials_store.py`,
+            # `issuperset` guard), so persisting a narrower set here would make the
+            # refreshed token unstorable and leave every later run re-failing on the
+            # stale one. Reddit narrowing a refresh response is not a revocation, so
+            # widening back to what's on record is the safe reading.
+            scopes=_union_scopes(
+                credentials.scopes,
+                _granted_scopes(tokens.get("scope"), credentials.scopes),
+            ),
         )
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

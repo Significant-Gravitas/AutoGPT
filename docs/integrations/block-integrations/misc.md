@@ -41,7 +41,7 @@ Input and output schemas define the expected data structure for communication be
 ## Approve Reddit Post
 
 ### What it is
-Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope.
+Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -127,7 +127,7 @@ Tool and block identifiers provided in `tools` and `blocks` are validated at run
 ## Ban Subreddit User
 
 ### What it is
-Bans a user from a subreddit. Requires 'modcontributors' scope.
+Bans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -823,7 +823,7 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 ## Lock Reddit Post
 
 ### What it is
-Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope.
+Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1057,7 +1057,7 @@ This block uses the Reddit API via PRAW to fetch posts you've submitted to Reddi
 ## Remove Reddit Post
 
 ### What it is
-Removes a Reddit post or comment as a moderator. Requires 'modposts' scope.
+Removes a Reddit post or comment as a moderator. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1250,7 +1250,7 @@ The block handles connection, authentication, and message delivery, returning a 
 ## Send Mod Mail
 
 ### What it is
-Sends a modmail message from a subreddit to a user. Requires 'modmail' scope.
+Sends a modmail message from a subreddit to a user. Requires 'modmail' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1406,7 +1406,7 @@ The transcript text is returned as a single string, suitable for summarization, 
 ## Unban Subreddit User
 
 ### What it is
-Unbans a user from a subreddit. Requires 'modcontributors' scope.
+Unbans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

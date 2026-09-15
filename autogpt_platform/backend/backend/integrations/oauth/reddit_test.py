@@ -181,7 +181,13 @@ async def test_exchange_code_for_tokens_falls_back_when_scope_missing(
 
 
 @pytest.mark.asyncio
-async def test_refresh_tokens_tracks_granted_scopes(mocker: MockerFixture):
+async def test_refresh_tokens_never_narrows_stored_scopes(mocker: MockerFixture):
+    """A narrowing refresh response must not shrink the stored scope set.
+
+    `credentials_store.update_creds` rejects an update whose scopes aren't a
+    superset of the stored ones, so narrowing here would make the refreshed
+    token unstorable and every later run would re-fail on the stale token.
+    """
     _mock_token_response(
         mocker,
         {
@@ -193,8 +199,26 @@ async def test_refresh_tokens_tracks_granted_scopes(mocker: MockerFixture):
 
     refreshed = await _handler_with_mocked_username(mocker)._refresh_tokens(_creds())
 
-    assert refreshed.scopes == ["identity", "read"]
+    assert set(refreshed.scopes).issuperset(_creds().scopes)
+    assert refreshed.scopes == ["identity", "read", "modposts"]
     assert refreshed.refresh_token == SecretStr("refresh-token-value")
+
+
+@pytest.mark.asyncio
+async def test_refresh_tokens_picks_up_newly_granted_scopes(mocker: MockerFixture):
+    """A widening refresh response adds the new scopes on top of the stored ones."""
+    _mock_token_response(
+        mocker,
+        {
+            "access_token": "new-access-token",
+            "expires_in": 3600,
+            "scope": "identity read modposts modmail",
+        },
+    )
+
+    refreshed = await _handler_with_mocked_username(mocker)._refresh_tokens(_creds())
+
+    assert refreshed.scopes == ["identity", "read", "modposts", "modmail"]
 
 
 @pytest.mark.asyncio

@@ -45,11 +45,9 @@ THING_ID_DESCRIPTION = (
 )
 
 
-def _get_moderated_thing(
-    creds: RedditCredentials, thing_id: str
-) -> Comment | Submission:
+def _get_thing_type(thing_id: str) -> Literal["comment", "submission"]:
     """
-    Resolve a Reddit thing ID to the comment or submission it names.
+    Classify a Reddit thing ID by its prefix.
 
     The prefix is mandatory. Reddit comment and submission IDs are drawn from the
     same base-36 namespace, so a bare ID like ``abc123`` is a valid submission ID
@@ -57,9 +55,9 @@ def _get_moderated_thing(
     unrelated object.
     """
     if thing_id.startswith(COMMENT_PREFIX):
-        return get_praw(creds).comment(id=strip_reddit_prefix(thing_id))
+        return "comment"
     if thing_id.startswith(SUBMISSION_PREFIX):
-        return get_praw(creds).submission(id=strip_reddit_prefix(thing_id))
+        return "submission"
     raise ValueError(
         f"Ambiguous Reddit thing ID {thing_id!r}. Prefix it with "
         f"'{SUBMISSION_PREFIX}' for a post or '{COMMENT_PREFIX}' for a comment — "
@@ -68,16 +66,15 @@ def _get_moderated_thing(
     )
 
 
-def _get_thing_id(item: Comment | Submission) -> str:
-    return item.fullname
-
-
-def _get_thing_type(thing_id: str) -> Literal["comment", "submission"]:
-    if thing_id.startswith(COMMENT_PREFIX):
-        return "comment"
-    if thing_id.startswith(SUBMISSION_PREFIX):
-        return "submission"
-    raise ValueError(f"Unsupported Reddit thing ID prefix: {thing_id!r}")
+def _get_moderated_thing(
+    creds: RedditCredentials, thing_id: str
+) -> Comment | Submission:
+    """Resolve a Reddit thing ID to the comment or submission it names."""
+    client = get_praw(creds)
+    bare_id = strip_reddit_prefix(thing_id)
+    if _get_thing_type(thing_id) == "comment":
+        return client.comment(id=bare_id)
+    return client.submission(id=bare_id)
 
 
 def _reddit_disabled() -> bool:
@@ -194,7 +191,7 @@ class ModQueueBlock(Block):
             kwargs["only"] = only
 
         def to_item(item: Comment | Submission) -> dict[str, Any]:
-            thing_id = _get_thing_id(item)
+            thing_id = item.fullname
             return {
                 "id": thing_id,
                 "type": _get_thing_type(thing_id),
@@ -251,7 +248,7 @@ class RemoveRedditPostBlock(Block):
     def __init__(self):
         super().__init__(
             id="f75643df-0a1a-4240-aa5b-9b2a1b20dcdd",
-            description="Removes a Reddit post or comment as a moderator. Requires 'modposts' scope.",
+            description="Removes a Reddit post or comment as a moderator. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=RemoveRedditPostBlock.Input,
@@ -313,7 +310,7 @@ class ApproveRedditPostBlock(Block):
     def __init__(self):
         super().__init__(
             id="ae695fcf-e1bf-4900-b06c-3ae21d6edf70",
-            description="Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope.",
+            description="Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=ApproveRedditPostBlock.Input,
@@ -365,7 +362,7 @@ class LockRedditPostBlock(Block):
     def __init__(self):
         super().__init__(
             id="1deaf67c-0407-457f-989d-323198073f74",
-            description="Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope.",
+            description="Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=LockRedditPostBlock.Input,
@@ -451,7 +448,7 @@ class BanSubredditUserBlock(Block):
     def __init__(self):
         super().__init__(
             id="428d56d4-52d0-47d9-8544-836d13d196c0",
-            description="Bans a user from a subreddit. Requires 'modcontributors' scope.",
+            description="Bans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=BanSubredditUserBlock.Input,
@@ -536,7 +533,7 @@ class UnbanSubredditUserBlock(Block):
     def __init__(self):
         super().__init__(
             id="90979f47-605e-4478-a417-39da3d7184ef",
-            description="Unbans a user from a subreddit. Requires 'modcontributors' scope.",
+            description="Unbans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=UnbanSubredditUserBlock.Input,
@@ -605,7 +602,7 @@ class SendModMailBlock(Block):
     def __init__(self):
         super().__init__(
             id="168b919c-0e06-471d-bd46-eb354ed3d278",
-            description="Sends a modmail message from a subreddit to a user. Requires 'modmail' scope.",
+            description="Sends a modmail message from a subreddit to a user. Requires 'modmail' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
             disabled=_reddit_disabled(),
             input_schema=SendModMailBlock.Input,
@@ -656,4 +653,6 @@ class SendModMailBlock(Block):
             body=input_data.body,
         )
         yield "conversation_id", conversation_id
-        yield "success", True
+        # Derived, not a literal: `success` means "Reddit came back with a
+        # conversation", which is the only evidence we have that it landed.
+        yield "success", bool(conversation_id)

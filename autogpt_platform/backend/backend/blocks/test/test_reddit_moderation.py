@@ -184,7 +184,16 @@ def test_get_mod_queue_preserves_comment_fullnames(mocker):
 def test_get_mod_queue_uses_hydrated_praw_fields_without_fetching(
     mocker, queued_item, expected_id, expected_type
 ):
-    fetch = mocker.patch.object(queued_item, "_fetch")
+    """Building an item must not cost an API call per queued thing (no N+1).
+
+    Asserted against the praw client rather than against `_fetch`: praw marks a
+    comment built from `_data` as `_fetched=True`, so a patched `_fetch` on the
+    comment parameter can never fire and that assertion would be vacuous. Every
+    lazy attribute access has to go through `_reddit`, so a `to_item` that starts
+    reading a field the modqueue listing doesn't return shows up here — for the
+    submission parameter, which praw leaves `_fetched=False`, it really does.
+    """
+    item_client = queued_item._reddit
     sub = MagicMock()
     sub.mod.modqueue.return_value = [queued_item]
     client = _patch_praw(mocker)
@@ -199,7 +208,7 @@ def test_get_mod_queue_uses_hydrated_praw_fields_without_fetching(
 
     assert items[0]["id"] == expected_id
     assert items[0]["type"] == expected_type
-    fetch.assert_not_called()
+    assert item_client.method_calls == []
 
 
 def test_get_mod_queue_returns_empty_list_for_empty_queue(mocker):
@@ -243,7 +252,7 @@ def test_get_moderated_thing_rejects_ambiguous_ids(mocker, thing_id):
 
 
 def test_get_thing_type_rejects_unknown_prefixes():
-    with pytest.raises(ValueError, match="Unsupported Reddit thing ID"):
+    with pytest.raises(ValueError, match="Ambiguous Reddit thing ID"):
         _get_thing_type("t5_subreddit")
 
 
@@ -281,11 +290,24 @@ async def test_mod_queue_run_fans_out_every_item_and_emits_one_batch(mocker):
         output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
     ]
 
-    assert [output for output in outputs if output[0] == "post_id"] == [
+    # Pin the *complete* scalar sequence, not just the post_id pins: the block
+    # description promises scalar outputs fan out once per queued item, and
+    # asserting only a subset lets a dropped `yield` pass unnoticed.
+    assert outputs == [
         ("post_id", "t3_first"),
+        ("item_type", "submission"),
+        ("post_title", "First"),
+        ("author", "alice"),
+        ("permalink", "/r/test/comments/first/"),
+        ("reason", ""),
         ("post_id", "t1_second"),
+        ("item_type", "comment"),
+        ("post_title", "[comment]"),
+        ("author", "bob"),
+        ("permalink", "/r/test/comments/first/_/second/"),
+        ("reason", "Rule 1"),
+        ("items", items),
     ]
-    assert outputs[-1] == ("items", items)
 
 
 def test_remove_post_targets_comment_with_mod_note(mocker):
@@ -530,3 +552,95 @@ def test_moderator_free_text_inputs_are_length_bounded():
             subject="hello",
             body="x" * 10001,
         )
+
+
+# The human-in-the-loop gate for automated moderation. `data/graph.py` reads
+# `block.is_sensitive_action` to decide whether a run needs approval, so a block
+# silently losing the flag would start banning and removing without a prompt.
+# Nothing else in the suite pins it.
+@pytest.mark.parametrize(
+    ("block_cls", "is_sensitive"),
+    [
+        (RemoveRedditPostBlock, True),
+        (ApproveRedditPostBlock, True),
+        (LockRedditPostBlock, True),
+        (BanSubredditUserBlock, True),
+        (UnbanSubredditUserBlock, True),
+        (SendModMailBlock, True),
+        # Read-only: the mod queue must NOT demand approval to be listed.
+        (ModQueueBlock, False),
+    ],
+)
+def test_state_changing_moderation_blocks_are_gated(block_cls, is_sensitive):
+    assert block_cls().is_sensitive_action is is_sensitive
+
+
+@pytest.mark.asyncio
+async def test_ban_run_reports_permanent_when_duration_omitted(mocker):
+    """A ban with no duration is permanent, and must say so.
+
+    `test_input` always sets a duration, so the `duration=None` branch of the
+    `permanent` output is otherwise unexercised: a moderator issuing a permanent
+    ban could silently get `permanent: false`.
+    """
+    block = BanSubredditUserBlock()
+    mocker.patch.object(block, "ban_user", return_value=True)
+    input_data = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "subreddit": "testsubreddit",
+            "username": "spamuser123",
+            "reason": "Spam",
+        }
+    )
+
+    outputs = [
+        output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+    ]
+
+    assert input_data.duration is None
+    assert ("permanent", True) in outputs
+    assert ("success", True) in outputs
+
+
+@pytest.mark.asyncio
+async def test_ban_run_reports_temporary_when_duration_given(mocker):
+    block = BanSubredditUserBlock()
+    mocker.patch.object(block, "ban_user", return_value=True)
+    input_data = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "subreddit": "testsubreddit",
+            "username": "spamuser123",
+            "duration": 7,
+            "reason": "Spam",
+        }
+    )
+
+    outputs = [
+        output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+    ]
+
+    assert ("permanent", False) in outputs
+
+
+@pytest.mark.asyncio
+async def test_modmail_success_is_derived_from_conversation_id(mocker):
+    """`success` must mean something: no conversation id, no success."""
+    block = SendModMailBlock()
+    mocker.patch.object(block, "send_modmail", return_value="")
+    input_data = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "subreddit": "testsubreddit",
+            "to_username": "someuser",
+            "subject": "Warning",
+            "body": "Please stop.",
+        }
+    )
+
+    outputs = [
+        output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+    ]
+
+    assert ("success", False) in outputs
