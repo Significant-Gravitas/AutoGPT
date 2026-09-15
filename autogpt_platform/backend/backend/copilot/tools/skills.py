@@ -28,9 +28,10 @@ import logging
 import posixpath
 import re
 import uuid
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 from pydantic import BaseModel
@@ -54,10 +55,10 @@ from backend.util.workspace import WorkspaceManager
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 from .workdir import (
-    make_executable,
     read_workdir_bytes,
     remove_from_workdir,
     save_to_workdir,
+    set_executable,
     workdir_root,
 )
 
@@ -77,7 +78,9 @@ logger = logging.getLogger(__name__)
 MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
-MAX_BODY_CHARS = 20_000
+# Loaded only on activation, so it costs nothing per turn; 50k clears
+# skill-creator's 33 KB SKILL.md, the package authors are told to copy.
+MAX_BODY_CHARS = 50_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
 # so an unbounded list (or one huge trigger) would balloon the prefix
 # the model parses every turn.  Cap both the count and the per-entry
@@ -90,6 +93,18 @@ MAX_TRIGGER_CHARS = 64
 # bounded.  Enumeration fetches one more than this so a folder that exceeds
 # it is reported rather than silently truncated.
 MAX_PACKAGE_FILES = 100
+# Largest public package file is 237 KB and package 5.4 MB, so these leave
+# room for a font while keeping a hire-time install bounded.
+MAX_PACKAGE_FILE_BYTES = 2 * 1024 * 1024
+MAX_PACKAGE_BYTES = 20 * 1024 * 1024
+# The spec keeps references one level deep; 8 stops a path of directories.
+MAX_PACKAGE_PATH_DEPTH = 8
+# An E2B write is a 200 ms round trip and a workspace read a blob fetch, so
+# 60 of either in series is seconds of a turn.  Bounded, not unlimited.
+_COPY_CONCURRENCY = 16
+# Passes delete_user_skill will make over a folder, each one page deep.
+# Bounded so a file that cannot be deleted can never spin the loop.
+_DELETE_PASSES = 20
 SKILL_FOLDER = "/skills"
 
 
@@ -122,6 +137,9 @@ _META_KIND_VALUE = "copilot_skill"
 _META_DESCRIPTION = "description"
 _META_TRIGGERS = "triggers"
 _META_VERSION = "version"
+# The workspace has no mode bits, so a script's executable bit survives
+# store → copy → sandbox as this flag.
+_META_EXECUTABLE = "executable"
 
 # Skill names are slug-like — lowercase letters, digits, dashes, underscores.
 # Must start and end with [a-z0-9] (no trailing/leading punctuation) so the
@@ -185,6 +203,11 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
+# Spec frontmatter the platform has no use for.  Dropping it rewrites the
+# author's SKILL.md on every store, so it rides through parse and render.
+_CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
+
+
 @dataclass(frozen=True)
 class ParsedSkill:
     """A SKILL.md decoded into its frontmatter metadata + markdown body."""
@@ -194,6 +217,7 @@ class ParsedSkill:
     body: str
     triggers: tuple[str, ...] = ()
     version: str | None = None
+    extra: Mapping[str, Any] = field(default_factory=dict)
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -230,6 +254,7 @@ def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | No
         body=body.lstrip("\n"),
         triggers=triggers,
         version=str(version) if version is not None else None,
+        extra={k: meta[k] for k in _CARRIED_FRONTMATTER_KEYS if k in meta},
     )
 
 
@@ -241,6 +266,9 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
     metadata the model wrote.
     """
     meta: dict[str, Any] = {"name": skill.name, "description": skill.description}
+    for key in _CARRIED_FRONTMATTER_KEYS:
+        if key in skill.extra:
+            meta[key] = skill.extra[key]
     if skill.triggers:
         meta["triggers"] = list(skill.triggers)
     if skill.version:
@@ -368,6 +396,128 @@ def get_default_skill_with_body(name: str) -> ParsedSkill | None:
     )
 
 
+# ---------------------------------------------------------------------------
+# The package boundary — a skill as its whole directory.  Everything that
+# writes a package (``store_user_skill``, the copy to an expert, and the
+# upload/install paths above this layer) goes through these types, so the
+# caps and the path rules are stated once.
+# ---------------------------------------------------------------------------
+
+_PACKAGE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
+_ROOT_SKILL_MD = "SKILL.md"
+
+
+class SkillPackageError(ValueError):
+    """A package that breaks a cap or a path rule.
+
+    ``over_limit`` separates a size or count refusal — 413 at the REST edge —
+    from a malformed one, which is 400.  A ``ValueError`` subclass so the
+    handlers that already map validation failures keep working.
+    """
+
+    def __init__(self, message: str, *, over_limit: bool = False):
+        super().__init__(message)
+        self.over_limit = over_limit
+
+
+class SkillFile(BaseModel):
+    """One file beside a package's ``SKILL.md``, by its path relative to the
+    skill folder (``scripts/with_server.py``, ``references/REFERENCE.md``)."""
+
+    relative_path: str
+    # pydantic encodes a ``str`` here as utf-8, so a caller may pass either.
+    content: bytes
+    is_executable: bool = False
+
+    @property
+    def size_bytes(self) -> int:
+        """Derived, never stored: a size that could disagree with the content
+        would make every cap below lie."""
+        return len(self.content)
+
+
+class SkillPackage(BaseModel):
+    """A whole skill: its ``SKILL.md`` text plus every sibling file."""
+
+    skill_md: str
+    files: list[SkillFile] = []
+
+    @property
+    def size_bytes(self) -> int:
+        return len(self.skill_md.encode("utf-8")) + sum(
+            f.size_bytes for f in self.files
+        )
+
+
+def validate_package(package: SkillPackage) -> None:
+    """Refuse a package that breaks a cap or carries an unsafe path.
+
+    Runs over the whole package so a caller can write nothing on failure;
+    every message names the field and the number it broke.
+    """
+    if len(package.files) > MAX_PACKAGE_FILES:
+        raise SkillPackageError(
+            f"package has {len(package.files)} files; the limit is "
+            f"{MAX_PACKAGE_FILES}",
+            over_limit=True,
+        )
+    seen: set[str] = set()
+    for entry in package.files:
+        path_error = _package_path_error(entry.relative_path)
+        if path_error:
+            raise SkillPackageError(path_error)
+        if entry.relative_path in seen:
+            raise SkillPackageError(
+                f"file '{entry.relative_path}' appears twice in the package"
+            )
+        seen.add(entry.relative_path)
+        if entry.size_bytes > MAX_PACKAGE_FILE_BYTES:
+            raise SkillPackageError(
+                f"file '{entry.relative_path}' is {entry.size_bytes} bytes; "
+                f"the limit is {MAX_PACKAGE_FILE_BYTES}",
+                over_limit=True,
+            )
+    if package.size_bytes > MAX_PACKAGE_BYTES:
+        raise SkillPackageError(
+            f"package is {package.size_bytes} bytes; the limit is "
+            f"{MAX_PACKAGE_BYTES}",
+            over_limit=True,
+        )
+
+
+def _package_path_error(path: str) -> str | None:
+    """Why *path* may not be written into a skill folder, or ``None``.
+
+    Rejects what a zip member or an API caller can smuggle in: an escape out
+    of the folder, a hidden file, a backslash or NUL a later consumer would
+    read as a separator or a terminator.
+    """
+    named = f"file path '{path[:120]}'"
+    if not path or path != path.strip():
+        return f"{named} is empty or padded with whitespace"
+    if path.startswith("/"):
+        return f"{named} must be relative to the skill folder"
+    if "\\" in path or "\x00" in path:
+        return f"{named} may not contain a backslash or a NUL byte"
+    if posixpath.normpath(path) != path:
+        return f"{named} is not normalised (no '.', '..' or repeated '/')"
+    if path == _ROOT_SKILL_MD:
+        return f"{named} is the package root; pass it as skill_md, not a file"
+    segments = path.split("/")
+    if len(segments) > MAX_PACKAGE_PATH_DEPTH:
+        return (
+            f"{named} is {len(segments)} segments deep; the limit is "
+            f"{MAX_PACKAGE_PATH_DEPTH}"
+        )
+    for segment in segments:
+        if not _PACKAGE_SEGMENT_RE.match(segment):
+            return (
+                f"{named} has an unusable segment '{segment[:40]}' — use "
+                "letters, digits, '.', '_' or '-', not starting with '.'"
+            )
+    return None
+
+
 class SkillNotFoundError(Exception):
     """Raised by :func:`delete_user_skill` when the skill is missing."""
 
@@ -390,7 +540,9 @@ async def delete_user_skill(
     """Delete a user-distilled skill folder by slug from *expert_id*'s folder
     (personal Otto's when ``None``).
 
-    Returns the normalised slug on success so callers can echo it back.
+    The whole tree goes, however many files it holds — a package written
+    before the cap existed still has to be removable.  Returns the normalised
+    slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
     :class:`SkillNotFoundError` if the skill does not exist, and
     ``ValueError`` if ``name`` is blank.  Sibling-file cleanup is
@@ -479,6 +631,8 @@ async def store_user_skill(
     body: str,
     triggers: list[str] | None = None,
     version: str | None = None,
+    extra: Mapping[str, Any] | None = None,
+    files: list[SkillFile] | None = None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
 ) -> ParsedSkill:
@@ -491,6 +645,12 @@ async def store_user_skill(
     failure, :class:`SkillLimitError` when the per-user cap is reached, and
     propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
     workspace write error) to the caller.
+
+    *files* is the whole package: it replaces the folder's contents, so a
+    file the caller leaves out is deleted.  ``None`` — every single-file
+    caller — leaves the existing siblings alone, which is what keeps the
+    model's own ``store_skill`` from wiping a package it only rewrote the
+    body of.
     """
     name = name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
@@ -531,6 +691,20 @@ async def store_user_skill(
         raise ValueError(
             f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
         )
+
+    parsed = ParsedSkill(
+        name=name,
+        description=description,
+        body=body,
+        triggers=tuple(triggers),
+        version=version,
+        extra=dict(extra or {}),
+    )
+    rendered = render_skill_markdown(parsed)
+    if files is not None:
+        # Whole-package validation before the first write, so a package that
+        # breaks a cap leaves the stored skill exactly as it was.
+        validate_package(SkillPackage(skill_md=rendered, files=files))
 
     # Serialise the count-then-write critical section per-user so two
     # concurrent writers cannot both pass the MAX_USER_SKILLS check.
@@ -588,14 +762,6 @@ async def store_user_skill(
                 "Delete an unused skill first."
             )
 
-        parsed = ParsedSkill(
-            name=name,
-            description=description,
-            body=body,
-            triggers=tuple(triggers),
-            version=version,
-        )
-        rendered = render_skill_markdown(parsed)
         metadata: dict[str, Any] = {
             _META_KIND: _META_KIND_VALUE,
             _META_DESCRIPTION: description,
@@ -603,6 +769,38 @@ async def store_user_skill(
         }
         if version:
             metadata[_META_VERSION] = version
+        folder = skill_folder(expert_id)
+        stale = (
+            await _list_package_files(manager, folder, name, cap=None)
+            if files is not None
+            else []
+        )
+        # The root is what indexes the skill, so it goes last: a new skill
+        # that fails part-way is never indexed.  An upsert cannot be made
+        # atomic here — the old bytes are gone once overwritten.  Serial
+        # because ``write_file``'s quota check is read-then-write.
+        existing_paths = {f.path for f in stale}
+        written: set[str] = set()
+        try:
+            for entry in files or []:
+                path = f"{folder}/{name}/{entry.relative_path}"
+                written.add(path)
+                await manager.write_file(
+                    content=entry.content,
+                    filename=entry.relative_path.rsplit("/", 1)[-1],
+                    path=path,
+                    mime_type=None,
+                    overwrite=True,
+                    metadata=(
+                        {_META_EXECUTABLE: True} if entry.is_executable else None
+                    ),
+                )
+        except Exception:
+            # Undo only what this call created: a file that was already
+            # there has lost its old bytes either way, and deleting it would
+            # turn a failed write into a lost file.
+            await _delete_paths(manager, written - existing_paths)
+            raise
         await manager.write_file(
             content=rendered.encode("utf-8"),
             filename="SKILL.md",
@@ -610,6 +808,9 @@ async def store_user_skill(
             mime_type="text/markdown",
             overwrite=True,
             metadata=metadata,
+        )
+        await _delete_paths(
+            manager, {f.path for f in stale if f.path not in written}, stale
         )
         await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None:
@@ -625,6 +826,28 @@ async def store_user_skill(
                     user_id,
                     exc_info=True,
                 )
+
+
+async def _delete_paths(
+    manager: WorkspaceManager,
+    paths: set[str],
+    known: list[SkillFileInfo] | None = None,
+) -> None:
+    """Delete workspace files by path, best-effort: a file that will not go
+    is logged, never raised, because every caller here has already done the
+    thing the user asked for."""
+    ids = {f.path: f.file_id for f in known or []}
+    for path in paths:
+        try:
+            file_id = ids.get(path)
+            if file_id is None:
+                info = await manager.get_file_info_by_path(path)
+                if info is None:
+                    continue
+                file_id = info.id
+            await manager.delete_file(file_id)
+        except Exception:
+            logger.warning("[skills] failed to delete %s", path, exc_info=True)
 
 
 async def _parse_skill_from_workspace(
@@ -1029,10 +1252,12 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
 async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str | None:
     """Give *expert_id* its own copy of one of personal Otto's skills.
 
-    Returns the stored slug, or ``None`` when Otto has no such skill.
+    Returns the stored slug, or ``None`` when Otto has no such skill, and
+    raises when the source package cannot be read whole — a partial copy would
+    be permanent, since the next call sees the root and returns early.
     Idempotent: an expert that already owns the slug keeps its copy. The
-    SKILL.md is re-validated through :func:`store_user_skill`; sibling files
-    are copied best-effort afterwards.
+    whole package goes through :func:`store_user_skill`, so the copy is
+    validated, capped and written siblings-first exactly like any other.
     """
     slug = name.strip().lower()
     if not slug:
@@ -1052,21 +1277,55 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         body=source.body,
         triggers=list(source.triggers),
         version=source.version,
+        extra=source.extra,
+        files=await _read_package_files(manager, SKILL_FOLDER, slug),
         expert_id=expert_id,
     )
-    for path in await list_user_skill_sibling_paths(user_id, slug):
-        relative = path[len(f"{SKILL_FOLDER}/{slug}/") :]
-        try:
-            await manager.write_file(
-                content=await manager.read_file(path),
-                filename=relative.rsplit("/", 1)[-1],
-                path=f"{skill_folder(expert_id)}/{slug}/{relative}",
-                mime_type=None,
-                overwrite=True,
-            )
-        except Exception:
-            logger.warning("[skills] failed to copy %s for expert", path, exc_info=True)
     return stored.name
+
+
+async def _read_package_files(
+    manager: WorkspaceManager, folder: str, slug: str
+) -> list[SkillFile]:
+    """Load a stored package's siblings into memory, ready to be written
+    somewhere else.  Reads run concurrently — each is a blob fetch, and a
+    60-file package read one at a time is a hire the user waits through.
+
+    A file that cannot be read raises, because the caller's copy is idempotent
+    on the root alone: a package written without it would never be repaired.
+    """
+    prefix = f"{folder}/{slug}/"
+    infos = await _list_package_files(manager, folder, slug)
+    if len(infos) > MAX_PACKAGE_FILES:
+        # Written before the cap existed, or by hand.  Validating it whole
+        # would fail and take the hire down, so truncate as read_skill does.
+        logger.warning(
+            "[skills] package %s has more than %s files; copying the first %s",
+            slug,
+            MAX_PACKAGE_FILES,
+            MAX_PACKAGE_FILES,
+        )
+        infos = infos[:MAX_PACKAGE_FILES]
+    limit = asyncio.Semaphore(_COPY_CONCURRENCY)
+
+    async def load(info: SkillFileInfo) -> SkillFile:
+        async with limit:
+            content = await manager.read_file(info.path)
+        return SkillFile(
+            relative_path=info.path[len(prefix) :],
+            content=content,
+            is_executable=info.is_executable,
+        )
+
+    # ``return_exceptions`` so one failure does not leave its siblings' reads
+    # unawaited; the first is re-raised once they have all settled.
+    loaded = await asyncio.gather(
+        *(load(info) for info in infos), return_exceptions=True
+    )
+    failure = next((r for r in loaded if isinstance(r, BaseException)), None)
+    if failure is not None:
+        raise failure
+    return [f for f in loaded if isinstance(f, SkillFile)]
 
 
 def get_default_skills_for_index() -> list[ParsedSkill]:
@@ -1226,6 +1485,10 @@ class SkillFileInfo(BaseModel):
     path: str
     file_id: str
     size_bytes: int = 0
+    is_executable: bool = False
+    # The workspace hashes every write with the same sha256 the manifest
+    # records, so a match means the copy is current without reading the blob.
+    checksum: str | None = None
 
 
 class ReadSkillResponse(ToolResponseBase):
@@ -1783,33 +2046,43 @@ def _root_skill_slug(path: str, folder: str) -> str | None:
 
 
 async def _list_package_files(
-    manager: WorkspaceManager, folder: str, slug: str
+    manager: WorkspaceManager,
+    folder: str,
+    slug: str,
+    *,
+    cap: int | None = MAX_PACKAGE_FILES,
 ) -> list[SkillFileInfo]:
-    """Every file in a skill's folder except its own SKILL.md, at most
-    ``MAX_PACKAGE_FILES + 1`` so a caller can tell a full package from an
-    oversized one.
+    """Every file in a skill's folder except its own SKILL.md, stopping at
+    ``cap`` + 1 so a caller can tell a full package from an oversized one.
+    ``cap=None`` drains the folder in one read, which the orphan prune needs:
+    a file it cannot see is one it would leave behind.
 
     Nested paths are kept: a package's ``scripts/`` and ``references/`` are
     what make it more than one file.
     """
     prefix = f"{folder}/{slug}/"
     root = f"{prefix}SKILL.md"
-    page = MAX_PACKAGE_FILES + 1
+    page = (cap or MAX_PACKAGE_FILES) + 1
     files: list[SkillFileInfo] = []
     offset = 0
-    while len(files) <= MAX_PACKAGE_FILES:
+    while cap is None or len(files) <= cap:
         rows = await manager.list_files(
             path=prefix, limit=page, offset=offset, include_all_sessions=True
         )
         for row in rows:
             if row.path == root:
                 continue
+            meta = row.metadata if isinstance(row.metadata, dict) else {}
             files.append(
                 SkillFileInfo(
-                    path=row.path, file_id=row.id, size_bytes=row.size_bytes or 0
+                    path=row.path,
+                    file_id=row.id,
+                    size_bytes=row.size_bytes or 0,
+                    is_executable=bool(meta.get(_META_EXECUTABLE)),
+                    checksum=getattr(row, "checksum", None),
                 )
             )
-            if len(files) > MAX_PACKAGE_FILES:
+            if cap is not None and len(files) > cap:
                 break
         if len(rows) < page:
             break
@@ -1826,7 +2099,23 @@ async def _list_package_files(
 # package is copied into: a skill shipping its own ``.package.json`` would
 # otherwise be overwritten by it, and the digest would then match forever.
 _MANIFEST_DIR = ".skill-packages"
+_MANIFEST_SHA = "sha256"
+_MANIFEST_EXEC = "executable"
+# A package with no bits to give still gets ``scripts/`` marked, because that
+# is where the spec puts its runnables.
 _EXECUTABLE_PREFIX = "scripts/"
+
+
+class _CopiedFile(NamedTuple):
+    """One file settled in the working directory. ``target`` is its path there
+    when this pass wrote it, and ``None`` when the manifest already matched."""
+
+    relative: str
+    digest: str
+    executable: bool
+    target: str | None
+
+
 # One E2B ``files.write`` is an HTTP round trip and measured 200 ms, so a
 # 60-file package copied serially would cost 12 s of the turn (0.35 s
 # concurrent).  Bounded, because each copy also reads a blob.
@@ -1859,13 +2148,20 @@ async def _sync_skill_package(
     manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
-    async def copy(info: SkillFileInfo) -> tuple[str, str, str | None] | None:
-        """``(relative path, digest, path to mark executable)`` once the file
-        is in place, or ``None`` when it could not be put there."""
+    async def copy(info: SkillFileInfo) -> _CopiedFile | None:
+        """The file's manifest entry once it is in place, or ``None`` when it
+        could not be put there."""
         relative = info.path[len(prefix) :] if info.path.startswith(prefix) else ""
         if not _is_safe_relative(relative):
             logger.warning("[skills] skipping odd package path %s", info.path)
             return None
+        executable = info.is_executable or relative.startswith(_EXECUTABLE_PREFIX)
+        settled = {_MANIFEST_SHA: info.checksum, _MANIFEST_EXEC: executable}
+        # The row's checksum is recomputed on every write, so it describes the
+        # bytes as stored; matching it means the copy on disk is current and the
+        # blob does not have to be fetched to find that out.
+        if info.checksum and manifest.get(relative) == settled:
+            return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
                 content = await manager.read_file(info.path)
@@ -1873,8 +2169,13 @@ async def _sync_skill_package(
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None
             digest = hashlib.sha256(content).hexdigest()
-            if manifest.get(relative) == digest:
-                return relative, digest, None
+            # The mode is part of what was materialised: a file whose bit flips
+            # without its bytes changing still has to be re-chmodded.
+            if manifest.get(relative) == {
+                _MANIFEST_SHA: digest,
+                _MANIFEST_EXEC: executable,
+            }:
+                return _CopiedFile(relative, digest, executable, None)
             target = await save_to_workdir(
                 f"{package_dir}/{relative}", content, session_id
             )
@@ -1883,17 +2184,30 @@ async def _sync_skill_package(
                 "[skills] failed to materialise %s: %s", info.path, target.message
             )
             return None
-        return (
-            relative,
-            digest,
-            target if relative.startswith(_EXECUTABLE_PREFIX) else None,
-        )
+        return _CopiedFile(relative, digest, executable, target)
 
-    copied = await asyncio.gather(*(copy(info) for info in files))
-    written = {relative: digest for relative, digest, _ in filter(None, copied)}
-    executables = [path for _, _, path in filter(None, copied) if path]
+    copied = [c for c in await asyncio.gather(*(copy(info) for info in files)) if c]
+    written = {
+        c.relative: {_MANIFEST_SHA: c.digest, _MANIFEST_EXEC: c.executable}
+        for c in copied
+    }
 
-    await make_executable(executables, session_id)
+    # The manifest is what a later activation trusts instead of re-doing work,
+    # so it records only what actually happened. A mode that would not apply or
+    # a file that would not go is left out of it, and the next activation tries
+    # again; committing them would make a transient failure permanent.
+    settled = dict(written)
+
+    # Only files this pass wrote carry a ``target``; a manifest hit needs no
+    # chmod, because its recorded mode already matches.
+    unset = await set_executable(
+        [c.target for c in copied if c.target and c.executable], True, session_id
+    ) + await set_executable(
+        [c.target for c in copied if c.target and not c.executable], False, session_id
+    )
+    for c in copied:
+        if c.target in unset:
+            settled.pop(c.relative, None)
     # A file the skill no longer has must not stay where bash_exec can run it,
     # and delete_skill followed by store_skill on the same slug is exactly that
     # case.  Prune by what the package HOLDS, not by what was copied: a copy
@@ -1904,22 +2218,26 @@ async def _sync_skill_package(
         # reach the manifest by a hand edit; excluding it keeps the prune from
         # acting on a name that does not belong to it.
         current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
-        removed = set(manifest) - current
-        await remove_from_workdir(
-            [f"{package_dir}/{relative}" for relative in sorted(removed)], session_id
+        stale = sorted(set(manifest) - current)
+        left = set(
+            await remove_from_workdir(
+                [f"{package_dir}/{relative}" for relative in stale], session_id
+            )
         )
+        removed = {r for r in stale if f"{package_dir}/{r}" not in left}
 
-    # RESOLVING A CONFLICT HERE: the manifest may only lose an entry for a file
-    # we know is gone — one we removed, or one a listing we know was complete
-    # did not contain. Several branches narrow `removed` or hold an entry back
-    # for their own reason; each is that one rule applied to a different way of
-    # not knowing. Keep every reason rather than taking one side of the diff.
+    # THE INVARIANT, and why this statement keeps collecting edits: the manifest
+    # may only lose an entry for a file we KNOW is gone — one we removed, or one
+    # a listing we know was complete did not contain. Every branch that touches
+    # it narrows `removed` or `settled` for its own way of not knowing: a delete
+    # that failed, a chmod that did not apply, a listing that was truncated.
+    # Narrow further if you must; never widen by taking one side of the diff.
     next_manifest = {
-        relative: digest
-        for relative, digest in manifest.items()
-        if relative not in written and relative not in removed
+        relative: entry
+        for relative, entry in manifest.items()
+        if relative not in settled and relative not in removed
     }
-    next_manifest.update(written)
+    next_manifest.update(settled)
     # A single-file skill must not leave an empty package directory behind, so
     # the manifest is written only when there is, or was, something to track.
     if next_manifest or manifest:
@@ -1954,9 +2272,19 @@ def _is_safe_relative(path: str) -> bool:
     )
 
 
-async def _read_package_manifest(manifest_path: str, session_id: str) -> dict[str, str]:
-    """Hashes written by the last activation, empty on a first run or any
-    unreadable manifest — a re-copy is cheap, a stale skip is not."""
+async def _read_package_manifest(
+    manifest_path: str, session_id: str
+) -> dict[str, dict[str, Any]]:
+    """What the last activation wrote, per path — empty on a first run or any
+    unreadable manifest, because a re-copy is cheap and a stale skip is not.
+
+    A bare digest string is the pre-executable-tracking format; reading it as
+    non-executable is the safe direction, since the worst it costs is one
+    redundant chmod.
+
+    The manifest lives in the model's own working directory, so its keys are
+    untrusted input to a later rm: only paths we would have written survive.
+    """
     raw = await read_workdir_bytes(manifest_path, session_id)
     if not raw:
         return {}
@@ -1966,17 +2294,22 @@ async def _read_package_manifest(manifest_path: str, session_id: str) -> dict[st
         return {}
     if not isinstance(loaded, dict):
         return {}
-    # The manifest lives in the model's own working directory, so its keys are
-    # untrusted input to a later rm: keep only paths we would have written.
-    return {
-        k: v
-        for k, v in loaded.items()
-        if isinstance(k, str) and isinstance(v, str) and _is_safe_relative(k)
-    }
+    entries: dict[str, dict[str, Any]] = {}
+    for path, value in loaded.items():
+        if not isinstance(path, str) or not _is_safe_relative(path):
+            continue
+        if isinstance(value, str):
+            entries[path] = {_MANIFEST_SHA: value, _MANIFEST_EXEC: False}
+        elif isinstance(value, dict) and isinstance(value.get(_MANIFEST_SHA), str):
+            entries[path] = {
+                _MANIFEST_SHA: value[_MANIFEST_SHA],
+                _MANIFEST_EXEC: bool(value.get(_MANIFEST_EXEC)),
+            }
+    return entries
 
 
 async def _write_package_manifest(
-    manifest_path: str, hashes: dict[str, str], session_id: str
+    manifest_path: str, hashes: dict[str, dict[str, Any]], session_id: str
 ) -> None:
     result = await save_to_workdir(
         manifest_path, json.dumps(hashes).encode(), session_id

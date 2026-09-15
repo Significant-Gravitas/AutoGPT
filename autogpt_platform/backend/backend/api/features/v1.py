@@ -2866,6 +2866,7 @@ async def upload_copilot_skill(
             body=parsed.body,
             triggers=list(parsed.triggers),
             version=parsed.version,
+            extra=parsed.extra,
         )
     except SkillLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

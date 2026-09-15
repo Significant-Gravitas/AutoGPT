@@ -1575,6 +1575,24 @@ def test_upload_copilot_skill_creates_skill(
     assert store_mock.await_args.kwargs["name"] == "oauth_flow"
 
 
+def test_upload_copilot_skill_keeps_frontmatter_the_platform_ignores(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An uploaded package's licence line is the author's, not ours — storing
+    the file without it rewrites what they uploaded."""
+    store_mock = AsyncMock(
+        return_value=ParsedSkill(name="oauth_flow", description="d", body="b")
+    )
+    mocker.patch("backend.api.features.v1.store_user_skill", store_mock)
+
+    response = client.post(
+        "/skills",
+        json={"content": _VALID_SKILL_MD.replace("---\n\n", "license: MIT\n---\n\n")},
+    )
+    assert response.status_code == 201
+    assert store_mock.await_args.kwargs["extra"] == {"license": "MIT"}
+
+
 def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
     """A file without valid frontmatter returns 400 before touching storage."""
     response = client.post(
