@@ -26,12 +26,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import (
-    AVATAR_BEARD,
-    AVATAR_GLASSES,
-    AVATAR_HAT,
-    build_avatar_url,
-)
+from .expert_avatar import AVATAR_BEARD, AVATAR_GLASSES, AVATAR_HAT, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,

@@ -25,7 +25,14 @@ const CATEGORIES = [
 ];
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, "..", "src", "components", "molecules", "NotionAvatar");
+const outDir = join(
+  here,
+  "..",
+  "src",
+  "components",
+  "molecules",
+  "NotionAvatar",
+);
 const partsFile = join(outDir, "parts.generated.ts");
 const metaFile = join(outDir, "metadata.generated.ts");
 
