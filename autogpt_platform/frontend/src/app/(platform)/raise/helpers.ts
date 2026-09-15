@@ -75,7 +75,7 @@ export const RAISE_PROMPTS = {
   marketplaceQuestion: (name: string) =>
     `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
   skillsQuestion: (name: string) =>
-    `Should ${name || "your expert"} have extra skills? Add from your library, or a marketplace agent as a skill — or skip.`,
+    `Should ${name || "your expert"} have extra skills? Add one from the marketplace or your own library — or skip.`,
 };
 
 // Beat before each question lands, so the control that triggered it settles
