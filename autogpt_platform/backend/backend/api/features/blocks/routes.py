@@ -189,7 +189,6 @@ async def upload_file(
     Args:
         file: The file to upload
         user_id: The user ID
-        provider: Cloud storage provider ("gcs", "s3", "azure")
         expiration_hours: Hours until file expires (1-48)
 
     Returns:
