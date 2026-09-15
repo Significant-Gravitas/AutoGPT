@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_NOT_INSTALLED = (
     "'{name}' is not installed on this expert. Experts can only run, edit, "
     "and schedule their installed workflows. Install it first with "
-    "install_expert_workflow from the marketplace, or ask the user to install "
-    "one of their own."
+    "install_expert_workflow, from the marketplace or the owner's library."
 )
 EXPERT_OWNER_DENIED = (
     "Experts can only manage their own workflows and integrations. Open "

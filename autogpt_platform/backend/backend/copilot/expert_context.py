@@ -264,9 +264,8 @@ def render_expert_workflows_block(expert: Expert) -> str:
         f"<expert_workflows>\n"
         f"Workflows installed on this expert — the only ones you can run, edit, "
         f"or schedule (`run_agent` with the IDs below). To use another agent, "
-        f"install it first with `install_expert_workflow` from the marketplace, "
-        f"or ask the user to install one of their own; agents you build here are "
-        f"installed for you:\n"
+        f"install it first with `install_expert_workflow` from the marketplace "
+        f"or the owner's library; agents you build here are installed for you:\n"
         f"{workflow_lines}\n"
         # The skip comes after the kickoff message's ask, so the rule lives in
         # session context, which every later turn sees, not in that message.

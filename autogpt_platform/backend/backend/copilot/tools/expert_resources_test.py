@@ -62,14 +62,18 @@ def _session(expert_id: str | None) -> ChatSession:
     return ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
 
 
-async def test_expert_cannot_install_out_of_the_accounts_library(experts):
-    """An unrestricted library_agent_id would let an expert reach any agent the
-    owner has — another expert's private workflows included — and then run it."""
+async def test_expert_installs_out_of_the_accounts_library_onto_itself(experts):
+    """The posted ownership rules allow it: "install a workflow from the owner's
+    library or the marketplace". What stops it widening its own access is the
+    grant seed, settled before the install lands, not a refusal here."""
     result = await InstallExpertWorkflowTool()._execute(
         "user-1", _session("expert-a"), library_agent_id="lib-1"
     )
-    assert isinstance(result, ErrorResponse) and result.error == "access_denied"
-    experts.install_workflow.assert_not_awaited()
+    assert isinstance(result, ExpertWorkflowResponse)
+    assert result.expert_id == "expert-a"
+    experts.install_workflow.assert_awaited_once_with(
+        "user-1", "expert-a", library_agent_id="lib-1", store_listing_version_id=None
+    )
 
 
 async def test_expert_installs_a_marketplace_agent_onto_itself(experts):
@@ -276,14 +280,11 @@ async def test_expert_install_settles_its_grants_before_the_workflow_lands(exper
     experts.install_workflow.side_effect = lambda *_, **__: (
         order.append("install") or _ref()
     )
-    details = MagicMock(store_listing_version_id="slv-9")
-    with patch(
-        f"{_PATH}.fetch_graph_from_store_slug",
-        new=AsyncMock(return_value=(MagicMock(), details)),
-    ):
-        result = await InstallExpertWorkflowTool()._execute(
-            "user-1", _session("expert-a"), username_agent_slug="creator/digest"
-        )
+    # The library path, because that is the one an expert can aim at any
+    # credential the owner holds: the seed must be stamped before it lands.
+    result = await InstallExpertWorkflowTool()._execute(
+        "user-1", _session("expert-a"), library_agent_id="lib-1"
+    )
     assert isinstance(result, ExpertWorkflowResponse)
     assert order == ["settle", "install"]
     experts.settle_credential_seed.assert_awaited_once_with("user-1", "expert-a")
