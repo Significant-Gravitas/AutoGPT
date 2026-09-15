@@ -1548,9 +1548,11 @@ async def build_skills_update_notice(
     Never raises: a registry or flag lookup failure degrades to ``""`` so
     a skills hiccup can't block the turn.
     """
-    if not user_id or not await is_skills_feature_enabled(user_id):
+    if not user_id:
         return ""
     try:
+        if not await is_skills_feature_enabled(user_id):
+            return ""
         current = await list_all_skills(user_id, expert_id)
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")

@@ -1145,6 +1145,28 @@ async def test_skills_update_notice_names_removed_skill():
 
 
 @pytest.mark.asyncio
+async def test_skills_update_notice_truncates_long_added_lists():
+    """Beyond _MAX_UPDATE_NAMES the notice falls back to a remainder count
+    instead of inlining the whole registry — it is a nudge, not the index."""
+    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES
+
+    fake_manager = _FakeWorkspaceManager()
+    for i in range(_MAX_UPDATE_NAMES + 3):
+        slug = f"skill-{i:02d}"
+        fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=slug, description=f"skill {i}", body="x")
+        ).encode()
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1",
+            prior_contents=[_history_with_index("- name: agent_building_guide — guide")],
+        )
+    assert "<skills_update>" in notice
+    assert "and 4 more" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
 async def test_skills_update_notice_empty_when_flag_disabled():
     """The COPILOT_SKILLS kill-switch suppresses the notice like the index."""
     with patch(

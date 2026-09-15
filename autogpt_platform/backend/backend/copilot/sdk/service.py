@@ -4483,7 +4483,9 @@ async def _maybe_prepend_skills_update(
         notice = await build_skills_update_notice(
             user_id,
             expert_id=session.expert_id,
-            prior_contents=[m.content or "" for m in session.messages],
+            prior_contents=[
+                m.content or "" for m in session.messages if m.role == "user"
+            ],
         )
     except Exception:
         logger.exception("[skills] failed to build skills update notice")

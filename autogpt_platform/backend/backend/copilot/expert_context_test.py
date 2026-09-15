@@ -64,9 +64,9 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned when the assistant was renamed AutoPilot -> Otto.
+# Last re-pinned for the <skills_update> drift-notice sentence.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "572493d92b08c0b1f4abfcdd8339790c0f0d504401403ea57d5c1fe155217323"
+    "a7877c867b2f688996ac0ddab71b2dfd7c9ff110ee2dcf5fa9092fee61268d71"
 )
 
 
