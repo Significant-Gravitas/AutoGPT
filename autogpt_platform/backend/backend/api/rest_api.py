@@ -30,6 +30,7 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -413,6 +414,11 @@ app.include_router(
 app.include_router(
     graphs_routes.router,
     tags=["v1", "graphs"],
+    prefix="/api",
+)
+app.include_router(
+    credits_routes.router,
+    tags=["v1", "credits"],
     prefix="/api",
 )
 app.include_router(
