@@ -61,6 +61,19 @@ app.add_exception_handler(ConflictError, rest_app.exception_handlers[ConflictErr
 client = fastapi.testclient.TestClient(app)
 
 
+# ``require_expert_portability_flag`` runs the real ``is_feature_enabled``,
+# which consults this env override before LaunchDarkly — so the gate is driven
+# here exactly the way it is driven locally, with no mock in the path.
+PORTABILITY_FLAG_ENV_VAR = "FORCE_FLAG_EXPERT_PORTABILITY"
+
+
+@pytest.fixture(autouse=True)
+def expert_portability_on(monkeypatch: pytest.MonkeyPatch):
+    """Every portability route is gated; the flag-off case is its own test,
+    which sets this the other way."""
+    monkeypatch.setenv(PORTABILITY_FLAG_ENV_VAR, "true")
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
@@ -1955,3 +1968,24 @@ def test_download_expert_template_package_404s_for_an_unknown_template(
     ).return_value = None
 
     assert client.get("/experts/templates/nope/package").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: client.get("/experts/expert-1/package"),
+        lambda: client.get("/experts/templates/template-1/package"),
+    ],
+    ids=["download", "download-template"],
+)
+def test_every_portability_route_is_404_when_the_flag_is_off(
+    monkeypatch: pytest.MonkeyPatch, call
+) -> None:
+    """Off means the feature does not exist: a guessed URL must not confirm
+    that it one day will."""
+    monkeypatch.setenv(PORTABILITY_FLAG_ENV_VAR, "false")
+
+    response = call()
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Feature not available"

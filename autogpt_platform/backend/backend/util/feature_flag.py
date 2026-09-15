@@ -117,6 +117,11 @@ class Flag(str, Enum):
     # fail-closed (default False).
     ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
+    # Internal-only for now: export an expert to a file, import one back, and
+    # (for admins) publish one as a marketplace template. The backend routes
+    # 404 when off, so a dark launch is not reachable by URL. Fail-closed.
+    EXPERT_PORTABILITY = "expert-portability"
+
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
     # browse and install end-to-end: the routes 404 when off, so the dark
     # launch is not reachable by URL with the shelf hidden. Fail-closed.

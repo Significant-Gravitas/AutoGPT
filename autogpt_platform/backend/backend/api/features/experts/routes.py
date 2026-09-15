@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 import prisma.models
-from fastapi import APIRouter, Response, Security
+from fastapi import APIRouter, Depends, Response, Security
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -40,6 +40,9 @@ from backend.api.features.experts.package_export import (
     package_filename,
 )
 from backend.api.features.experts.package_model import ExpertPackageError
+from backend.api.features.experts.portability_flag import (
+    require_expert_portability_flag,
+)
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -320,9 +323,14 @@ async def list_expert_setup_items(
 @router.get(
     "/{expert_id}/package",
     operation_id="download_expert_package",
+    dependencies=[Depends(require_expert_portability_flag)],
     response_class=Response,
     responses={
-        200: {"content": {"application/zip": {}}},
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            }
+        },
         404: {"description": "Expert not found"},
         413: {"description": "Expert is too large to package"},
     },
@@ -346,9 +354,14 @@ async def download_expert_package(
 @router.get(
     "/templates/{template_id}/package",
     operation_id="download_expert_template_package",
+    dependencies=[Depends(require_expert_portability_flag)],
     response_class=Response,
     responses={
-        200: {"content": {"application/zip": {}}},
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            }
+        },
         404: {"description": "Expert not found"},
         413: {"description": "Expert is too large to package"},
     },
