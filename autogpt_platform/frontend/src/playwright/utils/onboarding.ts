@@ -54,7 +54,7 @@ export async function advanceToRoleStep(
     name: "Your own team of AI experts.",
   });
   const autopilot = page.getByRole("heading", {
-    name: "Meet AutoPilot, your Head of AI.",
+    name: "Meet Otto, your Head of AI.",
   });
 
   for (let step = 0; step < 4; step++) {

@@ -3,14 +3,12 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
+import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
 import { ProviderBox } from "./components/ProviderBox";
 import { useConnectStep } from "./useConnectStep";
 
-// Subscriptions the experts could run on. Only ChatGPT has an adapter and
-// provider approval today; the rest are named so the user knows what is
-// coming, without claiming they work yet.
 const UPCOMING = [
   { name: "Grok", logoSrc: "/integrations/xai.webp" },
   { name: "GitHub Copilot", logoSrc: "/integrations/github.png" },
@@ -24,7 +22,14 @@ const UPCOMING = [
  * skippable so a user with keys is not blocked by a wizard.
  */
 export function ConnectStep() {
-  const { connect, isConnecting, skip, isAlreadyLinked } = useConnectStep();
+  const {
+    connect,
+    finishConnection,
+    isConnecting,
+    skip,
+    isChatGPTLinked,
+    isMicrosoftLinked,
+  } = useConnectStep();
 
   return (
     <FadeIn>
@@ -41,7 +46,7 @@ export function ConnectStep() {
             Already paying for an AI subscription?
           </Text>
           <Text variant="large" as="p" tone="muted" className="max-w-md">
-            Add it and your experts run on it. No API keys, no billing setup.
+            Connect it for AutoGPT chats. No API keys, no billing setup.
           </Text>
         </div>
 
@@ -52,7 +57,7 @@ export function ConnectStep() {
           <ProviderBox
             name="ChatGPT"
             logoSrc="/integrations/openai.png"
-            state={isAlreadyLinked ? "connected" : "available"}
+            state={isChatGPTLinked ? "connected" : "available"}
             isBusy={isConnecting}
             onClick={connect}
           />
@@ -63,6 +68,29 @@ export function ConnectStep() {
               state="coming-soon"
             />
           ))}
+        </div>
+
+        <div className="w-full rounded-2xl border border-zinc-200 bg-white p-4">
+          {isMicrosoftLinked ? (
+            <Text variant="body" as="p">
+              Your Microsoft 365 Copilot is connected. It can answer chats but
+              does not run AutoGPT tools.
+            </Text>
+          ) : (
+            <>
+              <DeviceAuthConnectButton
+                provider="microsoft_365_copilot"
+                providerName="Microsoft 365 Copilot"
+                onSuccess={finishConnection}
+              />
+              <Text variant="small" as="p" tone="muted" className="mt-3">
+                Requires a paid Microsoft Copilot or Copilot Business add-on
+                from your work or school organization. The included Microsoft
+                365 Copilot Chat does not qualify. This connection answers chats
+                but does not run AutoGPT tools.
+              </Text>
+            </>
+          )}
         </div>
 
         <Button size="small" onClick={skip} className="h-10 w-56 rounded-xl">

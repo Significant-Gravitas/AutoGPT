@@ -3,10 +3,12 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { describe, expect, test } from "vitest";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import {
   filterExpertSchedules,
   filterExpertWorkflows,
   getAssignToastTitle,
+  getExpertCover,
   getExpertRosterStatus,
   groupExpertsByPods,
 } from "./helpers";
@@ -256,5 +258,59 @@ describe("filterExpertSchedules", () => {
     expect(
       filterExpertSchedules(all, "", "later", now).map((s) => s.id),
     ).toEqual(["s3", "s4"]);
+  });
+});
+
+describe("getExpertCover", () => {
+  const paletteIds = COLOR_OPTIONS.map((option) => option.id);
+
+  test("keeps the expert's own colour", () => {
+    const cover = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/experts/max.svg",
+      color: "sky-300",
+    });
+    expect(cover.color).toBe("sky-300");
+    expect(cover.art).toBe("/experts/covers/max-1.jpg");
+  });
+
+  test("gives a seeded expert its cover art and pastel", () => {
+    const cover = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/experts/maria.svg",
+      color: "",
+    });
+    expect(cover).toEqual({
+      art: "/experts/covers/maria-1.jpg",
+      color: "orange-300",
+    });
+  });
+
+  test("picks a palette colour for a colourless custom expert, stable by id", () => {
+    const first = getExpertCover({
+      id: "expert-1",
+      avatar_url: "/uploads/custom.png",
+      color: "",
+    });
+    const again = getExpertCover({
+      id: "expert-1",
+      avatar_url: null,
+      color: "",
+    });
+    expect(first.art).toBeNull();
+    expect(paletteIds).toContain(first.color);
+    expect(again.color).toBe(first.color);
+  });
+
+  test("spreads colourless experts across the palette", () => {
+    const colours = new Set(
+      Array.from(
+        { length: 40 },
+        (_, index) =>
+          getExpertCover({ id: `expert-${index}`, avatar_url: null, color: "" })
+            .color,
+      ),
+    );
+    expect(colours.size).toBeGreaterThan(1);
   });
 });

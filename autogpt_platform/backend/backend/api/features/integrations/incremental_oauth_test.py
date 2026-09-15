@@ -1138,10 +1138,10 @@ class TestExplicitUpgradeScopeGuard:
     consent screen and only grants some of the requested scopes — would
     overwrite the existing credential's ``access_token`` with a narrower
     token while merging the wider scope set onto the record.  The
-    credential matcher then routes AutoPilot tools to that record believing
+    credential matcher then routes Otto tools to that record believing
     it covers scopes its token does not actually grant, and the tool fails
     with opaque 401/403s on the missing scopes.  Users perceive this as
-    "AutoPilot keeps picking the old creds" because the loop never breaks.
+    "Otto keeps picking the old creds" because the loop never breaks.
     """
 
     def _make_state_with_credential_id(
@@ -1212,7 +1212,7 @@ class TestExplicitUpgradeScopeGuard:
         # No mutation of the existing record — keep its wider token intact.
         mock_mgr.update.assert_not_called()
         # The narrower credential is persisted as a new record so the user
-        # ends up with both: the AutoPilot matcher will now pick the one
+        # ends up with both: the Otto matcher will now pick the one
         # that actually grants the requested scopes for each tool call.
         mock_mgr.create.assert_called_once()
 

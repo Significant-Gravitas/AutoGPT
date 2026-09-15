@@ -1,7 +1,7 @@
 /**
  * The voice-mode loop as a pure reducer.
  *
- * The mic is open in exactly two states, and never while AutoPilot speaks —
+ * The mic is open in exactly two states, and never while Otto speaks —
  * that is what removes echo without acoustic cancellation, and it is the
  * invariant the rest of the feature leans on.
  */

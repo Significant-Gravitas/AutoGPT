@@ -26,6 +26,7 @@ from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -198,12 +199,14 @@ class HandoffToExpertTool(BaseTool):
                 _refused_transfer_message(target.name, outcome, result.refusal),
                 session,
             )
+        transferred = _transferred_response(
+            inner_session_id=inner.session_id,
+            parent_session_id=session.session_id,
+            target_name=target.name,
+        )
+        transferred.message += await build_spawn_state_note()
         return apply_delegated_expert(
-            _transferred_response(
-                inner_session_id=inner.session_id,
-                parent_session_id=session.session_id,
-                target_name=target.name,
-            ),
+            transferred,
             # Identity for the ToolChain card, so it names the new owner.
             DelegatedExpertInfo(
                 id=target.id,
@@ -265,7 +268,7 @@ class HandoffToExpertTool(BaseTool):
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
         if caller_expert_id is None:
-            return "AutoPilot"
+            return "Otto"
         try:
             caller = await experts_db().get_expert(
                 user_id, caller_expert_id, include_workflows=False
@@ -286,7 +289,7 @@ def _request_refusal(
         return "prompt is required"
     if caller_expert_id is None:
         # The ``experts`` tool group already hides and refuses this tool for a
-        # plain Autopilot session, so this is defence in depth — but the
+        # plain Otto session, so this is defence in depth — but the
         # failure it prevents is silent rather than loud: ``_transfer`` would
         # persist ``handed_off_from_expert_id`` as JSON null while still
         # setting ``delegated_by_session_id``, and the Home pending-question

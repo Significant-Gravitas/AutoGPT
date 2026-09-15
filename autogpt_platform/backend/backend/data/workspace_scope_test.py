@@ -5,6 +5,7 @@ from backend.data.workspace_scope import WorkspaceScope, resolve_expert_workspac
 
 SCOPE = WorkspaceScope(
     expert_id="expert-a",
+    owns_skills_folder=True,
     session_ids=["expert-a", "expert-a-old"],
     delegated_session_ids=["sub-1"],
 )
@@ -22,14 +23,18 @@ def test_own_conversations_are_readable_and_writable(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "/sessions/sub-1/result.json",
-        "/skills/autopilot-skill/SKILL.md",
-        "/skills/autopilot-skill/references/notes.md",
+        "/experts/expert-a/skills/mine/SKILL.md",
+        "/experts/expert-a/skills/mine/references/notes.md",
     ],
 )
-def test_delegated_conversations_and_skills_registry_are_read_only(path: str):
+def test_own_skills_folder_is_readable_and_writable(path: str):
     assert SCOPE.allows_path(path)
-    assert not SCOPE.allows_path(path, write=True)
+    assert SCOPE.allows_path(path, write=True)
+
+
+def test_delegated_conversations_are_read_only():
+    assert SCOPE.allows_path("/sessions/sub-1/result.json")
+    assert not SCOPE.allows_path("/sessions/sub-1/result.json", write=True)
 
 
 @pytest.mark.parametrize(
@@ -43,8 +48,11 @@ def test_delegated_conversations_and_skills_registry_are_read_only(path: str):
         "sessions/expert-a/file.txt",
         "/sessions/expert-a/..\\expert-b/x",
         "/skills",
+        "/skills/autopilot-skill/SKILL.md",
+        "/skills/autopilot-skill/references/notes.md",
         "/skillsets/private.txt",
-        "/experts/expert-a/skills/mine/SKILL.md",
+        "/experts/expert-b/skills/theirs/SKILL.md",
+        "/experts/expert-a/skillsets/mine.txt",
         "/root-file.txt",
     ],
 )
@@ -56,8 +64,24 @@ def test_everything_else_is_denied(path: str):
 def test_session_only_scope_carries_no_expert_grants():
     scope = WorkspaceScope(session_ids=["only"])
     assert scope.expert_id is None
+    assert scope.skills_prefix is None
     assert scope.allows_path("/sessions/only/file.txt", write=True)
     assert not scope.allows_path("/sessions/other/file.txt")
+
+
+def test_denial_survives_the_rpc_round_trip():
+    """The scope is rebuilt as this class on the client side, so a denial that
+    lived in a subclass would come back as a grant."""
+    denied = WorkspaceScope(expert_id="expert-a")
+    rebuilt = WorkspaceScope.model_validate(denied.model_dump())
+
+    for scope in (denied, rebuilt):
+        assert scope.skills_prefix is None
+        assert not scope.allows_path("/experts/expert-a/skills/x/SKILL.md")
+        assert not scope.allows_path("/experts/expert-a/skills/x/SKILL.md", write=True)
+    assert WorkspaceScope.model_validate(SCOPE.model_dump()).allows_path(
+        "/experts/expert-a/skills/mine/SKILL.md", write=True
+    )
 
 
 def test_resolver_is_reachable_through_the_direct_db_accessor():

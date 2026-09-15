@@ -167,7 +167,7 @@ def _validate_user_isolation(
         # The "path" param is a cloud storage key (e.g. "/ASEAN/report.md")
         # where a leading "/" is normal.  Only check for ".." traversal.
         # Filesystem paths (source_path, save_to_path) are validated inside
-        # the tool itself via _validate_ephemeral_path.
+        # the tool itself via workdir.validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
             logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")

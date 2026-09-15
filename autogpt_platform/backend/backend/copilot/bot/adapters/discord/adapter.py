@@ -37,7 +37,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import commands, config, intro
+from . import choice_ui, commands, config, intro
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -96,7 +96,7 @@ class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
-        # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
+        # Otto output is untrusted w.r.t. mentions — suppress @everyone,
         # role, and user pings the LLM might produce. Client-level default
         # applies to every send() + reply() below.
         self._client = discord.Client(
@@ -140,6 +140,9 @@ class DiscordAdapter(SocketAdapter):
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
+        # Choice buttons are stateless and outlive this process, so their
+        # click handler is registered once here rather than per sent message.
+        choice_ui.register_choice_handler(self._client, self, callback)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -175,7 +178,7 @@ class DiscordAdapter(SocketAdapter):
             rendered, allowed = _resolve_mentions(
                 text, await self._mentionables_for(channel, text, mentionable_users)
             )
-            # tts=False is the default but we pin it explicitly — AutoPilot
+            # tts=False is the default but we pin it explicitly — Otto
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
@@ -195,11 +198,32 @@ class DiscordAdapter(SocketAdapter):
         )
         await channel.send(text, view=view, tts=False)
 
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return False
+        if self._on_message_callback is None:
+            return False
+        view = choice_ui.build_choice_view(token, options)
+        await channel.send(text, view=view, tts=False)
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
-        # spoiler=False — AutoPilot output is untrusted but spoilering every
+        # spoiler=False — Otto output is untrusted but spoilering every
         # generated file would be noisy; the workspace fetcher already
         # validated user ownership before we got bytes.
         attachment = discord.File(

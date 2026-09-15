@@ -4,6 +4,7 @@ import autogpt_libs.auth
 import fastapi
 from fastapi import Depends, Path, Query, Security
 
+from backend.api.features.experts import experts_db
 from backend.copilot.tools.skills import SkillLimitError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -121,19 +122,37 @@ async def get_marketplace_skill(
     summary="Install marketplace skill",
     tags=["store", "private"],
     responses={
-        404: {"description": "Skill not found"},
+        404: {"description": "Skill or expert not found"},
         409: {"description": "Per-user skill limit reached"},
     },
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def install_marketplace_skill(
     slug: str = Path(..., description="Slug of the skill listing"),
+    expert_id: str | None = Query(
+        default=None,
+        description="Install into this expert's skills instead of the caller's own.",
+    ),
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> skill_model.InstalledSkill:
-    """Copy the listing's skill into the caller's AutoPilot skill library."""
+    """Copy the listing's skill into an expert's skills, or the caller's own."""
+    await _require_install_target(user_id, expert_id)
     try:
-        return await skill_db.install_marketplace_skill(user_id, slug)
+        return await skill_db.install_marketplace_skill(
+            user_id, slug, expert_id=expert_id
+        )
     except SkillLimitError as exc:
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise fastapi.HTTPException(status_code=400, detail=str(exc))
+
+
+async def _require_install_target(user_id: str, expert_id: str | None) -> None:
+    """An expert named by the client must be one of the caller's own active
+    hires; someone else's answers 404, which a 403 would confirm exists."""
+    if expert_id is None:
+        return
+    if not await experts_db.owns_private_active_expert(user_id, expert_id):
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"Expert '{expert_id}' not found"
+        )

@@ -68,7 +68,10 @@ export function ExpertAvatar({
   }
 
   return (
-    <Avatar style={style} className={cn("shrink-0", className)}>
+    <Avatar
+      style={style}
+      className={cn("shrink-0 border border-stone-500", className)}
+    >
       <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback>{name}</AvatarFallback>
     </Avatar>

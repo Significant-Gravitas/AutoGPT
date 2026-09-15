@@ -28,6 +28,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
@@ -43,13 +44,17 @@ from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.redis_client import get_redis_async
 
-from . import auth, commands, config
+from . import auth, choice_ui, commands, config
 from .api_client import TeamsApiError, TeamsClient
 from .text import mention_entities, mention_token, to_teams_markdown
 
 logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
 # the next reply falls back to the default host until it is relearned.
@@ -197,6 +202,15 @@ class TeamsAdapter(WebhookAdapter):
         if _is_own_id((activity.get("from") or {}).get("id"), _configured_bot_ids()):
             return  # Our own echo.
 
+        # An Action.Submit click on a choice card arrives as an ordinary
+        # message activity carrying `value` (Teams' classic card-action
+        # flow, not the newer Universal Actions invoke) -- not a command or
+        # typed text.
+        parsed_choice = choice_ui.parse_choice_value(activity.get("value"))
+        if parsed_choice is not None:
+            await self._dispatch_choice_click(activity, *parsed_choice)
+            return
+
         command = commands.parse_command(_activity_text(activity))
         if command is not None:
             try:
@@ -214,6 +228,61 @@ class TeamsAdapter(WebhookAdapter):
             await self._on_message_callback(ctx, self)
         except Exception:
             logger.exception("Teams activity handler failed")
+
+    async def _dispatch_choice_click(
+        self, activity: dict[str, Any], token: str, index: int
+    ) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply.
+
+        Teams' classic card actions have no update-the-original-card API
+        wired here (unlike the other adapters' edit-in-place ack) — a short
+        confirmation is posted as a new message instead, then the answer
+        flows into a normal turn.
+        """
+        conversation_id = (activity.get("conversation") or {}).get("id")
+        if not conversation_id:
+            return
+        clicker_id = str((activity.get("from") or {}).get("id", ""))
+        resolved = await choices.resolve_choice("teams", token, index, clicker_id)
+        if resolved.text is None:
+            await self._post(
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": (
+                        _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE
+                    ),
+                },
+            )
+            return
+        option = resolved.text
+        # The token is already consumed, so the answer exists only here. The
+        # ack is cosmetic; a Connector error must not cost the user the turn.
+        try:
+            await self._post(
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": self.localize_markup(f"✅ You answered: {option}"),
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to acknowledge Teams choice click; continuing the turn"
+            )
+        if self._on_message_callback is None:
+            return
+        # `bot_mentioned=True` explicitly, as every other adapter does on a
+        # click. An Action.Submit carries no mention entities, so deriving it
+        # from the activity yields False, and in a *channel* the turn is then
+        # dropped by the handler's `if not ctx.bot_mentioned: return` — after
+        # the ack above has already told the user their answer was accepted.
+        ctx = await self._build_context({**activity, "text": option})
+        if ctx is not None:
+            ctx.bot_mentioned = True
+            await self._on_message_callback(ctx, self)
 
     async def _is_duplicate_activity(self, activity: dict[str, Any]) -> bool:
         """Drop redeliveries — first delivery of an activity id wins.
@@ -344,6 +413,37 @@ class TeamsAdapter(WebhookAdapter):
             "attachments": [_link_card(link_label, link_url)],
         }
         await self._post(channel_id, activity)
+
+    @property
+    def max_choice_label_length(self) -> int:
+        return 60
+
+    @property
+    def max_choice_options(self) -> int:
+        # An Adaptive Card renders about six actions before Teams collapses
+        # the rest into an overflow the user can miss entirely.
+        return 6
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        activity = {
+            "type": "message",
+            "attachments": [
+                choice_ui.choice_card(self.localize_markup(text), token, options)
+            ],
+        }
+        await self._post(channel_id, activity)
+        return True
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         """Inline a small image; degrade anything else to a note.

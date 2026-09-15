@@ -236,4 +236,4 @@ async def download_shared_chat_file(
     file = await get_workspace_file_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="Not found")
-    return await create_file_download_response(file, inline=True)
+    return await create_file_download_response(file)

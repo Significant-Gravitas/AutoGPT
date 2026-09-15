@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
 
 const PRIVACY_COPY =
-  "Private to you · Saved as AutoPilot memory · Downloadable anytime";
+  "Private to you · Saved as Otto memory · Downloadable anytime";
 
 export function PrivacyNote() {
   return (

@@ -26,7 +26,7 @@ export function AutopilotSkillsSection({ skills }: Props) {
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
         <Text variant="large-medium" tone="primary">
-          Autopilot&apos;s Skills
+          Otto&apos;s Skills
         </Text>
         <SearchInput
           size="small"
@@ -46,11 +46,11 @@ export function AutopilotSkillsSection({ skills }: Props) {
           No skills match.
         </Text>
       ) : (
-        <ul className="flex flex-col gap-3 pt-4" aria-label="Autopilot skills">
+        <ul className="flex flex-col gap-3 pt-4" aria-label="Otto skills">
           {visible.map((skill) => (
             <li key={skill.name}>
               <ExpertSkillListItem
-                entry={{ name: skill.name, library: skill }}
+                entry={{ name: skill.name, skill, library: skill }}
                 accentClassName={AUTOPILOT_PILL_CLASS}
               />
             </li>

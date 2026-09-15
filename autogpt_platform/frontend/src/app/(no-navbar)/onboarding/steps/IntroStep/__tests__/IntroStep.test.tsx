@@ -16,7 +16,7 @@ describe("IntroStep", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  it("shows the AutoPilot slide", () => {
+  it("shows the Otto slide", () => {
     render(<IntroStep slide="autopilot" />);
     expect(
       screen.getByRole("heading", { name: INTRO_SLIDES.autopilot.title }),

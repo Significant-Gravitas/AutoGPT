@@ -27,6 +27,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
   const {
     descriptionPreview,
     triggers,
+    fileRows,
     isDeleteOpen,
     openDelete,
     closeDelete,
@@ -163,19 +164,26 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 >
                   {detail?.body || "(no body)"}
                 </pre>
-                {detail?.sibling_files && detail.sibling_files.length > 0 ? (
+                {fileRows.length > 0 ? (
                   <div
                     className="flex flex-col gap-1"
-                    data-testid="skill-view-sibling-files"
+                    data-testid="skill-view-files"
                   >
                     <Text variant="small" className="!text-zinc-500">
-                      Bundled files ({detail.sibling_files.length}
-                      ):
+                      Package files ({detail?.files?.length ?? 0}):
                     </Text>
-                    <ul className="flex flex-col gap-0.5 pl-3 text-xs text-zinc-600">
-                      {detail.sibling_files.map((path) => (
-                        <li key={path} className="break-all">
-                          {path}
+                    <ul className="flex flex-col gap-0.5 text-xs text-zinc-600">
+                      {fileRows.map((row) => (
+                        <li
+                          key={row.path}
+                          className={`flex items-baseline justify-between gap-3 ${indentClass(row.depth)}`}
+                        >
+                          <span className="break-all">{row.label}</span>
+                          {row.sizeLabel ? (
+                            <span className="flex-shrink-0 tabular-nums text-zinc-400">
+                              {row.sizeLabel}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -195,8 +203,8 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete the skill <strong>{skill.name}</strong>? Your AutoPilot
-              will forget this procedure and can re-distill it later if needed.
+              Delete the skill <strong>{skill.name}</strong> from your library?
+              You can create or upload it again later if needed.
             </Text>
             <Dialog.Footer>
               <Button
@@ -220,4 +228,13 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       </Dialog>
     </div>
   );
+}
+
+// Tailwind only sees class names it can read literally, so the indent is a
+// lookup rather than a computed padding; a path deeper than the list shares
+// its last step.
+const INDENT_CLASSES = ["pl-0", "pl-3", "pl-6", "pl-9", "pl-12"];
+
+function indentClass(depth: number): string {
+  return INDENT_CLASSES[Math.min(depth, INDENT_CLASSES.length - 1)];
 }

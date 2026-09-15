@@ -37,6 +37,7 @@ import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
 import backend.api.features.executions.review.routes
+import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
@@ -88,6 +89,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
+    ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
@@ -174,7 +176,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.org_migration.run_migration()
 
     # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for AutoPilot nodes saved before `transport`
+    # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
     # changes nothing about which account pays — and refusing to boot the
     # platform over a cosmetic migration would be the worse outcome.
@@ -184,7 +186,7 @@ async def lifespan_context(app: fastapi.FastAPI):
             timeout=30,
         )
     except Exception:
-        logger.error("AutoPilot transport backfill failed", exc_info=True)
+        logger.error("Otto transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
@@ -364,6 +366,7 @@ async def validation_error_handler(
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
@@ -402,6 +405,11 @@ app.include_router(
     analytics_router,
     prefix="/api/analytics",
     tags=["analytics"],
+)
+app.include_router(
+    backend.api.features.experiments.router,
+    prefix="/api/experiments",
+    tags=["experiments"],
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
