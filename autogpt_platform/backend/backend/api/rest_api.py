@@ -36,6 +36,7 @@ import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
+import backend.api.features.desktop_preview
 import backend.api.features.executions.review.routes
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
@@ -385,6 +386,9 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
+)
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,

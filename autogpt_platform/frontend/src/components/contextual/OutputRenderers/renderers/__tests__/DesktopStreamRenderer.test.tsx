@@ -1,9 +1,12 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { desktopStreamRenderer } from "../DesktopStreamRenderer";
+import {
+  desktopStreamRenderer,
+  DesktopStreamPreview,
+} from "../DesktopStreamRenderer";
 
 const streamValue = {
-  kind: "desktop_stream",
+  kind: "desktop_stream" as const,
   url: "https://6080-sandbox.e2b.app/vnc.html?autoconnect=true",
   provider: "e2b",
   sandbox_id: "sbx-123",
@@ -25,17 +28,41 @@ describe("DesktopStreamRenderer", () => {
     ).toBe(false);
   });
 
-  it("refuses anything but an https stream URL", () => {
+  it("refuses anything but an https URL or our own origin-relative link", () => {
     for (const url of [
       "javascript:alert(document.cookie)",
       "http://6080-sandbox.e2b.app/vnc.html",
       "data:text/html,<script>1</script>",
       "not a url",
+      "//evil.example/vnc.html",
     ]) {
       expect(desktopStreamRenderer.canRender({ ...streamValue, url })).toBe(
         false,
       );
     }
+    // The owner-bound preview link is root-relative so it works on any
+    // origin the owner is signed in to, plain-http local stacks included.
+    expect(
+      desktopStreamRenderer.canRender({
+        ...streamValue,
+        url: "/api/proxy/api/desktop-preview?token=abc",
+        requires_auth: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows a notice instead of the frame to a viewer who is not the owner", () => {
+    const ownerBound = {
+      ...streamValue,
+      url: "/api/proxy/api/desktop-preview?token=abc",
+      requires_auth: true,
+    };
+    const { container } = render(
+      <DesktopStreamPreview value={ownerBound} ownerView={false} />,
+    );
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+    expect(screen.queryByRole("link", { name: /open in new tab/i })).toBeNull();
   });
 
   it("renders an interactive iframe pointing at the stream URL", () => {
@@ -55,6 +82,19 @@ describe("DesktopStreamRenderer", () => {
     const link = screen.getByRole("link", { name: /open in new tab/i });
     expect(link.getAttribute("href")).toBe(streamValue.url);
     expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("tells the viewer the desktop is shared with the AI, and owner-only when auth is required", () => {
+    render(<>{desktopStreamRenderer.render(streamValue)}</>);
+    expect(screen.getByText(/visible to it/i)).toBeDefined();
+    expect(screen.queryByText(/only the owner/i)).toBeNull();
+    cleanup();
+    render(
+      <>
+        {desktopStreamRenderer.render({ ...streamValue, requires_auth: true })}
+      </>,
+    );
+    expect(screen.getByText(/only the owner/i)).toBeDefined();
   });
 
   it("copies the stream URL", () => {

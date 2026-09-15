@@ -1,11 +1,16 @@
 "use client";
 
-import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import {
+  DesktopStreamPreview,
+  isDesktopStream,
+} from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 import { useEffect } from "react";
 import { useCopilotUIStore, type DesktopStreamRef } from "../../store";
 
 interface Props {
   stream: unknown;
+  /** A shared transcript: the viewer is not the owner and has no panel. */
+  readOnly?: boolean;
 }
 
 function asStreamRef(value: unknown): DesktopStreamRef | null {
@@ -23,7 +28,7 @@ function asStreamRef(value: unknown): DesktopStreamRef | null {
 /** The inline start_desktop card. Besides embedding the stream it tells the
  *  side panel a desktop exists, so the Computer face can show the same
  *  screen without the model being asked again. */
-export function DesktopStreamCard({ stream }: Props) {
+export function DesktopStreamCard({ stream, readOnly = false }: Props) {
   const registerComputerStream = useCopilotUIStore(
     (s) => s.registerComputerStream,
   );
@@ -31,9 +36,10 @@ export function DesktopStreamCard({ stream }: Props) {
   const sandboxId = ref?.sandbox_id;
   const url = ref?.url;
   useEffect(() => {
-    if (ref) registerComputerStream(ref);
+    if (ref && !readOnly) registerComputerStream(ref);
     // Re-register only when the stream itself changes, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sandboxId, url]);
-  return <>{desktopStreamRenderer.render(stream)}</>;
+  }, [sandboxId, url, readOnly]);
+  if (!isDesktopStream(stream)) return null;
+  return <DesktopStreamPreview value={stream} ownerView={!readOnly} />;
 }
