@@ -7248,6 +7248,92 @@
         }
       }
     },
+    "/api/experts/{expert_id}/publish": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Publish Expert As Template",
+        "description": "Publish one of your own experts as a marketplace template.\n\nAdmin-only, and the expert has to be the admin's own — publishing\nsomebody else's would put their soul on the marketplace. Publishing again\nrefreshes the same template rather than making a second one.",
+        "operationId": "publish_expert",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "400": {
+            "description": "One of the expert's agents is not published"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/published": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Published Template",
+        "description": "The marketplace template this expert was published as, or null.",
+        "operationId": "get_published_template",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/Expert" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Published Template"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/runs": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
