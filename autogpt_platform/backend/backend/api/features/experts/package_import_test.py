@@ -383,7 +383,7 @@ async def test_a_skill_that_cannot_be_written_is_reported_not_fatal(
     """An expert missing one of its skills is far more use than no expert."""
     user = await _create_seed_user()
     mocker.patch(
-        "backend.api.features.experts.package_import.store_user_skill",
+        "backend.api.features.experts.package_skills.store_user_skill",
         side_effect=SkillLimitError("full"),
     )
 

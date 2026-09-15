@@ -459,6 +459,10 @@ async def download_expert_template_package(
     row = await experts_db.get_template_row(template_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    if row.publishedPackage:
+        # Exactly what was published, rather than a rebuild from an expert
+        # that has since moved on.
+        return _zip_response(row.publishedPackage.decode(), row.name)
     return await _package_response(row)
 
 
@@ -469,11 +473,15 @@ async def _package_response(row: prisma.models.Expert) -> Response:
         raise fastapi.HTTPException(
             status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
+    return _zip_response(await run_in_threadpool(zip_from_package, package), row.name)
+
+
+def _zip_response(content: bytes, name: str) -> Response:
     return Response(
-        content=await run_in_threadpool(zip_from_package, package),
+        content=content,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{package_filename(row.name)}"'
+            "Content-Disposition": f'attachment; filename="{package_filename(name)}"'
         },
     )
 

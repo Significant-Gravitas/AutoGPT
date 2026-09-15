@@ -19,6 +19,7 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma import Base64
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
@@ -2170,3 +2171,27 @@ def test_import_expert_package_409s_at_the_active_expert_limit(
         json.dumps(response.json(), indent=2, sort_keys=True),
         "expert_import_active_cap",
     )
+
+
+def test_download_expert_template_package_serves_what_was_published(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A published template hands back the stored zip rather than rebuilding
+    from an expert that has since moved on."""
+    published = _expert_zip()
+    row = prisma.models.Expert.model_construct(
+        id="template-1", name="Maria Ops", publishedPackage=Base64.encode(published)
+    )
+    mocker.patch.object(
+        experts_db, "get_template_row", new_callable=AsyncMock
+    ).return_value = row
+    build = mocker.patch(
+        "backend.api.features.experts.routes.build_expert_package",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/experts/templates/template-1/package")
+
+    assert response.status_code == 200
+    assert response.content == published
+    build.assert_not_awaited()

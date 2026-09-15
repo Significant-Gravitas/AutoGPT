@@ -10,6 +10,7 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from fastapi.concurrency import run_in_threadpool
 from prisma.enums import ResourceVisibility
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -32,6 +33,7 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
+from backend.api.features.experts.expert_zip import package_from_zip
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -55,6 +57,7 @@ from backend.api.features.experts.models import (
     decode_voice_preferences,
     encode_day_one,
 )
+from backend.api.features.experts.package_skills import install_package_skills
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -153,7 +156,10 @@ _TEMPLATE_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
 EXPORT_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
         "include": {
-            "LibraryAgent": True,
+            # AgentGraph carries the name of a user-created agent; LibraryAgent
+            # .name is only populated from a marketplace snapshot, so without it
+            # publishing cannot say which agent is unpublished.
+            "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": {
                 "include": {"StoreListing": {"include": {"CreatorProfile": True}}}
             },
@@ -300,6 +306,15 @@ async def list_templates(
         include=_TEMPLATE_WORKFLOW_INCLUDE,
     )
     return [_to_model(row) for row in rows]
+
+
+async def get_template(template_id: str) -> Expert | None:
+    """One marketplace template by id, as the API returns it."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
+    )
+    return _to_model(row) if row else None
 
 
 def _template_where(
@@ -907,6 +922,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
     await _install_bundled_skills(user_id, expert.id, template.id)
+    await _install_published_skills(user_id, expert.id, template)
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1741,6 +1757,35 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _install_published_skills(
+    user_id: str, expert_id: str, template: prisma.models.Expert
+) -> None:
+    """Install the skills a published template carries in its package.
+
+    A published template's skills are not Hub listings — they came out of the
+    admin's own expert — so the only place they exist is the stored zip. Best
+    effort, like every other install here: a hire missing one skill is better
+    than no hire.
+    """
+    if not template.publishedPackage:
+        return
+    try:
+        package = await run_in_threadpool(
+            package_from_zip, template.publishedPackage.decode()
+        )
+    except Exception:
+        logger.exception(f"Published package of template #{template.id} is unreadable")
+        return
+    failed = await install_package_skills(
+        user_id, expert_id, package, package.manifest.skills
+    )
+    if failed:
+        logger.warning(
+            f"{len(failed)} packaged skill(s) failed to install on expert "
+            f"#{expert_id}: {', '.join(failed)}"
+        )
 
 
 async def _install_bundled_skills(

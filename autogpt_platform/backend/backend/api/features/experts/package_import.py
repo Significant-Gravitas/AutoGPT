@@ -33,13 +33,12 @@ from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
-    PackagedSkill,
     PackagedWorkflow,
 )
+from backend.api.features.experts.package_skills import install_package_skills
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store.media import upload_media
-from backend.copilot.tools.skills import parse_skill_markdown, store_user_skill
 from backend.data import graph as graph_db
 from backend.data.user import get_user_by_id
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
@@ -332,44 +331,6 @@ async def import_package(
         failed_skills=failed_skills,
         warnings=warnings,
     )
-
-
-async def install_package_skills(
-    user_id: str,
-    expert_id: str,
-    package: ExpertPackage,
-    skills: list[PackagedSkill],
-) -> list[str]:
-    """Write each skill's whole folder into the expert's own workspace.
-
-    Shared with hiring a published template, which installs the same packaged
-    skills from the same zip. ``store_user_skill`` records the name on the
-    expert row itself, so a skill that fails leaves no name behind and the
-    expert never lists one it does not have.
-    """
-    failed: list[str] = []
-    for card in skills:
-        stored = package.skills.get(card.slug)
-        parsed = parse_skill_markdown(stored.skill_md) if stored else None
-        if stored is None or parsed is None:
-            failed.append(card.name)
-            continue
-        try:
-            await store_user_skill(
-                user_id,
-                name=parsed.name or card.name,
-                description=parsed.description,
-                body=parsed.body,
-                triggers=list(parsed.triggers),
-                files=stored.files,
-                expert_id=expert_id,
-            )
-        except Exception:
-            logger.exception(
-                f"Failed to install packaged skill {card.slug!r} on expert #{expert_id}"
-            )
-            failed.append(card.name)
-    return failed
 
 
 async def _install_workflows(

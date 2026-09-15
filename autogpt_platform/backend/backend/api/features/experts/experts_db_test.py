@@ -14,9 +14,11 @@ import prisma.errors
 import prisma.models
 import pydantic
 import pytest
+from prisma import Base64
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
+from backend.api.features.experts.expert_zip import zip_from_package
 from backend.api.features.experts.models import (
     ExpertBundledSkill,
     ExpertDayOneItem,
@@ -27,6 +29,12 @@ from backend.api.features.experts.models import (
     VoiceSample,
     encode_voice_preferences,
 )
+from backend.api.features.experts.package_model import (
+    ExpertManifest,
+    ExpertPackage,
+    PackagedIdentity,
+    PackagedSkill,
+)
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store.categories import StoreCategory
@@ -34,7 +42,13 @@ from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
-from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
+from backend.copilot.tools.skills import (
+    _NAME_RE,
+    SkillFile,
+    SkillPackage,
+    read_user_skill_package,
+    read_user_skill_with_body,
+)
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
@@ -4986,3 +5000,68 @@ async def test_two_imports_of_the_same_expert_are_both_kept(
 
     assert first.id != second.id
     assert first.name == second.name
+
+
+# ─── Hiring a published template ───────────────────────────────────────
+
+
+async def _published_template_with_skills(owner_id: str) -> prisma.models.Expert:
+    """A template carrying a package, as ``publish_expert`` leaves one."""
+    package = ExpertPackage(
+        manifest=ExpertManifest(
+            identity=PackagedIdentity(name=f"Published {uuid.uuid4().hex[:8]}"),
+            skills=[PackagedSkill(slug="research", name="Research")],
+        ),
+        skills={
+            "research": SkillPackage(
+                skill_md=(
+                    "---\nname: research\ndescription: Digs.\n---\n\n# Research\n"
+                ),
+                files=[SkillFile(relative_path="refs/API.md", content=b"# API\n")],
+            )
+        },
+    )
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": package.manifest.identity.name,
+            "role": "Ops lead",
+            "identity": "Careful and brief.",
+            "isTemplate": True,
+            "skills": ["research"],
+            "publishedPackage": Base64.encode(zip_from_package(package)),
+        }
+    )
+    _seeded_template_ids.append(template.id)
+    return template
+
+
+async def test_hiring_a_published_template_installs_its_packaged_skills(
+    server: SpinTestServer, test_user
+):
+    """Its skills came from the publisher's own expert, so the stored zip is
+    the only place they exist — there is no Hub listing to install."""
+    template = await _published_template_with_skills(test_user.id)
+
+    hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert
+
+    stored = await read_user_skill_package(test_user.id, "research", expert_id=hired.id)
+    assert stored is not None
+    assert [f.relative_path for f in stored.files] == ["refs/API.md"]
+
+
+async def test_a_published_templates_unreadable_package_does_not_fail_the_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _published_template_with_skills(test_user.id)
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={"publishedPackage": Base64.encode(b"not a zip")},
+    )
+
+    hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert
+
+    assert hired.id
+    assert (
+        await read_user_skill_package(test_user.id, "research", expert_id=hired.id)
+        is None
+    )

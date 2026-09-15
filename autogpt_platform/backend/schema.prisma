@@ -1094,6 +1094,17 @@ model Expert {
   SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
   HiredCopies      Expert[] @relation("ExpertFromTemplate")
 
+  // Set on a marketplace template that an admin published from one of their
+  // own experts; unique, so republishing refreshes that template instead of
+  // making another. Null on roster templates and on every ordinary expert.
+  publishedFromExpertId String? @unique
+  PublishedFrom         Expert? @relation("ExpertPublishedFrom", fields: [publishedFromExpertId], references: [id], onDelete: SetNull)
+  PublishedTemplate     Expert? @relation("ExpertPublishedFrom")
+
+  // The .expert.zip a published template serves on download and installs its
+  // skills from on hire. Null on roster templates, which are built live.
+  publishedPackage Bytes?
+
   isArchived Boolean @default(false)
 
   // Weekly credit guardrail: null = platform default from config.
