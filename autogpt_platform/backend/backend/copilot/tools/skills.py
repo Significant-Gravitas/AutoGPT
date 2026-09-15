@@ -796,9 +796,9 @@ async def store_user_skill(
                     ),
                 )
         except Exception:
-            # Undo only what this call created: a file that was already
-            # there has lost its old bytes either way, and deleting it would
-            # turn a failed write into a lost file.
+            # Not a rollback: a file already here keeps the new bytes, so an
+            # upsert can fail mixed. Undo only what this call created — deleting
+            # the rest would turn a failed write into a lost file.
             await _delete_paths(manager, written - existing_paths)
             raise
         await manager.write_file(
@@ -1178,32 +1178,62 @@ async def read_user_skill_with_body(
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
 
 
-async def list_user_skill_sibling_paths(
+async def read_user_skill_package(
     user_id: str,
     name: str,
     *,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
-) -> list[str]:
-    """Return the workspace paths of files siblings to ``SKILL.md`` in a
-    user-stored skill's folder (``references/``, ``scripts/``, ``assets/``,
-    or anything the model stashed there at distillation time).
+) -> SkillPackage | None:
+    """The whole stored skill — the ``SKILL.md`` exactly as stored plus every
+    sibling — or ``None`` when the slug has no ``SKILL.md``.
 
-    Used by the REST GET ``/skills/{name}`` endpoint so the library UI's
-    expand-to-view dialog can show the model what extra artefacts the
-    skill bundle carries.  Returns ``[]`` on any error — sibling listing
-    is best-effort and must not fail the parent request.
+    What the zip download hands out, so a downloaded package re-uploads to a
+    byte-identical tree. :func:`read_user_skill_with_body` is the root alone.
+
+    Only a missing skill answers ``None``: a storage failure or an undecodable
+    file raises, because a download that quietly omits part of the tree is worse
+    than one that fails.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id, scope)
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+    except FileNotFoundError:
+        return None
+    return SkillPackage(
+        skill_md=raw.decode("utf-8"),
+        files=await _read_package_files(
+            manager, skill_folder(expert_id), slug, complete=True
+        ),
+    )
+
+
+async def list_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[SkillFileInfo]:
+    """Every file beside a stored skill's ``SKILL.md`` — ``references/``,
+    ``scripts/``, ``assets/``, or anything the model stashed there — with the
+    size and executable bit the library UI's file tree shows.
+
+    Returns ``[]`` on any error: listing decorates the read it accompanies and
+    must not fail it.
     """
     slug = name.strip().lower()
     if not slug:
         return []
     try:
         manager = await _get_user_skill_manager(user_id, scope)
-        files = await _list_package_files(manager, skill_folder(expert_id), slug)
-        return [f.path for f in files]
+        return await _list_package_files(manager, skill_folder(expert_id), slug)
     except Exception:
         logger.warning(
-            "[skills] failed to list sibling files for %s", slug, exc_info=True
+            "[skills] failed to list package files for %s", slug, exc_info=True
         )
         return []
 
@@ -1285,7 +1315,7 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
 
 
 async def _read_package_files(
-    manager: WorkspaceManager, folder: str, slug: str
+    manager: WorkspaceManager, folder: str, slug: str, *, complete: bool = False
 ) -> list[SkillFile]:
     """Load a stored package's siblings into memory, ready to be written
     somewhere else.  Reads run concurrently — each is a blob fetch, and a
@@ -1293,12 +1323,24 @@ async def _read_package_files(
 
     A file that cannot be read raises, because the caller's copy is idempotent
     on the root alone: a package written without it would never be repaired.
+    ``complete`` additionally refuses a tree that is over the files cap, which
+    a download owes its caller; the copy path truncates instead, so a legacy
+    oversized folder can still be hired rather than blocking the hire outright.
     """
     prefix = f"{folder}/{slug}/"
     infos = await _list_package_files(manager, folder, slug)
     if len(infos) > MAX_PACKAGE_FILES:
-        # Written before the cap existed, or by hand.  Validating it whole
-        # would fail and take the hire down, so truncate as read_skill does.
+        # Written before the cap existed, or by hand.
+        # Keep both branches: raising repairs a failed read, but not a documented
+        # cap — so the download refuses and the copy truncates.
+        if complete:
+            raise SkillPackageError(
+                f"stored package has more than {MAX_PACKAGE_FILES} files and "
+                "cannot be served whole",
+                over_limit=True,
+            )
+        # Validating it whole would fail and take the hire down, so truncate
+        # as read_skill does.
         logger.warning(
             "[skills] package %s has more than %s files; copying the first %s",
             slug,
@@ -2192,10 +2234,8 @@ async def _sync_skill_package(
         for c in copied
     }
 
-    # The manifest is what a later activation trusts instead of re-doing work,
-    # so it records only what actually happened. A mode that would not apply or
-    # a file that would not go is left out of it, and the next activation tries
-    # again; committing them would make a transient failure permanent.
+    # A later activation trusts this instead of re-doing the work, so it records
+    # only what happened — committing a failure would make it permanent.
     settled = dict(written)
 
     # Only files this pass wrote carry a ``target``; a manifest hit needs no
