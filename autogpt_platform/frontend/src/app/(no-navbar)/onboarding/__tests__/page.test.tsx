@@ -114,14 +114,20 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ONBOARDING_EXPERT_TEAM: "ONBOARDING_EXPERT_TEAM",
     HIRE_EXPERTS: "HIRE_EXPERTS",
   },
-  useGetFlag: (flag: string) => {
-    if (flag === "ENABLE_PLATFORM_PAYMENT") return mockFlagValue;
-    if (flag === "ONBOARDING_EXPERT_TEAM") return mockExpertTeamEnabled;
-    if (flag === "HIRE_EXPERTS") return mockHireExpertsEnabled;
-    if (flag === "ONBOARDING_BRAIN_DUMP") return mockBrainDumpEnabled;
-    return false;
-  },
+  useGetFlag: (flag: string) => resolveFlag(flag),
+  useFlagStatus: (flag: string) => ({
+    enabled: resolveFlag(flag),
+    ready: true,
+  }),
 }));
+
+function resolveFlag(flag: string) {
+  if (flag === "ENABLE_PLATFORM_PAYMENT") return mockFlagValue;
+  if (flag === "ONBOARDING_EXPERT_TEAM") return mockExpertTeamEnabled;
+  if (flag === "HIRE_EXPERTS") return mockHireExpertsEnabled;
+  if (flag === "ONBOARDING_BRAIN_DUMP") return mockBrainDumpEnabled;
+  return false;
+}
 
 // The brain dump step is the real one when its flag is on; the page tests
 // only care which slot it occupies.

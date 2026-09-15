@@ -1,6 +1,6 @@
 import type { User } from "@/lib/auth/types";
 import { describe, expect, it } from "vitest";
-import { buildLDContext } from "../helpers";
+import { buildFlagPersonProperties, buildLDContext } from "../helpers";
 
 function userFixture(overrides: Partial<User> = {}): User {
   return {
@@ -72,5 +72,27 @@ describe("buildLDContext", () => {
     const ctx = buildLDContext(userFixture({ email: "a.b@sub.example.com" }));
 
     expect("email_domain" in ctx && ctx.email_domain).toBe("sub.example.com");
+  });
+});
+
+describe("buildFlagPersonProperties", () => {
+  it("carries every attribute the LaunchDarkly rules target on", () => {
+    expect(buildFlagPersonProperties(userFixture())).toEqual({
+      email: "user@example.com",
+      email_domain: "example.com",
+      role: "authenticated",
+      created_at: "2026-05-08T12:00:00Z",
+    });
+  });
+
+  it("omits what the session does not carry", () => {
+    const properties = buildFlagPersonProperties(
+      userFixture({ role: undefined, created_at: undefined }),
+    );
+
+    expect(properties).toEqual({
+      email: "user@example.com",
+      email_domain: "example.com",
+    });
   });
 });

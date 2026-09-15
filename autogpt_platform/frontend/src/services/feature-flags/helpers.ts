@@ -17,6 +17,21 @@ export type LDUserContext =
       custom: { role?: string };
     };
 
+// The attributes the flag targeting rules match on, in the flat shape
+// PostHog person properties take. Same set as the LaunchDarkly context below,
+// so a flag targeted on email domain or signup date evaluates the same either
+// way.
+export function buildFlagPersonProperties(user: User): Record<string, string> {
+  return {
+    ...(user.email && {
+      email: user.email,
+      email_domain: user.email.split("@").at(-1) ?? "",
+    }),
+    ...(user.role && { role: user.role }),
+    ...(user.created_at && { created_at: user.created_at }),
+  };
+}
+
 // Mirror the context built by the backend
 // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
 // rules evaluate identically on both sides.
