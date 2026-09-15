@@ -9,6 +9,7 @@ from backend.data.dynamic_fields import merge_execution_input, parse_execution_o
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    ExecutionTrigger,
     GraphExecutionWithNodes,
 )
 from backend.data.model import User
@@ -22,6 +23,18 @@ from backend.executor.utils import (
     is_credential_validation_error_message,
 )
 from backend.util.mock import MockObject
+
+
+@pytest.fixture(autouse=True)
+def mock_account_state(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "backend.executor.utils.onboarding_db.increment_onboarding_runs",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=None),
+    )
 
 
 def test_parse_execution_output():
@@ -448,6 +461,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        trigger_source=ExecutionTrigger.MANUAL,
+        trigger_ref=None,
         schedule_id=None,
         webhook_id=None,
     )

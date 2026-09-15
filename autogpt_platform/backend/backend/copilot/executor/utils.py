@@ -31,6 +31,7 @@ from backend.copilot.tree import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
         queues=[run_queue, cancel_queue],
     )
@@ -588,6 +589,8 @@ async def schedule_chat_turn(
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
     is_user_message: bool = True,
+    expert_id: str | None = None,
+    session_origin: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
     file_ids: list[str] | None = None,
@@ -658,6 +661,9 @@ async def schedule_chat_turn(
                     user_id=user_id,
                     session_id=session_id,
                     message_length=raw_message_length,
+                    expert_id=expert_id,
+                    origin=session_origin,
+                    surface="chat",
                 )
 
         if is_duplicate:

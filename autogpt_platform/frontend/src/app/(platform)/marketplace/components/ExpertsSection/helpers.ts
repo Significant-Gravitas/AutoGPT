@@ -1,3 +1,4 @@
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -122,4 +123,29 @@ export function getRaisedExpertAccent(
     pill: cn("border", option.bubbleClassName, option.textClassName),
     icon: option.textClassName,
   };
+}
+
+export function getExpertFirstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || "Expert";
+}
+
+/** The integrations an expert's workflows will ask this viewer to connect.
+ *
+ *  Reads `integration_providers`, never `chain`: the chain is a three-item
+ *  display summary, so a workflow with a fourth integration silently loses
+ *  one, picked by node counts rather than by whether anyone connects it.
+ *  Providers the platform already pays for are then subtracted — the roster
+ *  leans on Anthropic, OpenAI, Jina and a Webshare proxy, none of which a user
+ *  ever connects. Without the system list this returns nothing, because naming
+ *  a provider the platform supplies is worse than naming none. */
+export function getExpertAccessProviders(
+  workflows: ExpertWorkflowRef[],
+  systemProviders: string[] | undefined,
+): string[] {
+  if (!systemProviders) return [];
+  const supplied = new Set(systemProviders);
+  const providers = workflows
+    .flatMap((workflow) => workflow.integration_providers ?? [])
+    .filter((provider) => !supplied.has(provider));
+  return [...new Set(providers)];
 }

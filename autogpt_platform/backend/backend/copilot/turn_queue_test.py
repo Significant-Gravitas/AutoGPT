@@ -54,6 +54,13 @@ def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
     return s
 
 
+@pytest.fixture(autouse=True)
+def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    tracker = MagicMock()
+    monkeypatch.setattr(turn_queue, "track_user_message", tracker)
+    return tracker
+
+
 # ── enqueue_turn payload encoding ──────────────────────────────────────
 
 
@@ -209,6 +216,78 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 
 
 # ── dispatch_next_for_user ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "expert_id",
+        "origin",
+        "role",
+        "claim",
+        "dispatch_fails",
+        "tracking_fails",
+        "expected_event",
+    ),
+    [
+        ("expert-1", "interactive", "user", True, False, False, True),
+        (None, "automation", "user", True, False, False, True),
+        ("expert-1", "interactive", "user", False, False, False, False),
+        ("expert-1", "interactive", "user", True, True, False, False),
+        ("expert-1", "interactive", "assistant", True, False, False, False),
+        ("expert-1", "interactive", "user", True, False, True, True),
+    ],
+)
+async def test_promoted_turn_tracking_preserves_session_attribution(
+    tracked_message: MagicMock,
+    expert_id: str | None,
+    origin: str,
+    role: str,
+    claim: bool,
+    dispatch_fails: bool,
+    tracking_fails: bool,
+    expected_event: bool,
+) -> None:
+    if tracking_fails:
+        tracked_message.side_effect = RuntimeError("tracking failed")
+    head = _mock_session()
+    head.expert_id = expert_id
+    head.metadata.origin = origin
+    head.metadata.llm_auth_provider = "codex"
+    pending = _pyd_message(role=role)
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    dispatched = AsyncMock(
+        side_effect=RuntimeError("dispatch failed") if dispatch_fails else None
+    )
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=claim)
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        if dispatch_fails:
+            with pytest.raises(RuntimeError, match="dispatch failed"):
+                await turn_queue.dispatch_next_for_user("u1")
+        else:
+            assert await turn_queue.dispatch_next_for_user("u1") is claim
+
+    if expected_event:
+        tracked_message.assert_called_once_with(
+            user_id="u1",
+            session_id="s1",
+            message_length=5,
+            expert_id=expert_id,
+            origin=origin,
+            surface="chat",
+        )
+    else:
+        tracked_message.assert_not_called()
 
 
 def _patch_queued_list(rows):
@@ -461,6 +540,41 @@ async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> N
     entitled.assert_not_awaited()
     assert dispatch_turn_mock.await_args.kwargs["llm_auth_provider"] == "codex"
     assert dispatch_turn_mock.await_args.kwargs["model"] == "advanced"
+
+
+@pytest.mark.asyncio
+async def test_microsoft_promotion_skips_platform_billing_gates() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    head.metadata.llm_credential_id = "cred-microsoft"
+    pending = _pyd_message(metadata={"model": "advanced"})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    platform_gate = AsyncMock(
+        side_effect=AssertionError("platform billing gate checked for Microsoft")
+    )
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "is_user_paywalled", new=platform_gate),
+        patch.object(turn_queue, "advanced_tier_entitled", new=platform_gate),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    platform_gate.assert_not_awaited()
+    assert (
+        dispatch_turn_mock.await_args.kwargs["llm_auth_provider"]
+        == "microsoft_365_copilot"
+    )
 
 
 @pytest.mark.asyncio

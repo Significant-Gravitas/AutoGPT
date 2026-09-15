@@ -195,8 +195,8 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete the skill <strong>{skill.name}</strong>? Your Otto will
-              forget this procedure and can re-distill it later if needed.
+              Delete the skill <strong>{skill.name}</strong> from your library?
+              You can create or upload it again later if needed.
             </Text>
             <Dialog.Footer>
               <Button

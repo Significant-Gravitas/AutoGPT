@@ -36,7 +36,12 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
     return c.json();
   }
 
-  if (contentType && contentType.includes("application/pdf")) {
+  if (
+    contentType &&
+    (contentType.includes("application/pdf") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/"))
+  ) {
     return c.blob() as Promise<T>;
   }
 
@@ -166,10 +171,11 @@ export const customMutator = async <
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<T["data"]>(response);
+  const responseData = await getBody<unknown>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(responseData);
+  const transformedData =
+    responseData instanceof Blob ? responseData : transformDates(responseData);
 
   return {
     status: response.status,

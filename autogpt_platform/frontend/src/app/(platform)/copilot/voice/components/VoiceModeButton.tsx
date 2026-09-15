@@ -27,7 +27,7 @@ export function VoiceModeButton({
       variant="icon"
       size="icon"
       aria-label={
-        speaking ? "Stop" : isActive ? "Leave voice mode" : "Talk to Otto"
+        speaking ? "Stop" : isActive ? "Leave voice mode" : "Start voice mode"
       }
       aria-pressed={isActive}
       disabled={disabled}
