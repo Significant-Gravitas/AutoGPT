@@ -464,9 +464,8 @@ def strip_server_injected_tags(text: str) -> str:
     without_voice = _VOICE_TURN_ANYWHERE_RE.sub("", without_expert)
     without_voice = _VOICE_TURN_LONE_TAG_RE.sub("", without_voice)
     # Strip <skills_update> blocks and lone tags — prevents spoofing of the
-    # server-injected per-turn skill-drift notice. Last in the chain (tag
-    # order is irrelevant: every pattern targets a distinct tag name), so
-    # the long-stable lines above stay byte-identical.
+    # server-injected per-turn skill-drift notice. Strip order is
+    # irrelevant: every pattern targets a distinct tag name.
     without_skills_update = _SKILLS_UPDATE_ANYWHERE_RE.sub("", without_voice)
     return _SKILLS_UPDATE_LONE_TAG_RE.sub("", without_skills_update)
 
