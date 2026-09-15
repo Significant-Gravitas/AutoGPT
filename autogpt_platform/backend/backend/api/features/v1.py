@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from starlette.status import HTTP_402_PAYMENT_REQUIRED
 from typing_extensions import Optional
 
-from backend.api.features.credits_rate_limit import (
+from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.api.model import (

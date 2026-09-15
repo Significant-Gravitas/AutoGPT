@@ -30,13 +30,13 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
-import backend.api.features.credits.routes as credits_routes
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes

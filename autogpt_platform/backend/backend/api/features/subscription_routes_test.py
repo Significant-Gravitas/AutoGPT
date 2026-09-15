@@ -10,7 +10,7 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
-from .credits_rate_limit import enforce_subscription_status_rate_limit
+from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
 from .v1 import _validate_checkout_redirect_url, v1_router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
