@@ -1479,9 +1479,13 @@ async def test_rejected_card_differs_from_never_connected_by_the_rejection():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_ungranted_mcp_credential_is_refused_for_an_expert():
+    """Still refused, but with the card rather than a bare error: this PR lets
+    the user grant the credential from it, so an ErrorResponse would leave the
+    expert with nothing to act on. The refusal is the message, not the type."""
     response = await _run_with_grants([])
-    assert isinstance(response, ErrorResponse)
-    assert response.error == "credential_not_granted"
+    assert isinstance(response, SetupRequirementsResponse)
+    assert "not granted to this expert" in response.message
+    assert not response.setup_info.user_readiness.ready_to_run
 
 
 @pytest.mark.asyncio(loop_scope="session")
