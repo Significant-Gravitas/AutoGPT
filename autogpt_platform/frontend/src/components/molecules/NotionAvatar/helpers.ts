@@ -206,6 +206,7 @@ export function randomNotionConfig(
   NOTION_CATEGORIES.forEach((category) => {
     parts[category] = weightedPart(category, random);
   });
+  parts.details = 0;
   return {
     parts,
     color: NOTION_COLORS[Math.floor(random() * NOTION_COLORS.length)].id,

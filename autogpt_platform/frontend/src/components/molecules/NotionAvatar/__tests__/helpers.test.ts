@@ -117,11 +117,18 @@ describe("seeding", () => {
     expect(bare("beard")).toBeGreaterThan(0.45);
   });
 
+  it("does not add face marks to generated avatars", () => {
+    const random = seededRandom(hashSeed("sample"));
+    const faces = Array.from({ length: 400 }, () => randomNotionConfig(random));
+
+    expect(faces.every((face) => face.parts.details === 0)).toBe(true);
+  });
+
   it("hashes a name the same way regardless of characters outside the BMP", () => {
     // "🤖" is a surrogate pair in UTF-16; hashing by code point keeps this
     // in sync with the backend's ord()-based _hash_seed.
     expect(notionAvatarUrlFor(notionConfigForName("Otto 🤖"))).toBe(
-      "/avatars/notion/7-10-18-11-6-5-37-3-4-1.teal.svg",
+      "/avatars/notion/7-10-18-11-6-5-37-3-0-1.teal.svg",
     );
   });
 });
