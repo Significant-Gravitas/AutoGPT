@@ -118,19 +118,27 @@ STARTER_SKILLS: list[CatalogEntry] = [
 async def seed_catalog_skills(catalog_dir: Path | None = None) -> list[str]:
     """Upsert every catalog listing. Returns the listing ids.
 
-    With no *catalog_dir* the catalog is downloaded from GitHub, or read from
-    ``SKILLS_CATALOG_PATH`` when that is set.
+    An explicit *catalog_dir* seeds only that tree. A normal run downloads the
+    catalog, or reads ``SKILLS_CATALOG_PATH``, and also keeps checked-in skills
+    that the expert roster needs until the catalog holds the same slug.
     """
-    if catalog_dir is None:
-        local = os.environ.get("SKILLS_CATALOG_PATH")
-        if local:
-            return await seed_catalog_skills(Path(local))
-        with tempfile.TemporaryDirectory() as tmp:
-            return await seed_catalog_skills(_download_catalog(Path(tmp)))
+    if catalog_dir is not None:
+        return await _seed_catalog(catalog_dir, include_starters=False)
 
-    entries = load_catalog(catalog_dir)
+    local = os.environ.get("SKILLS_CATALOG_PATH")
+    if local:
+        return await _seed_catalog(Path(local), include_starters=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        return await _seed_catalog(_download_catalog(Path(tmp)), include_starters=True)
+
+
+async def _seed_catalog(root: Path, *, include_starters: bool) -> list[str]:
+    entries = load_catalog(root)
+    loaded = [(entry, *_load(root, entry)) for entry in entries]
+    if not include_starters:
+        return await _seed_loaded(loaded)
+
     catalog_slugs = {entry["slug"] for entry in entries}
-    loaded = [(entry, *_load(catalog_dir, entry)) for entry in entries]
     loaded += [
         (entry, *_load_starter(entry))
         for entry in STARTER_SKILLS
@@ -148,7 +156,7 @@ async def seed_starter_skills() -> list[str]:
 async def _seed_loaded(
     loaded: list[tuple[CatalogEntry, ParsedSkill, list[SkillFile]]],
 ) -> list[str]:
-    """Validate all packages before writing any listing."""
+    """Write a set whose packages have all been loaded and checked."""
     listing_ids = []
     for entry, parsed, files in loaded:
         listing = await _upsert_listing(entry, parsed, files)
