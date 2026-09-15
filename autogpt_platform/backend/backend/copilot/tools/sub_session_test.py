@@ -53,6 +53,9 @@ def _session(
     # legacy sub look like one with provenance and fail the creator check.
     sess.metadata.delegated_by_session_id = None
     sess.metadata.handed_off_from_expert_id = None
+    # Same for pending_question: MagicMock is truthy and would trip
+    # clear_pending_question on origin-mismatch resume rejects (#14118).
+    sess.metadata.pending_question = None
     sess.expert_id = expert_id
     return sess
 
@@ -346,16 +349,32 @@ class TestRunSubSession:
         Naming an interactive session the caller happens to own would run the
         machine-authored prompt under the origin
         ``autopilot_session_guard`` lets reach the staffing tools.
+
+        Also clears a stuck Home pending_question on the rejected session
+        (#14118) — this path never reaches a user turn that would clear it.
         """
+        from datetime import datetime, timezone
+
+        from backend.copilot.model import PendingQuestion
+
         interactive_sub = _session("alice", "other-session", origin="interactive")
         # Passes the creator check so the origin check is what refuses.
         interactive_sub.metadata.delegated_by_session_id = "s1"
+        interactive_sub.metadata.pending_question = PendingQuestion(
+            text="Which channel?",
+            asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        clear_db = AsyncMock()
 
         async def fake_get(_session_id: str):
             return interactive_sub
 
         monkeypatch.setattr(
             "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+        monkeypatch.setattr(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
         )
 
         result = await RunSubSessionTool()._execute(
@@ -368,6 +387,8 @@ class TestRunSubSession:
         assert isinstance(result, ErrorResponse)
         assert "started by a person" in result.message
         mock_queue["enqueue_turn"].assert_not_awaited()
+        assert interactive_sub.metadata.pending_question is None
+        clear_db.assert_awaited_once_with("other-session", "alice")
 
     @pytest.mark.asyncio
     async def test_resume_accepts_legacy_sub_without_origin(
