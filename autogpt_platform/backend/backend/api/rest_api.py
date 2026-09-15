@@ -38,7 +38,7 @@ import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.graph_executions.review.routes
-import backend.api.features.graph_executions.routes as executions_routes
+import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -404,7 +404,7 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
-    executions_routes.router,
+    graph_executions_routes.router,
     tags=["v1"],
     prefix="/api",
 )
