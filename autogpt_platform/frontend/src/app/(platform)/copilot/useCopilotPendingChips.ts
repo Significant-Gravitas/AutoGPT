@@ -3,6 +3,10 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import {
+  messagesCarryDrainedText,
+  PENDING_DRAINED_PART_TYPE,
+} from "./components/ChatMessagesContainer/midTurnSplit";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -375,6 +379,16 @@ function useMidTurnDrainPromotion({
     latestSessionIdRef.current = sessionId;
   }, [sessionId]);
 
+  // Answered when the GET resolves, not when the poll is fired: a backstop
+  // tick that raced the hint would otherwise insert a bubble the render-time
+  // split is about to draw anyway, and the user would see the message twice.
+  const latestMessagesRef = useRef(messages);
+  latestMessagesRef.current = messages;
+  const isRenderedByStreamRef = useRef(() =>
+    messagesCarryDrainedText(latestMessagesRef.current),
+  );
+  const isRenderedByStream = isRenderedByStreamRef.current;
+
   // Fast path: promote the moment the backend signals a drain.  We count
   // ``data-pending-drained`` parts across messages and react to the count
   // increasing — replays (AI SDK resume re-emits the parts) leave the
@@ -409,8 +423,17 @@ function useMidTurnDrainPromotion({
       setMessages,
       setQueue,
       isCurrentSession,
+      isRenderedByStream,
     );
-  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
+  }, [
+    drainHintCount,
+    sessionId,
+    status,
+    queue,
+    setMessages,
+    setQueue,
+    isRenderedByStream,
+  ]);
 
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
@@ -428,10 +451,11 @@ function useMidTurnDrainPromotion({
         setMessages,
         setQueue,
         isCurrentSession,
+        isRenderedByStream,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queue, setMessages, setQueue]);
+  }, [sessionId, status, queue, setMessages, setQueue, isRenderedByStream]);
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -441,7 +465,7 @@ function countPendingDrainedHints(messages: UIMessage[]): number {
   let count = 0;
   for (const message of messages) {
     for (const part of message.parts) {
-      if (part.type === "data-pending-drained") count++;
+      if (part.type === PENDING_DRAINED_PART_TYPE) count++;
     }
   }
   return count;
@@ -453,6 +477,9 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
+  /** The stream's drain hint already carries the text, so the transcript
+   *  renders the follow-up bubble itself. */
+  isRenderedByStream: () => boolean,
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -473,35 +500,37 @@ async function pollBackendAndPromote(
   const drained = snapshotQueue.slice(0, drainedCount);
   const drainedIds = new Set(drained.map((entry) => entry.id));
 
-  // Splice the promoted bubble at ``len-1`` so the trailing streaming
-  // assistant stays at ``messages[-1]``.  AI SDK's ``useChat`` streams
-  // every SSE text/tool delta into the last message; pushing the user
-  // bubble onto the tail makes ``[-1]`` the user bubble and every
-  // subsequent chunk lands in the wrong slot (silently) until a page
-  // refresh.  Inserting before the assistant keeps the stream flowing.
+  // Fallback only. A backend that ships the drained text on the
+  // ``data-pending-drained`` hint lets the transcript render the bubble at
+  // the drain point (``splitMessagesAtDrainHints``), which is where it
+  // chronologically belongs; promoting here as well would show it twice.
+  // Against an older backend the hint carries a count alone, so the chip
+  // still has to become a bubble somewhere, and the only slot AI SDK leaves
+  // us is just above the streaming assistant.
   //
-  // The one tradeoff: during streaming the promoted bubbles cluster
-  // just above the current streaming assistant — which is earlier in
-  // the chronological order than the DB-canonical spot (between the
-  // tool result they rode in on and the continuing assistant).  AI SDK's
-  // single-message-per-turn model can't represent that mid-turn split
-  // client-side.  ``useHydrateOnStreamEnd`` replaces the in-memory
-  // messages with the DB-canonical order once the stream ends, so the
-  // bubbles snap to the correct position.
-  setMessages((prev) => {
-    const newBubbles = drained
-      .map((entry) =>
-        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
-      )
-      // Skip bubbles that are already there (effect re-run safety).
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-    if (newBubbles.length === 0) return prev;
-    const lastIdx = prev.length - 1;
-    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
-      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
-    }
-    return [...prev, ...newBubbles];
-  });
+  // Why not simply append it? ``useChat`` streams every SSE delta into
+  // ``messages[-1]``; pushing the user bubble onto the tail makes ``[-1]``
+  // the user bubble and every subsequent chunk lands in the wrong slot
+  // (silently) until a page refresh. Inserting before the assistant keeps
+  // the stream flowing, at the cost of showing the follow-up above the work
+  // that preceded it until ``useHydrateOnStreamEnd`` snaps the list to the
+  // DB order at the end of the turn.
+  if (!isRenderedByStream()) {
+    setMessages((prev) => {
+      const newBubbles = drained
+        .map((entry) =>
+          makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
+        )
+        // Skip bubbles that are already there (effect re-run safety).
+        .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+      if (newBubbles.length === 0) return prev;
+      const lastIdx = prev.length - 1;
+      if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
+        return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
+      }
+      return [...prev, ...newBubbles];
+    });
+  }
   // Drop only the drained entries by id; entries appended after the
   // snapshot survive the in-flight poll race.
   setQueue((current) => current.filter((entry) => !drainedIds.has(entry.id)));

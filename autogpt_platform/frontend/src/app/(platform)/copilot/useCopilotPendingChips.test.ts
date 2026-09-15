@@ -15,7 +15,12 @@ const mockGetPending = vi.mocked(getV2GetPendingMessages);
 
 const ASSISTANT_ID = "assistant-stable-id";
 
-function assistantMessage(drainHints = 0): Messages[number] {
+function assistantMessage(
+  drainHints = 0,
+  /** Text the backend ships on the hint. Present from the release that
+   *  renders the follow-up bubble at the drain point. */
+  drainedText?: string,
+): Messages[number] {
   const parts: Messages[number]["parts"] = [
     { type: "text", text: "working…", state: "done" },
   ];
@@ -23,7 +28,12 @@ function assistantMessage(drainHints = 0): Messages[number] {
     parts.push({
       type: "data-pending-drained",
       id: `hint-${i}`,
-      data: { drainedCount: 1 },
+      data: {
+        drainedCount: 1,
+        ...(drainedText
+          ? { messages: [{ id: `pm-${i}`, content: drainedText }] }
+          : {}),
+      },
     } as Messages[number]["parts"][number]);
   }
   return { id: ASSISTANT_ID, role: "assistant", parts };
@@ -93,6 +103,30 @@ describe("useCopilotPendingChips", () => {
       m.id.startsWith("promoted-midturn-pending-chip-"),
     );
     expect(promoted?.role).toBe("user");
+  });
+
+  it("clears the chip without a promoted bubble when the hint carries the text", async () => {
+    // The transcript renders the bubble at the drain point itself
+    // (splitMessagesAtDrainHints), so promoting here would show it twice.
+    const { view, getMessages } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("follow up");
+    });
+
+    await act(async () => {
+      view.rerender({ messages: [assistantMessage(1, "follow up")] });
+    });
+
+    await waitFor(() => {
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+    expect(
+      getMessages().some((m) =>
+        m.id.startsWith("promoted-midturn-pending-chip-"),
+      ),
+    ).toBe(false);
   });
 
   it("does not promote when the backend buffer count still covers the local chips", async () => {
