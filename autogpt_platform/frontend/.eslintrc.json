@@ -5,6 +5,12 @@
     "plugin:storybook/recommended",
     "plugin:@tanstack/query/recommended"
   ],
+  "overrides": [
+    {
+      "files": ["src/app/api/__generated__/**"],
+      "rules": { "@typescript-eslint/no-empty-object-type": "off" }
+    }
+  ],
   "rules": {
     // Disabling exhaustive-deps to avoid forcing unnecessary dependencies and useCallback proliferation.
     // We rely on code review for proper dependency management instead of mechanical rule following.

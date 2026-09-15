@@ -1,5 +1,5 @@
 import { usePostV1CreateNewGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { Graph } from "@/app/api/__generated__/models/graph";
+import { GraphInput } from "@/app/api/__generated__/models/graphInput";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { sanitizeImportedGraph } from "@/lib/autogpt-server-api";
@@ -14,7 +14,7 @@ export function useLibraryUploadAgentDialog(options?: {
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
-  const [agentObject, setAgentObject] = useState<Graph | null>(null);
+  const [agentObject, setAgentObject] = useState<GraphInput | null>(null);
 
   const { mutateAsync: createGraph, isPending: isUploading } =
     usePostV1CreateNewGraph({
@@ -50,7 +50,7 @@ export function useLibraryUploadAgentDialog(options?: {
   });
 
   const agentFileValue = form.watch("agentFile");
-  const prevAgentObjectRef = useRef<Graph | null>(null);
+  const prevAgentObjectRef = useRef<GraphInput | null>(null);
 
   useEffect(() => {
     if (!agentFileValue) {
@@ -90,7 +90,7 @@ export function useLibraryUploadAgentDialog(options?: {
         );
       }
 
-      const agent = obj as Graph;
+      const agent = obj as GraphInput;
       sanitizeImportedGraph(agent);
       setAgentObject(agent);
       prevAgentObjectRef.current = agent;
@@ -123,7 +123,7 @@ export function useLibraryUploadAgentDialog(options?: {
       return;
     }
 
-    const payload: Graph = {
+    const payload: GraphInput = {
       ...agentObject,
       name: values.agentName,
       description: values.agentDescription,

@@ -9,7 +9,7 @@ import {
   usePutV1UpdateGraphVersion,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { Graph } from "@/app/api/__generated__/models/graph";
+import { GraphInput } from "@/app/api/__generated__/models/graphInput";
 import { UpdateGraphResponse } from "@/app/api/__generated__/models/updateGraphResponse";
 import { notifySkippedWebhookPresets } from "../helpers/skippedWebhookPresets";
 import { useNodeStore } from "../stores/nodeStore";
@@ -137,7 +137,7 @@ export const useSaveGraph = ({
       const graphLinks = useEdgeStore.getState().getBackendLinks();
 
       if (graph && graph.id) {
-        const data: Graph = {
+        const data: GraphInput = {
           id: graph.id,
           name:
             values?.name ||
@@ -170,7 +170,7 @@ export const useSaveGraph = ({
         notifySkippedWebhookPresets(toast, result.skipped_webhook_presets);
         return graphData;
       } else {
-        const data: Graph = {
+        const data: GraphInput = {
           name: values?.name || `New Agent ${new Date().toISOString()}`,
           description: values?.description || "",
           nodes: graphNodes,
