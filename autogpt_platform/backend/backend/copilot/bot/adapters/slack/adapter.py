@@ -345,7 +345,7 @@ class SlackAdapter(WebhookAdapter):
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
             thread_history=thread_history,
-            mentionable_users=await self._collect_mentionable_users(team, text),
+            mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,
             skipped_attachments=skipped,
         )
@@ -736,12 +736,14 @@ class SlackAdapter(WebhookAdapter):
         return _USER_MENTION_RE.sub(_replace, text).strip()
 
     async def _collect_mentionable_users(
-        self, team_id: str, text: str
+        self, team_id: str, text: str, author_id: str = ""
     ) -> tuple[tuple[str, str], ...]:
+        """The author and everyone the inbound message mentioned. The author
+        is who the bot is answering, so "@name" back to them must ping."""
         bot_id = await self._bot_user_id_for(team_id)
         pairs: list[tuple[str, str]] = []
-        for match in _USER_MENTION_RE.finditer(text):
-            uid = match.group(1)
+        mentioned = [m.group(1) for m in _USER_MENTION_RE.finditer(text)]
+        for uid in ([author_id] if author_id else []) + mentioned:
             if bot_id and uid == bot_id:
                 continue
             pair = (await self._user_display_name(team_id, uid), uid)

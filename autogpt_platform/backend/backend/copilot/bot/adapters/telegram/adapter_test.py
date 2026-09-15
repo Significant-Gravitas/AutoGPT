@@ -270,6 +270,22 @@ class TestOutbound:
         assert kwargs["text"] == "<b>bold</b> &amp; plain"
 
     @pytest.mark.asyncio
+    async def test_mentions_by_name_and_id_ping_and_everything_else_is_escaped(
+        self,
+    ):
+        """The mention is resolved before HTML escaping, so "<@7>" the model
+        wrote is still recognisable, while an unknown "<@9>" and a
+        "<b>" it made up come out escaped."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "hi @Bently & <@7>, not <@9> <b>x</b>", (("Bently", "7"),)
+        )
+        anchor = '<a href="tg://user?id=7">@Bently</a>'
+        assert a._client.call.call_args.kwargs["text"] == (
+            f"hi {anchor} &amp; {anchor}, not &lt;@9&gt; &lt;b&gt;x&lt;/b&gt;"
+        )
+
+    @pytest.mark.asyncio
     async def test_send_link_prefers_login_url_for_https(self):
         # Telegram attaches a signed identity when the user taps a login_url
         # button — the /link page verifies it for seamless linking.
@@ -351,6 +367,25 @@ def test_collect_mentionable_users_only_text_mentions_with_ids():
         ]
     }
     assert _collect_mentionable_users(message) == (("Sam", "5"),)
+
+
+def test_the_author_is_mentionable_by_username_and_first_name():
+    message = {
+        "from": {"id": 7, "first_name": "Bently", "username": "bentlybro"},
+        "entities": [
+            {"type": "text_mention", "user": {"id": 5, "first_name": "Sam"}},
+        ],
+    }
+    assert _collect_mentionable_users(message) == (
+        ("bentlybro", "7"),
+        ("Bently", "7"),
+        ("Sam", "5"),
+    )
+
+
+def test_a_bot_author_is_never_mentionable():
+    message = {"from": {"id": 9, "first_name": "Other", "is_bot": True}}
+    assert _collect_mentionable_users(message) == ()
 
 
 async def _noop() -> None:

@@ -872,6 +872,113 @@ class TestCollectMentionableUsers:
         assert allowed.users is False
 
     @pytest.mark.asyncio
+    async def test_the_person_talking_to_the_bot_outranks_a_role_of_their_name(
+        self,
+    ):
+        """Live repro: the server has a "Bently" role, so "@Bently" belonged to
+        a user and a role, counted as a clash, and pinged nobody, though
+        Bently had just written to the bot."""
+        adapter, _ = _bare_adapter(bot_id=1000)
+        guild = _guild_with([], [_role(42, "Bently"), _role(43, "Platform")])
+        guild.query_members = AsyncMock(return_value=[])
+        channel = MagicMock(spec=discord.Thread)
+        channel.guild = guild
+        known = (("Bently", "353922987235213313"),)
+
+        text = "Hi @Bently! and @Platform"
+        pairs = await adapter._mentionables_for(channel, text, known)
+        rendered, allowed = _resolve_mentions(text, pairs)
+
+        assert rendered == "Hi <@353922987235213313>! and <@&43>"
+        assert [obj.id for obj in allowed.users] == [353922987235213313]
+        assert [obj.id for obj in allowed.roles] == [43]
+
+    @pytest.mark.asyncio
+    async def test_an_exact_member_name_outranks_a_prefix_match(self):
+        """ "@Sam" with members "Sam" and "Samantha" is Sam, not a clash."""
+        adapter, _ = _bare_adapter(bot_id=1000)
+        sam = _mention(3000, "Sam")
+        sam.name = "sam"
+        sam.bot = False
+        samantha = _mention(4000, "Samantha")
+        samantha.name = "samantha99"
+        samantha.bot = False
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[sam, samantha])
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        pairs = await adapter._mentionables_for(channel, "ping @Sam", ())
+        rendered, allowed = _resolve_mentions("ping @Sam", pairs)
+
+        assert rendered == "ping <@3000>"
+        assert [obj.id for obj in allowed.users] == [3000]
+
+    @pytest.mark.asyncio
+    async def test_a_raw_id_the_model_wrote_pings_the_person_in_the_conversation(
+        self,
+    ):
+        """Live repro: the model wrote "Hi <@353922987235213313>!" from the id
+        in its prompt, and Discord rendered a mention that pinged nobody."""
+        adapter, _ = _bare_adapter(bot_id=1000)
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[])
+        channel = MagicMock(spec=discord.Thread)
+        channel.guild = guild
+        known = (("Bently", "353922987235213313"),)
+
+        text = "Hi <@353922987235213313>!"
+        pairs = await adapter._mentionables_for(channel, text, known)
+        rendered, allowed = _resolve_mentions(text, pairs)
+
+        assert rendered == text
+        assert [obj.id for obj in allowed.users] == [353922987235213313]
+
+    @pytest.mark.asyncio
+    async def test_a_raw_id_for_another_server_member_pings_them(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        member = _mention(454545454545454545, "Nick")
+        member.bot = False
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[])
+        guild.get_member = MagicMock(return_value=member)
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        text = "cc <@454545454545454545>"
+        pairs = await adapter._mentionables_for(channel, text, ())
+        _, allowed = _resolve_mentions(text, pairs)
+
+        assert [obj.id for obj in allowed.users] == [454545454545454545]
+
+    @pytest.mark.asyncio
+    async def test_a_raw_id_for_someone_outside_the_server_pings_nobody(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        guild = _guild_with([], [])
+        guild.query_members = AsyncMock(return_value=[])
+        guild.get_member = MagicMock(return_value=None)
+        guild.fetch_member = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "Unknown Member")
+        )
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        text = "Hi <@999999999999999999>"
+        pairs = await adapter._mentionables_for(channel, text, ())
+        rendered, allowed = _resolve_mentions(text, pairs)
+
+        assert pairs == ()
+        assert rendered == text
+        assert allowed.users is False
+
+    def test_a_raw_role_token_pings_only_an_allowlisted_role(self):
+        _, allowed = _resolve_mentions(
+            "Heads up <@&424242424242424242> and <@&434343434343434343>",
+            (("Platform", "role:424242424242424242"),),
+        )
+        assert [obj.id for obj in allowed.roles] == [424242424242424242]
+
+    @pytest.mark.asyncio
     async def test_send_time_lookup_in_a_dm_keeps_only_known_users(self):
         adapter, _ = _bare_adapter(bot_id=1000)
         channel = MagicMock(spec=discord.DMChannel)

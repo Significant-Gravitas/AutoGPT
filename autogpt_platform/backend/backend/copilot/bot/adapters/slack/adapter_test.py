@@ -102,6 +102,8 @@ class TestInboundRouting:
         assert ctx.text == "hi there"  # bot mention stripped
         # The opaque channel_id carries the workspace so sends pick its token.
         assert ctx.channel_id == "T1|C1|"
+        # The author is who the bot answers, so a reply naming them pings.
+        assert [uid for _, uid in ctx.mentionable_users] == ["U1"]
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):
@@ -501,21 +503,22 @@ class TestOutbound:
 
     @pytest.mark.asyncio
     async def test_raw_control_sequences_are_escaped_but_allowlist_pings(self, adapter):
-        # A model-output <!channel> or raw <@Uid> must be neutralized; only
-        # the allowlisted @Bently comes back as a live mention token.
+        # A model-output <!channel>, or a raw <@Uid> for someone not on the
+        # allowlist, must be neutralized. The allowlisted person pings whether
+        # the model named them (@Bently) or wrote their id (<@U9>).
         await adapter.send_message(
-            "T1|C1|", "<!channel> <@U9> @Bently", (("Bently", "U9"),)
+            "T1|C1|", "<!channel> <@U8> <@U9> @Bently", (("Bently", "U9"),)
         )
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
-        assert text == "&lt;!channel&gt; &lt;@U9&gt; <@U9>"
+        assert text == "&lt;!channel&gt; &lt;@U8&gt; <@U9> <@U9>"
 
     @pytest.mark.asyncio
     async def test_allowlisted_name_with_escapable_chars_still_pings(self, adapter):
         # Display names like "R&D" are raw; matching must happen before the
         # text is escaped or the ping silently disappears.
-        await adapter.send_message("T1|C1|", "hey @R&D, see <@U7>", (("R&D", "U7"),))
+        await adapter.send_message("T1|C1|", "hey @R&D, see <@U6>", (("R&D", "U7"),))
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
-        assert text == "hey <@U7>, see &lt;@U7&gt;"
+        assert text == "hey <@U7>, see &lt;@U6&gt;"
 
     @pytest.mark.asyncio
     async def test_post_channel_message_chunks_before_escaping(self, adapter):
