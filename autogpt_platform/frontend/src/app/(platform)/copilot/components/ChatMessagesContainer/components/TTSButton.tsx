@@ -1,23 +1,19 @@
 "use client";
 
 import { MessageAction } from "@/components/ai-elements/message";
-import { useTextToSpeech } from "@/components/contextual/Chat/components/ChatMessage/useTextToSpeech";
-import { stripMarkdownForSpeech } from "../../../voice/stripMarkdownForSpeech";
-import { useMemo } from "react";
 import { StopIcon, VolumeHighIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useTTSButton } from "./useTTSButton";
 
 interface Props {
   text: string;
+  sessionID: string | null;
 }
 
-export function TTSButton({ text }: Props) {
-  const cleanText = useMemo(() => stripMarkdownForSpeech(text), [text]);
-  const { status, isSupported, toggle } = useTextToSpeech(cleanText);
+export function TTSButton({ text, sessionID }: Props) {
+  const { canSpeak, isPlaying, toggle } = useTTSButton({ text, sessionID });
 
-  if (!isSupported || !cleanText) return null;
-
-  const isPlaying = status === "playing";
+  if (!canSpeak) return null;
 
   return (
     <MessageAction

@@ -442,9 +442,9 @@ async def soft_delete_workspace_file(
         return None
 
     deleted_at = datetime.now(timezone.utc)
-    # Modify path to free up the unique constraint for new files at original path
-    # Format: {original_path}__deleted__{timestamp}
-    deleted_path = f"{file.path}__deleted__{int(deleted_at.timestamp())}"
+    # Frees the path for the next write, to microseconds: `write_file` soft-deletes
+    # the row it overwrites, so two writes in one second would collide here.
+    deleted_path = f"{file.path}__deleted__{deleted_at.timestamp():.6f}"
 
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
@@ -491,7 +491,7 @@ async def resolve_attachable_workspace_files(
 ) -> list[UserWorkspaceFile]:
     """Resolve attachment IDs for a message sent in ``session_id``.
 
-    Personal AutoPilot sessions may attach any file in the owner's workspace.
+    Personal Otto sessions may attach any file in the owner's workspace.
     Expert sessions are confined to the expert's resolved scope: attaching a
     file from another expert's conversations raises
     ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface

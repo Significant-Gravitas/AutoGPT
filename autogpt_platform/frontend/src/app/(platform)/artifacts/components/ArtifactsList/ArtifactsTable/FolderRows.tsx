@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function FolderRows({ onSelectFolder }: Props) {
-  const { folders, isLoading, isError, error, moveFileToFolder } =
+  const { folders, isLoading, isError, error, moveFilesToFolder } =
     useArtifactsFolders();
   const [editing, setEditing] = useState<WorkspaceFolder | null>(null);
   const [deleting, setDeleting] = useState<WorkspaceFolder | null>(null);
@@ -41,9 +41,10 @@ export function FolderRows({ onSelectFolder }: Props) {
 
   return (
     <>
-      {folders.map((folder) => (
+      {folders.map((folder, index) => (
         <FolderRow
           key={folder.id}
+          index={index}
           id={folder.id}
           name={folder.name}
           fileCount={folder.file_count ?? 0}
@@ -51,8 +52,8 @@ export function FolderRows({ onSelectFolder }: Props) {
           onOpen={() => onSelectFolder(folder.id)}
           onEdit={() => setEditing(folder)}
           onDelete={() => setDeleting(folder)}
-          onFileDrop={(fileId) => {
-            moveFileToFolder({ fileId, folderId: folder.id }).catch(() => {});
+          onFileDrop={(fileIds) => {
+            moveFilesToFolder({ fileIds, folderId: folder.id }).catch(() => {});
           }}
         />
       ))}

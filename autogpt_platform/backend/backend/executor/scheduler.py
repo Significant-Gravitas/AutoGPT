@@ -365,7 +365,7 @@ async def _execute_copilot_turn(**kwargs):
             if not expert_scope_was_persisted:
                 logger.info(
                     "Copilot turn schedule %s predates persisted memory scope; "
-                    "preserving its legacy AutoPilot behavior",
+                    "preserving its legacy Otto behavior",
                     args.schedule_id,
                 )
             if args.expert_id is not None:
@@ -397,7 +397,7 @@ async def _execute_copilot_turn(**kwargs):
                 # The scope check above passed, so the expert was archived or
                 # deleted in the window before creation. `create_chat_session`
                 # drops the attribution rather than failing, which would run an
-                # expert's follow-up in AutoPilot memory scope — fail closed
+                # expert's follow-up in Otto memory scope — fail closed
                 # instead. Skip without deleting: archive is reversible, and
                 # this window can't tell it apart from deletion. The next
                 # firing's scope check routes authoritatively (missing →
@@ -441,7 +441,7 @@ async def _execute_copilot_turn(**kwargs):
                 # Legacy explicit-session jobs predate the scope field. The
                 # owned target session is the only authoritative provenance
                 # available, so recover from it rather than interpreting the
-                # missing field as AutoPilot.
+                # missing field as Otto.
                 args = args.model_copy(update={"expert_id": session.expert_id})
             if args.expert_id is not None:
                 expert_status = await _expert_scope_status(args.user_id, args.expert_id)
@@ -450,7 +450,7 @@ async def _execute_copilot_turn(**kwargs):
                     return
             target_session_id = args.session_id
             target_session = session
-            # The target may be the user's own interactive Autopilot chat,
+            # The target may be the user's own interactive Otto chat,
             # where ``origin`` says nothing about who wrote *this* turn. A
             # role="user" row here would raise the confirm watermark
             # ``expert_proposal`` gates on, letting a scheduled follow-up
@@ -1528,7 +1528,7 @@ class CopilotTurnJobArgs(BaseModel):
     # is scoped to the same expert as the chat that scheduled the follow-up —
     # its runs then count toward the expert's budget, surface on her thread,
     # and read/write her isolated memory scope. None keeps legacy schedules
-    # and AutoPilot follow-ups in the user's account scope. Optional for
+    # and Otto follow-ups in the user's account scope. Optional for
     # backward compat with rows persisted before this field was added.
     expert_id: str | None = None
 
@@ -1796,6 +1796,21 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
+        # Kept as a named reference (rather than only living inside the
+        # ``jobstores=`` dict below) so ``_get_active_jobs_cached`` can query
+        # its table directly with a server-side filter — see that method for
+        # why the stock ``get_all_jobs()`` isn't enough.
+        self._execution_jobstore = SQLAlchemyJobStore(
+            engine=create_engine(
+                url=db_url,
+                pool_size=self.db_pool_size(),
+                max_overflow=0,
+            ),
+            metadata=MetaData(schema=db_schema),
+            # this one is pre-existing so it keeps the default table name.
+            tablename="apscheduler_jobs",
+        )
+
         self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
@@ -1808,17 +1823,7 @@ class Scheduler(AppService):
                 "misfire_grace_time": None,  # No time limit for missed jobs
             },
             jobstores={
-                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    # this one is pre-existing so it keeps the
-                    # default table name.
-                    tablename="apscheduler_jobs",
-                ),
+                Jobstores.EXECUTION.value: self._execution_jobstore,
                 Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
                     engine=create_engine(
                         url=db_url,
@@ -1959,8 +1964,13 @@ class Scheduler(AppService):
                 id="ensure_embeddings_coverage",
                 trigger="interval",
                 hours=6,
+                # Due now rather than called inline below: run_service() is what
+                # starts the event loop uvicorn binds the RPC port on.
+                next_run_time=datetime.now(timezone.utc),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                misfire_grace_time=None,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -1981,18 +1991,6 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
-
-        # Run embedding backfill immediately on startup
-        # This ensures blocks/docs are searchable right away, not after 6 hours
-        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
-        if self.register_system_tasks:
-            logger.info("Running embedding backfill on startup...")
-            try:
-                result = ensure_embeddings_coverage()
-                logger.info(f"Startup embedding backfill complete: {result}")
-            except Exception as e:
-                logger.error(f"Startup embedding backfill failed: {e}")
-                # Don't fail startup - the scheduled job will retry later
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
@@ -2129,7 +2127,7 @@ class Scheduler(AppService):
         """Schedule a copilot turn at a future time.
 
         When *session_id* is ``None`` the executor creates a fresh chat
-        at fire time in the persisted Autopilot or expert scope and routes
+        at fire time in the persisted Otto or expert scope and routes
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
@@ -2288,14 +2286,15 @@ class Scheduler(AppService):
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
-    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)``. APScheduler
-    # has no SQL-level user_id / kind filter — it loads every row and
-    # unpickles each ``job.kwargs`` in Python.  The /library page now
-    # fires THREE separate calls into this method on cold load (existing
-    # graph schedules + new copilot followups + briefing-pill counts),
-    # so we memoise the unfiltered list for a few seconds.  Mutations
-    # (`add_*_schedule`, `delete_schedule`) clear the cache so user-visible
-    # latency on writes is unchanged.
+    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)`` — the fully
+    # unfiltered row set, including paused schedules and already-fired
+    # one-shot jobs. APScheduler has no SQL-level user_id / kind filter
+    # either way — it loads every row and unpickles each ``job.kwargs`` in
+    # Python — so this is now only worth paying for on the rare
+    # ``include_paused=True`` lifecycle lookups; see the sibling
+    # ``_get_active_jobs_cached`` below for the path everything else takes.
+    # Mutations (`add_*_schedule`, `delete_schedule`) clear both caches so
+    # user-visible latency on writes is unchanged.
     _JOBS_CACHE_TTL_S = 5.0
     _jobs_cache: list[JobObj] | None = None
     _jobs_cache_expires_at: float = 0.0
@@ -2331,6 +2330,40 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+        return jobs
+
+    # Second cache, keyed off the same lock/version, for the ``next_run_time
+    # IS NOT NULL`` (non-paused) rows only. This is what every caller except
+    # the pause/resume lifecycle lookups (``include_paused=True``) actually
+    # wants, and unlike ``_get_jobs_cached`` it pushes that filter down to
+    # SQL instead of unpickling every paused/already-fired row in Python
+    # only to throw it away — ``apscheduler_jobs`` accumulates those forever
+    # (nothing deletes a paused or fired-once job), so on a table with a
+    # meaningful history the unfiltered scan is what Sentry was flagging as
+    # a slow, unbounded query. ``next_run_time`` already carries a btree
+    # index from APScheduler's own table definition, so this needs no
+    # schema change.
+    _active_jobs_cache: list[JobObj] | None = None
+    _active_jobs_cache_expires_at: float = 0.0
+
+    def _get_active_jobs_cached(self) -> list[JobObj]:
+        with self._jobs_cache_lock:
+            now = time.monotonic()
+            if (
+                self._active_jobs_cache is not None
+                and now < self._active_jobs_cache_expires_at
+            ):
+                return self._active_jobs_cache
+            version_at_start = self._jobs_cache_version
+        jobs = self._execution_jobstore._get_jobs(
+            self._execution_jobstore.jobs_t.c.next_run_time.isnot(None)
+        )
+        with self._jobs_cache_lock:
+            if self._jobs_cache_version == version_at_start:
+                self._active_jobs_cache = jobs
+                self._active_jobs_cache_expires_at = (
+                    time.monotonic() + self._JOBS_CACHE_TTL_S
+                )
                 # The one scheduler metric with an alert on it was never set.
                 # Only an accepted read may publish it: a read that was
                 # invalidated mid-query is stale by definition and must not
@@ -2344,6 +2377,8 @@ class Scheduler(AppService):
         with self._jobs_cache_lock:
             self._jobs_cache = None
             self._jobs_cache_expires_at = 0.0
+            self._active_jobs_cache = None
+            self._active_jobs_cache_expires_at = 0.0
             self._jobs_cache_version += 1
 
     @expose
@@ -2370,18 +2405,22 @@ class Scheduler(AppService):
         schedules remain owner-only for scoped calls. Trusted global callers
         that provide neither *user_id* nor *organization_id* receive all jobs.
 
-        Paused jobs (``next_run_time is None``) are hidden by default, which
-        is what keeps a fired expert's suspended schedules out of every user
-        -facing listing. *include_paused* is for the lifecycle callers that
-        have to find them again to resume them. Fired one-shot jobs share
-        the same null marker, so they resurface too — filter by kind/id if
-        that matters to the caller.
+        Paused jobs (``next_run_time is None``) are hidden by default —
+        excluded at the SQL level via ``_get_active_jobs_cached`` rather than
+        filtered out afterwards — which is what keeps a fired expert's
+        suspended schedules out of every user-facing listing. *include_paused*
+        is for the lifecycle callers that have to find them again to resume
+        them; that path reads the unfiltered ``_get_jobs_cached`` instead.
+        Fired one-shot jobs share the same null marker, so they resurface too
+        — filter by kind/id if that matters to the caller.
         """
-        jobs: list[JobObj] = self._get_jobs_cached()
+        jobs: list[JobObj] = (
+            self._get_jobs_cached()
+            if include_paused
+            else self._get_active_jobs_cached()
+        )
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            if job.next_run_time is None and not include_paused:
-                continue
             info = _job_to_info(job)
             if info is None:
                 continue

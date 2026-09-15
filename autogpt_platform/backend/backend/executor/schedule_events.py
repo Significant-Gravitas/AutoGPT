@@ -20,6 +20,7 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from threading import Lock
 
 from pydantic import BaseModel
 
@@ -46,7 +47,14 @@ class ScheduleCreatedRecord(BaseModel):
 
 
 def record_schedule_created(record: ScheduleCreatedRecord) -> None:
-    _submit(lambda: _write_activity_event(record))
+    try:
+        _submit(lambda: _write_activity_event(record))
+    except Exception:
+        logger.warning(
+            "Failed to submit schedule.created for %s",
+            record.schedule_id,
+            exc_info=True,
+        )
     product_analytics.track_schedule_created(
         user_id=record.user_id,
         schedule_id=record.schedule_id,
@@ -90,13 +98,16 @@ def _write_activity_event(record: ScheduleCreatedRecord) -> None:
 
 
 _executor: ThreadPoolExecutor | None = None
+_executor_lock = Lock()
 
 
 def _submit(work: Callable[[], None]) -> None:
     """Run *work* off the caller's thread. Tests replace this to run inline."""
     global _executor
-    if _executor is None:
-        _executor = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="schedule-created-activity-event"
-        )
-    _executor.submit(work)
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="schedule-created-activity-event"
+            )
+        executor = _executor
+    executor.submit(work)

@@ -181,7 +181,7 @@ async def setup_trigger(
             agent_credentials=params.agent_credentials,
             # Graph-match attribution is resolved by the caller (mirroring
             # create_preset above): setup_triggered_preset itself never
-            # infers an expert, so copilot AutoPilot sessions get presets
+            # infers an expert, so copilot Otto sessions get presets
             # they can actually manage.
             expert_id=await experts_db.resolve_expert_for_graph(
                 user_id, params.graph_id

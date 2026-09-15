@@ -1,7 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +14,9 @@ from backend.copilot.tools.helpers import (
     check_hitl_review,
     execute_block,
     get_block_provider,
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    is_picker_field,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -1840,6 +1843,58 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestPickerInputs:
+    """Setup cards carry only picker-backed inputs; the rest is asked in chat."""
+
+    _schema: ClassVar[dict[str, Any]] = {
+        "properties": {
+            "term": {"type": "string"},
+            "limit": {"type": "integer", "default": 10, "advanced": True},
+            "spreadsheet": {
+                "type": "object",
+                "format": "google-drive-picker",
+            },
+            "doc": {
+                "type": "object",
+                "auto_credentials": {"provider": "google", "kwarg_name": "creds"},
+            },
+            "credentials": {"type": "object"},
+        },
+        "required": ["term", "spreadsheet", "credentials"],
+    }
+
+    def test_is_picker_field(self):
+        assert is_picker_field({"format": "google-drive-picker"})
+        assert is_picker_field({"auto_credentials": {"provider": "google"}})
+        assert not is_picker_field({"type": "string"})
+        assert not is_picker_field(None)
+
+    def test_only_picker_fields_survive(self):
+        inputs = get_picker_inputs_from_schema(
+            self._schema, exclude_fields={"credentials"}
+        )
+        assert [i["name"] for i in inputs] == ["spreadsheet", "doc"]
+
+    def test_plain_inputs_yield_empty_list(self):
+        schema = {
+            "properties": {"term": {"type": "string"}},
+            "required": ["term"],
+        }
+        assert get_picker_inputs_from_schema(schema) == []
+        assert len(get_inputs_from_schema(schema)) == 1
+
+    def test_provided_values_are_kept_on_picker_fields(self):
+        picked = {"id": "file-1", "name": "Sheet"}
+        inputs = get_picker_inputs_from_schema(
+            self._schema,
+            exclude_fields={"credentials"},
+            input_data={"term": "bug", "spreadsheet": picked},
+        )
+        by_name = {i["name"]: i for i in inputs}
+        assert by_name["spreadsheet"]["value"] == picked
+        assert "term" not in by_name
 
 
 class TestExecuteBlockExpertFileScope:

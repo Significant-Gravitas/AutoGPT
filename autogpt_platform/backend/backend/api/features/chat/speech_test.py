@@ -204,6 +204,18 @@ def test_speech_503s_without_a_configured_key(
     record_usage.assert_not_awaited()
 
 
+def test_speech_bounds_a_hung_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The client's own 600 s default, across its two retries, is half an hour of
+    # silence on the path voice mode chunks to speak within a second.
+    monkeypatch.setattr(speech_module.settings.secrets, "openai_internal_api_key", "")
+    monkeypatch.setattr(speech_module.settings.secrets, "openai_api_key", "sk-test-key")
+
+    timeout = speech_module._speech_client().timeout
+
+    assert timeout == speech_module.SPEECH_TIMEOUT
+    assert (timeout.read, timeout.connect) == (30.0, 5.0)
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     from autogpt_libs.auth.dependencies import get_request_context

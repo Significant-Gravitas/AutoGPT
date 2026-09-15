@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -22,13 +23,53 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
+/** Cover art and palette colour shipped with the seeded experts, keyed by
+ *  the avatar the seed gives them. Seeded experts carry no colour of their
+ *  own, so the picture's pastel fills in; an expert's own colour still wins. */
+const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
+  "/experts/max.svg": {
+    art: "/experts/covers/max-1.jpg",
+    color: "fuchsia-300",
+  },
+  "/experts/maria.svg": {
+    art: "/experts/covers/maria-1.jpg",
+    color: "orange-300",
+  },
+  "/experts/frankie.svg": {
+    art: "/experts/covers/frankie-1.jpg",
+    color: "yellow-300",
+  },
+};
+
+/** A raised expert with no colour of its own still gets a pastel, picked
+ *  from the palette by its id so it is the same on every render and page. */
+function getFallbackCoverColor(expertId: string) {
+  let hash = 0;
+  for (const char of expertId) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return COLOR_OPTIONS[hash % COLOR_OPTIONS.length].id;
+}
+
+export function getExpertCover(
+  expert: Pick<Expert, "id" | "avatar_url" | "color">,
+) {
+  const seeded = expert.avatar_url
+    ? SEEDED_COVERS[expert.avatar_url]
+    : undefined;
+  return {
+    art: seeded?.art ?? null,
+    color: expert.color || seeded?.color || getFallbackCoverColor(expert.id),
+  };
+}
+
 export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
   "border border-zinc-200 bg-zinc-50 text-zinc-700";
 
-/** Autopilot owns whatever no hired expert does: every library workflow that
+/** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
  *  page's cards can render it. A schedule on the same graph gives it its cron. */
 export function getAutopilotWorkflows(
@@ -63,7 +104,7 @@ export function getAutopilotWorkflows(
     });
 }
 
-/** Library skills no hired expert has claimed; Autopilot falls back to these. */
+/** Library skills no hired expert has claimed; Otto falls back to these. */
 export function getAutopilotSkills(
   experts: Expert[],
   librarySkills: CopilotSkillInfo[],
@@ -155,16 +196,14 @@ export function getWeeklySpend(expert: Expert) {
 
 export type ExpertRosterStatus = "idle" | "working" | "needs-you";
 
-export function getExpertRosterStatus(
-  expert: Expert,
-  needsSetupCount: number,
-): ExpertRosterStatus {
+// Missing setup is not a card status: the Setup needed card above the
+// roster names it and offers the fix.
+export function getExpertRosterStatus(expert: Expert): ExpertRosterStatus {
   const runStatus = expert.last_run_status?.toUpperCase();
 
   if (runStatus === "RUNNING" || runStatus === "QUEUED") return "working";
   if (
     expert.schedules_paused_at ||
-    needsSetupCount > 0 ||
     runStatus === "FAILED" ||
     runStatus === "TERMINATED" ||
     runStatus === "REVIEW"
@@ -306,7 +345,7 @@ interface AutopilotSummaryArgs {
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
 }
 
-/** Autopilot works across the whole team, so its card counts the team's
+/** Otto works across the whole team, so its card counts the team's
  *  totals. Skills are de-duplicated — two experts who can both write copy is
  *  one skill on the team, not two. */
 export function getAutopilotSummary({

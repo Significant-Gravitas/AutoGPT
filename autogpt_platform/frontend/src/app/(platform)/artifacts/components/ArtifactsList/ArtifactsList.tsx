@@ -72,7 +72,9 @@ export function ArtifactsList({
           />
         </div>
       ) : (
+        // Keyed so the row selection resets whenever the listing changes.
         <ArtifactsTable
+          key={listKey}
           files={files}
           isLoading={isLoading}
           emptyState={emptyState}

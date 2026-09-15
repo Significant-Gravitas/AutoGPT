@@ -1,44 +1,20 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  SparklesIcon,
-  UserAdd01Icon,
-  UserGroupIcon,
-} from "@hugeicons/core-free-icons";
 
-interface Props {
-  onNewPod: () => void;
-}
-
-export function TeamHeaderActions({ onNewPod }: Props) {
+export function TeamHeaderActions() {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button
-        as="NextLink"
-        href="/raise"
-        variant="secondary"
-        size="xs"
-        leadingIcon={SparklesIcon}
-      >
+      <Button as="NextLink" href="/raise" variant="secondary" size="small">
         Raise expert
       </Button>
       <Button
         as="NextLink"
         href="/marketplace#experts"
         variant="primary"
-        size="xs"
-        leadingIcon={UserAdd01Icon}
+        size="small"
       >
         Hire expert
-      </Button>
-      <Button
-        variant="outline"
-        size="xs"
-        onClick={onNewPod}
-        leadingIcon={UserGroupIcon}
-      >
-        New Pod
       </Button>
     </div>
   );

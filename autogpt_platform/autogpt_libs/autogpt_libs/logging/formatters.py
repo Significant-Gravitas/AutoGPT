@@ -1,4 +1,5 @@
 import logging
+from copy import copy
 
 from colorama import Fore, Style
 
@@ -26,6 +27,7 @@ class FancyConsoleFormatter(logging.Formatter):
     }
 
     def format(self, record: logging.LogRecord) -> str:
+        record = copy(record)
         # Make sure `msg` is a string
         if not hasattr(record, "msg"):
             record.msg = ""
@@ -55,6 +57,7 @@ class AGPTFormatter(FancyConsoleFormatter):
         self.no_color = no_color
 
     def format(self, record: logging.LogRecord) -> str:
+        record = copy(record)
         # Make sure `msg` is a string
         if not hasattr(record, "msg"):
             record.msg = ""

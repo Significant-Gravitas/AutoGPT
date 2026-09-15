@@ -32,6 +32,7 @@ from backend.util.settings import AppEnvironment, Settings
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
 from .expert_context import build_expert_context, escape_prompt_xml_tags
+from .expert_kickoff import is_expert_kickoff_message
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -89,7 +90,7 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
         api_key, base_url = config.main_client_credentials
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
         # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against AutoPilot's heavy system
+        # many minutes for a single turn against Otto's heavy system
         # prompt. The OpenAI client default (600 s) is too short for that
         # case — extend it under the local transport. Cloud transports
         # keep the SDK default so genuine hangs still surface promptly.
@@ -195,7 +196,7 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
 # prompt_cache_test.py. The leading underscore is retained for backwards
 # compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
-_CACHEABLE_SYSTEM_PROMPT = f"""You are AutoPilot, the AI assistant on the AutoGPT platform, helping users build and run automations.
+_CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
 - Understanding their needs and business context
@@ -606,6 +607,14 @@ async def inject_user_context(
     content to the DB so resumed sessions and page reloads retain
     personalisation.
 
+    A hire's kickoff turn (the server-written message that opens the
+    onboarding card) gets neither ``<user_context>`` nor the teammate roster.
+    The card must come from the expert's own role, and both blocks are
+    exactly the kind of context the model otherwise borrows its questions
+    from — a "Finding leads" pain point or a sales teammate's workflows put
+    lead-gen options on a developer's card. What the expert needs to know
+    about the user, the card asks for itself.
+
     Untrusted input — both the user-supplied ``message`` and the user-owned
     fields inside ``understanding`` — is stripped/escaped before being placed
     inside the trusted ``<user_context>`` block. This prevents a user from
@@ -640,7 +649,7 @@ async def inject_user_context(
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
         expert_id: Hired expert this session is scoped to, or ``None`` for a
-            plain Autopilot session.  Used to build the ``<expert_workflows>``
+            plain Otto session.  Used to build the ``<expert_workflows>``
             (expert session) or ``<team_context>`` (plain session) prefix via
             ``build_expert_context``.  The expert's persona is NOT injected
             here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
@@ -667,8 +676,9 @@ async def inject_user_context(
     # tests) without prior sanitization — and because the operation is
     # idempotent (a second pass over already-clean text is a no-op).
     sanitized_message = sanitize_user_supplied_context(message)
+    kickoff_turn = _is_expert_kickoff_turn(session_messages)
 
-    if understanding is None:
+    if understanding is None or kickoff_turn:
         # No trusted context to inject — but we still need to persist the
         # sanitised message so a later resume / page-reload replay doesn't
         # feed the attacker tags back into the LLM.
@@ -730,9 +740,11 @@ async def inject_user_context(
     # Prepend the expert identity/workflows block (expert session) or team
     # awareness block (plain session).  Server-injected after sanitisation
     # like the other trusted blocks; degrades to "" on any lookup failure so
-    # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
+    # the turn proceeds as plain Otto.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
-    expert_ctx = await build_expert_context(user_id, expert_id)
+    expert_ctx = await build_expert_context(
+        user_id, expert_id, include_teammates=not kickoff_turn
+    )
     if expert_ctx:
         final_message = expert_ctx + final_message
     # Prepend Graphiti warm context as a <memory_context> block AFTER
@@ -779,6 +791,14 @@ async def inject_user_context(
                     )
             return final_message
     return None
+
+
+def _is_expert_kickoff_turn(session_messages: list[ChatMessage]) -> bool:
+    """Whether the current turn's user message is the hire's kickoff."""
+    for session_msg in reversed(session_messages):
+        if session_msg.role == "user":
+            return is_expert_kickoff_message(session_msg)
+    return False
 
 
 def _normalize_title_model_for_aux() -> str:

@@ -65,7 +65,7 @@ class TestDownloadSharedFile:
     def _client(self):
         self.client = TestClient(app, raise_server_exceptions=False)
 
-    def test_valid_token_and_file_returns_inline_content(self):
+    def test_valid_token_and_file_returns_attachment(self):
         with (
             patch(
                 "backend.api.features.v1.execution_db.get_shared_execution_file",
@@ -88,7 +88,7 @@ class TestDownloadSharedFile:
 
         assert response.status_code == 200
         assert response.content == b"\x89PNG"
-        assert "inline" in response.headers["Content-Disposition"]
+        assert "attachment" in response.headers["Content-Disposition"]
 
     def test_invalid_token_format_returns_422(self):
         response = self.client.get(

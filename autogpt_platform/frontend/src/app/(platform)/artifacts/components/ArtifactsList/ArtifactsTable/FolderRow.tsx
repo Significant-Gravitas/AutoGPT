@@ -11,7 +11,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
+import { FILE_DRAG_MIME, readFileDragIds } from "../../WorkspaceFolders/drag";
 import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { formatDayLabel, formatFullDate } from "../helpers";
 import {
@@ -32,7 +32,9 @@ interface Props {
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onFileDrop: (fileId: string) => void;
+  onFileDrop: (fileIds: string[]) => void;
+  /** Position in the list; drives the small entrance stagger. */
+  index?: number;
 }
 
 const ACTION_BUTTON_CLASS =
@@ -47,6 +49,7 @@ export function FolderRow({
   onEdit,
   onDelete,
   onFileDrop,
+  index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [isDragOver, setIsDragOver] = useState(false);
@@ -69,13 +72,18 @@ export function FolderRow({
   function handleDrop(e: DragEvent<HTMLLIElement>) {
     e.preventDefault();
     setIsDragOver(false);
-    const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-    if (fileId) onFileDrop(fileId);
+    const fileIds = readFileDragIds(e.dataTransfer);
+    if (fileIds.length > 0) onFileDrop(fileIds);
   }
 
   return (
+    // Animates on its own mount (see row-layout.ts) so a folder created
+    // while the list is already showing doesn't stay in the hidden state.
     <motion.li
       variants={reduceMotion ? REDUCED_ROW_VARIANTS : ROW_VARIANTS}
+      custom={index}
+      initial={reduceMotion ? false : "hidden"}
+      animate="show"
       className={cn(
         ROW_GRID_CLASS,
         "group cursor-pointer px-2 transition-colors hover:bg-zinc-50",

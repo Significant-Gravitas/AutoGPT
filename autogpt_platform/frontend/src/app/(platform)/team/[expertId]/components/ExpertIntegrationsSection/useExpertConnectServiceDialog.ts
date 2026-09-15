@@ -28,10 +28,16 @@ export const SERVICE_FILTERS: readonly {
 
 interface Args {
   open: boolean;
+  /** Skip the picker and open straight on this provider's connect step. */
+  initialProviderId?: string | null;
   onConnected: (credential: CredentialsMetaResponse) => void;
 }
 
-export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
+export function useExpertConnectServiceDialog({
+  open,
+  initialProviderId,
+  onConnected,
+}: Args) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [filter, setFilter] = useState<ServiceFilter>("all");
@@ -58,8 +64,14 @@ export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
       setFilter("all");
       setSelectedId(null);
       setSelectedMethod(null);
+      return;
     }
-  }, [open]);
+    if (initialProviderId) {
+      setDirection(1);
+      setSelectedId(initialProviderId);
+      setSelectedMethod(null);
+    }
+  }, [open, initialProviderId]);
 
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
   const credentials = credentialsQuery.data ?? [];

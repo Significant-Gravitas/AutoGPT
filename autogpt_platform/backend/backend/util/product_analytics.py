@@ -16,6 +16,8 @@ Event vocabulary (PostHog event name -> SQL equivalent):
                           an expert's workflow (property ``kind`` tells which).
 - ``agent_run_completed`` / ``agent_run_failed``  terminal run outcome, with
                           ``trigger`` so failures can be split by how they started.
+                          Includes subgraph and automated runs; filter to human
+                          triggers when comparing outcomes with run-start events.
 - ``schedule_created``    a schedule was registered (``target``: agent | autopilot |
                           expert).  ActivityEvent category SCHEDULE / schedule.created.
 - ``schedule_fired``      a schedule produced work.  For agent/expert targets the run

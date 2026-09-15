@@ -1020,6 +1020,8 @@ class TestCreateStreamingResponse:
         assert (
             response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
         )
+        assert response.headers["Content-Security-Policy"] == "sandbox"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Content-Type"] == "application/octet-stream"
         assert response.headers["Content-Length"] == "11"
         assert response.body == b"binary-data"
@@ -1030,6 +1032,8 @@ class TestCreateStreamingResponse:
         file = _make_file(name="photo.png", mime_type="image/png")
         response = _create_streaming_response(b"\x89PNG", file, inline=True)
         assert response.headers["Content-Disposition"] == 'inline; filename="photo.png"'
+        assert response.headers["Content-Security-Policy"] == "sandbox"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Content-Type"] == "image/png"
 
     def test_inline_sanitizes_filename(self):

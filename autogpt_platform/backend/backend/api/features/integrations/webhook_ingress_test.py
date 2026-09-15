@@ -10,7 +10,7 @@ signature checks to each manager's `verify_signature`. This file pins:
   base64-decoded `config["mac_secret"]`).
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
-* Providers without a signing scheme (Compass, Slant3D) pass through.
+* Unsigned Compass and legacy Slant3D subscriptions pass through; Slant3D v2 verifies signatures.
 * A webhook registered under one provider can't be processed via a different
   provider's ingress path (the manager is selected from the URL provider).
 * `verify_signature` runs before `validate_payload` (call ordering).
@@ -19,6 +19,7 @@ signature checks to each manager's `verify_signature`. This file pins:
 import base64
 import hashlib
 import hmac
+import time
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -169,17 +170,14 @@ def _run(webhook, provider_path: str, **kwargs):
 
 
 class TestUnsignedProvidersPassThrough:
-    """Compass and Slant3D have no upstream signing scheme. The router must
-    not 403 their deliveries — the default no-op `verify_signature` covers
-    them, and 403'ing here would break every legitimate delivery from those
-    devices/services."""
+    """Compass and legacy Slant3D subscriptions accept unsigned deliveries."""
 
     def test_compass_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.COMPASS)
         resp = _run(webhook, "compass")
         assert resp.status_code != 403, resp.text
 
-    def test_slant3d_accepts_unsigned_request(self):
+    def test_legacy_slant3d_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.SLANT3D)
         # Use a Slant3D-shaped payload so the provider's own payload check
         # doesn't 500; the assertion is about signature, not schema.
@@ -188,6 +186,32 @@ class TestUnsignedProvidersPassThrough:
         )
         resp = _run(webhook, "slant3d", body=body)
         assert resp.status_code != 403, resp.text
+
+
+class TestSlant3DV2Signatures:
+    def test_missing_signature_is_rejected(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        response = _run(webhook, "slant3d")
+        assert response.status_code == 403
+
+    def test_signed_delivery_passes_ingress(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        webhook.resource = "platform-1"
+        body = b'{"platform_id":"platform-1","event_type":"order.shipped","data":{"order":{"public_id":"SLANT_123","status":"SHIPPED","tracking_number":"track-1"}}}'
+        timestamp = str(int(time.time() * 1000))
+        digest = hmac.new(
+            WEBHOOK_SECRET.encode(), timestamp.encode() + b"." + body, hashlib.sha256
+        ).hexdigest()
+        response = _run(
+            webhook,
+            "slant3d",
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": timestamp,
+                "X-Webhook-Signature-256": f"sha256={digest}",
+            },
+        )
+        assert response.status_code == 200, response.text
 
 
 # ---------------------------------------------------------------------------

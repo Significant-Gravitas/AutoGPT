@@ -63,9 +63,10 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
+    CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     GRAPHITI_MEMORY = "graphiti-memory"
 
-    # Gates AutoPilot voice mode end-to-end. The speech endpoint 404s when
+    # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
@@ -80,6 +81,10 @@ class Flag(str, Enum):
     # so the Leiden + LLM-summarization cost doesn't ramp before
     # retrieval-relevance benefit is measured.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
+
+    # Parks expert work for the user's approval once her credit spend in the
+    # window reaches the approval threshold (SECRT-2599). Off by default.
+    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
 
     # --- Dream-system gates (P0) ---
     #
@@ -104,6 +109,18 @@ class Flag(str, Enum):
     # independent briefing kill switch — briefings ship to exactly the
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
+
+    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
+    # dump also produces expert recommendations, the copilot greeting
+    # grows a team section, and Otto's empty-roster context tells
+    # it that it is the Head of AI. Effective only when both are on;
+    # fail-closed (default False).
+    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
+
+    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
+    # browse and install end-to-end: the routes 404 when off, so the dark
+    # launch is not reachable by URL with the shelf hidden. Fail-closed.
+    SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
@@ -179,6 +196,10 @@ class Flag(str, Enum):
     # locked offer is never routable.  Off by default so the upsell reaches
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
+    # Shrinks what Otto reads: strips builder-UI annotations from the
+    # block schemas, and digests oversized tool results to the workspace.
+    AUTOPILOT_CONTEXT_TRIMMING = "autopilot-context-trimming"
 
 
 def is_configured() -> bool:

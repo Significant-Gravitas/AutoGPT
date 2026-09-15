@@ -6,6 +6,7 @@ import pytest
 
 from backend.util import product_analytics
 from backend.util.product_analytics import ActivationEvent
+from backend.util.settings import AppEnvironment
 
 
 @pytest.fixture
@@ -235,7 +236,10 @@ def test_schedule_created_and_fired(capture: Mock) -> None:
     assert fired.kwargs["properties"]["graph_exec_id"] == "exec-1"
 
 
-def test_integration_connected(capture: Mock) -> None:
+def test_integration_connected(capture: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        product_analytics.settings.config, "app_env", AppEnvironment.LOCAL
+    )
     product_analytics.track_integration_connected(
         user_id="user-1",
         provider="github",
@@ -246,7 +250,8 @@ def test_integration_connected(capture: Mock) -> None:
     event, properties = _only_call(capture)
     assert event == "integration_connected"
     assert properties == {
-        **{k: v for k, v in properties.items() if k in ("environment", "source")},
+        "environment": "local",
+        "source": "platform",
         "provider": "github",
         "credential_type": "oauth2",
         "method": "oauth",

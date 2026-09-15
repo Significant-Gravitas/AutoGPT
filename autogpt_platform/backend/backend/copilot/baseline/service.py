@@ -39,6 +39,7 @@ from backend.copilot.baseline.reasoning import (
     reasoning_extra_body,
 )
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -46,6 +47,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
+from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -78,8 +80,11 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
+    get_chat_platform_supplement,
     get_delegation_supplement,
+    get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
@@ -123,6 +128,7 @@ from backend.copilot.tools import (
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
@@ -159,6 +165,7 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +849,7 @@ async def _baseline_llm_caller(
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
             # Local backends govern their own context window at launch (e.g.
-            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
             # compaction (see local_context_probe). Send no extra_body — skip
             # the OpenRouter ``usage.include`` extension and reasoning params,
             # which stricter local backends reject outright.
@@ -1056,14 +1063,15 @@ async def _baseline_tool_executor(
     user_id: str | None,
     session: ChatSession,
     disabled_groups: Sequence[ToolGroup],
+    disabled_tools: frozenset[str],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
 
-    ``disabled_groups`` is the same list used to build the turn's schema
-    list; passing it here makes the capability gate an enforcement boundary
-    rather than a presentation filter.
+    ``disabled_groups`` and ``disabled_tools`` are the same values used to
+    build the turn's schema list; passing them here makes the capability and
+    kickoff gates an enforcement boundary rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1137,6 +1145,7 @@ async def _baseline_tool_executor(
                 session=session,
                 tool_call_id=tool_call_id,
                 disabled_groups=disabled_groups,
+                disabled_tools=disabled_tools,
             )
         _emit(state, result)
         tool_output = (
@@ -1647,6 +1656,7 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
@@ -1879,6 +1889,15 @@ async def stream_chat_completion_baseline(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    oversight_supplement = get_expert_oversight_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    team_building_supplement = get_team_building_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    chat_platform_supplement = get_chat_platform_supplement(
+        session.metadata.source_platform
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1889,6 +1908,9 @@ async def stream_chat_completion_baseline(
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
+        + chat_platform_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -1972,7 +1994,9 @@ async def stream_chat_completion_baseline(
         # here MUST NOT block the turn; log and proceed with empty index.
         skills_ctx = ""
         try:
-            skills_ctx = await build_skills_context(user_id)
+            skills_ctx = await build_skills_context(
+                user_id, expert_id=session.expert_id
+            )
         except Exception:
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"
@@ -2036,6 +2060,18 @@ async def stream_chat_completion_baseline(
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
 
+    # Live budget, every turn — the first-turn ``<budget_context>`` above is
+    # stale from turn two onward and says nothing about the tree. After the
+    # pending fold so it lands on the message the model reads last, and never
+    # on ``user_message_for_transcript``: that would persist one stale figure
+    # per turn, the same trap the warm-context injection below names.
+    budget_status = await build_turn_budget_block(envelope, user_id)
+    if budget_status:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                msg["content"] = budget_status + str(msg.get("content") or "")
+                break
+
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
@@ -2095,6 +2131,7 @@ async def stream_chat_completion_baseline(
         sandbox=e2b_sandbox,
         sdk_cwd=working_dir,
         permissions=permissions,
+        envelope=envelope,
     )
 
     # --- File attachments (feature parity with SDK path) ---
@@ -2155,7 +2192,16 @@ async def stream_chat_completion_baseline(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
     )
-    tools = get_available_tools(disabled_groups=disabled_tool_groups)
+    # A hire's kickoff turn is a server-sent control message, so nothing on
+    # it was asked for: narrow it to the onboarding card and nothing else.
+    disabled_tools = (
+        kickoff_turn_disabled_tools()
+        if is_expert_kickoff_turn(session)
+        else frozenset()
+    )
+    tools = get_available_tools(
+        disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
+    )
 
     # --- Permission filtering ---
     if permissions is not None:
@@ -2225,6 +2271,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session=_session_holder[0],
             disabled_groups=disabled_tool_groups,
+            disabled_tools=disabled_tools,
         )
 
     _bound_conversation_updater = partial(

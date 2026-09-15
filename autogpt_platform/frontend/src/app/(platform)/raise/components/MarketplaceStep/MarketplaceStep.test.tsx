@@ -34,8 +34,11 @@ function renderMarketplace(
   render(
     <>
       <MarketplaceStep
+        name="Otto"
         color="rose-300"
         submitted={null}
+        isFinal={false}
+        isSubmitting={false}
         onSubmit={onSubmit}
         onSkip={onSkip}
         {...overrides}
@@ -64,6 +67,14 @@ describe("MarketplaceStep", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(onSkip).toHaveBeenCalled();
+  });
+
+  test("raises the expert itself when it is the flow's last beat", async () => {
+    const { onSubmit } = renderMarketplace({ isFinal: true });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bring Otto to life" }),
+    );
+    expect(onSubmit).toHaveBeenCalledWith([]);
   });
 
   test("shows only three default marketplace workflows", async () => {

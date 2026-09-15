@@ -8,7 +8,7 @@ The ``session_id`` argument decides WHERE the follow-up lands:
 
 * Omitted / ``null`` — sentinel meaning "fire into a **fresh chat**".
   At fire time the scheduler creates a new copilot session in the same
-  Autopilot or expert scope and routes the turn into it (no prior
+  Otto or expert scope and routes the turn into it (no prior
   conversation context).
   Use this for recurring "morning brief" / "daily digest" patterns
   where a clean slate is preferred over polluting the current chat.
@@ -58,7 +58,7 @@ class ScheduleFollowupTool(BaseTool):
     """Schedule a follow-up turn on a copilot session.
 
     Omit ``session_id`` to create a fresh conversation in the current
-    Autopilot or expert scope. Pass ``session_id`` to target a conversation
+    Otto or expert scope. Pass ``session_id`` to target a conversation
     owned by the same user in that same scope. Exactly one of
     ``delay_seconds`` or ``cron`` must be provided.
     """
@@ -73,13 +73,13 @@ class ScheduleFollowupTool(BaseTool):
             "Schedule a copilot follow-up turn. The 'message' is sent "
             "at the scheduled time. The 'session_id' arg picks the "
             "destination: OMIT IT (or pass null) to fire into a brand-"
-            "new chat created at fire-time in this chat's same Autopilot "
+            "new chat created at fire-time in this chat's same Otto "
             "or expert memory scope — best for daily briefs / recurring "
             "digests / anything that should start fresh. "
             "Pass an existing 'session_id' (you can read the current "
             "one from the trusted <session_context> block) to resume "
             "that conversation with its full history (the target must use "
-            "the same Autopilot or expert scope) — best for "
+            "the same Otto or expert scope) — best for "
             "'remind me here in 20 minutes'. Use 'delay_seconds' for "
             "one-shot followups ('in 20 minutes', 'at 7am tomorrow' — "
             "convert absolute times to a delay) or 'cron' for "
@@ -127,7 +127,7 @@ class ScheduleFollowupTool(BaseTool):
                     "description": (
                         "Target session UUID. OMIT or null = create a "
                         "brand-new chat at fire-time in the current "
-                        "Autopilot or expert memory scope (no prior context). "
+                        "Otto or expert memory scope (no prior context). "
                         "Pass the current session's id from <session_"
                         "context> to fire into THIS chat with full "
                         "history. Sessions owned by other users or in a "

@@ -33,7 +33,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: auth.user, isUserLoading: false }),
 }));
 
-function wrapper({ children }: { children: ReactNode }) {
+interface Props {
+  children: ReactNode;
+}
+
+function wrapper({ children }: Props) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -115,6 +119,58 @@ describe("useLaunchDarklyExperiment", () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
+  it("reports separate exposures when the signed-in user changes", async () => {
+    const bodies = captureAssignments();
+    ld.flags = { "onboarding-copy": "b" };
+    const { rerender } = renderHook(
+      () => useLaunchDarklyExperiment("onboarding-copy"),
+      { wrapper },
+    );
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+
+    auth.user = { id: "user-2" };
+    rerender();
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(capture).toHaveBeenCalledTimes(2);
+
+    auth.user = { id: "user-1" };
+    rerender();
+    expect(capture).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for a signed-in user before reporting an exposure", async () => {
+    captureAssignments();
+    auth.user = null;
+    ld.flags = { "onboarding-copy": "b" };
+    const { result, rerender } = renderHook(
+      () => useLaunchDarklyExperiment("onboarding-copy"),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isResolved).toBe(true));
+    expect(capture).not.toHaveBeenCalled();
+
+    auth.user = { id: "user-1" };
+    rerender();
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not consume an exposure while PostHog is disabled", async () => {
+    captureAssignments();
+    const enabled = vi.spyOn(environment, "isPostHogEnabled");
+    enabled.mockReturnValue(false);
+    ld.flags = { "onboarding-copy": "b" };
+    const { result, rerender } = renderHook(
+      () => useLaunchDarklyExperiment("onboarding-copy"),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isResolved).toBe(true));
+    expect(capture).not.toHaveBeenCalled();
+
+    enabled.mockReturnValue("phc_test");
+    rerender();
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
   it("treats boolean or missing flags as not enrolled", async () => {
     const bodies = captureAssignments();
     ld.flags = { "onboarding-copy": true };
@@ -131,8 +187,10 @@ describe("useLaunchDarklyExperiment", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
-  it("resolves immediately when feature flags are disabled", () => {
+  it("ignores retained string variants when feature flags are disabled", async () => {
+    const bodies = captureAssignments();
     vi.spyOn(environment, "areFeatureFlagsEnabled").mockReturnValue(false);
+    ld.flags = { "onboarding-copy": "b" };
     ld.client = null;
 
     const { result } = renderHook(
@@ -140,6 +198,9 @@ describe("useLaunchDarklyExperiment", () => {
       { wrapper },
     );
 
-    expect(result.current).toEqual({ variant: null, isResolved: true });
+    expect.soft(result.current).toEqual({ variant: null, isResolved: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect.soft(bodies).toHaveLength(0);
+    expect(capture).not.toHaveBeenCalled();
   });
 });

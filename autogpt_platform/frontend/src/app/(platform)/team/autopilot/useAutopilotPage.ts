@@ -31,11 +31,11 @@ export function useAutopilotPage({ enabled }: Args) {
     { page: 1, page_size: 100, is_hidden: false },
     { query: { getNextPageParam: getPaginationNextPageNumber, enabled } },
   );
-  const skillsQuery = useListCopilotSkills({
+  const skillsQuery = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled },
   });
 
-  // Autopilot owns every library workflow no expert has claimed, so the
+  // Otto owns every library workflow no expert has claimed, so the
   // whole library has to be in hand before the split is derived.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = libraryQuery;
   useEffect(() => {

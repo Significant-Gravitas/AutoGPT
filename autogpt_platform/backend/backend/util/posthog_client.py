@@ -17,27 +17,31 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 _client: Posthog | None = None
+_initialized = False
 _client_lock = Lock()
 
 
 def get_posthog_client() -> Posthog | None:
-    global _client
+    global _client, _initialized
+    if _initialized:
+        return _client
     with _client_lock:
-        if _client is not None:
+        if _initialized:
             return _client
 
-        settings = Settings()
-        if not settings.secrets.posthog_api_key:
-            logger.debug("PostHog API key not configured, analytics disabled")
+        try:
+            settings = Settings()
+            if settings.secrets.posthog_api_key:
+                _client = Posthog(
+                    settings.secrets.posthog_api_key,
+                    host=settings.secrets.posthog_host,
+                )
+            else:
+                logger.debug("PostHog API key not configured, analytics disabled")
+        except Exception:
+            logger.warning("Failed to initialize PostHog analytics", exc_info=True)
             return None
-
-        _client = Posthog(
-            settings.secrets.posthog_api_key,
-            host=settings.secrets.posthog_host,
-        )
-        logger.info(
-            "PostHog client initialized with host: %s", settings.secrets.posthog_host
-        )
+        _initialized = True
         return _client
 
 
