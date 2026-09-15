@@ -15301,7 +15301,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's skill library.",
+        "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15315,6 +15315,17 @@
               "title": "Slug"
             },
             "description": "Slug of the skill listing"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Install into this expert's skills instead of the caller's own.",
+              "title": "Expert Id"
+            },
+            "description": "Install into this expert's skills instead of the caller's own."
           }
         ],
         "responses": {
@@ -15329,7 +15340,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Skill not found" },
+          "404": { "description": "Skill or expert not found" },
           "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",

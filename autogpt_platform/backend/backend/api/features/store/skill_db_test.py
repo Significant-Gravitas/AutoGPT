@@ -1,11 +1,13 @@
 import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import prisma
 import prisma.enums
 import prisma.models
 import pytest
 
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -209,6 +211,46 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_i
     )
     assert refreshed is not None
     assert refreshed.installCount == 1
+
+
+@pytest.mark.parametrize(
+    "expert_id, folder",
+    [(None, "/skills"), ("expert-a", "/experts/expert-a/skills")],
+    ids=["library", "expert"],
+)
+async def test_install_writes_into_the_target_owners_folder_and_no_other(
+    mocker, expert_id, folder
+):
+    """The test above proves the id reaches ``store_user_skill``; this one runs
+    the real write, so a folder that ignored it would show up here."""
+    listing = await _make_listing(f"folder-one-{expert_id or 'library'}")
+    workspace = _FakeWorkspaceManager()
+    experts = MagicMock()
+    experts.add_expert_skill_name = AsyncMock()
+    mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
+
+    with _patch_skills_path(workspace):
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id=expert_id
+        )
+        # A second install of the same skill overwrites its copy rather than
+        # leaving a second one behind.
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id=expert_id
+        )
+
+    assert list(workspace.files) == [f"{folder}/{listing.slug}/SKILL.md"]
+    refreshed = await prisma.models.SkillListing.prisma().find_unique(
+        where={"id": listing.id}
+    )
+    assert refreshed is not None
+    assert refreshed.installCount == 1
+    if expert_id is None:
+        experts.add_expert_skill_name.assert_not_awaited()
+    else:
+        experts.add_expert_skill_name.assert_awaited_with(
+            "user-1", expert_id, listing.slug
+        )
 
 
 async def test_install_of_a_listing_with_no_files_passes_an_empty_package(mocker):
