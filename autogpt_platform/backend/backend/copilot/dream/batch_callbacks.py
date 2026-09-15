@@ -696,6 +696,8 @@ async def _finalize_complete(
         ops,
         active_fact_count,
         known_fact_uuids=input_bundle.known_fact_uuids,
+        facts=input_bundle.facts,
+        pass_id=pass_id,
     )
 
     # Batch results can re-dispatch (executor crash between dispatch and
@@ -754,6 +756,14 @@ async def _finalize_complete(
             ops,
             expert_id=expert_id,
             known_fact_uuids=input_bundle.known_fact_uuids,
+            # Same bundle, read once: carries the per-edge recall stamps so
+            # apply can protect facts the user still uses from demotion.
+            facts=input_bundle.facts,
+            # Batch only: this bundle was captured at submission time, hours
+            # before this callback runs, so the demotion guard re-reads the
+            # recall stamps to protect anything recalled in between. The sync
+            # path's bundle is seconds old and needs no such re-read.
+            refresh_usage=True,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
