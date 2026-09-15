@@ -412,3 +412,40 @@ async def test_copy_gives_expert_its_own_copy_of_an_autopilot_skill(world):
     assert AUTOPILOT in fake.files
     experts.add_expert_skill_name.assert_awaited_once_with("user-1", "expert-a", "mine")
     assert await copy_skill_to_expert("user-1", "expert-a", "nope") is None
+
+
+async def test_copy_gives_the_expert_the_whole_package(world):
+    """A hire used to get the first 50 files of a package and no way to tell.
+    Sixty is what the public ``docx``/``pptx`` packages ship."""
+    fake, _ = world
+    fake.files["/skills/mine/scripts/run.py"] = b"#!/usr/bin/env python3\n"
+    fake.metadata["/skills/mine/scripts/run.py"] = {"executable": True}
+    for i in range(59):
+        fake.files[f"/skills/mine/references/r{i:03d}.md"] = f"ref {i}".encode()
+
+    assert await copy_skill_to_expert("user-1", "expert-a", "mine") == "mine"
+
+    copied = {
+        path[len("/experts/expert-a/skills/mine/") :]
+        for path in fake.files
+        if path.startswith("/experts/expert-a/skills/mine/")
+    }
+    assert len(copied) == 61  # 60 package files + the SKILL.md
+    assert fake.files["/experts/expert-a/skills/mine/references/r058.md"] == b"ref 58"
+    assert fake.metadata["/experts/expert-a/skills/mine/scripts/run.py"] == {
+        "executable": True
+    }
+
+
+async def test_copy_carries_frontmatter_the_platform_has_no_use_for(world):
+    """An expert's copy of a marketplace package must keep the author's
+    licence line; re-rendering it away rewrites their file."""
+    fake, _ = world
+    fake.files[AUTOPILOT] = (
+        "---\nname: mine\ndescription: d\nlicense: Apache-2.0\n---\n\nsteps\n"
+    ).encode()
+
+    assert await copy_skill_to_expert("user-1", "expert-a", "mine") == "mine"
+
+    copy = fake.files["/experts/expert-a/skills/mine/SKILL.md"].decode()
+    assert "license: Apache-2.0" in copy

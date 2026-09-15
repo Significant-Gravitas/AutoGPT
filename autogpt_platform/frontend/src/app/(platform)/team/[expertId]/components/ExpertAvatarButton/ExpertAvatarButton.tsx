@@ -7,11 +7,8 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { Camera01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { ChangeEvent, useRef } from "react";
 import { useExpertAvatarButton } from "./useExpertAvatarButton";
@@ -23,6 +20,11 @@ interface Props {
 export function ExpertAvatarButton({ expert }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { uploadAvatar, isUploading } = useExpertAvatarButton(expert.id);
+  const avatarConfig = expertNotionConfig({
+    name: expert.name,
+    avatarUrl: expert.avatar_url,
+    color: expert.color,
+  });
 
   function openFilePicker() {
     if (isUploading) return;
@@ -44,7 +46,15 @@ export function ExpertAvatarButton({ expert }: Props) {
         aria-label={`Change ${expert.name}'s photo`}
         className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        {isUploadedAvatar(expert.avatar_url) ? (
+        {avatarConfig ? (
+          <span className="flex size-24 items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-background ring-4 ring-background">
+            <NotionAvatarImage
+              config={avatarConfig}
+              size={96}
+              title={expert.name}
+            />
+          </span>
+        ) : (
           <Avatar className="size-24 border border-stone-500 bg-background ring-4 ring-background">
             <AvatarImage
               src={expert.avatar_url ?? undefined}
@@ -54,20 +64,6 @@ export function ExpertAvatarButton({ expert }: Props) {
             />
             <AvatarFallback>{expert.name}</AvatarFallback>
           </Avatar>
-        ) : (
-          <span className="flex size-24 items-center justify-center rounded-full border border-stone-500 bg-background ring-4 ring-background">
-            <BotAvatar
-              config={expertAvatarConfig({
-                name: expert.name,
-                avatarUrl: expert.avatar_url,
-                color: expert.color,
-              })}
-              size={84}
-              trackPointer
-              showBadge={false}
-              title={expert.name}
-            />
-          </span>
         )}
 
         <span

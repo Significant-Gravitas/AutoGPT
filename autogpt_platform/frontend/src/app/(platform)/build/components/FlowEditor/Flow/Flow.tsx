@@ -5,7 +5,7 @@ import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPane
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useCallback, useMemo } from "react";
+import { MouseEvent, useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -29,6 +29,8 @@ import { useFlowRealtime } from "./useFlowRealtime";
 
 import "@xyflow/react/dist/style.css";
 import "./flow.css";
+
+const DELETE_KEY_CODES = ["Backspace", "Delete"];
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -61,6 +63,10 @@ export const Flow = () => {
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
+  const onNodeContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+  }, []);
 
   const onNodeDragStop = useCallback(() => {
     const currentNodes = useNodeStore.getState().nodes;
@@ -108,9 +114,7 @@ export const Flow = () => {
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
-          onNodeContextMenu={(event) => {
-            event.preventDefault();
-          }}
+          onNodeContextMenu={onNodeContextMenu}
           maxZoom={2}
           minZoom={0.05}
           onDragOver={onDragOver}
@@ -118,7 +122,7 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
-          deleteKeyCode={["Backspace", "Delete"]}
+          deleteKeyCode={DELETE_KEY_CODES}
         >
           <Background />
           <CustomControls

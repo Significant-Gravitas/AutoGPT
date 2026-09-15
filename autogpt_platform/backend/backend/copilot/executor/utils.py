@@ -31,6 +31,7 @@ from backend.copilot.tree import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
         queues=[run_queue, cancel_queue],
     )

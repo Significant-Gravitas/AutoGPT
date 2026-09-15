@@ -20,6 +20,8 @@ import { getCategoryAccent } from "../../../components/ExpertsSection/helpers";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
 import { formatSkillTitle } from "../../../components/SkillsSection/helpers";
 import { ExpertSection } from "../../../experts/[expertId]/components/ExpertSection";
+import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
+import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ConnectStep } from "./ConnectStep";
 import { SkillActions } from "./SkillActions";
 import { SkillBody } from "./SkillBody";
@@ -45,9 +47,15 @@ export function SkillPage({ slug }: Props) {
     flagReady,
     isAdded,
     isAdding,
+    experts,
     addToAutoPilot,
+    addToExpert,
     pendingConnections,
     moreSkills,
+    files,
+    openFilePath,
+    openFile,
+    closeFile,
     isConnectOpen,
     openConnect,
     setIsConnectOpen,
@@ -116,7 +124,9 @@ export function SkillPage({ slug }: Props) {
             isReady={isReady}
             isAdded={isAdded}
             isAdding={isAdding}
+            experts={experts}
             onAdd={addToAutoPilot}
+            onAddToExpert={addToExpert}
           />
         </div>
 
@@ -176,9 +186,24 @@ export function SkillPage({ slug }: Props) {
           }
         >
           {skill.body.trim() ? (
-            <SkillBody body={skill.body} title={title} />
+            <SkillBody
+              body={skill.body}
+              title={title}
+              packagePaths={files.map((file) => file.path)}
+              onOpenFile={openFile}
+            />
           ) : null}
         </ExpertSection>
+
+        {files.length > 0 ? (
+          <ExpertSection
+            title="Package contents"
+            count={files.length}
+            description="Files installed alongside these instructions."
+          >
+            <SkillPackageFileList files={files} onOpenFile={openFile} />
+          </ExpertSection>
+        ) : null}
 
         {skill.triggers.length > 0 ? (
           <ExpertSection
@@ -209,6 +234,12 @@ export function SkillPage({ slug }: Props) {
           </ExpertSection>
         ) : null}
       </div>
+
+      <SkillFileViewer
+        source={{ kind: "listing", slug }}
+        path={openFilePath}
+        onClose={closeFile}
+      />
 
       <ConnectServiceDialog
         open={isConnectOpen}
