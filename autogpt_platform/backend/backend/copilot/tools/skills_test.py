@@ -1159,7 +1159,9 @@ async def test_skills_update_notice_truncates_long_added_lists():
     with _patch_skills_path(fake_manager):
         notice = await build_skills_update_notice(
             "user-1",
-            prior_contents=[_history_with_index("- name: agent_building_guide — guide")],
+            prior_contents=[
+                _history_with_index("- name: agent_building_guide — guide")
+            ],
         )
     assert "<skills_update>" in notice
     assert "and 4 more" in notice
