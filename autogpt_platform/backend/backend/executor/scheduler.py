@@ -1467,6 +1467,11 @@ def ensure_embeddings_coverage():
 # Monitoring functions are now imported from monitoring module
 
 
+# Paused and fired-once rows are never deleted, so every scan over them is
+# bounded rather than left to grow with the backlog.
+_PARKED_SCAN_LIMIT = 1000
+
+
 class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
@@ -2005,17 +2010,15 @@ class Scheduler(AppService):
 
     # Paused and fired-once rows are never deleted, so this scan is bounded
     # rather than left to grow with the backlog — startup precedes the RPC port.
-    _PARKED_SCAN_LIMIT = 1000
-
     def _report_parked_jobs(self) -> None:
         """Parking is recoverable but silent — startup has to say it happened."""
         for alias, store in self._persistent_jobstores.items():
             try:
-                parked = store.get_parked_job_ids(limit=self._PARKED_SCAN_LIMIT)
+                parked = store.get_parked_job_ids(limit=_PARKED_SCAN_LIMIT)
             except Exception as e:
                 logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
                 continue
-            if len(parked) == self._PARKED_SCAN_LIMIT:
+            if len(parked) == _PARKED_SCAN_LIMIT:
                 logger.error(
                     f"at least {len(parked)} job(s) in jobstore '{alias}' are PARKED "
                     "and will not run until repaired; the startup scan stopped at "
@@ -2496,10 +2499,17 @@ class Scheduler(AppService):
         send_due_briefings()
 
     @expose
-    def get_parked_jobs(self) -> dict[str, list[str]]:
-        """Job ids the scheduler could not restore, per jobstore."""
+    def get_parked_jobs(
+        self, limit: int | None = _PARKED_SCAN_LIMIT
+    ) -> dict[str, list[str]]:
+        """Job ids the scheduler could not restore, per jobstore.
+
+        Bounded by default: paused and fired-once rows accumulate forever and
+        each one read here is deserialized. Pass ``limit=None`` for the whole
+        set, accepting a scan proportional to that backlog.
+        """
         return {
-            alias: store.get_parked_job_ids()
+            alias: store.get_parked_job_ids(limit=limit)
             for alias, store in self._persistent_jobstores.items()
         }
 

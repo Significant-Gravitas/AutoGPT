@@ -36,12 +36,15 @@ def noop():
 
 
 def test_poison_reproduces_the_production_error():
-    try:
+    """The poison must fail the way production did — on the missing enum member,
+    not merely as invalid bytes. Which exception carries that is the
+    interpreter's business: 3.11.2 reduces a plain Enum member by NAME and
+    raises AttributeError, every later build reduces by value and raises
+    ValueError, so pinning one wording fails on the other."""
+    with pytest.raises((ValueError, AttributeError)) as caught:
         pickle.loads(POISONED_STATE)
-    except ValueError as e:
-        assert "is not a valid _RemovedEnum" in str(e)
-    else:
-        raise AssertionError("expected the enum lookup to fail")
+
+    assert "GONE" in str(caught.value) or "gone" in str(caught.value)
 
 
 def test_unrestorable_job_is_parked_not_deleted():
@@ -148,6 +151,24 @@ def test_reconcile_leaves_a_still_broken_job_parked():
 
         assert store.reconcile_repaired_jobs() == []
         assert store.get_parked_job_ids() == ["poisoned"]
+
+
+def test_reconcile_walks_past_its_batch_size():
+    """Batching bounds the transaction, not the work: every stranded row must
+    still be reached, which a plain cap would not do."""
+    with _store() as (store, scheduler):
+        for i in range(7):
+            scheduler.add_job(noop, "interval", seconds=3600, id=f"j{i}")
+            healthy = _job_state(store, f"j{i}")
+            _poison(store, f"j{i}")
+            store._get_jobs()
+            _set_job_state(store, f"j{i}", healthy)
+
+        healed = store.reconcile_repaired_jobs(batch_size=2)
+
+        assert sorted(healed) == [f"j{i}" for i in range(7)]
+        assert all(_next_run_time(store, f"j{i}") is None for i in range(7))
+        assert store.reconcile_repaired_jobs(batch_size=2) == []
 
 
 def test_a_row_repaired_under_the_scan_is_not_parked():

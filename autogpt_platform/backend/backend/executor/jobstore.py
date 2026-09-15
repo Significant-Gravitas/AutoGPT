@@ -103,7 +103,7 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
                     parked.append(row.id)
         return parked
 
-    def reconcile_repaired_jobs(self) -> list[str]:
+    def reconcile_repaired_jobs(self, batch_size: int = 500) -> list[str]:
         """Finish parking rows whose payload has since been repaired.
 
         Parking can only clear the ``next_run_time`` COLUMN: the row is by
@@ -116,17 +116,37 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         ordinary paused job, which resume revives.
 
         ``jobstore_backfill`` already repairs the rows it rewrites, so this is
-        the path for a repair made some other way. It is deliberately
-        unbounded and deliberately NOT run at startup: a capped scan of a
-        backlog nothing ever deletes would keep re-reading its first page and
-        never reach a repaired row behind it.
+        the path for a repair made some other way, and it is not run at
+        startup. It walks the whole paused set in id order, a batch per
+        transaction: a cap alone would keep re-reading the first page and
+        never reach a repaired row behind a backlog nothing deletes, while one
+        transaction over the lot would hold locks across every row it writes.
         """
-        selectable = select(self.jobs_t.c.id, self.jobs_t.c.job_state).where(
-            self.jobs_t.c.next_run_time.is_(None)
-        )
-        healed = []
+        healed: list[str] = []
+        after = ""
+        while True:
+            selectable = (
+                select(self.jobs_t.c.id, self.jobs_t.c.job_state)
+                .where(
+                    and_(
+                        self.jobs_t.c.next_run_time.is_(None),
+                        self.jobs_t.c.id > after,
+                    )
+                )
+                .order_by(self.jobs_t.c.id)
+                .limit(batch_size)
+            )
+            rows = self._reconcile_batch(selectable, healed)
+            if len(rows) < batch_size:
+                return healed
+            after = rows[-1]
+
+    def _reconcile_batch(self, selectable, healed: list[str]) -> list[str]:
+        """One batch in one transaction; returns the ids it read, in order."""
+        seen = []
         with self.engine.begin() as connection:
             for row in connection.execute(selectable):
+                seen.append(row.id)
                 try:
                     job = self._reconstitute_job(row.job_state)
                 except (KeyboardInterrupt, SystemExit):
@@ -153,4 +173,4 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
                     continue  # resumed or repaired under the scan; leave it be
                 self._parked_ids.discard(row.id)
                 healed.append(row.id)
-        return healed
+        return seen
