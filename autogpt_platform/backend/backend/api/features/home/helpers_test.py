@@ -7,6 +7,7 @@ from backend.executor.scheduler import GraphExecutionJobInfo
 from .activity import compose_upcoming_tasks
 from .helpers import (
     agent_refs_by_graph,
+    experts_by_graph,
     experts_by_schedule,
     next_runs_by_expert,
     parse_datetime,
@@ -117,6 +118,40 @@ def test_upcoming_tasks_attribute_each_job_to_its_own_expert() -> None:
         ("job-alice", "alice"),
         ("job-bob", "bob"),
     ]
+
+
+def test_expert_workflows_are_found_by_the_graph_they_run() -> None:
+    owners = experts_by_graph([_expert("alice")])
+
+    assert owners[SHARED_GRAPH].id == "alice"
+
+
+def test_a_graph_two_experts_build_on_is_left_unattributed() -> None:
+    assert experts_by_graph([_expert("alice"), _expert("bob")]) == {}
+
+
+def test_an_expert_with_two_workflows_on_one_graph_still_owns_it() -> None:
+    alice = _expert("alice")
+    alice.workflows.append(
+        alice.workflows[0].model_copy(update={"id": "workflow-alice-2"})
+    )
+
+    assert experts_by_graph([alice])[SHARED_GRAPH].id == "alice"
+
+
+def test_an_experts_copy_of_a_workflow_keeps_the_library_picture() -> None:
+    refs = [
+        LibraryAgentRef(
+            id="lib-live",
+            graph_id=SHARED_GRAPH,
+            name="Inbox triage",
+            image_url="https://example.com/triage.png",
+        )
+    ]
+
+    agents = agent_refs_by_graph([_expert("alice")], refs)
+
+    assert agents[SHARED_GRAPH].image_url == "https://example.com/triage.png"
 
 
 def test_parse_datetime_pins_naive_values_to_utc() -> None:

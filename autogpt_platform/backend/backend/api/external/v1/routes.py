@@ -17,9 +17,10 @@ from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywa
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
+from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -233,6 +234,8 @@ async def execute_graph(
             graph_version=graph_version,
             organization_id=org_id,
             team_id=team_id,
+            trigger=ExecutionTrigger.API,
+            trigger_ref=auth.id if isinstance(auth, APIKeyInfo) else auth.type,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:

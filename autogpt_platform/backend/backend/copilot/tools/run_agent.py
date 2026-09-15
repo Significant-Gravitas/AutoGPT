@@ -12,7 +12,11 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -28,6 +32,7 @@ from backend.util.exceptions import (
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
+    validate_timezone,
 )
 
 from .base import BaseTool
@@ -43,7 +48,7 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
-from .helpers import get_inputs_from_schema
+from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -122,7 +127,7 @@ class RunAgentInput(BaseModel):
     use_defaults: bool = False
     schedule_name: str = ""
     cron: str = ""
-    timezone: str | None = None
+    timezone: str = ""
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
     save_as_preset: bool = False
@@ -213,7 +218,7 @@ class RunAgentTool(BaseTool):
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone. Defaults to the account timezone, or UTC if unset.",
+                    "description": "IANA timezone for the cron expression. Omit to use the user's configured timezone.",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -318,9 +323,15 @@ class RunAgentTool(BaseTool):
 
             # Priority: library_agent_id if provided
             if has_library_id:
-                library_agent = await library_db().get_library_agent(
-                    params.library_agent_id, user_id
-                )
+                try:
+                    library_agent = await library_db().get_library_agent(
+                        params.library_agent_id, user_id
+                    )
+                except NotFoundError:
+                    # get_library_agent raises rather than returning None, so
+                    # the graph-id fallback this tool documents is only
+                    # reachable from here.
+                    library_agent = None
                 if not library_agent:
                     library_agent = await library_db().get_library_agent_by_graph_id(
                         user_id, params.library_agent_id
@@ -379,7 +390,7 @@ class RunAgentTool(BaseTool):
             # Webhook-trigger agents can't be run or scheduled directly — they
             # fire on incoming HTTP events. Hand off to the trigger-setup tool,
             # surfacing the same AgentDetails (with trigger_info) that run_agent
-            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            # uses elsewhere so Otto has the provider + config schema ready.
             if graph.has_external_trigger:
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
@@ -546,6 +557,7 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         error: GraphValidationError,
         session_id: str,
+        inputs: dict[str, Any] | None = None,
     ) -> SetupRequirementsResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
@@ -583,7 +595,9 @@ class RunAgentTool(BaseTool):
                 ),
                 requirements={
                     "credentials": list(credentials_dict.values()),
-                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "inputs": get_picker_inputs_from_schema(
+                        graph.input_schema, input_data=inputs
+                    ),
                     "execution_modes": self._get_execution_modes(graph),
                 },
             ),
@@ -598,6 +612,7 @@ class RunAgentTool(BaseTool):
         user_id: str,
         session_id: str,
         action_verb: str,
+        inputs: dict[str, Any] | None = None,
     ) -> ToolResponseBase:
         """Handle a ``GraphValidationError`` that slipped past the prereq check.
 
@@ -616,6 +631,7 @@ class RunAgentTool(BaseTool):
             graph=graph,
             error=error,
             session_id=session_id,
+            inputs=inputs,
         )
         if creds_setup is not None:
             return creds_setup
@@ -699,7 +715,9 @@ class RunAgentTool(BaseTool):
                     ),
                     requirements={
                         "credentials": list(requirements_creds_dict.values()),
-                        "inputs": get_inputs_from_schema(graph.input_schema),
+                        "inputs": get_picker_inputs_from_schema(
+                            graph.input_schema, input_data=params.inputs
+                        ),
                         "execution_modes": self._get_execution_modes(graph),
                     },
                 ),
@@ -944,6 +962,8 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                trigger=ExecutionTrigger.COPILOT,
+                trigger_ref=session_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(
@@ -952,6 +972,27 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="running",
+                inputs=inputs,
+            )
+
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        if execution.status == ExecutionStatus.REVIEW:
+            # Parked for spend approval (SECRT-2599): it runs once the user
+            # approves it on Home or the run page. Not a successful run yet.
+            return ExecutionStartedResponse(
+                message=(
+                    f"Agent '{library_agent.name}' is waiting for the user's "
+                    "approval to spend more credits (spend threshold reached). "
+                    f"It runs once they approve it on Home or at "
+                    f"{library_agent_link}. {MSG_DO_NOT_RUN_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=execution.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=ExecutionStatus.REVIEW.value,
             )
 
         # Track successful run (dry runs don't count against the session limit)
@@ -969,8 +1010,6 @@ class RunAgentTool(BaseTool):
             execution_id=execution.id,
             library_agent_id=library_agent.id,
         )
-
-        library_agent_link = f"/library/agents/{library_agent.id}"
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:
@@ -1190,15 +1229,30 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Precedence mirrors POST /graphs/{graph_id}/schedules: an explicit
+        # timezone wins over the user's stored preference, which wins over UTC.
+        # Resolved before the library agent, so a rejected timezone persists nothing.
+        if timezone:
+            # Never silently downgrade to UTC here — the model has already told
+            # the user which timezone it is scheduling in.
+            if not validate_timezone(timezone):
+                return ErrorResponse(
+                    message=(
+                        f"'{timezone}' is not a valid IANA timezone. Use a name "
+                        "like 'Europe/London', or omit it to use the user's "
+                        "configured timezone."
+                    ),
+                    error="invalid_timezone",
+                    session_id=session_id,
+                )
+            user_timezone = timezone
+        else:
+            user = await user_db().get_user_by_id(user_id)
+            user_timezone = get_user_timezone_or_utc(user.timezone)
+
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
         emit_tool_display_name(library_agent.name)
-
-        # Get user timezone
-        user = await user_db().get_user_by_id(user_id)
-        user_timezone = timezone or get_user_timezone_or_utc(
-            user.timezone if user else None
-        )
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise
@@ -1242,6 +1296,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="scheduling",
+                inputs=inputs,
             )
 
         # Convert next_run_time to user timezone for display

@@ -56,7 +56,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
   return (
     <section data-testid="expert-integrations-section">
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Integrations
         </Text>
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
               <span>
                 <Button
                   variant="secondary"
-                  size="xs"
+                  size="small"
                   leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
@@ -92,14 +92,14 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           </Tooltip>
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
             Add integration
           </Button>
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search integrations"

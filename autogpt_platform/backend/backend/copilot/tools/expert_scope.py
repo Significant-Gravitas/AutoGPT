@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 WORKFLOW_NOT_INSTALLED = (
     "'{name}' is not installed on this expert. Experts can only run, edit, "
     "and schedule their installed workflows. Install it first with "
-    "install_expert_workflow, from the marketplace or the owner's library."
+    "install_expert_workflow from the marketplace, or ask the user to install "
+    "one of their own."
 )
 EXPERT_OWNER_DENIED = (
     "Experts can only manage their own workflows and integrations. Open "
@@ -135,6 +136,18 @@ async def resolve_target_expert(
     return expert.id
 
 
+async def settle_expert_grants(user_id: str, session: ChatSession) -> None:
+    """An expert installing a workflow on itself must not widen its own grants.
+
+    The allow-list is seeded from the expert's workflows on first read, so
+    settle it before the install lands; otherwise the new workflow's
+    credentials would be granted by the expert's own action.
+    """
+    if session.expert_id is None:
+        return
+    await experts_db().settle_credential_seed(user_id, session.expert_id)
+
+
 async def install_saved_agent(
     user_id: str, session: ChatSession, result: ToolResponseBase
 ) -> ToolResponseBase:
@@ -147,6 +160,7 @@ async def install_saved_agent(
     if session.expert_id is None or not isinstance(result, AgentSavedResponse):
         return result
     try:
+        await settle_expert_grants(user_id, session)
         await experts_db().install_workflow(
             user_id, session.expert_id, library_agent_id=result.library_agent_id
         )

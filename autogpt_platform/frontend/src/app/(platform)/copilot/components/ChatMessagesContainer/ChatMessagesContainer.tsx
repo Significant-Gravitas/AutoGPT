@@ -20,7 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
-import { revealKickoffMessages } from "../../expertKickoff";
+import { hideKickoffMessages } from "../../expertKickoff";
 import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
@@ -96,6 +96,9 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
+  /** The roster is still loading for an expert-scoped session, so the
+   *  header must not yet claim the thread is Otto's. */
+  isResolvingExpertIdentity?: boolean;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
@@ -311,6 +314,7 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
   expertIdentity,
+  isResolvingExpertIdentity = false,
   hasFloatingControls = false,
   canOpenActivity = false,
   areFilesOpen = false,
@@ -319,7 +323,7 @@ export function ChatMessagesContainer({
 }: Props) {
   const isCompact = variant === "compact";
   const messages = useMemo(
-    () => revealKickoffMessages(allMessages),
+    () => hideKickoffMessages(allMessages),
     [allMessages],
   );
   // Hide the container for one frame when messages first load so
@@ -474,6 +478,7 @@ export function ChatMessagesContainer({
       {showThreadHeader && (
         <ThreadHeader
           expertIdentity={expertIdentity}
+          isResolvingExpertIdentity={isResolvingExpertIdentity}
           readOnly={readOnly}
           sessionId={sessionID}
           hasFloatingControls={hasFloatingControls}

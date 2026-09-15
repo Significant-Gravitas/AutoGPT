@@ -16,6 +16,7 @@ import logging
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.tree import MAX_DEPTH
 from backend.data.db_accessors import experts_db
 
 logger = logging.getLogger(__name__)
@@ -25,10 +26,9 @@ logger = logging.getLogger(__name__)
 CALLER_NAME_LIMIT = 80
 
 # How many hops a single task may travel between experts, whether delegated or
-# handed over. Each hop is a fresh session with a fresh delegator, so without
-# this nothing downstream would ever notice a chain — or a loop — sustaining
-# itself on the user's credits.
-MAX_DELEGATION_DEPTH = 3
+# handed over. The turn envelope enforces the same bound for every spawn kind;
+# this walk stays as the loop check and as belt-and-braces on the depth.
+MAX_DELEGATION_DEPTH = MAX_DEPTH
 
 # The preamble delimits itself with square brackets, so a name containing them
 # can close the framing early and open a block of its own.

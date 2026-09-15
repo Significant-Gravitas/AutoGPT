@@ -11,6 +11,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fireEvent } from "@testing-library/react";
+
 import { AppSidebar } from "../AppSidebar";
 
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
@@ -44,6 +46,18 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
+const routerPush = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useRouter: () => ({ push: routerPush, prefetch: vi.fn() }),
+    usePathname: () => "/marketplace",
+    useSearchParams: () => new URLSearchParams(),
+  };
+});
+
 const useGetFlagMock = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -66,6 +80,7 @@ function renderSidebar() {
 }
 
 beforeEach(() => {
+  routerPush.mockClear();
   useGetFlagMock.mockReturnValue(false);
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
 });
@@ -75,6 +90,23 @@ afterEach(() => {
 });
 
 describe("AppSidebar", () => {
+  it("ignores a keydown with no key and preserves the new-task shortcut", () => {
+    renderSidebar();
+    const event = new KeyboardEvent("keydown", {
+      ctrlKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, "key", { value: undefined });
+
+    expect(() => fireEvent(document, event)).not.toThrow();
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+
+    fireEvent.keyDown(document, { key: "O", ctrlKey: true, shiftKey: true });
+    expect(routerPush).toHaveBeenCalledWith("/copilot");
+  });
+
   it("renders the primary navigation links", () => {
     renderSidebar();
     expect(screen.getByText("Agents")).toBeDefined();

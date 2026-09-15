@@ -34,6 +34,7 @@ def experts():
     )
     db.install_workflow = AsyncMock()
     db.expert_allowed_credential_ids = AsyncMock(return_value=["granted-cred"])
+    db.settle_credential_seed = AsyncMock()
     with patch(f"{_PATH}.experts_db", return_value=db):
         yield db
 
@@ -179,3 +180,11 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "granted-cred" not in hint and "other-cred" not in hint
     assert "grant_expert_credential" in hint
     assert none == "" and personal == ""
+
+
+async def test_agent_built_by_expert_settles_grants_before_install(experts):
+    order: list[str] = []
+    experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
+    experts.install_workflow.side_effect = lambda *_, **__: order.append("install")
+    await install_saved_agent("user-1", _expert_session(), _saved())
+    assert order == ["settle", "install"]

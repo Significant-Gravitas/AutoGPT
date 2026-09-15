@@ -5,16 +5,29 @@ import pytest
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.run_agent import RunAgentTool
+from backend.util.exceptions import NotFoundError
 
 _PATH = "backend.copilot.tools.run_agent"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("installed", [True, False])
-async def test_graph_reference_resolves_before_installed_gate(installed):
+@pytest.mark.parametrize(
+    "miss",
+    [
+        # What the real layer does: get_library_agent is annotated non-optional
+        # and raises. Mocking it as returning None passed the fallback without
+        # ever reaching it.
+        pytest.param(
+            {"side_effect": NotFoundError("no such library agent")}, id="raises"
+        ),
+        pytest.param({"return_value": None}, id="returns-none"),
+    ],
+)
+async def test_graph_reference_resolves_before_installed_gate(installed, miss):
     session = ChatSession.new("owner", dry_run=False, expert_id="expert-a")
     library = MagicMock()
-    library.get_library_agent = AsyncMock(return_value=None)
+    library.get_library_agent = AsyncMock(**miss)
     library.get_library_agent_by_graph_id = AsyncMock(
         return_value=MagicMock(id="lib-1", graph_id="graph-1", graph_version=1)
     )

@@ -238,5 +238,11 @@ class TestMCPClientDiscovery:
             )
 
         assert result is not None
-        assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
-        assert result["token_endpoint"] == "https://auth.example.com/token"
+        metadata, expected_issuer = result
+        assert (
+            metadata["authorization_endpoint"] == "https://auth.example.com/authorize"
+        )
+        assert metadata["token_endpoint"] == "https://auth.example.com/token"
+        # RFC 8414 §3.3: a document served at the well-known root must declare
+        # the bare origin as its issuer.
+        assert expected_issuer == "https://auth.example.com"

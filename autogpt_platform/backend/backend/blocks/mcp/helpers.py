@@ -20,8 +20,17 @@ def normalize_mcp_url(url: str) -> str:
     Strips leading/trailing whitespace and a single trailing slash so that
     ``https://mcp.example.com/`` and ``https://mcp.example.com`` resolve to
     the same stored credential.
+
+    A URL with no scheme gets ``https://``. That is the user omitting a scheme
+    rather than asking for cleartext — but the reason it belongs *here* is
+    matching, not politeness: the credential is stored under this value and
+    every lookup re-derives it from user input through this same function, so
+    the default has to be applied in one place or storage and lookup disagree.
     """
-    return url.strip().rstrip("/")
+    url = url.strip().rstrip("/")
+    if url and "://" not in url:
+        url = f"https://{url}"
+    return url
 
 
 def server_host(server_url: str) -> str:
@@ -136,15 +145,24 @@ async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
 
 
 async def auto_lookup_mcp_credential(
-    user_id: str, server_url: str
+    user_id: str, server_url: str, allowed_ids: set[str] | None = None
 ) -> OAuth2Credentials | None:
     """Look up the best stored MCP credential for *server_url*.
 
     The caller should pass a **normalized** URL (via :func:`normalize_mcp_url`)
     so the comparison with ``mcp_server_url`` in credential metadata matches.
 
+    ``allowed_ids`` narrows the candidates before ranking, so an expert whose
+    grant is outranked by an ungranted row still gets the one it may use.
+
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if it can expire and needs it, or ``None`` when no match is found.
+
+    A failed refresh also yields ``None``, deliberately. Returning the stale
+    access token instead would earn a 401 from the server, and the caller
+    treats a 401 on a credential it *has* as proof the token is dead — so a
+    transient outage at the provider's token endpoint would delete a row whose
+    refresh token is still perfectly good.
     """
     try:
         mgr = IntegrationCredentialsManager()
@@ -165,6 +183,7 @@ async def auto_lookup_mcp_credential(
             if (
                 isinstance(cred, OAuth2Credentials)
                 and (cred.metadata or {}).get("mcp_server_url") == server_url
+                and (allowed_ids is None or cred.id in allowed_ids)
             ):
                 if best is None or rank(cred) >= rank(best):
                     best = cred

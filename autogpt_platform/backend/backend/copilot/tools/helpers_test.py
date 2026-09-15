@@ -1,7 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +14,9 @@ from backend.copilot.tools.helpers import (
     check_hitl_review,
     execute_block,
     get_block_provider,
+    get_inputs_from_schema,
+    get_picker_inputs_from_schema,
+    is_picker_field,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -1840,3 +1843,110 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestPickerInputs:
+    """Setup cards carry only picker-backed inputs; the rest is asked in chat."""
+
+    _schema: ClassVar[dict[str, Any]] = {
+        "properties": {
+            "term": {"type": "string"},
+            "limit": {"type": "integer", "default": 10, "advanced": True},
+            "spreadsheet": {
+                "type": "object",
+                "format": "google-drive-picker",
+            },
+            "doc": {
+                "type": "object",
+                "auto_credentials": {"provider": "google", "kwarg_name": "creds"},
+            },
+            "credentials": {"type": "object"},
+        },
+        "required": ["term", "spreadsheet", "credentials"],
+    }
+
+    def test_is_picker_field(self):
+        assert is_picker_field({"format": "google-drive-picker"})
+        assert is_picker_field({"auto_credentials": {"provider": "google"}})
+        assert not is_picker_field({"type": "string"})
+        assert not is_picker_field(None)
+
+    def test_only_picker_fields_survive(self):
+        inputs = get_picker_inputs_from_schema(
+            self._schema, exclude_fields={"credentials"}
+        )
+        assert [i["name"] for i in inputs] == ["spreadsheet", "doc"]
+
+    def test_plain_inputs_yield_empty_list(self):
+        schema = {
+            "properties": {"term": {"type": "string"}},
+            "required": ["term"],
+        }
+        assert get_picker_inputs_from_schema(schema) == []
+        assert len(get_inputs_from_schema(schema)) == 1
+
+    def test_provided_values_are_kept_on_picker_fields(self):
+        picked = {"id": "file-1", "name": "Sheet"}
+        inputs = get_picker_inputs_from_schema(
+            self._schema,
+            exclude_fields={"credentials"},
+            input_data={"term": "bug", "spreadsheet": picked},
+        )
+        by_name = {i["name"]: i for i in inputs}
+        assert by_name["spreadsheet"]["value"] == picked
+        assert "term" not in by_name
+
+
+class TestExecuteBlockExpertFileScope:
+    """A ``workspace://`` block input is a second door into the workspace, so
+    the run it belongs to must carry the session's expert."""
+
+    async def test_expert_block_run_cannot_read_another_sessions_file(self):
+        result = await _store_workspace_file("/sessions/personal/private.txt")
+        assert isinstance(result, ErrorResponse)
+        assert "outside this expert's scope" in result.message
+
+    async def test_expert_block_run_reads_its_own_session_file(self):
+        result = await _store_workspace_file(f"/sessions/{_SESSION}/notes.txt")
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+async def _store_workspace_file(path: str):
+    """Run FileStoreBlock on ``workspace://<path>`` in an expert session."""
+    from backend.blocks.basic import FileStoreBlock
+    from backend.data.workspace_scope import WorkspaceScope
+    from backend.util.workspace_test import _make_workspace_file
+
+    scope_db = MagicMock()
+    scope_db.resolve_expert_workspace_scope = AsyncMock(
+        return_value=WorkspaceScope(expert_id="expert-a")
+    )
+    files = MagicMock()
+    files.get_workspace_file_by_path = AsyncMock(
+        return_value=_make_workspace_file(path=path)
+    )
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"secret"
+    credit_patch, _ = _patch_credit_db()
+
+    with (
+        _patch_workspace(),
+        credit_patch,
+        patch("backend.data.db_accessors.workspace_db", return_value=scope_db),
+        patch("backend.util.workspace.workspace_db", return_value=files),
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.get_cloud_storage_handler", AsyncMock()),
+    ):
+        return await execute_block(
+            block=FileStoreBlock(),
+            block_id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            input_data={"file_in": f"workspace://{path}", "base_64": True},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-scope",
+            matched_credentials={},
+            dry_run=False,
+            expert_id="expert-a",
+        )

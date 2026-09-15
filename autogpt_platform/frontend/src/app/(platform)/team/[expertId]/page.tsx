@@ -138,7 +138,7 @@ export default function ExpertDetailPage() {
             </Text>
             <Button
               variant="secondary"
-              size="xs"
+              size="small"
               loading={isResuming}
               onClick={resumeSchedules}
             >
@@ -147,16 +147,19 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        <ExpertBudgetSection expert={expert} />
-
-        {expert.tagline ? (
-          <Text variant="body" tone="muted">
-            {expert.tagline}
-          </Text>
-        ) : null}
+        {/* items-start keeps the tagline level with the Budget label rather
+            than floating between the label and the bar. */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
+          {expert.tagline ? (
+            <Text variant="large" className="min-w-0 flex-1 text-zinc-800">
+              {expert.tagline}
+            </Text>
+          ) : null}
+          <ExpertBudgetSection expert={expert} />
+        </div>
 
         <ExpertNeedsYouSection
-          expertId={expert.id}
+          expert={expert}
           enabled={Boolean(enabled) && ready}
         />
 

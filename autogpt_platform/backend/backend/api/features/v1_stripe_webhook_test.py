@@ -499,11 +499,12 @@ async def test_expire_open_subscription_sessions_paginates(
     page2 = MagicMock()
     page2.data = [MagicMock(id="cs_page2", mode="subscription")]
     page2.has_more = False
+    page1.next_page_async = AsyncMock(return_value=page2)
 
     mock_list = mocker.patch(
         "stripe.checkout.Session.list_async",
         new_callable=AsyncMock,
-        side_effect=[page1, page2],
+        return_value=page1,
     )
     mock_expire = mocker.patch(
         "stripe.checkout.Session.expire_async", new_callable=AsyncMock
@@ -511,12 +512,11 @@ async def test_expire_open_subscription_sessions_paginates(
 
     await _expire_open_subscription_sessions("cus_test")
 
-    assert mock_list.call_count == 2
-    mock_list.assert_any_call(customer="cus_test", status="open", limit=100)
-    mock_list.assert_any_call(
-        customer="cus_test", status="open", limit=100, starting_after="cs_page1"
-    )
+    mock_list.assert_awaited_once_with(customer="cus_test", status="open", limit=100)
+    page1.next_page_async.assert_awaited_once_with()
     assert mock_expire.call_count == 2
+    mock_expire.assert_any_await("cs_page1")
+    mock_expire.assert_any_await("cs_page2")
 
 
 # ---------------------------------------------------------------------------
@@ -837,16 +837,29 @@ def test_payment_failure_triggers_the_payment_email(
     stub_lifecycle_emails["payment_failed"].assert_awaited_once()
 
 
-def test_a_trial_ending_event_is_not_listened_for(
+def test_trial_ending_event_reconciles_and_queues_trial_reminder(
     mocker: pytest_mock.MockFixture, stub_lifecycle_emails
 ) -> None:
-    """The platform does not offer a trial, so this event does nothing."""
+    sync = mocker.patch(
+        "backend.api.features.v1.sync_subscription_from_stripe",
+        new_callable=AsyncMock,
+    )
+    notify = mocker.patch(
+        "backend.api.features.v1.notify_trial", new_callable=AsyncMock
+    )
+    subscription = {
+        "id": "sub_1",
+        "customer": "cus_1",
+        "metadata": {"trial_enrollment_id": "trial-1"},
+    }
     _post_event(
         mocker,
         {
             "type": "customer.subscription.trial_will_end",
-            "data": {"object": {"id": "sub_1", "customer": "cus_1"}},
+            "data": {"object": subscription},
         },
     )
+    sync.assert_awaited_once_with(subscription)
+    notify.assert_awaited_once_with(subscription, "ending")
     for mock in stub_lifecycle_emails.values():
         mock.assert_not_awaited()

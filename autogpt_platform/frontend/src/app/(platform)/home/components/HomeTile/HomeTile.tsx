@@ -34,7 +34,7 @@ export function HomeTile({
     <Component
       aria-label={as === "section" ? title : undefined}
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white",
+        "flex min-w-0 flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm",
         className,
       )}
     >
