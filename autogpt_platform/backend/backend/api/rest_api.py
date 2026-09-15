@@ -36,9 +36,9 @@ import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
-import backend.api.features.executions.review.routes
-import backend.api.features.executions.routes as executions_routes
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.graph_executions.review.routes
+import backend.api.features.graph_executions.routes as executions_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -494,7 +494,7 @@ if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
         prefix="/api",
     )
 app.include_router(
-    backend.api.features.executions.review.routes.router,
+    backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
 )
