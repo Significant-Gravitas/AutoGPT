@@ -7,9 +7,10 @@ interface Props {
   skill: PackagedSkillInfo;
   isRemoved: boolean;
   onToggle: () => void;
+  readOnly?: boolean;
 }
 
-export function SkillRow({ skill, isRemoved, onToggle }: Props) {
+export function SkillRow({ skill, isRemoved, onToggle, readOnly }: Props) {
   return (
     <li
       className={cn(
@@ -27,14 +28,16 @@ export function SkillRow({ skill, isRemoved, onToggle }: Props) {
             : `${skill.files?.length ?? 0} files`}
         </Text>
       </div>
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={onToggle}
-        aria-label={`${isRemoved ? "Keep" : "Remove"} ${skill.name}`}
-      >
-        {isRemoved ? "Undo" : "Remove"}
-      </Button>
+      {readOnly ? null : (
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={onToggle}
+          aria-label={`${isRemoved ? "Keep" : "Remove"} ${skill.name}`}
+        >
+          {isRemoved ? "Undo" : "Remove"}
+        </Button>
+      )}
     </li>
   );
 }

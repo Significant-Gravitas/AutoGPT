@@ -25,7 +25,11 @@ interface Props {
 
 /** What a `.expert.zip` would become, before it becomes it. Read-only about
  *  everything the file decides; the user only renames it and leaves parts out.
- *  Not a `<form>`, so Enter in the name field can never submit an import. */
+ *  Not a `<form>`, so Enter in the name field can never submit an import.
+ *
+ *  Publish mode is a confirmation, not an editor: the publish route builds the
+ *  package from the stored expert and takes no edits, so an editable control
+ *  here could only lie about what reaches the marketplace. */
 export function ExpertReviewDialog({
   mode,
   open,
@@ -63,12 +67,18 @@ export function ExpertReviewDialog({
           <IssueBanner issues={preview?.errors ?? []} tone="error" />
           <IssueBanner issues={preview?.warnings ?? []} tone="warning" />
 
-          <Input
-            id="expert-review-name"
-            label="Name"
-            value={draft.name}
-            onChange={(event) => setName(event.target.value)}
-          />
+          {isImport ? (
+            <Input
+              id="expert-review-name"
+              label="Name"
+              value={draft.name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          ) : (
+            <Text variant="large-medium" className="text-zinc-900">
+              {draft.name}
+            </Text>
+          )}
 
           {/* Everything else about the expert is what the file says. */}
           <Text variant="small" className="text-zinc-500">
@@ -83,6 +93,7 @@ export function ExpertReviewDialog({
                   skill={skill}
                   isRemoved={draft.removedSkillSlugs.includes(skill.slug)}
                   onToggle={() => toggleSkill(skill.slug)}
+                  readOnly={!isImport}
                 />
               ))}
             </Section>
@@ -100,6 +111,7 @@ export function ExpertReviewDialog({
                   isScheduled={draft.scheduledIndices.includes(workflow.index)}
                   onToggle={() => toggleWorkflow(workflow.index)}
                   onToggleSchedule={() => toggleSchedule(workflow.index)}
+                  readOnly={!isImport}
                 />
               ))}
             </Section>

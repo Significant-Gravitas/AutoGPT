@@ -13,6 +13,7 @@ interface Props {
   isScheduled: boolean;
   onToggle: () => void;
   onToggleSchedule: () => void;
+  readOnly?: boolean;
 }
 
 export function WorkflowRow({
@@ -21,6 +22,7 @@ export function WorkflowRow({
   isScheduled,
   onToggle,
   onToggleSchedule,
+  readOnly,
 }: Props) {
   const source = getWorkflowSourceLabel(workflow.source);
   const scheduleId = `review-schedule-${workflow.index}`;
@@ -41,29 +43,39 @@ export function WorkflowRow({
             {source.label}
           </Badge>
         </div>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={onToggle}
-          aria-label={`${isRemoved ? "Keep" : "Remove"} ${workflow.name}`}
-        >
-          {isRemoved ? "Undo" : "Remove"}
-        </Button>
+        {readOnly ? null : (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={onToggle}
+            aria-label={`${isRemoved ? "Keep" : "Remove"} ${workflow.name}`}
+          >
+            {isRemoved ? "Undo" : "Remove"}
+          </Button>
+        )}
       </div>
 
       {workflow.schedule_cron && !isRemoved ? (
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor={scheduleId} className="text-sm text-zinc-600">
-            Schedule
-            <span className="block text-xs text-zinc-500">
-              {safeHumanizeCronExpression(workflow.schedule_cron)}
-            </span>
-          </label>
-          <Switch
-            id={scheduleId}
-            checked={isScheduled}
-            onCheckedChange={onToggleSchedule}
-          />
+          {readOnly ? (
+            <Text variant="small" className="text-zinc-600">
+              {`Schedule · ${safeHumanizeCronExpression(workflow.schedule_cron)}`}
+            </Text>
+          ) : (
+            <>
+              <label htmlFor={scheduleId} className="text-sm text-zinc-600">
+                Schedule
+                <span className="block text-xs text-zinc-500">
+                  {safeHumanizeCronExpression(workflow.schedule_cron)}
+                </span>
+              </label>
+              <Switch
+                id={scheduleId}
+                checked={isScheduled}
+                onCheckedChange={onToggleSchedule}
+              />
+            </>
+          )}
         </div>
       ) : null}
     </li>
