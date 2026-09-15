@@ -250,6 +250,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    # Sakana AI models
+    SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
