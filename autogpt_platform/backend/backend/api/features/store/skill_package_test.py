@@ -325,6 +325,47 @@ async def test_re_seeding_a_starter_that_lost_a_file_drops_its_row(
     assert await _starter_file_rows() == []
 
 
+async def test_a_seed_that_cannot_write_the_package_leaves_the_version_alone(
+    creator: str, monkeypatch, tmp_path
+):
+    """The live version and its files are replaced together, so a failed package
+    write cannot leave new instructions on the shelf beside the old package."""
+    directory = tmp_path / STARTER_SLUG
+    directory.mkdir()
+    root = directory / "SKILL.md"
+    root.write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a note.\n---\n\n# First\n",
+        encoding="utf-8",
+    )
+    (directory / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    monkeypatch.setattr(skill_seed, "_CONTENT_DIR", tmp_path)
+    monkeypatch.setattr(
+        skill_seed,
+        "STARTER_SKILLS",
+        [{"slug": STARTER_SLUG, "categories": ["content"], "required_providers": []}],
+    )
+    await skill_seed.seed_starter_skills()
+
+    root.write_text(
+        f"---\nname: {STARTER_SLUG}\ndescription: Ships a note.\n---\n\n# Second\n",
+        encoding="utf-8",
+    )
+
+    async def fails(*_args, **_kwargs):
+        raise RuntimeError("the package write failed")
+
+    monkeypatch.setattr(skill_seed, "snapshot_version_files", fails)
+    with pytest.raises(RuntimeError):
+        await skill_seed.seed_starter_skills()
+
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": STARTER_SLUG}, include={"ActiveVersion": True}
+    )
+    assert listing is not None and listing.ActiveVersion is not None
+    assert listing.ActiveVersion.body.strip() == "# First"
+    assert [r.relativePath for r in await _starter_file_rows()] == ["notes.md"]
+
+
 async def _starter_file_rows() -> list[prisma.models.SkillListingFile]:
     """The seeded starter's own file rows — never the whole table, which this
     suite shares with every other one that publishes a package."""

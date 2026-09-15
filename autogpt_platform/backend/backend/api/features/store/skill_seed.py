@@ -121,18 +121,21 @@ async def _upsert_version(
         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
     }
     existing = listing.ActiveVersion
-    if existing is not None:
-        updated = await prisma.models.SkillListingVersion.prisma().update(
-            where={"id": existing.id}, data=content
+    # One transaction: an install reads a version's instructions and its package
+    # together, so neither may become visible without the other.
+    async with database.transaction() as tx:
+        if existing is not None:
+            updated = await prisma.models.SkillListingVersion.prisma(tx).update(
+                where={"id": existing.id}, data=content
+            )
+            if updated is not None:
+                await snapshot_version_files(updated.id, files, tx)
+                return updated
+        created = await prisma.models.SkillListingVersion.prisma(tx).create(
+            data={**content, "skillListingId": listing.id}
         )
-        if updated is not None:
-            await snapshot_version_files(updated.id, files)
-            return updated
-    created = await prisma.models.SkillListingVersion.prisma().create(
-        data={**content, "skillListingId": listing.id}
-    )
-    await snapshot_version_files(created.id, files)
-    return created
+        await snapshot_version_files(created.id, files, tx)
+        return created
 
 
 def _load(slug: str) -> tuple[ParsedSkill, list[SkillFile]]:
