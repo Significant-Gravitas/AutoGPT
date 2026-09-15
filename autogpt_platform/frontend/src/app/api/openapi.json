@@ -27357,6 +27357,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "schedule_list",
           "schedule_deleted",
           "schedule_created",
