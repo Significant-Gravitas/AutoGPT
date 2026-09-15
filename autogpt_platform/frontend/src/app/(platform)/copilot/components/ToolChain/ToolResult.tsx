@@ -194,7 +194,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -393,7 +397,7 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       // dump. The same renderer serves block outputs and attachments.
       const stream = output ? output.desktop_stream : null;
       if (stream && desktopStreamRenderer.canRender(stream)) {
-        return <DesktopStreamCard stream={stream} />;
+        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
       }
       return null;
     }
@@ -411,9 +415,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -442,7 +447,7 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, readOnly);
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;

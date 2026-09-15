@@ -12,7 +12,7 @@ import {
   CopyContent,
 } from "../types";
 
-interface DesktopStreamValue {
+export interface DesktopStreamValue {
   kind: "desktop_stream";
   url: string;
   provider: string;
@@ -20,8 +20,12 @@ interface DesktopStreamValue {
   requires_auth?: boolean;
 }
 
-function isHttpsUrl(url: unknown): url is string {
+function isStreamUrl(url: unknown): url is string {
   if (typeof url !== "string") return false;
+  // A root-relative path is our own proxy link; anything absolute must be
+  // https, or a javascript: URL would run in our origin under
+  // allow-scripts allow-same-origin.
+  if (url.startsWith("/") && !url.startsWith("//")) return true;
   try {
     return new URL(url).protocol === "https:";
   } catch {
@@ -29,21 +33,32 @@ function isHttpsUrl(url: unknown): url is string {
   }
 }
 
-function isDesktopStream(value: unknown): value is DesktopStreamValue {
+export function isDesktopStream(value: unknown): value is DesktopStreamValue {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   // This renderer is in the global registry, so any output shaped like a
-  // stream reaches the iframe. Only an https URL may: a javascript: URL
-  // would run in our origin with allow-scripts allow-same-origin.
+  // stream reaches the iframe; only a URL that can resolve to our own origin
+  // or to an https host may.
   return (
     candidate.kind === "desktop_stream" &&
-    isHttpsUrl(candidate.url) &&
+    isStreamUrl(candidate.url) &&
     typeof candidate.sandbox_id === "string"
   );
 }
 
-function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
+interface PreviewProps {
+  value: DesktopStreamValue;
+  /** False on a shared transcript: the owner-bound link would only answer
+   *  the viewer with a 404, so the frame is replaced by a notice. */
+  ownerView?: boolean;
+}
+
+export function DesktopStreamPreview({
+  value,
+  ownerView = true,
+}: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const ownerOnly = value.requires_auth === true && !ownerView;
 
   function handleFullscreen() {
     frameRef.current?.requestFullscreen();
@@ -59,36 +74,44 @@ function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
             {value.provider}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleFullscreen}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
-            aria-label="Fullscreen"
-          >
-            <Icon icon={ArrowExpandIcon} size={14} />
-            Fullscreen
-          </button>
-          <a
-            href={value.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
-          >
-            <Icon icon={ArrowUpRight01Icon} size={14} />
-            Open in new tab
-          </a>
-        </div>
+        {!ownerOnly && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFullscreen}
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+              aria-label="Fullscreen"
+            >
+              <Icon icon={ArrowExpandIcon} size={14} />
+              Fullscreen
+            </button>
+            <a
+              href={value.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+            >
+              <Icon icon={ArrowUpRight01Icon} size={14} />
+              Open in new tab
+            </a>
+          </div>
+        )}
       </div>
-      <iframe
-        ref={frameRef}
-        src={value.url}
-        sandbox="allow-scripts allow-same-origin allow-popups"
-        allow="clipboard-read; clipboard-write; fullscreen"
-        className="aspect-video w-full bg-zinc-900"
-        title={`Interactive desktop (${value.sandbox_id})`}
-      />
-      <p className="border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+      {ownerOnly ? (
+        <div className="flex aspect-video w-full items-center justify-center bg-zinc-900 px-6 text-center text-sm text-zinc-400">
+          The live desktop is only visible to the owner of this chat.
+        </div>
+      ) : (
+        <iframe
+          ref={frameRef}
+          src={value.url}
+          sandbox="allow-scripts allow-same-origin allow-popups"
+          allow="clipboard-read; clipboard-write; fullscreen"
+          className="aspect-video w-full bg-zinc-900"
+          title={`Interactive desktop (${value.sandbox_id})`}
+        />
+      )}
+      <p className="border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700">
         {value.requires_auth
           ? "Only the owner of this chat can view the live desktop. "
           : ""}
