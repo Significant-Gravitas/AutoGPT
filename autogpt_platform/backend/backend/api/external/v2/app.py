@@ -6,11 +6,10 @@ This module defines the FastAPI application for the v2 external API.
 
 from fastapi import FastAPI
 
-from backend.api.external.middleware import add_auth_responses_to_openapi
 from backend.api.middleware.security import SecurityHeadersMiddleware
-from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.openapi import sort_openapi
 
+from .errors import add_v2_exception_handlers
 from .global_rate_limit import GlobalRateLimitMiddleware
 from .mcp_server import create_mcp_app
 from .routes import v2_router
@@ -22,7 +21,10 @@ integrations, automations, and custom applications.
 ### Key Improvements over v1
 
 - **Consistent naming**: Uses `graph_id`/`graph_version` consistently
-- **Better pagination**: All list endpoints support pagination
+- **One list shape**: every list endpoint takes `limit`/`cursor` and returns
+  `{"items": [...], "next_cursor": ..., "total_count": ...}`
+- **One error shape**: every non-2xx response is
+  `{"error": {"code", "message", "details"}}`
 - **Comprehensive coverage**: Access to library, runs, schedules, credits, and more
 - **Human-in-the-loop**: Review and approve agent decisions via the API
 
@@ -40,8 +42,21 @@ endpoint). When a rate limit is exceeded, the API returns `429 Too Many Requests
 
 ### Pagination
 
-List endpoints return paginated responses. Use `page` and `page_size` query
-parameters to navigate results. Maximum page size is 100 items.
+List endpoints take `limit` (1-100, default 20) and `cursor`, and return
+`{"items": [...], "next_cursor": ..., "total_count": ...}`. Pass `next_cursor`
+back as `cursor` for the next page; it is `null` on the last page. Cursors are
+opaque. `total_count` counts the matches across all pages, and is `null` only
+where the source cannot report one.
+
+### Status codes
+
+`201` when a resource is created, `202` when work is queued, `204` on delete,
+`200` on everything else.
+
+### Errors
+
+Every non-2xx response is `{"error": {"code", "message", "details"}}`. Branch
+on `code`, a stable snake_case identifier; `message` is for humans.
 """.strip()
 
 v2_app = FastAPI(
@@ -112,12 +127,10 @@ v2_app.include_router(v2_router)
 
 # Mounted sub-apps do NOT inherit exception handlers from the parent app,
 # so we must register them here for the v2 API specifically.
-add_exception_handlers(v2_app)
+add_v2_exception_handlers(v2_app)
 
 # Mount MCP server (Copilot tools via Streamable HTTP)
 v2_app.mount("/mcp", create_mcp_app())
 
-# Add 401 responses to authenticated endpoints in OpenAPI spec
-add_auth_responses_to_openapi(v2_app)
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(v2_app)

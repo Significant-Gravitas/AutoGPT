@@ -8,7 +8,16 @@ import logging
 import urllib.parse
 from typing import Literal, Optional
 
-from fastapi import APIRouter, File, HTTPException, Path, Query, Security, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Path,
+    Query,
+    Security,
+    UploadFile,
+)
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -25,22 +34,19 @@ from backend.api.features.store.model import ProfileUpdateRequest
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.virus_scanner import scan_content_safe
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
     LibraryAgent,
     MarketplaceAgent,
     MarketplaceAgentDetails,
-    MarketplaceAgentListResponse,
     MarketplaceAgentSubmission,
     MarketplaceAgentSubmissionCreateRequest,
     MarketplaceAgentSubmissionEditRequest,
-    MarketplaceAgentSubmissionsListResponse,
     MarketplaceCreatorDetails,
-    MarketplaceCreatorsResponse,
     MarketplaceMediaUploadResponse,
     MarketplaceUserProfile,
     MarketplaceUserProfileUpdateRequest,
 )
+from .pagination import Page, PageRequest, page_request
 from .rate_limit import media_upload_limiter
 
 logger = logging.getLogger(__name__)
@@ -73,11 +79,10 @@ async def list_agents(
         default=None,
         description="Property to sort results by. Ignored if search_query is provided.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    page: PageRequest = Depends(page_request),
     # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
-) -> MarketplaceAgentListResponse:
+) -> Page[MarketplaceAgent]:
     """List agents available in the marketplace, with optional filtering and sorting."""
     result = await store_cache._get_cached_store_agents(
         featured=featured,
@@ -85,16 +90,13 @@ async def list_agents(
         sorted_by=StoreAgentsSortOptions(sorted_by) if sorted_by else None,
         search_query=search_query,
         category=category,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
     )
 
-    return MarketplaceAgentListResponse(
-        agents=[MarketplaceAgent.from_internal(a) for a in result.agents],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [MarketplaceAgent.from_internal(a) for a in result.agents],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -184,26 +186,22 @@ async def list_creators(
     sorted_by: Optional[Literal["agent_rating", "agent_runs", "num_agents"]] = Query(
         default=None, description="Sort field"
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    page: PageRequest = Depends(page_request),
     # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
-) -> MarketplaceCreatorsResponse:
+) -> Page[MarketplaceCreatorDetails]:
     """List or search marketplace creators."""
     result = await store_cache._get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=StoreCreatorsSortOptions(sorted_by) if sorted_by else None,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
     )
 
-    return MarketplaceCreatorsResponse(
-        creators=[MarketplaceCreatorDetails.from_internal(c) for c in result.creators],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [MarketplaceCreatorDetails.from_internal(c) for c in result.creators],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -287,27 +285,21 @@ async def update_profile(
     operation_id="listMarketplaceSubmissions",
 )
 async def list_submissions(
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE)
     ),
-) -> MarketplaceAgentSubmissionsListResponse:
+) -> Page[MarketplaceAgentSubmission]:
     """List the authenticated user's marketplace listing submissions."""
     result = await store_db.get_store_submissions(
         user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
     )
 
-    return MarketplaceAgentSubmissionsListResponse(
-        submissions=[
-            MarketplaceAgentSubmission.from_internal(s) for s in result.submissions
-        ],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [MarketplaceAgentSubmission.from_internal(s) for s in result.submissions],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -315,6 +307,7 @@ async def list_submissions(
     path="/submissions",
     summary="Create marketplace submission",
     operation_id="createMarketplaceSubmission",
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
@@ -381,6 +374,7 @@ async def edit_submission(
     path="/submissions/{version_id}",
     summary="Delete marketplace submission",
     operation_id="deleteMarketplaceSubmission",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_submission(
     version_id: str,
@@ -410,6 +404,7 @@ async def delete_submission(
     path="/submissions/media",
     summary="Upload marketplace submission media",
     operation_id="uploadMarketplaceSubmissionMedia",
+    status_code=status.HTTP_201_CREATED,
 )
 async def upload_submission_media(
     file: UploadFile = File(...),
