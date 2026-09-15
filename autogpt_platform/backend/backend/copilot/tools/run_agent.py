@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
@@ -926,6 +927,9 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 trigger=ExecutionTrigger.COPILOT,
                 trigger_ref=session_id,
+                # Keeps a graph containing an AutoPilotBlock inside this turn's
+                # tree rather than letting it start a fresh, unbounded one.
+                copilot_tree=get_current_envelope(),
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(
