@@ -10,13 +10,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import ContentType as SearchContentType
 
-from backend.api.external.middleware import require_auth
 from backend.api.features.search.hybrid_search import unified_hybrid_search
-from backend.data.auth.base import APIAuthorizationInfo
 
 from .models import MarketplaceSearchResult
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import search_limiter
+from .tenancy import TenantContext, require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ async def search(
     ),
     category: Optional[str] = Query(default=None, description="Filter by category"),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> Page[MarketplaceSearchResult]:
     """
     Search the platform's content and capabilities (hybrid search: literal + semantic).

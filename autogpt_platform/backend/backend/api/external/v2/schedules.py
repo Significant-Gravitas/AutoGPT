@@ -11,15 +11,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.data import graph as graph_db
-from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
+from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
 from .pagination import Page, PageRequest, page_request
+from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +41,20 @@ schedules_router = APIRouter(tags=["graphs", "schedules"])
 async def list_all_schedules(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_SCHEDULE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_SCHEDULE)),
 ) -> Page[AgentRunSchedule]:
     """List schedules for the authenticated user."""
     schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
+        organization_id=auth.organization_id,
+        team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
     )
-    # The scheduler client has no pagination of its own; slice what it returns.
-    return page.slice([AgentRunSchedule.from_internal(s) for s in schedules])
+    # The scheduler keeps a schedule the caller owns even when it belongs to
+    # another org, so the org filter is applied here rather than trusted there.
+    return page.slice(
+        [AgentRunSchedule.from_internal(s) for s in schedules if _in_tenant(s, auth)]
+    )
 
 
 @schedules_router.delete(
@@ -60,11 +65,13 @@ async def list_all_schedules(
 )
 async def delete_schedule(
     schedule_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_SCHEDULE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_SCHEDULE)),
 ) -> None:
     """Delete an execution schedule."""
+    # The scheduler deletes by user id alone, so the org is checked here: a
+    # schedule the key's org cannot see must not be deletable through it.
+    await _assert_schedule_in_tenant(schedule_id, auth)
+
     try:
         await get_scheduler_client().delete_schedule(
             schedule_id=schedule_id,
@@ -96,7 +103,7 @@ graph_schedules_router = APIRouter(tags=["graphs"])
 async def create_graph_schedule(
     request: AgentRunScheduleCreateRequest,
     graph_id: str,
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.WRITE_SCHEDULE, APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentRunSchedule:
@@ -105,6 +112,7 @@ async def create_graph_schedule(
         graph_id=graph_id,
         version=request.graph_version,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
     )
     if not graph:
         raise HTTPException(
@@ -128,6 +136,27 @@ async def create_graph_schedule(
         input_data=request.input_data,
         input_credentials=request.credentials_inputs,
         user_timezone=user_timezone,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
 
     return AgentRunSchedule.from_internal(result)
+
+
+async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> None:
+    """404 for a schedule outside the organization the credentials act in."""
+    visible = await get_scheduler_client().get_graph_execution_schedules(
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
+    )
+    if not any(
+        schedule.id == schedule_id and _in_tenant(schedule, auth)
+        for schedule in visible
+    ):
+        raise NotFoundError(f"Schedule #{schedule_id} not found")
+
+
+def _in_tenant(schedule: GraphExecutionJobInfo, auth: TenantContext) -> bool:
+    """Schedules store an untagged org as "", so normalise before comparing."""
+    return (schedule.organization_id or None) in (None, auth.organization_id)

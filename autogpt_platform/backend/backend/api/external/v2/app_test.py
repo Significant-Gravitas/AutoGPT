@@ -11,8 +11,7 @@ heavy dependencies that are irrelevant for error handling tests.
 """
 
 import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -21,21 +20,21 @@ import pytest_mock
 from prisma.enums import APIKeyPermission
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.external.middleware import require_auth
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .errors import add_v2_exception_handlers
 from .library.agents import agents_router
 from .marketplace import marketplace_router
+from .tenancy import TenantContext, require_auth
 
 TEST_USER_ID = "test-user-id"
+TEST_ORG_ID = "test-org-id"
 
-_mock_auth = APIAuthorizationInfo(
+_mock_auth = TenantContext(
     user_id=TEST_USER_ID,
     scopes=list(APIKeyPermission),
     type="api_key",
-    created_at=datetime.now(tz=timezone.utc),
+    organization_id=TEST_ORG_ID,
 )
 
 # ---------------------------------------------------------------------------
@@ -53,7 +52,7 @@ add_v2_exception_handlers(app)
 def _override_auth():
     """Bypass API key / OAuth auth for all tests in this module."""
 
-    async def fake_auth() -> APIAuthorizationInfo:
+    async def fake_auth() -> TenantContext:
         return _mock_auth
 
     app.dependency_overrides[require_auth] = fake_auth
@@ -99,6 +98,11 @@ def test_not_found_error_on_delete_returns_404(
 ) -> None:
     """NotFoundError on DELETE should return 404, not 204 or 500."""
     mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
+    mocker.patch(
         "backend.api.features.library.db.delete_library_agent",
         new_callable=AsyncMock,
         side_effect=NotFoundError("Agent #gone not found"),
@@ -136,6 +140,11 @@ def test_value_error_returns_400(
     snapshot: Snapshot,
 ) -> None:
     """ValueError raised by the service layer should become a 400 response."""
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
     mocker.patch(
         "backend.api.features.library.db.update_library_agent",
         new_callable=AsyncMock,
@@ -220,6 +229,11 @@ def test_runtime_error_returns_500(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """RuntimeError (not ValueError) should hit the catch-all 500 handler."""
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
     mocker.patch(
         "backend.api.features.library.db.delete_library_agent",
         new_callable=AsyncMock,

@@ -27,16 +27,19 @@ from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 
+from backend.api.external.v2.tenancy import resolve_credential_tenancy
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _build_input_schema, _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.data.auth.api_key import validate_api_key
+from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidTokenError,
     validate_access_token,
 )
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -165,6 +168,17 @@ class _ScopeAwareMCP(FastMCP):
 # ---------------------------------------------------------------------------
 
 
+class TenantedAccessToken(AccessToken):
+    """An MCP access token carrying the tenant its credentials act in.
+
+    MCP has no per-request dependency chain, so the tenant is resolved here,
+    once per token verification, instead of by `v2.tenancy`.
+    """
+
+    organization_id: str
+    team_id: str | None = None
+
+
 class ExternalAPITokenVerifier(TokenVerifier):
     """Validates API keys and OAuth tokens via external API auth."""
 
@@ -172,22 +186,30 @@ class ExternalAPITokenVerifier(TokenVerifier):
         # Try API key first
         api_key_info = await validate_api_key(token)
         if api_key_info:
-            return AccessToken(
-                token=token,
-                client_id=api_key_info.user_id,
-                scopes=[s.value for s in api_key_info.scopes],
-            )
+            return await self._tenanted(token, api_key_info)
 
         # Try OAuth bearer token
         try:
             token_info, _ = await validate_access_token(token)
-            return AccessToken(
-                token=token,
-                client_id=token_info.user_id,
-                scopes=[s.value for s in token_info.scopes],
-            )
+            return await self._tenanted(token, token_info)
         except (InvalidClientError, InvalidTokenError):
             return None
+
+    async def _tenanted(
+        self, token: str, auth: APIAuthorizationInfo
+    ) -> TenantedAccessToken | None:
+        try:
+            organization_id, team_id = await resolve_credential_tenancy(auth)
+        except NotAuthorizedError as e:
+            logger.warning(f"Rejecting MCP token for {auth.user_id}: {e}")
+            return None
+        return TenantedAccessToken(
+            token=token,
+            client_id=auth.user_id,
+            scopes=[s.value for s in auth.scopes],
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +238,17 @@ def _create_tool_handler(
                 return f"Missing required permission(s): {', '.join(missing)}"
 
         user_id = access_token.client_id
-        session = ChatSession.new(user_id, dry_run=False)
+        organization_id, team_id = (
+            (access_token.organization_id, access_token.team_id)
+            if isinstance(access_token, TenantedAccessToken)
+            else (None, None)
+        )
+        session = ChatSession.new(
+            user_id,
+            dry_run=False,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 

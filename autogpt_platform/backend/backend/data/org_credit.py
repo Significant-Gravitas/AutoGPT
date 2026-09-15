@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma.enums import CreditTransactionType
+from prisma.types import OrgCreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -237,10 +238,21 @@ async def get_org_transaction_history(
     org_id: str,
     limit: int = 50,
     offset: int = 0,
+    time_ceiling: datetime | None = None,
+    transaction_type: str | None = None,
 ) -> list[dict]:
     """Get credit transaction history for an organization."""
+    where: OrgCreditTransactionWhereInput = {
+        "orgId": org_id,
+        "isActive": True,
+    }
+    if time_ceiling:
+        where["createdAt"] = {"lt": time_ceiling}
+    if transaction_type:
+        where["type"] = CreditTransactionType(transaction_type)
+
     transactions = await prisma.orgcredittransaction.find_many(
-        where={"orgId": org_id, "isActive": True},
+        where=where,
         order={"createdAt": "desc"},
         take=limit,
         skip=offset,
@@ -359,6 +371,8 @@ class OrgCreditModel(UserCreditBase):
             self._org_id,
             limit=transaction_count_limit,
             offset=0,
+            time_ceiling=transaction_time_ceiling,
+            transaction_type=transaction_type,
         )
         from backend.data.model import UserCreditTransaction
 
@@ -375,9 +389,14 @@ class OrgCreditModel(UserCreditBase):
             )
             for t in raw
         ]
+        # The keyset cursor is the oldest row of a full page; a short page is
+        # the last one. Without it an org key pages forever over page one.
+        next_transaction_time = (
+            raw[-1]["createdAt"] if len(raw) == transaction_count_limit else None
+        )
         return TransactionHistory(
             transactions=transactions,
-            next_transaction_time=None,
+            next_transaction_time=next_transaction_time,
         )
 
     async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
