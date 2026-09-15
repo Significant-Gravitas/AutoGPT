@@ -14,6 +14,7 @@ import prisma.errors
 import prisma.models
 import pydantic
 import pytest
+import pytest_asyncio
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
@@ -136,6 +137,17 @@ async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> N
         where={"userId": {"in": user_ids}}
     )
     await prisma.models.User.prisma().delete_many(where={"id": {"in": user_ids}})
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def absorb_a_stale_event_loop(server: SpinTestServer):
+    """An earlier test can leave the shared Prisma client bound to a loop that
+    has since closed; only the first query on the new loop fails, and the engine
+    re-establishes itself. Spend that failure here rather than in a fixture."""
+    try:
+        await db_client.execute_raw("SELECT 1")
+    except Exception:
+        pass
 
 
 @pytest.fixture
