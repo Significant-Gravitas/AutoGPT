@@ -103,6 +103,15 @@ def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):
             "    required_providers: [google, 1]\n",
             "required_providers must be a list of strings",
         ),
+        (
+            'skills:\n  - slug: demo\n    categories: ""\n',
+            "categories must be a list of strings",
+        ),
+        (
+            "skills:\n  - slug: demo\n    categories: [sales]\n"
+            '    required_providers: ""\n',
+            "required_providers must be a list of strings",
+        ),
     ],
     ids=[
         "unknown-category",
@@ -112,6 +121,8 @@ def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):
         "invalid-slug",
         "scalar-provider",
         "mixed-providers",
+        "falsey-scalar-categories",
+        "falsey-scalar-providers",
     ],
 )
 def test_a_malformed_catalog_fails_before_anything_is_written(

@@ -114,14 +114,18 @@ def load_catalog(root: Path) -> list[CatalogEntry]:
         if slug in seen:
             raise ValueError(f"{CATALOG_FILE}: '{slug}' is listed twice")
         seen.add(slug)
-        categories = item.get("categories") or []
+        raw_categories = item.get("categories")
+        categories = [] if raw_categories is None else raw_categories
         if not isinstance(categories, list) or not all(
             isinstance(category, str) for category in categories
         ):
             raise ValueError(
                 f"{CATALOG_FILE}: '{slug}' categories must be a list of strings"
             )
-        required_providers = item.get("required_providers") or []
+        raw_required_providers = item.get("required_providers")
+        required_providers = (
+            [] if raw_required_providers is None else raw_required_providers
+        )
         if not isinstance(required_providers, list) or not all(
             isinstance(provider, str) for provider in required_providers
         ):
