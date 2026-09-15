@@ -14,12 +14,14 @@ const PENDING_TTL_MS = 2 * 60 * 1000;
 const KICKOFF_PROMPT =
   "You were just hired. Call expert_onboarding once, and nothing else, this " +
   "turn: a greeting of 1-2 sentences introducing yourself in your voice, " +
-  "then 3-5 questions the user can answer by tapping. Draw the questions and " +
-  "their options from your own role and skills and from the workflows " +
-  "installed on you — ask which outcome to start with, and which of the " +
-  "services your work depends on you should be connected to, naming the real " +
-  "providers rather than asking in the abstract. Do not run a workflow, " +
-  "create a schedule, or start any other work before the answers come back.";
+  "then 3-5 questions the user can answer by tapping. Every question and " +
+  "every option must come from your own role and area of expertise and from " +
+  "the workflows installed on you — ask which outcome in your area to start " +
+  "with, and which of the services your work depends on you should be " +
+  "connected to, naming the real providers rather than asking in the " +
+  "abstract. Do not ask about work outside your role, whatever else you " +
+  "know about the user or their team. Do not run a workflow, create a " +
+  "schedule, or start any other work before the answers come back.";
 
 export interface ExpertKickoffMetadata {
   kind: typeof EXPERT_KICKOFF_KIND;

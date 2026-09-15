@@ -11,6 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
 import { useState } from "react";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
@@ -73,6 +74,7 @@ export function ExpertWorkflowListItem({
         <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
           <Image
             src={libraryAgent.image_url}
+            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
             alt=""
             fill
             sizes="96px"

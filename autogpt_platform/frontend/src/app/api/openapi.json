@@ -6311,6 +6311,72 @@
         }
       }
     },
+    "/api/experiments/assignments": {
+      "get": {
+        "tags": ["experiments"],
+        "summary": "List experiment assignments",
+        "operationId": "getExperimentsList experiment assignments",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentAssignment"
+                  },
+                  "type": "array",
+                  "title": "Response Getexperimentslist Experiment Assignments"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["experiments"],
+        "summary": "Record experiment assignment",
+        "operationId": "postExperimentsRecord experiment assignment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -13725,6 +13791,66 @@
         }
       }
     },
+    "/api/skills/package": {
+      "post": {
+        "tags": ["v1", "skills"],
+        "summary": "Upload a copilot skill as a zipped package",
+        "description": "Create a skill from a zipped package — a root ``SKILL.md`` plus the\nfiles beside it.\n\nThe zip is transport only: it is unpacked here and stored as the skill's\nfolder, so the model reaches ``scripts/`` and ``references/`` by path\nexactly as it does for a package copied from another skill.",
+        "operationId": "uploadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Store the skill as this expert's own.",
+              "title": "Expert Id"
+            },
+            "description": "Store the skill as this expert's own."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadCopilotSkillPackage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillInfo" }
+              }
+            }
+          },
+          "400": {
+            "description": "Unreadable archive, or a malformed SKILL.md or path"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Per-user skill limit reached" },
+          "413": {
+            "description": "Archive, file or file count over the package limit"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/skills/{name}": {
       "delete": {
         "tags": ["v1", "skills"],
@@ -13818,6 +13944,61 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/{name}/package": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Download a copilot skill as a zipped package",
+        "description": "Return the skill's whole folder as a zip — ``SKILL.md`` at the root,\nsiblings at their relative paths, executable bits preserved — so a\ndownload re-uploads to the same tree.\n\nBuilt-in defaults are single on-disk files and are not downloadable here;\nGET ``/skills/{name}`` serves their body.",
+        "operationId": "downloadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to download",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to download"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Download this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Download this expert's own copy of the skill."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skill folder as a zip archive",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
               }
             }
           },
@@ -14596,6 +14777,66 @@
         }
       }
     },
+    "/api/store/media/{user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get stored marketplace media",
+        "operationId": "getV2Get stored marketplace media",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -15058,7 +15299,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's Otto skill library.",
+        "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15072,6 +15313,17 @@
               "title": "Slug"
             },
             "description": "Slug of the skill listing"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Install into this expert's skills instead of the caller's own.",
+              "title": "Expert Id"
+            },
+            "description": "Install into this expert's skills instead of the caller's own."
           }
         ],
         "responses": {
@@ -15086,7 +15338,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Skill not found" },
+          "404": { "description": "Skill or expert not found" },
           "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",
@@ -16170,6 +16422,11 @@
       "AIConnectionOffer": {
         "properties": {
           "offer_id": { "type": "string", "title": "Offer Id" },
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
+            "title": "Auth Provider"
+          },
           "provider_family": { "type": "string", "title": "Provider Family" },
           "display_name": { "type": "string", "title": "Display Name" },
           "auth_method": { "type": "string", "title": "Auth Method" },
@@ -16204,6 +16461,7 @@
         "type": "object",
         "required": [
           "offer_id",
+          "auth_provider",
           "provider_family",
           "display_name",
           "auth_method",
@@ -17688,6 +17946,14 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "Body_uploadCopilotSkillPackage": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_uploadCopilotSkillPackage"
+      },
       "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -18135,7 +18401,7 @@
         "properties": {
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider"
           },
           "llm_credential_id": {
@@ -18193,13 +18459,18 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
           "llm_credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Llm Credential Id"
+          },
+          "llm_provider_session_ids": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Llm Provider Session Ids"
           },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18293,7 +18564,7 @@
         "properties": {
           "auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Auth Provider"
           },
           "credential_id": {
@@ -18724,10 +18995,10 @@
             "title": "Is Default",
             "default": false
           },
-          "sibling_files": {
-            "items": { "type": "string" },
+          "files": {
+            "items": { "$ref": "#/components/schemas/CopilotSkillFile" },
             "type": "array",
-            "title": "Sibling Files",
+            "title": "Files",
             "default": []
           }
         },
@@ -18735,6 +19006,21 @@
         "required": ["name", "description", "body"],
         "title": "CopilotSkillDetail",
         "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "CopilotSkillFile",
+        "description": "One file of a skill package, by its path relative to the skill folder\n(``scripts/run.py``) — the path the SKILL.md body references it by."
       },
       "CopilotSkillInfo": {
         "properties": {
@@ -19173,7 +19459,7 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -19215,6 +19501,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -20684,6 +20971,21 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "ExperimentAssignment": {
+        "properties": {
+          "experiment_key": { "type": "string", "title": "Experiment Key" },
+          "variant": { "type": "string", "title": "Variant" },
+          "source": { "type": "string", "title": "Source" },
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assigned At"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant", "source", "assigned_at"],
+        "title": "ExperimentAssignment"
+      },
       "Expert": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -21944,6 +22246,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22133,6 +22443,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22245,6 +22563,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
           },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -26950,6 +27276,31 @@
         "title": "RecommendedProvidersResponse",
         "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
       },
+      "RecordAssignmentRequest": {
+        "properties": {
+          "experiment_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Key"
+          },
+          "variant": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Variant"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["posthog", "launchdarkly", "backend"],
+            "title": "Source",
+            "default": "posthog"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant"],
+        "title": "RecordAssignmentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -27696,6 +28047,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -27759,7 +28111,10 @@
         "properties": {
           "auth_provider": {
             "anyOf": [
-              { "type": "string", "enum": ["platform", "codex"] },
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
               { "type": "null" }
             ],
             "title": "Auth Provider"
@@ -27775,7 +28130,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SetDefaultTransportRequest",
-        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. Sending ``codex`` requires naming the credential, so the\ndefault keeps pointing at one account rather than \"whichever ChatGPT\"."
+        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. A user-backed provider requires naming the credential, so the\ndefault keeps pointing at one account rather than whichever account exists."
       },
       "SetGraphActiveVersion": {
         "properties": {

@@ -45,7 +45,7 @@ describe("ChainRowView - live sub-session rows", () => {
       />,
     );
 
-    expect(await screen.findByText("Sub-Otto")).toBeDefined();
+    expect(await screen.findByText("Expert")).toBeDefined();
     // Delegated cards are status-only — the prompt stays in the teammate's
     // own thread, not in the parent chain.
     expect(screen.queryByText("Create a chat app")).toBeNull();
@@ -64,7 +64,7 @@ describe("ChainRowView - live sub-session rows", () => {
       />,
     );
 
-    expect(screen.queryByText("Sub-Otto")).toBeNull();
+    expect(screen.queryByText("Expert")).toBeNull();
   });
 
   it("does not treat a non-sub-session tool as a live sub-session row", () => {
@@ -80,7 +80,7 @@ describe("ChainRowView - live sub-session rows", () => {
       />,
     );
 
-    expect(screen.queryByText("Sub-Otto")).toBeNull();
+    expect(screen.queryByText("Expert")).toBeNull();
   });
 
   it("keeps showing the running label while a done delegate output is still working", async () => {
