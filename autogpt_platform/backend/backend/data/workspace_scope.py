@@ -18,14 +18,20 @@ from pydantic import BaseModel, Field
 
 SESSIONS_ROOT = "/sessions/"
 EXPERTS_ROOT = "/experts/"
+SKILLS_ROOT = "/skills/"
+
+# Roots a WorkspaceManager takes literally instead of resolving under the
+# calling session: a skill package is shared across every session, so a
+# session prefix would make its files unreachable from the turn that read it.
+SHARED_ROOTS = (SESSIONS_ROOT, SKILLS_ROOT, EXPERTS_ROOT)
 
 EXPERT_FILE_ACCESS_DENIED = (
     "This file is outside this expert's scope. Experts can only access files "
-    "from their own conversations and their own skills. Open personal Otto "
+    "from their own conversations and their own skills. Open a chat with Otto "
     "to work with other files."
 )
 EXPERT_SKILL_SCOPE_DENIED = (
-    "Experts can only use and manage their own skills. Open personal Otto "
+    "Experts can only use and manage their own skills. Open a chat with Otto "
     "to manage another expert's skills or the account's skills."
 )
 
