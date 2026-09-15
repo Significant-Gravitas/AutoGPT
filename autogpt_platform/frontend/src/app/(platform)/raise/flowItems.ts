@@ -79,8 +79,13 @@ export function stepId(beat: BeatKey) {
   return `${beat}-step`;
 }
 
-// Each beat's question is asked once the beat before it has an answer.
-export function beatTriggers(draft: RaiseDraft): Record<BeatKey, boolean> {
+// Each beat's question is asked once the beat before it has an answer. The
+// skills beat is also conditional: with nothing to offer it never opens, and
+// the marketplace beat before it becomes the flow's last.
+export function beatTriggers(
+  draft: RaiseDraft,
+  hasSkillsBeat: boolean,
+): Record<BeatKey, boolean> {
   return {
     role: draft.hasStarted,
     name: draft.role !== null,
@@ -90,7 +95,7 @@ export function beatTriggers(draft: RaiseDraft): Record<BeatKey, boolean> {
     voice: draft.about !== null,
     budget: draft.voiceLabel !== null,
     marketplace: draft.budget !== null,
-    skills: draft.marketplace !== null,
+    skills: hasSkillsBeat && draft.marketplace !== null,
   };
 }
 

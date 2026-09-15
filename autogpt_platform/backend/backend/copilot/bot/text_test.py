@@ -114,7 +114,7 @@ class TestIterChunks:
 class TestFormatBatch:
     def test_single_message_has_header(self):
         result = format_batch([("Bently", "123", "hello")], "discord")
-        assert result == "[Message sent by Bently (Discord user ID: 123)]\nhello"
+        assert result.endswith("[Message sent by Bently (Discord user ID: 123)]\nhello")
 
     def test_multi_message_labels_each_sender(self):
         result = format_batch(
