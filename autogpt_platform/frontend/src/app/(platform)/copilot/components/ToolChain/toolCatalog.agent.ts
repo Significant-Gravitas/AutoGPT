@@ -149,6 +149,12 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Teammate handled:",
     subject: (input) => quoted(input, "prompt", 45),
   },
+  consult_teammate: {
+    category: "team",
+    running: "Asking a teammate to check:",
+    done: "Teammate checked:",
+    subject: (input) => quoted(input, "question", 45),
+  },
   handoff_to_expert: {
     category: "agent",
     running: "Handing over:",
