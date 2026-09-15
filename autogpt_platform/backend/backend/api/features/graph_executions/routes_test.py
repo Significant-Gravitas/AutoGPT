@@ -9,7 +9,7 @@ import pytest
 import pytest_mock
 from fastapi.routing import APIRoute
 
-from backend.api.features.executions.routes import router
+from backend.api.features.graph_executions.routes import router
 from backend.api.rest_api import app as real_app
 from backend.data import execution as execution_db
 from backend.util.exceptions import NotFoundError
@@ -96,7 +96,7 @@ def test_execution_surface_has_no_other_operations():
         (method.lower(), route.path)
         for route in real_app.routes
         if isinstance(route, APIRoute)
-        and route.endpoint.__module__ == "backend.api.features.executions.routes"
+        and route.endpoint.__module__ == "backend.api.features.graph_executions.routes"
         for method in route.methods
         if method != "HEAD"
     }
@@ -110,7 +110,7 @@ def test_execution_path_is_served_by_this_module(path: str):
         for route in real_app.routes
         if isinstance(route, APIRoute) and route.path == path
     }
-    assert handlers == {"backend.api.features.executions.routes"}
+    assert handlers == {"backend.api.features.graph_executions.routes"}
 
 
 # The three /graphs/{graph_id}/executions* routes now register from this module
@@ -140,19 +140,19 @@ def test_execution_path_is_served_by_this_module(path: str):
         ),
         (
             "/api/graphs/{graph_id}/executions",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}/share",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
     ],
 )
@@ -205,7 +205,7 @@ def test_executions_cost_summary_returns_payload(
     )
 
     mock_fn = mocker.patch(
-        "backend.api.features.executions.routes.get_user_cost_summary",
+        "backend.api.features.graph_executions.routes.get_user_cost_summary",
         AsyncMock(return_value=summary),
     )
 
@@ -236,7 +236,7 @@ def test_executions_cost_summary_forwards_since_until(
     from backend.data.execution_cost_summary import UserExecutionCostSummary
 
     mock_fn = mocker.patch(
-        "backend.api.features.executions.routes.get_user_cost_summary",
+        "backend.api.features.graph_executions.routes.get_user_cost_summary",
         AsyncMock(
             return_value=UserExecutionCostSummary(
                 total_cents=0,
@@ -270,7 +270,7 @@ def test_executions_cost_summary_rejects_out_of_range_limit(
 ) -> None:
     """top_runs_limit must be within [1, 50]."""
     mock_fn = mocker.patch(
-        "backend.api.features.executions.routes.get_user_cost_summary",
+        "backend.api.features.graph_executions.routes.get_user_cost_summary",
         AsyncMock(),
     )
 
@@ -285,7 +285,7 @@ def test_executions_cost_summary_rejects_inverted_window(
 ) -> None:
     """`since > until` is bad client input — surface 422, don't quietly return zeros."""
     mock_fn = mocker.patch(
-        "backend.api.features.executions.routes.get_user_cost_summary",
+        "backend.api.features.graph_executions.routes.get_user_cost_summary",
         AsyncMock(),
     )
 
@@ -314,12 +314,12 @@ def test_list_all_executions_applies_the_activity_gate(
     """The gate is what keeps flag-disabled activity summaries out of the
     response; bypassing it leaks them to every caller."""
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_executions_paginated",
         AsyncMock(return_value=_paginated()),
     )
     gate = mocker.patch(
-        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
         AsyncMock(return_value=[]),
     )
 
@@ -335,12 +335,12 @@ def test_list_all_executions_is_not_scoped_to_a_graph(
     """This route and the per-graph one share a db call; a graph_id here would
     silently narrow the user-wide list."""
     query = mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_executions_paginated",
         AsyncMock(return_value=_paginated()),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
         AsyncMock(return_value=[]),
     )
 
@@ -353,16 +353,16 @@ def test_list_graph_executions_forwards_pagination(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     query = mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_executions_paginated",
         AsyncMock(return_value=_paginated()),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
         AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.get_user_onboarding",
+        "backend.api.features.graph_executions.routes.get_user_onboarding",
         AsyncMock(return_value=Mock(onboardingAgentExecutionId=None)),
     )
 
@@ -379,7 +379,7 @@ def test_list_graph_executions_forwards_pagination(
 
 def test_delete_execution_returns_204(mocker: pytest_mock.MockFixture) -> None:
     deleted = mocker.patch(
-        "backend.api.features.executions.routes.execution_db.delete_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.delete_graph_execution",
         AsyncMock(),
     )
 
@@ -393,7 +393,7 @@ def test_get_shared_execution_returns_404_for_an_unknown_token(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_execution_by_share_token",
         AsyncMock(return_value=None),
     )
@@ -418,7 +418,7 @@ def test_get_graph_execution_rejects_a_graph_id_mismatch(
     only checked here — dropping it would let any graph's URL read any of the
     caller's executions."""
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
         AsyncMock(return_value=Mock(graph_id="other-graph", graph_version=1)),
     )
 
@@ -434,21 +434,21 @@ def test_enable_sharing_clears_stale_allowlist_before_issuing_a_token(
     written would expose files the previous share allowed."""
     calls: list[str] = []
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
         AsyncMock(return_value=Mock(outputs={})),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".delete_shared_execution_files",
         AsyncMock(side_effect=lambda **_: calls.append("delete")),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".update_graph_execution_share_status",
         AsyncMock(side_effect=lambda **_: calls.append("update")),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".create_shared_execution_files",
         AsyncMock(side_effect=lambda **_: calls.append("create")),
     )
@@ -466,16 +466,16 @@ def test_enable_sharing_maps_a_lost_execution_to_404(
     """The write enforces (id, user_id) at the DB layer, so a delete racing the
     pre-check must surface as 404 rather than a silent no-op."""
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
         AsyncMock(return_value=Mock(outputs={})),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".delete_shared_execution_files",
         AsyncMock(),
     )
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".update_graph_execution_share_status",
         AsyncMock(side_effect=NotFoundError("gone")),
     )
@@ -489,7 +489,7 @@ def test_enable_sharing_requires_an_execution(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
         AsyncMock(return_value=None),
     )
 
@@ -504,16 +504,16 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
     """Revoking the token without clearing the allowlist would leave the files
     reachable to anyone who kept the old link."""
     mocker.patch(
-        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
         AsyncMock(return_value=Mock()),
     )
     delete_files = mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".delete_shared_execution_files",
         AsyncMock(),
     )
     update = mocker.patch(
-        "backend.api.features.executions.routes.execution_db"
+        "backend.api.features.graph_executions.routes.execution_db"
         ".update_graph_execution_share_status",
         AsyncMock(),
     )
