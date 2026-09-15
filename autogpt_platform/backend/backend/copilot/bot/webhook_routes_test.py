@@ -9,6 +9,7 @@ from .webhook_routes import build_webhook_adapters, register_webhook_adapters
 
 _SLACK_CFG = "backend.copilot.bot.webhook_routes.slack_config"
 _TELEGRAM_CFG = "backend.copilot.bot.webhook_routes.telegram_config"
+_TEAMS_CFG = "backend.copilot.bot.webhook_routes.teams_config"
 
 
 def test_build_webhook_adapters_empty_without_creds():
@@ -16,6 +17,7 @@ def test_build_webhook_adapters_empty_without_creds():
         patch(f"{_SLACK_CFG}.get_bot_token", return_value=""),
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
         patch(f"{_TELEGRAM_CFG}.get_bot_token", return_value=""),
+        patch(f"{_TEAMS_CFG}.is_configured", return_value=False),
     ):
         assert build_webhook_adapters(MagicMock()) == []
 
@@ -26,6 +28,7 @@ def test_build_webhook_adapters_includes_slack_when_configured():
         patch(f"{_SLACK_CFG}.get_bot_token", return_value="xoxb-x"),
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value="secret"),
         patch("backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"),
+        patch(f"{_TEAMS_CFG}.is_configured", return_value=False),
     ):
         adapters = build_webhook_adapters(MagicMock())
     assert len(adapters) == 1
@@ -38,6 +41,7 @@ def test_build_webhook_adapters_includes_telegram_when_configured():
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
         patch(f"{_TELEGRAM_CFG}.get_bot_token", return_value="123:abc"),
         patch(f"{_TELEGRAM_CFG}.get_webhook_secret", return_value="s3cret"),
+        patch(f"{_TEAMS_CFG}.is_configured", return_value=False),
     ):
         adapters = build_webhook_adapters(MagicMock())
     assert len(adapters) == 1
@@ -50,8 +54,21 @@ def test_telegram_needs_both_token_and_webhook_secret():
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
         patch(f"{_TELEGRAM_CFG}.get_bot_token", return_value="123:abc"),
         patch(f"{_TELEGRAM_CFG}.get_webhook_secret", return_value=""),
+        patch(f"{_TEAMS_CFG}.is_configured", return_value=False),
     ):
         assert build_webhook_adapters(MagicMock()) == []
+
+
+def test_build_webhook_adapters_includes_teams_when_configured():
+    with (
+        patch(f"{_SLACK_CFG}.get_bot_token", return_value=""),
+        patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
+        patch(f"{_TELEGRAM_CFG}.get_bot_token", return_value=""),
+        patch(f"{_TEAMS_CFG}.is_configured", return_value=True),
+    ):
+        adapters = build_webhook_adapters(MagicMock())
+    assert len(adapters) == 1
+    assert adapters[0].platform_name == "teams"
 
 
 def test_register_webhook_adapters_wires_each_adapter():

@@ -14,7 +14,7 @@ import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
-import { Chart01Icon } from "@hugeicons/core-free-icons";
+import { GaugeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -35,11 +35,11 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       <PopoverTrigger asChild>
         {trigger ?? (
           <Button variant="ghost" size="icon" aria-label="Usage limits">
-            <Icon icon={Chart01Icon} className="!size-5" />
+            <Icon icon={GaugeIcon} className="!size-5" />
           </Button>
         )}
       </PopoverTrigger>
-      {/* z-[80]: must layer above the AutoPilot mobile drawer
+      {/* z-[80]: must layer above the Otto mobile drawer
           (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
       <PopoverContent align={align} className="z-[80] w-72 p-4">

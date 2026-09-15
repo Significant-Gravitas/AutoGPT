@@ -76,14 +76,22 @@ describe("publishAgentSchemaFactory", () => {
     expect(result.success).toBe(true);
   });
 
-  it("treats title / subheader / category as optional on updates", () => {
+  it("treats title and subheader as optional on updates", () => {
     const result = publishAgentSchemaFactory(true).safeParse({
       ...validBase,
       title: "",
       subheader: "",
-      category: "",
       changesSummary: "Refreshed copy",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("still requires a category on updates, which overwrite the stored ones", () => {
+    const result = publishAgentSchemaFactory(true).safeParse({
+      ...validBase,
+      category: "",
+      changesSummary: "Refreshed copy",
+    });
+    expect(result.success).toBe(false);
   });
 });

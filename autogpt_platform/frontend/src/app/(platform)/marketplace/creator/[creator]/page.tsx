@@ -6,6 +6,7 @@ import {
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { buildPageMetadata } from "@/lib/metadata";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -35,10 +36,13 @@ export async function generateMetadata({
     throw error;
   }
 
-  return {
+  return buildPageMetadata({
     title: `${creator.name} - AutoGPT Store`,
     description: creator.description,
-  };
+    path: `/marketplace/creator/${params.creator}`,
+    images: [creator.avatar_url],
+    type: "profile",
+  });
 }
 
 export default async function Page({

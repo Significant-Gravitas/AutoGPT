@@ -6,6 +6,7 @@ import {
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { validateYouTubeUrl } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,12 @@ export const useEditAgentForm = ({
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const {
+    categories,
+    isUnavailable: categoriesUnavailable,
+    placeholder: categoryPlaceholder,
+  } = useStoreCategories();
+
   const form = useForm<EditAgentFormData>({
     resolver: zodResolver(editAgentSchema),
     defaultValues: {
@@ -78,18 +85,10 @@ export const useEditAgentForm = ({
     },
   });
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const handleImagesChange = React.useCallback((newImages: string[]) => {
     setImages(newImages);
@@ -105,8 +104,7 @@ export const useEditAgentForm = ({
       return;
     }
 
-    const categories = data.category ? [data.category] : [];
-    const filteredCategories = categories.filter(Boolean);
+    const filteredCategories = [data.category].filter(Boolean);
     setIsSubmitting(true);
 
     try {
@@ -164,5 +162,7 @@ export const useEditAgentForm = ({
     handleFormSubmit,
     handleImagesChange,
     categoryOptions,
+    categoriesUnavailable,
+    categoryPlaceholder,
   };
 };

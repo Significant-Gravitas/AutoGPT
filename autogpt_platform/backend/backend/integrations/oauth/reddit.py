@@ -5,7 +5,7 @@ from typing import ClassVar, Optional
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 from backend.util.settings import Settings
@@ -17,13 +17,14 @@ def _granted_scopes(raw_scope: object, requested_scopes: list[str]) -> list[str]
     """
     Resolve the scopes Reddit actually granted from a token response.
 
-    Reddit returns them as a space-separated string in the `scope` field, and uses
-    the wildcard `*` to mean "every scope this app may request". Falling back to
-    the requested scopes keeps behaviour sane if Reddit omits the field entirely.
+    Parsing and the empty-response fallback are shared with every other handler
+    via `parse_granted_scopes`. The one Reddit-specific bit is the wildcard `*`,
+    which Reddit uses to mean "every scope this app may request" -- storing it
+    verbatim would leave the credential with a scope no block can ever match.
     """
-    if not isinstance(raw_scope, str) or not raw_scope.strip():
-        return requested_scopes
-    granted = raw_scope.replace(",", " ").split()
+    granted = parse_granted_scopes(
+        raw_scope if isinstance(raw_scope, str) else None, fallback=requested_scopes
+    )
     if "*" in granted:
         return requested_scopes
     return granted

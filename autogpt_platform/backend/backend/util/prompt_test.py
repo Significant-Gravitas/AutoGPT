@@ -1141,6 +1141,7 @@ class TestClaude5TokenFactor:
             "anthropic.claude-sonnet-5",
             "openrouter/anthropic/claude-sonnet-5",
             "us.anthropic.claude-sonnet-5",
+            "anthropic/claude-opus-5",
         ],
     )
     def test_factor_applies_through_vendor_prefix(self, prefixed: str):
@@ -1165,7 +1166,14 @@ class TestClaude5TokenFactor:
             text, model="gpt-4o"
         )
 
-    @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-opus-5",
+        ],
+    )
     def test_opus_4_7_generation_shares_the_new_tokenizer(self, model: str):
         text = "hello world " * 200
         assert estimate_token_count_str(text, model=model) == estimate_token_count_str(

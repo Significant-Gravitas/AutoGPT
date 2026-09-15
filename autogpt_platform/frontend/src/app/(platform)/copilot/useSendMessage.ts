@@ -4,6 +4,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildWorkspaceFilePart,
   workspaceFileDownloadUrl,
@@ -24,7 +25,9 @@ type SendMessageFn = UseChatHelpers<UIMessage>["sendMessage"];
 interface Args {
   sessionId: string | null;
   sendMessage: SendMessageFn;
-  createSession: () => Promise<string | undefined>;
+  createSession: (options?: {
+    expertKickoff?: boolean;
+  }) => Promise<string | undefined>;
   isUserStoppingRef: React.MutableRefObject<boolean>;
 }
 
@@ -101,6 +104,7 @@ export function useSendMessage({
     text: string,
     files: File[],
     prebuiltParts: FileUIPart[],
+    metadata?: ExpertKickoffMetadata,
   ) {
     // The per-click UUID that becomes the backend's ``ChatMessage.id``
     // is generated inside the transport's ``prepareSendMessagesRequest``
@@ -111,9 +115,10 @@ export function useSendMessage({
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
     if (files.length === 0) {
-      sendMessage({
+      await sendMessage({
         text,
         files: prebuiltParts.length > 0 ? prebuiltParts : undefined,
+        metadata,
       });
       return;
     }
@@ -129,7 +134,7 @@ export function useSendMessage({
         // The workspace references didn't fail to upload (they need no upload),
         // so don't discard them just because the local uploads failed.
         if (prebuiltParts.length > 0) {
-          sendMessage({ text, files: prebuiltParts });
+          await sendMessage({ text, files: prebuiltParts, metadata });
           return;
         }
         throw new Error("All file uploads failed");
@@ -137,9 +142,10 @@ export function useSendMessage({
       // Merge already-stored workspace parts with the freshly uploaded ones so
       // a single message can mix both kinds of attachment.
       const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
-      sendMessage({
+      await sendMessage({
         text,
         files: allParts.length > 0 ? allParts : undefined,
+        metadata,
       });
     } finally {
       setIsUploadingFiles(false);
@@ -157,15 +163,22 @@ export function useSendMessage({
     if (!sessionId) return;
     const { send, parts } = useCopilotStreamStore
       .getState()
-      .takePendingFirstSend();
+      .takePendingFirstSend(sessionId);
     if (!send) return;
-    void dispatchRef.current(sessionId, send.text, send.files, parts);
+    void dispatchRef.current(
+      sessionId,
+      send.text,
+      send.files,
+      parts,
+      send.metadata,
+    );
   }, [sessionId]);
 
   async function onSend(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
   ) {
     const trimmed = message.trim();
     const hasWorkspaceFiles = !!workspaceFiles && workspaceFiles.length > 0;
@@ -200,10 +213,13 @@ export function useSendMessage({
       const { pendingFileParts, setPendingFileParts } =
         useCopilotStreamStore.getState();
       setPendingFileParts([]);
-      await dispatchToSession(sessionId, trimmed, files ?? [], [
-        ...pendingFileParts,
-        ...workspaceParts,
-      ]);
+      await dispatchToSession(
+        sessionId,
+        trimmed,
+        files ?? [],
+        [...pendingFileParts, ...workspaceParts],
+        metadata,
+      );
       return;
     }
 
@@ -218,9 +234,11 @@ export function useSendMessage({
     }
     useCopilotStreamStore
       .getState()
-      .setPendingFirstSend({ text: trimmed, files: files ?? [] });
+      .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
     try {
-      await createSession();
+      await createSession({
+        expertKickoff: metadata?.kind === "expert_kickoff",
+      });
     } catch (err) {
       const { setPendingFirstSend, setPendingFileParts } =
         useCopilotStreamStore.getState();

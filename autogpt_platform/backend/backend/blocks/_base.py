@@ -38,6 +38,7 @@ from backend.util.exceptions import (
     BlockInputError,
     BlockOutputError,
     BlockUnknownError,
+    InsufficientBalanceError,
 )
 from backend.util.settings import Config
 
@@ -540,7 +541,7 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 # Default wall-clock cap on a single block-run invocation. Leaf compute blocks
-# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# inherit this; coordination blocks (AgentExecutor, Otto) override their
 # instance attribute to None to opt out. The executor consults
 # `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
 # the value is not None.
@@ -737,8 +738,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ):
                 yield output_name, output_data
         except Exception as ex:
-            if isinstance(ex, BlockError):
-                raise ex
+            if isinstance(ex, (BlockError, InsufficientBalanceError)):
+                raise
             else:
                 raise (
                     BlockExecutionError

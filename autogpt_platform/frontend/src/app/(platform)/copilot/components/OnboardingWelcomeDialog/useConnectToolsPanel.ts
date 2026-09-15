@@ -17,6 +17,7 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
+import { fallbackProviders, firstMentionOfEachProvider } from "./helpers";
 
 const POLL_INTERVAL_MS = 2_500;
 // ~1 minute of polling; a job the backend never finished (process restart
@@ -79,8 +80,10 @@ export function useConnectToolsPanel() {
       : [];
   // The model's reason replaces the generic provider description — that
   // line is what makes the section feel picked for this user. Unknown ids
-  // (provider renamed or removed since the job ran) are dropped.
-  const recommendedProviders = recommendations
+  // (provider renamed or removed since the job ran) are dropped, and an id
+  // the model named twice keeps its first reason rather than rendering two
+  // cards under the same React key.
+  const personalizedProviders = firstMentionOfEachProvider(recommendations)
     .map((recommendation): ConnectableProvider | null => {
       const provider = allProviders.find(
         (p) => p.id === recommendation.provider,
@@ -92,6 +95,23 @@ export function useConnectToolsPanel() {
       };
     })
     .filter((provider) => provider !== null);
+
+  // Only fall back once the job has actually answered — `ready`, a status
+  // it will not recover from, or the flag being off. Filling the section
+  // while it is still running would swap the generic picks out from under
+  // the user the moment the real ones land.
+  const isJobDone =
+    !isBrainDumpEnabled ||
+    recommendedQuery.isError ||
+    (recommendedQuery.data !== undefined &&
+      (recommendedQuery.data.status !== 200 ||
+        recommendedQuery.data.data.ready));
+  const isPersonalized = personalizedProviders.length > 0;
+  const recommendedProviders = isPersonalized
+    ? personalizedProviders
+    : isJobDone
+      ? fallbackProviders(allProviders)
+      : [];
 
   function handleSelect(providerId: string) {
     setDirection(1);
@@ -132,6 +152,7 @@ export function useConnectToolsPanel() {
     setQuery,
     providers,
     recommendedProviders,
+    isPersonalized,
     isLoading: providersQuery.isLoading,
     isError: providersQuery.isError,
     error: providersQuery.error,
