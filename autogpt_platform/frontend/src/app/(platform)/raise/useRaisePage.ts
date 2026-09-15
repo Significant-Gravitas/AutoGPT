@@ -25,6 +25,7 @@ import {
 } from "./helpers";
 import { useFlowProgress } from "./useFlowProgress";
 import { useRaiseSubmission } from "./useRaiseSubmission";
+import { useSkillsAvailability } from "./useSkillsAvailability";
 
 export function useRaisePage() {
   const searchParams = useSearchParams();
@@ -33,7 +34,9 @@ export function useRaisePage() {
   const [draft, setDraft] = useState<RaiseDraft>(() =>
     draftWithPrefilledRole(loadDraft(), searchParams.get("role")),
   );
-  const progress = useFlowProgress(beatTriggers(draft));
+  const { hasSkillsToOffer } = useSkillsAvailability();
+  const hasSkillsBeat = draft.marketplace !== null || hasSkillsToOffer;
+  const progress = useFlowProgress(beatTriggers(draft, hasSkillsBeat));
   const { finish: submitRaise, isSubmitting } = useRaiseSubmission();
 
   function finish(kit: RaiseKit) {
@@ -107,11 +110,23 @@ export function useRaisePage() {
     update({ budget: { credits: null }, step: "marketplace" });
   }
 
+  // With no skills to offer the marketplace beat is the last one, so it
+  // raises the expert itself rather than handing off to a beat that never
+  // opens. As with skills, the answer is not recorded until the POST wins,
+  // which keeps the retry control on screen when it fails.
   function submitMarketplace(attachments: RaiseAttachmentDraft[]) {
+    if (!hasSkillsToOffer) {
+      finish({ weeklyBudget: draft.budget?.credits ?? null, attachments });
+      return;
+    }
     update({ marketplace: attachments, step: "skills" });
   }
 
   function skipMarketplace() {
+    if (!hasSkillsToOffer) {
+      finish({ weeklyBudget: draft.budget?.credits ?? null, attachments: [] });
+      return;
+    }
     update({ marketplace: [], step: "skills" });
   }
 
@@ -153,6 +168,7 @@ export function useRaisePage() {
     marketplace: draft.marketplace,
     skills: draft.skills,
     kit: assembledKit(draft),
+    isMarketplaceFinal: !hasSkillsBeat,
     isSubmitting,
     canGoBack: lastAnsweredBeat(draft) !== null,
     startRaising,

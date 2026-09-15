@@ -88,8 +88,11 @@ export function BeatControl({ beat, flow }: Props) {
     case "marketplace":
       return (
         <MarketplaceStep
+          name={flow.name}
           color={flow.color}
           submitted={flow.marketplace}
+          isFinal={flow.isMarketplaceFinal}
+          isSubmitting={flow.isSubmitting}
           onSubmit={flow.submitMarketplace}
           onSkip={flow.skipMarketplace}
         />

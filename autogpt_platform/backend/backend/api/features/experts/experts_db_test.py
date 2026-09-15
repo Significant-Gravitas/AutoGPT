@@ -16,7 +16,7 @@ import pydantic
 import pytest
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db, scheduling, seed
+from backend.api.features.experts import experts_db, raise_attachments, scheduling, seed
 from backend.api.features.experts.models import (
     ExpertBundledSkill,
     ExpertDayOneItem,
@@ -75,6 +75,69 @@ def mock_embedding_functions():
         yield
 
 
+_seeded_template_ids: list[str] = []
+_seeded_user_ids: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+async def delete_rows_this_test_seeded():
+    """Delete the templates, hires and seed users the test created.
+
+    Without it a run against the shared dev database leaves every template and
+    hire behind; 4,689 stray templates had accumulated by 2026-09-11.
+    """
+    yield
+    template_ids, user_ids = list(_seeded_template_ids), list(_seeded_user_ids)
+    # Clear only once the deletion succeeded: a raise here keeps the ids so the
+    # next teardown retries them, and re-deleting a gone row is a no-op.
+    await _delete_seeded_rows(template_ids, user_ids)
+    _seeded_template_ids.clear()
+    _seeded_user_ids.clear()
+
+
+async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> None:
+    if template_ids:
+        # Hires outlive their template (sourceTemplateId is SET NULL), so they go first.
+        await prisma.models.Expert.prisma().delete_many(
+            where={"sourceTemplateId": {"in": template_ids}}
+        )
+        await prisma.models.Expert.prisma().delete_many(
+            where={"id": {"in": template_ids}}
+        )
+    if not user_ids:
+        return
+    # Every FK to User that is not ON DELETE CASCADE has to be cleared by hand,
+    # deepest first: a listing still pointing at a seed user's graph blocks the
+    # cascade that would delete that graph.
+    graphs = await prisma.models.AgentGraph.prisma().find_many(
+        where={"userId": {"in": user_ids}}
+    )
+    graph_ids = [graph.id for graph in graphs]
+    if graph_ids:
+        await prisma.models.StoreListing.prisma().delete_many(
+            where={"agentGraphId": {"in": graph_ids}}
+        )
+    await prisma.models.StoreListingReview.prisma().delete_many(
+        where={"reviewByUserId": {"in": user_ids}}
+    )
+    await prisma.models.StoreListing.prisma().delete_many(
+        where={"owningUserId": {"in": user_ids}}
+    )
+    await prisma.models.CreditTransaction.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.AgentPreset.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.LibraryAgent.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.IntegrationWebhook.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.User.prisma().delete_many(where={"id": {"in": user_ids}})
+
+
 @pytest.fixture
 async def test_user():
     return await _create_seed_user()
@@ -97,19 +160,21 @@ def _library_skill(slug: str) -> list[RaiseAttachment]:
     return [RaiseAttachment(kind="skill", source="library", id=slug)]
 
 
-def _marketplace_skill(listing_id: str) -> list[RaiseAttachment]:
-    return [RaiseAttachment(kind="skill", source="marketplace", id=listing_id)]
+def _marketplace_skill(slug: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="skill", source="marketplace", id=slug)]
 
 
 async def _create_seed_user():
     suffix = uuid.uuid4().hex[:8]
-    return await get_or_create_user(
+    user = await get_or_create_user(
         {
             "sub": str(uuid.uuid4()),
             "email": f"expert-seed-{suffix}@example.com",
             "name": "Seed Owner",
         }
     )
+    _seeded_user_ids.append(user.id)
+    return user
 
 
 async def _seed_store_listing(
@@ -292,6 +357,7 @@ async def _seed_template(
             "isTemplate": True,
         }
     )
+    _seeded_template_ids.append(template.id)
     for slv_id in preload_listings:
         await prisma.models.ExpertWorkflow.prisma().create(
             data={
@@ -1005,23 +1071,108 @@ async def test_raise_expert_rejects_missing_library_skill(server: SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_attaches_marketplace_skill_name(server: SpinTestServer):
+async def test_raise_expert_installs_a_marketplace_skill(
+    server: SpinTestServer, hub_listing
+):
     owner = await _create_seed_user()
-    slv_id = await _seed_store_listing(server)
-    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": slv_id}
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug),
+        )
+        installed = await read_user_skill_with_body(
+            owner.id, hub_listing.slug, expert_id=raised.expert.id
+        )
+
+    assert raised.expert.skills == [hub_listing.slug]
+    assert raised.expert.workflows == []
+    assert raised.failed_attachments == []
+    assert installed is not None
+    assert installed.description == f"{hub_listing.slug} description"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_a_marketplace_skill_that_is_not_listed(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill("no-such-skill"),
+        )
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_marketplace_skill_install_leaves_no_name_on_the_row(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    owner = await _create_seed_user()
+    install = AsyncMock(side_effect=RuntimeError("storage down"))
+    monkeypatch.setattr(
+        raise_attachments.skill_db, "install_marketplace_skill", install
     )
-    assert listing is not None
 
     raised = await experts_db.create_raised_expert(
         owner.id,
         name="Nova",
         role=None,
         voice_preferences=None,
-        attachments=_marketplace_skill(slv_id),
+        attachments=_marketplace_skill(hub_listing.slug),
     )
-    assert raised.expert.skills == [listing.name]
-    assert raised.expert.workflows == []
+
+    install.assert_awaited_once()
+    assert raised.expert.skills == []
+    assert [f.reason for f in raised.failed_attachments] == ["installation_failed"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    """The picker can attach one slug from both halves; the two differ only by
+    source, so the failed Hub install must not take the library copy with it."""
+    owner = await _create_seed_user()
+    monkeypatch.setattr(
+        raise_attachments.skill_db,
+        "install_marketplace_skill",
+        AsyncMock(side_effect=RuntimeError("storage down")),
+    )
+    with (
+        patch.object(
+            experts_db.raise_attachments,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db.raise_attachments,
+            "read_user_skill_with_body",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(name="My Own Playbook"),
+        ),
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug)
+            + _library_skill(hub_listing.slug),
+        )
+
+    assert raised.expert.skills == ["My Own Playbook"]
+    assert [(f.source, f.reason) for f in raised.failed_attachments] == [
+        ("marketplace", "installation_failed")
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2051,15 +2202,11 @@ async def test_update_soul_if_current_raises_when_the_row_vanishes_after_the_wri
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, test_user):
-    template = await prisma.models.Expert.prisma().create(
-        data={
-            "name": f"Otto {uuid.uuid4().hex[:8]}",
-            "role": "Writer",
-            "identity": "You are Otto, a playful writer.",
-            "voicePreferences": "Direct, playful, and concise.",
-            "boundaries": "Never publish without approval.",
-            "isTemplate": True,
-        }
+    template = await _template(
+        f"Otto {uuid.uuid4().hex[:8]}",
+        identity="You are Otto, a playful writer.",
+        voicePreferences="Direct, playful, and concise.",
+        boundaries="Never publish without approval.",
     )
 
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -2082,14 +2229,10 @@ async def test_hire_from_template_with_samples_stores_plain_voice(
             VoiceSample(label="Warm", text="Let's start with a story."),
         ],
     )
-    template = await prisma.models.Expert.prisma().create(
-        data={
-            "name": f"Vox {uuid.uuid4().hex[:8]}",
-            "role": "Writer",
-            "identity": "You are Vox.",
-            "voicePreferences": envelope,
-            "isTemplate": True,
-        }
+    template = await _template(
+        f"Vox {uuid.uuid4().hex[:8]}",
+        identity="You are Vox.",
+        voicePreferences=envelope,
     )
 
     listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
@@ -4655,7 +4798,7 @@ async def test_expert_skill_name_write_gives_up_as_a_conflict_after_losing_every
 
 
 async def _template(name: str, **fields) -> prisma.models.Expert:
-    return await prisma.models.Expert.prisma().create(
+    template = await prisma.models.Expert.prisma().create(
         data={
             "name": name,
             "role": fields.pop("role", "Writer"),
@@ -4664,6 +4807,8 @@ async def _template(name: str, **fields) -> prisma.models.Expert:
             **fields,
         }
     )
+    _seeded_template_ids.append(template.id)
+    return template
 
 
 @pytest.mark.asyncio(loop_scope="session")
