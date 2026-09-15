@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import {
-  messagesCarryDrainedText,
+  drainedTextsInMessages,
   PENDING_DRAINED_PART_TYPE,
 } from "./components/ChatMessagesContainer/midTurnSplit";
 
@@ -384,10 +384,10 @@ function useMidTurnDrainPromotion({
   // split is about to draw anyway, and the user would see the message twice.
   const latestMessagesRef = useRef(messages);
   latestMessagesRef.current = messages;
-  const isRenderedByStreamRef = useRef(() =>
-    messagesCarryDrainedText(latestMessagesRef.current),
+  const renderedFollowUpTextsRef = useRef(() =>
+    drainedTextsInMessages(latestMessagesRef.current),
   );
-  const isRenderedByStream = isRenderedByStreamRef.current;
+  const renderedFollowUpTexts = renderedFollowUpTextsRef.current;
 
   // Fast path: promote the moment the backend signals a drain.  We count
   // ``data-pending-drained`` parts across messages and react to the count
@@ -423,7 +423,7 @@ function useMidTurnDrainPromotion({
       setMessages,
       setQueue,
       isCurrentSession,
-      isRenderedByStream,
+      renderedFollowUpTexts,
     );
   }, [
     drainHintCount,
@@ -432,7 +432,7 @@ function useMidTurnDrainPromotion({
     queue,
     setMessages,
     setQueue,
-    isRenderedByStream,
+    renderedFollowUpTexts,
   ]);
 
   // Backstop: a slow poll that catches a dropped hint.
@@ -451,11 +451,11 @@ function useMidTurnDrainPromotion({
         setMessages,
         setQueue,
         isCurrentSession,
-        isRenderedByStream,
+        renderedFollowUpTexts,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queue, setMessages, setQueue, isRenderedByStream]);
+  }, [sessionId, status, queue, setMessages, setQueue, renderedFollowUpTexts]);
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -477,9 +477,9 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
-  /** The stream's drain hint already carries the text, so the transcript
-   *  renders the follow-up bubble itself. */
-  isRenderedByStream: () => boolean,
+  /** Follow-up texts the transcript already draws itself, because their
+   *  drain hint carried the text (see ``drainedTextsInMessages``). */
+  renderedFollowUpTexts: () => string[],
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -515,9 +515,24 @@ async function pollBackendAndPromote(
   // the stream flowing, at the cost of showing the follow-up above the work
   // that preceded it until ``useHydrateOnStreamEnd`` snaps the list to the
   // DB order at the end of the turn.
-  if (!isRenderedByStream()) {
+  // Matched per entry, and by text because the queue carries client-side
+  // ids while the hint carries backend ones. Counted rather than set-tested
+  // so two chips with identical text, only one of which the stream drew,
+  // still leave one bubble to promote.
+  const remainingRendered = new Map<string, number>();
+  for (const text of renderedFollowUpTexts()) {
+    remainingRendered.set(text, (remainingRendered.get(text) ?? 0) + 1);
+  }
+  const toPromote = drained.filter((entry) => {
+    const rendered = remainingRendered.get(entry.text) ?? 0;
+    if (rendered === 0) return true;
+    remainingRendered.set(entry.text, rendered - 1);
+    return false;
+  });
+
+  if (toPromote.length > 0) {
     setMessages((prev) => {
-      const newBubbles = drained
+      const newBubbles = toPromote
         .map((entry) =>
           makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
         )

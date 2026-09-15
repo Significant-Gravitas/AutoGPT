@@ -128,6 +128,46 @@ describe("splitMessagesAtDrainHints", () => {
     ]);
   });
 
+  it("keeps both follow-ups when two hints land back to back", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "first" }]),
+        hintPart([{ id: "pm-2", content: "second" }]),
+        toolPart("write"),
+      ]),
+    ]);
+
+    // The second hint opens on an empty segment: it must still draw its
+    // bubble, and must not cut an empty assistant row between the two.
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "a1#seg0",
+      "midturn-pm-1",
+      "midturn-pm-2",
+      "a1",
+    ]);
+    expect(rows[1].parts).toEqual([toolPart("read")]);
+    expect(rows[4].parts).toEqual([toolPart("write")]);
+  });
+
+  it("gives consecutive id-less hints distinct fallback row ids", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "", content: "first" }]),
+        hintPart([{ id: "", content: "second" }]),
+      ]),
+    ]);
+
+    const followUps = rows.filter(
+      (row) => row.role === "user" && row !== PROMPT,
+    );
+    expect(new Set(followUps.map((row) => row.id)).size).toBe(2);
+  });
+
   it("splits again for every later drain in the same turn", () => {
     const rows = splitMessagesAtDrainHints([
       PROMPT,

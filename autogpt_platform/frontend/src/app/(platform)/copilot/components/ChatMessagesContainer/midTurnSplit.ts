@@ -65,35 +65,81 @@ export function messagesCarryDrainedText(messages: ChatMessage[]): boolean {
   return messages.some(hasSplittableDrainHint);
 }
 
+/**
+ * The follow-up texts the split above actually draws, in transcript order.
+ *
+ * `useCopilotPendingChips` promotes a drained chip into a bubble only when
+ * the transcript is not already showing it. Asking that per text rather than
+ * "does this transcript contain any text-bearing hint" matters when the two
+ * kinds are mixed — an older turn's text-bearing hint must not suppress the
+ * bubble for a later count-only drain, whose entries are dropped from the
+ * queue either way and would otherwise vanish until hydration.
+ */
+export function drainedTextsInMessages(messages: ChatMessage[]): string[] {
+  const texts: string[] = [];
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    let hasVisibleAbove = false;
+    for (const part of message.parts) {
+      const drained = readDrainedMessages(part);
+      if (drained.length === 0) {
+        if (isVisiblePart(part)) hasVisibleAbove = true;
+        continue;
+      }
+      if (!hasVisibleAbove) continue;
+      for (const entry of drained) texts.push(entry.content);
+    }
+  }
+  return texts;
+}
+
 function splitAssistantMessage(message: ChatMessage): ChatMessage[] {
   const rows: ChatMessage[] = [];
   let segmentParts: MessagePart[] = [];
   let segmentIndex = 0;
+  let followUpIndex = 0;
+  // Tracked across the whole turn rather than per segment: back-to-back
+  // hints leave the open segment empty, and the second one's text still has
+  // to be drawn. Mirrors `hasSplittableDrainHint`, which decides the same
+  // thing one message at a time.
+  let hasVisibleAbove = false;
 
   for (const part of message.parts) {
     const drained = readDrainedMessages(part);
-    const isSplitPoint = drained.length > 0 && segmentParts.some(isVisiblePart);
-    if (!isSplitPoint) {
-      // Hints render nothing, so one that is not a split point simply drops
-      // out instead of breaking the chain it sits in.
-      if (drained.length === 0) segmentParts.push(part);
+    if (drained.length === 0) {
+      // Hints render nothing, so a text-less one simply drops through
+      // instead of breaking the chain it sits in.
+      segmentParts.push(part);
+      if (isVisiblePart(part)) hasVisibleAbove = true;
       continue;
     }
-    rows.push({
-      ...message,
-      id: `${message.id}${SEGMENT_ID_MARKER}${segmentIndex}`,
-      parts: segmentParts,
-    });
-    drained.forEach((entry, entryIndex) => {
+    // Nothing drawn yet means this is the turn-start drain, whose text the
+    // opening prompt already contains — splitting there would cut an empty
+    // segment off the top and double the bubble.
+    if (!hasVisibleAbove) continue;
+
+    // Only cut a row when the open segment actually drew something:
+    // consecutive hints must not emit empty assistant rows between bubbles.
+    if (segmentParts.some(isVisiblePart)) {
+      rows.push({
+        ...message,
+        id: `${message.id}${SEGMENT_ID_MARKER}${segmentIndex}`,
+        parts: segmentParts,
+      });
+      segmentIndex++;
+      segmentParts = [];
+    }
+    for (const entry of drained) {
+      // Counter runs over the turn, not the segment: consecutive hints share
+      // a segment index, so that alone would not keep fallback ids unique.
       rows.push(
         makeFollowUpRow(
-          entry.id ?? `${message.id}-${segmentIndex}-${entryIndex}`,
+          entry.id ?? `${message.id}-${followUpIndex}`,
           entry.content,
         ),
       );
-    });
-    segmentIndex++;
-    segmentParts = [];
+      followUpIndex++;
+    }
   }
 
   // The tail segment is emitted even while it is still empty (the hint is

@@ -129,6 +129,52 @@ describe("useCopilotPendingChips", () => {
     ).toBe(false);
   });
 
+  it("still promotes a count-only drain that follows a text-bearing one", async () => {
+    // Mixed hints reach one transcript across a rolling backend deploy. The
+    // earlier hint's text is drawn by the split, but the later count-only
+    // drain has no text on it, so its chip must still become a bubble —
+    // the queue entry is dropped either way.
+    function mixedHints(): Messages[number] {
+      const parts: Messages[number]["parts"] = [
+        { type: "text", text: "working…", state: "done" },
+        {
+          type: "data-pending-drained",
+          id: "hint-text",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pm-0", content: "earlier follow up" }],
+          },
+        } as Messages[number]["parts"][number],
+        {
+          type: "data-pending-drained",
+          id: "hint-count-only",
+          data: { drainedCount: 1 },
+        } as Messages[number]["parts"][number],
+      ];
+      return { id: ASSISTANT_ID, role: "assistant", parts };
+    }
+
+    const { view, getMessages } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("later follow up");
+    });
+
+    await act(async () => {
+      view.rerender({ messages: [mixedHints()] });
+    });
+
+    await waitFor(() => {
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+
+    const promoted = getMessages().find((m) =>
+      m.id.startsWith("promoted-midturn-pending-chip-"),
+    );
+    expect(promoted?.role).toBe("user");
+  });
+
   it("does not promote when the backend buffer count still covers the local chips", async () => {
     mockGetPending.mockResolvedValue({
       status: 200,
