@@ -1046,8 +1046,8 @@ async def create_raised_expert(
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
     NULL. Capacity checks and creation share a per-user advisory lock.
-    Attachments are validated before creation. Workflow install failure
-    remains non-fatal and is reported in the result.
+    Attachments are validated before creation. A workflow or marketplace-skill
+    install failure remains non-fatal and is reported in the result.
     """
     resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
     expert = await _create_raised_expert_row(
@@ -1063,24 +1063,38 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
-    failed_skills = await _copy_library_skills(user_id, expert.id, resolved.skill_names)
-    if failed_skills:
+    failed_skill_installs = await raise_attachments.install_marketplace_skills(
+        user_id, expert.id, resolved.skills
+    )
+    # Keyed on the whole attachment, not the bare id: the same slug can be
+    # attached from both the Hub and the user's own library, and a failed Hub
+    # install must not drop the library copy that succeeded.
+    uninstalled = {(f.kind, f.source, f.id) for f in failed_skill_installs}
+    dropped_skills = set(
+        await _copy_library_skills(user_id, expert.id, resolved.library_skill_names)
+    ) | {
+        s.name
+        for s in resolved.skills
+        if (s.attachment.kind, s.attachment.source, s.attachment.id) in uninstalled
+    }
+    if dropped_skills:
         expert = (
             await prisma.models.Expert.prisma().update(
                 where={"id": expert.id},
                 data={
                     "skills": [
-                        s for s in (expert.skills or []) if s not in failed_skills
+                        s for s in (expert.skills or []) if s not in dropped_skills
                     ]
                 },
                 include=_WORKFLOW_INCLUDE,
             )
             or expert
         )
-    failed_attachments = await raise_attachments.install_workflows(
+    failed_workflows = await raise_attachments.install_workflows(
         user_id, expert.id, resolved.workflows
     )
-    if resolved.workflows and len(failed_attachments) < len(resolved.workflows):
+    failed_attachments = failed_skill_installs + failed_workflows
+    if resolved.workflows and len(failed_workflows) < len(resolved.workflows):
         hydrated = await get_expert(user_id, expert.id)
         if hydrated is None:
             raise ExpertNotFoundError(expert.id)
@@ -1092,8 +1106,9 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the Otto skills it
-    was raised with. Defaults and marketplace names have nothing to copy.
+    """Give a freshly raised expert its own copies of the library skills it
+    was raised with. Defaults have nothing to copy; marketplace skills are
+    installed from their listing instead and never reach here.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
     candidates = [
@@ -1106,8 +1121,8 @@ async def _copy_library_skills(
     for name in candidates:
         folder = folders.get(name.strip().lower())
         if folder is None:
-            # A marketplace attachment: no library folder to copy, and the
-            # name is legitimate, so it stays on the row.
+            # A default listed under a name that differs from its slug: no
+            # folder to copy, and the name is legitimate, so it stays.
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder) is None:
