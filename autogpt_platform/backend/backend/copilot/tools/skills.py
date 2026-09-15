@@ -595,27 +595,28 @@ async def delete_user_skill(
     await manager.delete_file(info.id)
     # One page is capped at MAX_PACKAGE_FILES, so a larger folder needs more
     # than one pass; anything left behind keeps consuming the user's quota and
-    # is inherited by the next skill stored under this slug.
-    for _ in range(_DELETE_PASSES):
+    # is inherited by the next skill stored under this slug.  A pass that
+    # deletes nothing new ends the loop, so a file that cannot be deleted stops
+    # it rather than spinning it.
+    attempted: set[str] = set()
+    while True:
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
             break
-        if not siblings:
+        fresh = [s for s in siblings if s.file_id not in attempted]
+        if not fresh:
             break
-        deleted = 0
-        for sibling in siblings:
+        for sibling in fresh:
+            attempted.add(sibling.file_id)
             try:
                 await manager.delete_file(sibling.file_id)
-                deleted += 1
             except Exception:
                 logger.warning(
                     "[skills] failed to delete sibling %s",
                     sibling.path,
                     exc_info=True,
                 )
-        if not deleted:
-            break
     await invalidate_skills_index_cache(user_id, expert_id)
     if expert_id is not None:
         await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
@@ -915,19 +916,10 @@ async def _list_user_skills_from_workspace(
     """
     manager = await _get_user_skill_manager(user_id, scope)
     folder = skill_folder(expert_id)
-    files = await manager.list_files(
-        path=f"{folder}/",
-        limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
-        include_all_sessions=True,
-        name_contains="SKILL.md",
-    )
 
     skills: list[ParsedSkill] = []
     needs_read: list[Any] = []
-    for f in files:
-        slug = _root_skill_slug(f.path, folder)
-        if slug is None:
-            continue
+    for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
@@ -1263,18 +1255,9 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
     if not wanted:
         return {}
     manager = await _get_user_skill_manager(user_id)
-    files = await manager.list_files(
-        path=f"{SKILL_FOLDER}/",
-        limit=MAX_USER_SKILLS * 4,
-        include_all_sessions=True,
-        name_contains="SKILL.md",
-    )
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f in files:
-        slug = _root_skill_slug(f.path, SKILL_FOLDER)
-        if slug is None:
-            continue
+    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
         if slug.strip().lower() in wanted:
             found[slug.strip().lower()] = slug
             continue
@@ -1543,6 +1526,9 @@ class SkillFileInfo(BaseModel):
     file_id: str
     size_bytes: int = 0
     is_executable: bool = False
+    # The workspace hashes every write with the same sha256 the manifest
+    # records, so a match means the copy is current without reading the blob.
+    checksum: str | None = None
 
 
 class ReadSkillResponse(ToolResponseBase):
@@ -1837,6 +1823,7 @@ class ReadSkillTool(BaseTool):
         # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
         folder = skill_folder(owner.expert_id)
+        listed = True
         try:
             package_files = await _list_package_files(manager, folder, name)
         except Exception:
@@ -1844,10 +1831,13 @@ class ReadSkillTool(BaseTool):
                 "[skills] failed to list package files for %s", name, exc_info=True
             )
             package_files = []
+            listed = False
 
         notes: list[str] = []
-        complete = len(package_files) <= MAX_PACKAGE_FILES
-        if not complete:
+        # A listing that failed is not an empty package: treating it as one
+        # would prune every file the last activation wrote.
+        complete = listed and len(package_files) <= MAX_PACKAGE_FILES
+        if listed and not complete:
             package_files = package_files[:MAX_PACKAGE_FILES]
             notes.append(
                 f"Only the first {MAX_PACKAGE_FILES} package files are listed."
@@ -2043,6 +2033,44 @@ class ListSkillsTool(BaseTool):
 # ---------------------------------------------------------------------------
 
 
+# Rows a listing will scan before giving up. The SKILL.md name filter runs in
+# the query but depth cannot, so a page of newest-first rows can be entirely
+# nested SKILL.md files and yield no roots at all; the bound is the most a
+# compliant folder can hold, every allowed skill carrying a full package.
+_MAX_ROOT_SCAN = MAX_USER_SKILLS * (MAX_PACKAGE_FILES + 1)
+
+
+async def _list_skill_roots(
+    manager: WorkspaceManager, folder: str
+) -> list[tuple[Any, str]]:
+    """``(file, slug)`` for every package root directly under *folder*.
+
+    Pages until the roots run out rather than filtering one capped page: a
+    package shipping its own example ``SKILL.md`` files would otherwise fill
+    the page and hide older skills, which is the defect this listing exists
+    to avoid.
+    """
+    page = MAX_USER_SKILLS * 4  # over-fetch in case of strays
+    roots: list[tuple[Any, str]] = []
+    offset = 0
+    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_USER_SKILLS:
+        rows = await manager.list_files(
+            path=f"{folder}/",
+            limit=page,
+            offset=offset,
+            include_all_sessions=True,
+            name_contains="SKILL.md",
+        )
+        for row in rows:
+            slug = _root_skill_slug(row.path, folder)
+            if slug is not None:
+                roots.append((row, slug))
+        if len(rows) < page:
+            break
+        offset += page
+    return roots
+
+
 def _root_skill_slug(path: str, folder: str) -> str | None:
     """Folder slug when *path* is a package root, ``<folder>/<slug>/SKILL.md``.
 
@@ -2091,6 +2119,7 @@ async def _list_package_files(
                     file_id=row.id,
                     size_bytes=row.size_bytes or 0,
                     is_executable=bool(meta.get(_META_EXECUTABLE)),
+                    checksum=getattr(row, "checksum", None),
                 )
             )
             if cap is not None and len(files) > cap:
@@ -2106,7 +2135,10 @@ async def _list_package_files(
 # runs before any of that is actionable: the E2B box in production, the
 # bubblewrap directory locally.  The manifest records what each file hashed
 # to, so re-activating a skill in a later turn copies only what changed.
-_PACKAGE_MANIFEST = ".package.json"
+# Bookkeeping, not part of the package, so it is kept OUT of the directory the
+# package is copied into: a skill shipping its own ``.package.json`` would
+# otherwise be overwritten by it, and the digest would then match forever.
+_MANIFEST_DIR = ".skill-packages"
 _MANIFEST_SHA = "sha256"
 _MANIFEST_EXEC = "executable"
 # A package with no bits to give still gets ``scripts/`` marked, because that
@@ -2149,9 +2181,11 @@ async def _sync_skill_package(
     *complete* says whether *files* is the whole package: a truncated listing
     cannot tell a removed file from an unlisted one, so it prunes nothing.
     """
-    package_dir = f"{workdir_root(session_id)}/skills/{slug}"
+    workdir = workdir_root(session_id)
+    package_dir = f"{workdir}/skills/{slug}"
+    manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
     prefix = f"{folder}/{slug}/"
-    manifest = await _read_package_manifest(package_dir, session_id)
+    manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
     async def copy(info: SkillFileInfo) -> _CopiedFile | None:
@@ -2162,6 +2196,12 @@ async def _sync_skill_package(
             logger.warning("[skills] skipping odd package path %s", info.path)
             return None
         executable = info.is_executable or relative.startswith(_EXECUTABLE_PREFIX)
+        settled = {_MANIFEST_SHA: info.checksum, _MANIFEST_EXEC: executable}
+        # The row's checksum is recomputed on every write, so it describes the
+        # bytes as stored; matching it means the copy on disk is current and the
+        # blob does not have to be fetched to find that out.
+        if info.checksum and manifest.get(relative) == settled:
+            return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
                 content = await manager.read_file(info.path)
@@ -2192,31 +2232,56 @@ async def _sync_skill_package(
         for c in copied
     }
 
+    # The manifest is what a later activation trusts instead of re-doing work,
+    # so it records only what actually happened. A mode that would not apply or
+    # a file that would not go is left out of it, and the next activation tries
+    # again; committing them would make a transient failure permanent.
+    settled = dict(written)
+
     # Only files this pass wrote carry a ``target``; a manifest hit needs no
     # chmod, because its recorded mode already matches.
-    await set_executable(
+    unset = await set_executable(
         [c.target for c in copied if c.target and c.executable], True, session_id
-    )
-    await set_executable(
+    ) + await set_executable(
         [c.target for c in copied if c.target and not c.executable], False, session_id
     )
+    for c in copied:
+        if c.target in unset:
+            settled.pop(c.relative, None)
     # A file the skill no longer has must not stay where bash_exec can run it,
     # and delete_skill followed by store_skill on the same slug is exactly that
     # case.  Prune by what the package HOLDS, not by what was copied: a copy
     # that failed leaves a current file whose earlier copy is still wanted.
+    removed: set[str] = set()
     if complete:
         # The root is not a sibling and is never written here, so it can only
         # reach the manifest by a hand edit; excluding it keeps the prune from
         # acting on a name that does not belong to it.
         current = {info.path[len(prefix) :] for info in files} | {"SKILL.md"}
         stale = sorted(set(manifest) - current)
-        await remove_from_workdir(
-            [f"{package_dir}/{relative}" for relative in stale], session_id
+        left = set(
+            await remove_from_workdir(
+                [f"{package_dir}/{relative}" for relative in stale], session_id
+            )
         )
+        removed = {r for r in stale if f"{package_dir}/{r}" not in left}
+
+    # THE INVARIANT, and why this statement keeps collecting edits: the manifest
+    # may only lose an entry for a file we KNOW is gone — one we removed, or one
+    # a listing we know was complete did not contain. Every branch that touches
+    # it narrows `removed` or `settled` for its own way of not knowing: a delete
+    # that failed, a chmod that did not apply, a listing that was truncated.
+    # Narrow further if you must; never widen by taking one side of the diff.
+    next_manifest = {
+        relative: entry
+        for relative, entry in manifest.items()
+        if relative not in settled and relative not in removed
+    }
+    next_manifest.update(settled)
     # A single-file skill must not leave an empty package directory behind, so
     # the manifest is written only when there is, or was, something to track.
-    if written or manifest:
-        await _write_package_manifest(package_dir, written, session_id)
+    if next_manifest or manifest:
+        await _write_package_manifest(manifest_path, next_manifest, session_id)
 
     if not files:
         return None, None
@@ -2248,7 +2313,7 @@ def _is_safe_relative(path: str) -> bool:
 
 
 async def _read_package_manifest(
-    package_dir: str, session_id: str
+    manifest_path: str, session_id: str
 ) -> dict[str, dict[str, Any]]:
     """What the last activation wrote, per path — empty on a first run or any
     unreadable manifest, because a re-copy is cheap and a stale skip is not.
@@ -2260,7 +2325,7 @@ async def _read_package_manifest(
     The manifest lives in the model's own working directory, so its keys are
     untrusted input to a later rm: only paths we would have written survive.
     """
-    raw = await read_workdir_bytes(f"{package_dir}/{_PACKAGE_MANIFEST}", session_id)
+    raw = await read_workdir_bytes(manifest_path, session_id)
     if not raw:
         return {}
     try:
@@ -2284,12 +2349,10 @@ async def _read_package_manifest(
 
 
 async def _write_package_manifest(
-    package_dir: str, hashes: dict[str, dict[str, Any]], session_id: str
+    manifest_path: str, hashes: dict[str, dict[str, Any]], session_id: str
 ) -> None:
     result = await save_to_workdir(
-        f"{package_dir}/{_PACKAGE_MANIFEST}",
-        json.dumps(hashes).encode(),
-        session_id,
+        manifest_path, json.dumps(hashes).encode(), session_id
     )
     if isinstance(result, ErrorResponse):
         logger.warning("[skills] failed to write package manifest: %s", result.message)

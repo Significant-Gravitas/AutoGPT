@@ -1647,6 +1647,10 @@ class TestScheduleOrgVisibility:
         sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
         with (
             patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            # None of these fixture jobs are paused, so the active-only path
+            # (what get_execution_schedules actually calls unless
+            # include_paused=True) can return the same list.
+            patch.object(Scheduler, "_get_active_jobs_cached", lambda self: jobs),
             patch(
                 "backend.executor.scheduler._job_to_info",
                 side_effect=fake_job_to_info,

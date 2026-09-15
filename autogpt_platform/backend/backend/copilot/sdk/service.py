@@ -48,6 +48,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -5302,8 +5303,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             for ev in compaction.emit_pre_query_start(forecast.tokens_before):
                 yield ev
 
+        # Live budget, every turn — the CLI's own ``max_budget_usd`` reminder is
+        # per-query and knows nothing of the tree. Prepended to the query only,
+        # never to ``current_message``: that is what the transcript records and
+        # the next turn replays, and it must not accumulate one stale figure
+        # per turn.
+        budget_status = await build_turn_budget_block(envelope, user_id)
+
         query_message, compaction_stats = await _build_query_message(
-            current_message,
+            budget_status + current_message,
             session,
             use_resume,
             transcript_msg_count,
@@ -5506,11 +5514,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
+                # Keep the ``budget_status +`` prefix through any reflow of this
+                # call: dropping it silently un-ships the retry path's budget line.
                 (
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    current_message,
+                    budget_status + current_message,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,
