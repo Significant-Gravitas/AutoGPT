@@ -4,6 +4,7 @@ These tests cover ``_baseline_conversation_updater`` and ``_BaselineStreamState`
 without requiring API keys, database connections, or network access.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,7 +38,7 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, PendingQuestion
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
     StreamReasoningDelta,
@@ -56,17 +57,41 @@ from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallRe
 
 @pytest.mark.asyncio
 async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None:
+    """Identity raise must not leave a stuck Home card (#14118).
+
+    clear_pending_question runs on the user-message turn *before*
+    build_expert_identity_suffix, so org/team / archived failures still
+    clear pending_question while leaving the transcript untouched.
+    """
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.metadata.pending_question = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
     identity_mock = AsyncMock(
         side_effect=ExpertSessionUnavailableError(
-            "The expert for this session no longer exists or is archived."
+            "This expert session must be reopened in its personal workspace."
         )
     )
+    clear_db = AsyncMock()
+    call_order: list[str] = []
+
+    async def _identity(*args, **kwargs):
+        call_order.append("identity")
+        return await identity_mock(*args, **kwargs)
+
+    async def _clear_db(*args, **kwargs):
+        call_order.append("clear_db")
+        return await clear_db(*args, **kwargs)
 
     with (
         patch(
             "backend.copilot.baseline.service.build_expert_identity_suffix",
-            new=identity_mock,
+            new=_identity,
+        ),
+        patch(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=_clear_db)),
         ),
         pytest.raises(ExpertSessionUnavailableError),
     ):
@@ -82,6 +107,9 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
         "user-1", "expert-1", organization_id=None, team_id=None
     )
     assert session.messages == []
+    assert session.metadata.pending_question is None
+    clear_db.assert_awaited_once_with(session.session_id, session.user_id)
+    assert call_order == ["clear_db", "identity"]
 
 
 @pytest.mark.asyncio
