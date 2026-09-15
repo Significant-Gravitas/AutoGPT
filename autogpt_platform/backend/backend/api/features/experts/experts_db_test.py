@@ -104,6 +104,17 @@ async def delete_rows_this_test_seeded():
     await _delete_seeded_rows(template_ids, user_ids)
     _seeded_template_ids.clear()
     _seeded_user_ids.clear()
+    # _load_roster_store_assets seeds the real starter-skill catalog so
+    # bundled-skill resolution has something to find; skill_db_test.py's
+    # fixture requires that table empty, so undo the seed here. Re-seeding
+    # next call is an upsert, so this is cheap.
+    starter_slugs = [entry["slug"] for entry in skill_seed.STARTER_SKILLS]
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"SkillListing": {"is": {"slug": {"in": starter_slugs}}}}
+    )
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"slug": {"in": starter_slugs}}
+    )
 
 
 async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> None:
