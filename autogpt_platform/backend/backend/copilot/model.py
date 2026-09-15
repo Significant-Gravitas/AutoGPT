@@ -3,7 +3,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Literal, Self, cast
+from typing import Annotated, Any, AsyncIterator, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -88,6 +88,43 @@ CHAT_STATUS_RUNNING = "running"
 # ===================== Chat data models ===================== #
 
 
+class CloudExecutionTargetMetadata(BaseModel):
+    kind: Literal["cloud"] = "cloud"
+
+
+class LocalExecutionTargetMetadata(BaseModel):
+    kind: Literal["local"] = "local"
+    machine_id: str = Field(min_length=1, max_length=128)
+    directory_ref: str = Field(min_length=1, max_length=256)
+    allowed_root: str = Field(min_length=1, max_length=32_767)
+    root_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    root_grant: str = Field(min_length=1, max_length=131_072)
+    revision: int = Field(default=1, ge=1)
+
+
+ExecutionTargetMetadata = Annotated[
+    CloudExecutionTargetMetadata | LocalExecutionTargetMetadata,
+    Field(discriminator="kind"),
+]
+
+
+class PublicCloudExecutionTargetMetadata(BaseModel):
+    kind: Literal["cloud"]
+
+
+class PublicLocalExecutionTargetMetadata(BaseModel):
+    kind: Literal["local"]
+    machine_id: str
+    allowed_root: str
+    revision: int
+
+
+PublicExecutionTargetMetadata = Annotated[
+    PublicCloudExecutionTargetMetadata | PublicLocalExecutionTargetMetadata,
+    Field(discriminator="kind"),
+]
+
+
 class PendingQuestion(BaseModel):
     """The last unanswered question a session asked the user."""
 
@@ -106,6 +143,13 @@ class ChatSessionMetadata(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider = "platform"
     llm_credential_id: str | None = None
     llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
+
+    # Executor locality is immutable for the lifetime of a chat. Sessions
+    # created before this field existed validate as Cloud, preserving the
+    # existing hosted execution path without a data migration.
+    execution_target: ExecutionTargetMetadata = Field(
+        default_factory=CloudExecutionTargetMetadata
+    )
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -163,6 +207,59 @@ def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     cannot prove a human drove it, the child must not claim one did.
     """
     return parent.origin or "automation"
+
+
+class PublicChatSessionMetadata(BaseModel):
+    """Browser-safe projection of session metadata.
+
+    The durable Local PC root grant stays server-side because it authorizes a
+    host to restore access to the selected directory after reconnect.
+    """
+
+    dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
+    execution_target: PublicExecutionTargetMetadata = Field(
+        default_factory=lambda: PublicCloudExecutionTargetMetadata(kind="cloud")
+    )
+    builder_graph_id: str | None = None
+    source_platform: str | None = None
+    origin: ChatSessionOrigin | None = None
+    kind: str = "normal"
+    dream_pass_id: str | None = None
+    delegated_by_expert_id: str | None = None
+    delegated_by_session_id: str | None = None
+    handed_off_from_expert_id: str | None = None
+    pending_question: PendingQuestion | None = None
+
+    @classmethod
+    def from_internal(cls, metadata: ChatSessionMetadata) -> Self:
+        target = metadata.execution_target
+        public_target: PublicExecutionTargetMetadata
+        if target.kind == "local":
+            public_target = PublicLocalExecutionTargetMetadata(
+                kind="local",
+                machine_id=target.machine_id,
+                allowed_root=target.allowed_root,
+                revision=target.revision,
+            )
+        else:
+            public_target = PublicCloudExecutionTargetMetadata(kind="cloud")
+        return cls(
+            dry_run=metadata.dry_run,
+            llm_auth_provider=metadata.llm_auth_provider,
+            llm_credential_id=metadata.llm_credential_id,
+            execution_target=public_target,
+            builder_graph_id=metadata.builder_graph_id,
+            source_platform=metadata.source_platform,
+            origin=metadata.origin,
+            kind=metadata.kind,
+            dream_pass_id=metadata.dream_pass_id,
+            delegated_by_expert_id=metadata.delegated_by_expert_id,
+            delegated_by_session_id=metadata.delegated_by_session_id,
+            handed_off_from_expert_id=metadata.handed_off_from_expert_id,
+            pending_question=metadata.pending_question,
+        )
 
 
 class ChatMessage(BaseModel):
@@ -491,6 +588,7 @@ class ChatSession(ChatSessionInfo):
         origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
+        execution_target: ExecutionTargetMetadata | None = None,
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
@@ -511,6 +609,7 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                execution_target=execution_target or CloudExecutionTargetMetadata(),
                 origin=origin,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
@@ -1330,6 +1429,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    execution_target: ExecutionTargetMetadata | None = None,
     origin: ChatSessionOrigin = "interactive",
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -1381,6 +1481,7 @@ async def create_chat_session(
         origin=origin,
         organization_id=organization_id,
         team_id=team_id,
+        execution_target=execution_target,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         expert_id=expert_id,

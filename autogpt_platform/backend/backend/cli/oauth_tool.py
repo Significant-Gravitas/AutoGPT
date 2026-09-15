@@ -32,16 +32,19 @@ Usage:
 import asyncio
 import base64
 import hashlib
+import re
 import secrets
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
 import click
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+
+from backend.data.auth.oauth import is_safe_oauth_redirect_uri
 
 keysmith = APIKeySmith()
 
@@ -75,12 +78,25 @@ def validate_secret(plaintext: str, hash_value: str, salt: str) -> bool:
     return keysmith.verify_key(plaintext, hash_value, salt)
 
 
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _postgres_array_literal(values: list[str]) -> str:
+    elements = [
+        '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"' for value in values
+    ]
+    return _sql_literal("{" + ",".join(elements) + "}")
+
+
 def generate_app_credentials(
     name: str,
     redirect_uris: list[str],
     scopes: list[str],
     description: str | None = None,
     grant_types: list[str] | None = None,
+    client_id: str | None = None,
+    is_public: bool = False,
 ) -> dict:
     """
     Generate complete credentials for an OAuth application.
@@ -107,10 +123,25 @@ def generate_app_credentials(
 
     if not validated_scopes:
         raise ValueError("At least one scope is required")
+    if not redirect_uris:
+        raise ValueError("At least one redirect URI is required")
+    invalid_redirect_uris = [
+        uri for uri in redirect_uris if not is_safe_oauth_redirect_uri(uri)
+    ]
+    if invalid_redirect_uris:
+        raise ValueError(
+            "Redirect URIs must use HTTPS, or HTTP on localhost or a loopback IP, "
+            "and must not contain credentials or fragments"
+        )
+    if client_id is not None and not re.fullmatch(r"[A-Za-z0-9._~-]{1,128}", client_id):
+        raise ValueError(
+            "client_id must be 1-128 characters containing only letters, "
+            "numbers, dot, underscore, tilde, or hyphen"
+        )
 
     # Generate credentials
     app_id = str(uuid.uuid4())
-    client_id = generate_client_id()
+    client_id = client_id or generate_client_id()
     client_secret_plaintext, client_secret_hash, client_secret_salt = (
         generate_client_secret()
     )
@@ -126,6 +157,7 @@ def generate_app_credentials(
         "redirect_uris": redirect_uris,
         "grant_types": grant_types,
         "scopes": [s.value for s in validated_scopes],
+        "is_public": is_public,
     }
 
 
@@ -136,14 +168,23 @@ def format_sql_insert(creds: dict) -> str:
     The statement includes placeholders that must be replaced:
     - YOUR_USER_ID_HERE: Replace with the owner's user ID
     """
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Format arrays for PostgreSQL
-    redirect_uris_pg = (
-        "{" + ",".join(f'"{uri}"' for uri in creds["redirect_uris"]) + "}"
-    )
-    grant_types_pg = "{" + ",".join(f'"{gt}"' for gt in creds["grant_types"]) + "}"
-    scopes_pg = "{" + ",".join(creds["scopes"]) + "}"
+    redirect_uris_pg = _postgres_array_literal(creds["redirect_uris"])
+    grant_types_pg = _postgres_array_literal(creds["grant_types"])
+    scopes_pg = _postgres_array_literal(creds["scopes"])
+    if creds.get("is_public"):
+        secret_notes = """-- Public PKCE client: the generated secret is a database placeholder only.
+-- The application does not receive or use a client secret."""
+    else:
+        secret_notes = f"""-- Client Secret: {creds['client_secret_plaintext']}
+--
+-- ⚠️ The client secret is shown ONLY ONCE!
+-- ⚠️ Store it securely and share only with the application developer.
+-- ⚠️ Never commit it to version control.
+--
+-- The client secret has been hashed in the database using Scrypt.
+-- The plaintext secret above is needed by the application to authenticate."""
 
     sql = f"""
 -- ============================================================
@@ -164,22 +205,24 @@ INSERT INTO "OAuthApplication" (
   "grantTypes",
   scopes,
   "ownerId",
-  "isActive"
+  "isActive",
+  "isPublic"
 )
 VALUES (
-  '{creds['id']}',
+  {_sql_literal(creds['id'])},
   NOW(),
   NOW(),
-  '{creds['name']}',
-  {f"'{creds['description']}'" if creds['description'] else 'NULL'},
-  '{creds['client_id']}',
-  '{creds['client_secret_hash']}',
-  '{creds['client_secret_salt']}',
-  ARRAY{redirect_uris_pg}::TEXT[],
-  ARRAY{grant_types_pg}::TEXT[],
-  ARRAY{scopes_pg}::"APIKeyPermission"[],
+  {_sql_literal(creds['name'])},
+  {_sql_literal(creds['description']) if creds['description'] else 'NULL'},
+  {_sql_literal(creds['client_id'])},
+  {_sql_literal(creds['client_secret_hash'])},
+  {_sql_literal(creds['client_secret_salt'])},
+  {redirect_uris_pg}::TEXT[],
+  {grant_types_pg}::TEXT[],
+  {scopes_pg}::"APIKeyPermission"[],
   'YOUR_USER_ID_HERE',  -- ⚠️ REPLACE with actual owner user ID
-  true
+  true,
+  {str(bool(creds.get('is_public', False))).lower()}
 );
 
 -- ============================================================
@@ -187,18 +230,11 @@ VALUES (
 -- ============================================================
 --
 -- Client ID:     {creds['client_id']}
--- Client Secret: {creds['client_secret_plaintext']}
---
--- ⚠️ The client secret is shown ONLY ONCE!
--- ⚠️ Store it securely and share only with the application developer.
--- ⚠️ Never commit it to version control.
---
--- The client secret has been hashed in the database using Scrypt.
--- The plaintext secret above is needed by the application to authenticate.
+{secret_notes}
 -- ============================================================
 
 -- To verify the application was created:
--- SELECT "clientId", name, scopes, "redirectUris", "isActive"
+-- SELECT "clientId", name, scopes, "redirectUris", "isActive", "isPublic"
 -- FROM "OAuthApplication"
 -- WHERE "clientId" = '{creds['client_id']}';
 """
@@ -346,12 +382,25 @@ def prompt_for_grant_types() -> list[str] | None:
     default=None,
     help="Comma-separated list of grant types (default: 'authorization_code,refresh_token')",
 )
+@click.option(
+    "--client-id",
+    default=None,
+    help="Explicit client ID (defaults to a generated agpt_client_* value)",
+)
+@click.option(
+    "--public/--confidential",
+    "is_public",
+    default=False,
+    help="Generate a public PKCE client that does not authenticate with a secret",
+)
 def generate_app(
     name: str | None,
     description: str | None,
     redirect_uris: str | None,
     scopes: str | None,
     grant_types: str | None,
+    client_id: str | None,
+    is_public: bool,
 ):
     """Generate credentials for a new OAuth application
 
@@ -386,6 +435,8 @@ def generate_app(
             redirect_uris=redirect_uris_list,
             scopes=scopes_list,
             grant_types=grant_types_list,
+            client_id=client_id,
+            is_public=is_public,
         )
 
         sql = format_sql_insert(creds)

@@ -84,6 +84,29 @@ describe("BUILDER_CHAT_PANEL default", () => {
   });
 });
 
+describe("Local PC feature overrides", () => {
+  beforeEach(() => {
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"];
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"];
+  });
+
+  it.each([
+    [Flag.LOCAL_PC_EXECUTOR, "NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"],
+    [Flag.WORKFLOW_RECORDING, "NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"],
+  ] as const)("force-enables %s for local development", (flag, envKey) => {
+    process.env[envKey] = "true";
+    expect(envFlagOverride(flag)).toBe(true);
+  });
+
+  it.each([
+    [Flag.LOCAL_PC_EXECUTOR, "NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"],
+    [Flag.WORKFLOW_RECORDING, "NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"],
+  ] as const)("force-disables %s for QA", (flag, envKey) => {
+    process.env[envKey] = "false";
+    expect(envFlagOverride(flag)).toBe(false);
+  });
+});
+
 describe("array-typed flags refuse env overrides", () => {
   beforeEach(() => {
     delete process.env["NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS"];

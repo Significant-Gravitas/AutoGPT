@@ -12,6 +12,7 @@ from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
 
@@ -25,6 +26,7 @@ from .tool_adapter import (
     _text_from_mcp_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_copilot_tool_names,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -32,6 +34,55 @@ from .tool_adapter import (
     stash_pending_tool_output,
     wait_for_stash,
 )
+
+
+def test_local_pc_tool_names_follow_advertised_feature_groups() -> None:
+    names = local_pc_tool_names_for_features(
+        ["screenshot", "apps", "permissions"],
+        ["cursor.position"],
+    )
+    assert names == {
+        "local_pc_screenshot",
+        "local_pc_list_apps",
+        "local_pc_launch_app",
+        "local_pc_permissions_check",
+        "local_pc_cursor_position",
+    }
+    assert "local_pc_clipboard_read" not in names
+    assert "local_pc_list_windows" not in names
+
+
+@pytest.mark.parametrize(
+    ("feature", "expected"),
+    [
+        ("input.click", {"local_pc_click"}),
+        ("input.click.modifiers", {"local_pc_click"}),
+        ("input.scroll.amount", {"local_pc_scroll"}),
+        ("input.key.hold", set()),
+        ("input.wait", set()),
+        ("screenshot.unknown", set()),
+        ("clipboard.read.extra", set()),
+    ],
+)
+def test_fine_features_do_not_broaden_action_grants(
+    feature: str, expected: set[str]
+) -> None:
+    assert local_pc_tool_names_for_features([], [feature]) == expected
+
+
+@pytest.mark.asyncio
+async def test_mcp_registration_filters_unadvertised_local_pc_features() -> None:
+    server = create_copilot_mcp_server(
+        use_local_pc_computer=True,
+        local_pc_computer_tool_names={"local_pc_screenshot"},
+    )
+    instance = server["instance"]
+    handler = instance.request_handlers[ListToolsRequest]
+    result = await handler(ListToolsRequest(method="tools/list"))
+    names = {tool.name for tool in result.root.tools}
+    assert "local_pc_screenshot" in names
+    assert "local_pc_clipboard_read" not in names
+
 
 # ---------------------------------------------------------------------------
 # _text_from_mcp_result
@@ -1278,12 +1329,69 @@ class TestCreateCopilotMcpServerHidden:
                 continue
             assert short in registered
 
+    @pytest.mark.asyncio
+    async def test_hidden_local_pc_and_ui_owned_recording_start_not_registered(self):
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["local_pc_click"],
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "local_pc_click" not in registered
+        assert "record_workflow" not in registered
+        assert "local_pc_screenshot" in registered
+        assert "list_recordings" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_sdk_file_aliases_hide_e2b_tools(self):
+        server = create_copilot_mcp_server(
+            use_e2b=True,
+            hidden_tool_names=["Read", "Grep"],
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "grep" not in registered
+        assert "write_file" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_read_alias_hides_unified_read_tool(self):
+        server = create_copilot_mcp_server(hidden_tool_names=["Read"])
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "Write" in registered
+
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
         instance = server["instance"]
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+@pytest.mark.parametrize(
+    ("use_e2b", "hidden", "expected_hidden", "expected_visible"),
+    [
+        (True, ["Read", "Grep"], {"read_file", "grep"}, "write_file"),
+        (True, ["grep"], {"grep"}, "write_file"),
+        (False, ["Read"], {"read_file"}, "Write"),
+    ],
+)
+def test_hidden_file_tools_are_omitted_from_allowed_tools(
+    use_e2b: bool,
+    hidden: list[str],
+    expected_hidden: set[str],
+    expected_visible: str,
+) -> None:
+    allowed = set(get_copilot_tool_names(use_e2b=use_e2b, hidden_tool_names=hidden))
+
+    assert not {f"mcp__copilot__{name}" for name in expected_hidden} & allowed
+    assert f"mcp__copilot__{expected_visible}" in allowed
 
 
 class TestNavigableToolResultText:

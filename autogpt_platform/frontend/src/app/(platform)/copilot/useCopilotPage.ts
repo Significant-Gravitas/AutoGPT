@@ -64,6 +64,7 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
@@ -117,7 +118,8 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotLlmModel, isDryRun, newChatExecutionTarget } =
+    useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -141,9 +143,14 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
   } = useChatSession({
     dryRun: isDryRun,
+    executionTarget:
+      isLocalPCEnabled || newChatExecutionTarget.kind === "local"
+        ? newChatExecutionTarget
+        : undefined,
     expertId,
     adoptLatestExpertThread: !newThreadParam,
   });
@@ -432,6 +439,7 @@ export function useCopilotPage() {
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     expertIdentity,
     isResolvingExpertIdentity,

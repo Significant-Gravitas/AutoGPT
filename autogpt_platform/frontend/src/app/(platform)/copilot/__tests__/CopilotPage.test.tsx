@@ -1,3 +1,4 @@
+import { Key, storage } from "@/services/storage/local-storage";
 import {
   render,
   screen,
@@ -7,6 +8,8 @@ import {
 import { useCopilotUIStore } from "../store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotPage } from "../CopilotPage";
+
+const mockFeatureFlags = vi.hoisted(() => ({ localPCEnabled: false }));
 
 // Mock child components that are complex and not under test here
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
@@ -29,6 +32,20 @@ vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
 }));
 vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
   NotificationDialog: () => null,
+}));
+vi.mock("../components/LocalPCBadge/LocalPCBadge", () => ({
+  LocalPCBadge: () => null,
+}));
+vi.mock(
+  "../components/LocalPCComputerUseConsent/LocalPCComputerUseConsent",
+  () => ({
+    LocalPCComputerUseConsent: () => (
+      <div data-testid="local-pc-computer-use-consent" />
+    ),
+  }),
+);
+vi.mock("../components/RecordWorkflow/RecordWorkflow", () => ({
+  RecordWorkflow: () => null,
 }));
 vi.mock("../components/RateLimitResetDialog/RateLimitResetDialog", () => ({
   RateLimitResetDialog: () => null,
@@ -93,10 +110,16 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
+    LOCAL_PC_EXECUTOR: "LOCAL_PC_EXECUTOR",
+    WORKFLOW_RECORDING: "WORKFLOW_RECORDING",
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
   useGetFlag: (flag: string) =>
-    flag === "ARTIFACTS" ? flagState.artifacts : false,
+    flag === "LOCAL_PC_EXECUTOR"
+      ? mockFeatureFlags.localPCEnabled
+      : flag === "ARTIFACTS"
+        ? flagState.artifacts
+        : false,
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in
@@ -142,6 +165,10 @@ const basePageState = {
   rateLimitMessage: null,
   dismissRateLimit: vi.fn(),
   sessionDryRun: false,
+  sessionExecutionTarget: null as
+    | { kind: "cloud" }
+    | { kind: "local"; machine_id: string; directory_ref: string }
+    | null,
 };
 
 const mockUseCopilotPage = vi.fn(() => basePageState);
@@ -152,6 +179,8 @@ vi.mock("../useCopilotPage", () => ({
 
 afterEach(() => {
   cleanup();
+  storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
+  mockFeatureFlags.localPCEnabled = false;
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
   mockUseAuth.mockReset();
@@ -249,5 +278,48 @@ describe("CopilotPage test-mode banner", () => {
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();
+  });
+
+  it("does not show a Local PC warning merely because the rollout flag is on", () => {
+    mockFeatureFlags.localPCEnabled = true;
+
+    render(<CopilotPage />);
+
+    expect(
+      screen.queryByText(/code will run on your real machine/i),
+    ).toBeNull();
+    expect(screen.queryByTestId("local-pc-computer-use-consent")).toBeNull();
+  });
+
+  it("mounts computer-use consent only for an established Local PC session", () => {
+    mockFeatureFlags.localPCEnabled = true;
+    mockSessionIdForQueryState = "session-abc";
+    mockUseCopilotPage.mockReturnValue({
+      ...basePageState,
+      sessionId: "session-abc",
+      sessionExecutionTarget: {
+        kind: "local",
+        machine_id: "machine-1",
+        directory_ref: "directory-1",
+      },
+    });
+
+    render(<CopilotPage />);
+
+    expect(screen.getByTestId("local-pc-computer-use-consent")).toBeDefined();
+  });
+
+  it("does not mount computer-use consent for an established Cloud session", () => {
+    mockFeatureFlags.localPCEnabled = true;
+    mockSessionIdForQueryState = "session-abc";
+    mockUseCopilotPage.mockReturnValue({
+      ...basePageState,
+      sessionId: "session-abc",
+      sessionExecutionTarget: { kind: "cloud" },
+    });
+
+    render(<CopilotPage />);
+
+    expect(screen.queryByTestId("local-pc-computer-use-consent")).toBeNull();
   });
 });
