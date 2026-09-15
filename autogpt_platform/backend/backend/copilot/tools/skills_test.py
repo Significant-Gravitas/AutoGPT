@@ -42,6 +42,7 @@ from backend.copilot.tools.skills import (
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
+    build_skills_update_notice,
     copy_skill_to_expert,
     delete_user_skill,
     find_user_skill_slugs,
@@ -1085,6 +1086,75 @@ async def test_build_skills_context_authed_includes_user_skills():
         ctx = await build_skills_context(user_id="user-1")
     assert "mine" in ctx
     assert "agent_building_guide" in ctx  # defaults still present
+
+
+# ---------------------------------------------------------------------------
+# build_skills_update_notice (per-turn <skills_update> drift notice)
+# ---------------------------------------------------------------------------
+
+
+def _history_with_index(index_body: str) -> str:
+    """A persisted first user message carrying a baked-in skill index."""
+    return f"<available_skills>\n{index_body}\n</available_skills>\n\nhello"
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_index_matches_registry():
+    """Steady-state turns pay nothing — the notice fires only on drift."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(ctx)]
+        )
+    assert notice == ""
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_added_skill():
+    """A skill installed after session start is named with a list_skills nudge."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    stale_index = "- name: agent_building_guide — guide"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "<skills_update>" in notice
+    assert "mine" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_removed_skill():
+    """A skill deleted after session start is reported as removed."""
+    fake_manager = _FakeWorkspaceManager()
+    stale_index = "- name: gone — old skill"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "Removed" in notice
+    assert "gone" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_flag_disabled():
+    """The COPILOT_SKILLS kill-switch suppresses the notice like the index."""
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await build_skills_update_notice(
+            "user-1", prior_contents=["<available_skills>\n</available_skills>\n\nhi"]
+        )
+    assert result == ""
 
 
 # ---------------------------------------------------------------------------

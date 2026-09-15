@@ -28,7 +28,7 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
-from backend.copilot.service import strip_server_injected_tags
+from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace_scope import (
@@ -1499,6 +1499,89 @@ async def build_skills_context(
         "full body before acting; distill a new one with `store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
+    )
+
+
+# Non-greedy: history holds at most one ``<available_skills>`` block (the
+# first-turn injection), but a greedy match across two blocks would swallow
+# the user text between them.
+_SKILLS_BLOCK_RE = re.compile(r"<available_skills>(.*?)</available_skills>", re.DOTALL)
+# One index line per skill: ``- name: <slug> — <description> …``.
+_SKILLS_INDEX_LINE_RE = re.compile(r"^- name:\s*(\S+)", re.MULTILINE)
+
+# How many added/removed slugs to name inline before falling back to a
+# count — the notice is a nudge to call ``list_skills``, not the index.
+_MAX_UPDATE_NAMES = 10
+
+
+def previously_seen_skill_slugs(contents: Iterable[str]) -> set[str]:
+    """Slugs from every ``<available_skills>`` block in *contents*.
+
+    Pure parser over already-persisted session text — what the model saw at
+    session start. ``Iterable`` (not ``ChatMessage``) so callers pass plain
+    message contents without importing the chat model here.
+    """
+    seen: set[str] = set()
+    for content in contents:
+        if not content:
+            continue
+        for block in _SKILLS_BLOCK_RE.findall(content):
+            seen.update(_SKILLS_INDEX_LINE_RE.findall(block))
+    return seen
+
+
+async def build_skills_update_notice(
+    user_id: str | None,
+    expert_id: str | None = None,
+    prior_contents: Iterable[str] = (),
+) -> str:
+    """Per-turn ``<skills_update>`` notice, or ``""`` when nothing drifted.
+
+    Compares the registry now (``list_all_skills``: defaults plus the
+    session owner's own skills) against the ``<available_skills>`` index
+    baked into the session history at session start. Same set → ``""`` so
+    steady-state turns pay nothing. Any add or removal renders a small
+    notice naming the delta and pointing at ``list_skills`` — query-only
+    context the engines prepend to the current turn's model input without
+    persisting, mirroring the builder-context pattern.
+
+    Never raises: a registry or flag lookup failure degrades to ``""`` so
+    a skills hiccup can't block the turn.
+    """
+    if not user_id or not await is_skills_feature_enabled(user_id):
+        return ""
+    try:
+        current = await list_all_skills(user_id, expert_id)
+    except Exception:
+        logger.exception("[skills] failed to diff skills for update notice")
+        return ""
+    current_slugs = {s.name for s in current}
+    seen = previously_seen_skill_slugs(prior_contents)
+    added = sorted(slug for slug in current_slugs if slug not in seen)
+    removed = sorted(slug for slug in seen if slug not in current_slugs)
+    if not added and not removed:
+        return ""
+
+    def _names(slugs: list[str]) -> str:
+        if len(slugs) > _MAX_UPDATE_NAMES:
+            head = ", ".join(slugs[:_MAX_UPDATE_NAMES])
+            return f"{head}, and {len(slugs) - _MAX_UPDATE_NAMES} more"
+        return ", ".join(slugs)
+
+    lines = [
+        "Your available skills changed since this conversation started, "
+        "so the <available_skills> index in the first message is stale."
+    ]
+    if added:
+        lines.append(f"New skills: {_names(added)}.")
+    if removed:
+        lines.append(f"Removed skills: {_names(removed)}.")
+    lines.append(
+        "Call `list_skills` to see the current list, then "
+        "`read_skill(name=...)` to load a new skill's body before using it."
+    )
+    return (
+        f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
 
 

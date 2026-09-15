@@ -130,7 +130,10 @@ from backend.copilot.tools import (
     kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
-from backend.copilot.tools.skills import build_skills_context
+from backend.copilot.tools.skills import (
+    build_skills_context,
+    build_skills_update_notice,
+)
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -2101,6 +2104,32 @@ async def stream_chat_completion_baseline(
                     existing = msg.get("content", "")
                     if isinstance(existing, str):
                         msg["content"] = builder_block + existing
+                    break
+
+    # Skill-drift notice — same query-only contract as the builder block
+    # above: prepended to the live model input, never to
+    # ``user_message_for_transcript``, so the persisted history keeps the
+    # session-start baseline the next turn diffs against. On the first
+    # turn ``inject_user_context`` just wrote a fresh index into history,
+    # so the diff is empty by construction and this is a no-op.
+    if is_user_message and user_id:
+        try:
+            skills_notice = await build_skills_update_notice(
+                user_id,
+                expert_id=session.expert_id,
+                prior_contents=[
+                    m.content or "" for m in session.messages if m.role == "user"
+                ],
+            )
+        except Exception:
+            logger.exception("[skills] failed to build skills update notice")
+            skills_notice = ""
+        if skills_notice:
+            for msg in reversed(openai_messages):
+                if msg["role"] == "user":
+                    existing = msg.get("content", "")
+                    if isinstance(existing, str):
+                        msg["content"] = skills_notice + existing
                     break
 
     # Append user message to transcript.
