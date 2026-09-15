@@ -2011,7 +2011,7 @@ class Scheduler(AppService):
         """Parking is recoverable but silent — startup has to say it happened."""
         for alias, store in self._persistent_jobstores.items():
             try:
-                healed = store.reconcile_repaired_jobs()
+                healed = store.reconcile_repaired_jobs(limit=self._PARKED_SCAN_LIMIT)
                 parked = store.get_parked_job_ids(limit=self._PARKED_SCAN_LIMIT)
             except Exception as e:
                 logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
