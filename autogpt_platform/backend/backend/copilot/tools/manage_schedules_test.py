@@ -524,3 +524,51 @@ async def test_a_live_experts_paused_schedule_is_still_reachable(session):
 
     assert isinstance(result, ScheduleToggledResponse)
     mock_client.resume_schedule.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_hides_an_archived_experts_paused_schedule(list_tool, session):
+    """Listing one the mutation tools refuse is worse than not listing it: the
+    model would hand its id to resume_schedule and be told it does not exist."""
+    live = _make_graph_info(schedule_id="live", expert_id="expert-a")
+    archived = _make_graph_info(schedule_id="archived", expert_id="gone").model_copy(
+        update={"next_run_time": ""}
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[live, archived])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["live"]
+
+
+@pytest.mark.asyncio
+async def test_list_keeps_a_live_experts_paused_schedule(list_tool, session):
+    """The guard keys on the expert being gone, not on the schedule being
+    paused — a paused row still needs to be listable to be resumed."""
+    paused = _make_graph_info(schedule_id="paused", expert_id="expert-a").model_copy(
+        update={"next_run_time": ""}
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["paused"]
+    assert result.schedules[0].paused is True

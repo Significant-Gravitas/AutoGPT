@@ -201,8 +201,15 @@ class ListSchedulesTool(BaseTool):
             include_paused=True,
         )
 
+        # Same rule as the mutation tools and the REST listing: an archived
+        # expert's paused rows are held for re-hire, so showing one the model
+        # cannot then delete or resume is worse than not showing it.
+        in_scope = [job for job in jobs if _is_in_session_scope(job, session)]
+        hidden = await hidden_expert_ids(in_scope, user_id)
         schedules = [
-            _to_summary(job) for job in jobs if _is_in_session_scope(job, session)
+            _to_summary(job)
+            for job in in_scope
+            if job.next_run_time or job.expert_id not in hidden
         ]
 
         message = (
