@@ -3,7 +3,11 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { markHireStarted } from "@/services/experts/hire-timing";
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { useExpertPackageDownload } from "@/services/experts/useExpertPackageDownload";
+import {
+  CheckmarkCircle02Icon,
+  Download01Icon,
+} from "@hugeicons/core-free-icons";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
@@ -17,6 +21,7 @@ interface Props {
   expert: Expert;
   hiredExpert: Expert | null;
   isLoggedIn: boolean;
+  canDownload: boolean;
   isHiring: boolean;
   onHire: () => void;
 }
@@ -27,9 +32,34 @@ export function ExpertHireActions({
   expert,
   hiredExpert,
   isLoggedIn,
+  canDownload,
   isHiring,
   onHire,
 }: Props) {
+  // The page's id is the template's: a marketplace download always reads the
+  // published template, never the viewer's own copy of it.
+  const { isDownloading, download } = useExpertPackageDownload({
+    kind: "template",
+    id: expert.id,
+    name: expert.name,
+    workflowCount: expert.workflows.length,
+    skillCount: expert.skills.length,
+  });
+
+  // Icon-only: the atom shows the aria-label as a hover tooltip.
+  const downloadButton = !canDownload ? null : (
+    <Button
+      variant="icon"
+      size="icon"
+      aria-label="Download as file"
+      loading={isDownloading}
+      onClick={download}
+      data-testid="expert-export-button"
+    >
+      <Icon icon={Download01Icon} size={16} />
+    </Button>
+  );
+
   if (!isLoggedIn) {
     const next = encodeURIComponent(`/marketplace/experts/${expert.id}`);
     return (
@@ -52,6 +82,7 @@ export function ExpertHireActions({
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           On your team
         </Badge>
+        {downloadButton}
         <Button
           as="NextLink"
           href={`/copilot?expertId=${hiredExpert.id}`}
@@ -73,14 +104,17 @@ export function ExpertHireActions({
   }
 
   return (
-    <Button
-      variant="primary"
-      size="small"
-      onClick={handleHire}
-      loading={isHiring}
-      className="w-full sm:w-auto"
-    >
-      {`Hire ${expert.name}`}
-    </Button>
+    <div className="flex items-center gap-2">
+      {downloadButton}
+      <Button
+        variant="primary"
+        size="small"
+        onClick={handleHire}
+        loading={isHiring}
+        className="w-full sm:w-auto"
+      >
+        {`Hire ${expert.name}`}
+      </Button>
+    </div>
   );
 }

@@ -20,6 +20,7 @@ interface Args {
 export function useExpertPage({ expertId }: Args) {
   const { isLoggedIn, isUserLoading } = useAuth();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled: canDownload } = useFlagStatus(Flag.EXPERT_PORTABILITY);
   const isHiringOpen = Boolean(enabled);
   const canHire = isLoggedIn && isHiringOpen;
 
@@ -52,6 +53,9 @@ export function useExpertPage({ expertId }: Args) {
     systemProviders: systemProvidersQuery.data,
     isLoggedIn,
     isHiringOpen,
+    // ``EXPERT_PORTABILITY``: the package route 404s while it is off, so the
+    // download button stays out of the header rather than toasting an error.
+    canDownload: Boolean(canDownload),
     // Which header action to show is only decided once LaunchDarkly has
     // answered and the roster is in: rendering "Coming soon" or a "Hire"
     // button first would flash the wrong state at users who have hiring, or

@@ -5,10 +5,16 @@
 
 import posthog from "posthog-js";
 
+// ``expert_imported`` / ``expert_published`` wrappers land with the import and
+// publish PRs that call them — knip fails an export nothing uses yet.
 type ExpertsEvent =
   | "hire_started"
   | "hire_flow_completed"
-  | "hire_flow_abandoned";
+  | "hire_flow_abandoned"
+  | "expert_exported"
+  | "expert_downloaded"
+  | "expert_imported"
+  | "expert_published";
 
 export function trackExperts(
   event: ExpertsEvent,
@@ -19,4 +25,19 @@ export function trackExperts(
   } catch {
     // Analytics is never worth a broken hire.
   }
+}
+
+/** How much of an expert moved: exports that dwarf imports mean loss. */
+export interface ExpertPortabilityPayload {
+  expert_id: string;
+  workflow_count: number;
+  skill_count: number;
+}
+
+export function trackExpertExported(payload: ExpertPortabilityPayload) {
+  trackExperts("expert_exported", { ...payload });
+}
+
+export function trackExpertDownloaded(payload: ExpertPortabilityPayload) {
+  trackExperts("expert_downloaded", { ...payload });
 }

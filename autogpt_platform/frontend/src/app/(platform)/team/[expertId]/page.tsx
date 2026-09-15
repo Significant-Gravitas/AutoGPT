@@ -60,6 +60,7 @@ export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled: canExport } = useFlagStatus(Flag.EXPERT_PORTABILITY);
   const {
     expert,
     isLoading,
@@ -127,6 +128,7 @@ export default function ExpertDetailPage() {
         <BackToTeamLink />
         <ExpertDetailHeader
           expert={expert}
+          canExport={Boolean(canExport)}
           onEditSoul={toggleSoul}
           onChat={toggleChat}
         />
