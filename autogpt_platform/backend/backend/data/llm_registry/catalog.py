@@ -1619,11 +1619,11 @@ def _build_catalog() -> CatalogPayload:
             "copilot_codex": {
                 "fast": {
                     "standard": "gpt-5.6-luna",
-                    "advanced": "gpt-5.6-terra",
+                    "advanced": "gpt-6-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-5.6-sol",
+                    "advanced": "gpt-6-astra",
                 },
             }
         },
