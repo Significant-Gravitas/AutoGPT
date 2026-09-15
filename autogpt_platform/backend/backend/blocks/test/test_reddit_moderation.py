@@ -649,3 +649,23 @@ async def test_modmail_success_is_derived_from_conversation_id(mocker):
     ]
 
     assert ("success", False) in outputs
+
+
+@pytest.mark.asyncio
+async def test_mod_queue_run_emits_only_the_empty_batch(mocker):
+    """An empty queue yields no scalar pins at all, and exactly one ('items', [])."""
+    block = ModQueueBlock()
+    mocker.patch.object(block, "get_mod_queue", return_value=[])
+    input_data = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "subreddit": "test",
+            "limit": 5,
+        }
+    )
+
+    outputs = [
+        output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+    ]
+
+    assert outputs == [("items", [])]

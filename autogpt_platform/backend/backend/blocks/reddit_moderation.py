@@ -19,12 +19,10 @@ from backend.blocks.reddit import (
     RedditCredentialsField,
     RedditCredentialsInput,
     get_praw,
+    reddit_disabled,
     strip_reddit_prefix,
 )
 from backend.data.model import SchemaField
-from backend.util.settings import Settings
-
-settings = Settings()
 
 REMOVE_MOD_NOTE_MAX_LENGTH = 250
 BAN_REASON_MAX_LENGTH = 100
@@ -77,13 +75,6 @@ def _get_moderated_thing(
     return client.submission(id=bare_id)
 
 
-def _reddit_disabled() -> bool:
-    return (
-        not settings.secrets.reddit_client_id
-        or not settings.secrets.reddit_client_secret
-    )
-
-
 class ModQueueBlock(Block):
     class Input(BlockSchemaInput):
         credentials: RedditCredentialsInput = RedditCredentialsField(
@@ -133,7 +124,7 @@ class ModQueueBlock(Block):
                 "Requires moderator access."
             ),
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=ModQueueBlock.Input,
             output_schema=ModQueueBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -250,7 +241,7 @@ class RemoveRedditPostBlock(Block):
             id="f75643df-0a1a-4240-aa5b-9b2a1b20dcdd",
             description="Removes a Reddit post or comment as a moderator. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=RemoveRedditPostBlock.Input,
             output_schema=RemoveRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -312,7 +303,7 @@ class ApproveRedditPostBlock(Block):
             id="ae695fcf-e1bf-4900-b06c-3ae21d6edf70",
             description="Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=ApproveRedditPostBlock.Input,
             output_schema=ApproveRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -364,7 +355,7 @@ class LockRedditPostBlock(Block):
             id="1deaf67c-0407-457f-989d-323198073f74",
             description="Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=LockRedditPostBlock.Input,
             output_schema=LockRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -450,7 +441,7 @@ class BanSubredditUserBlock(Block):
             id="428d56d4-52d0-47d9-8544-836d13d196c0",
             description="Bans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=BanSubredditUserBlock.Input,
             output_schema=BanSubredditUserBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -535,7 +526,7 @@ class UnbanSubredditUserBlock(Block):
             id="90979f47-605e-4478-a417-39da3d7184ef",
             description="Unbans a user from a subreddit. Requires 'modcontributors' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=UnbanSubredditUserBlock.Input,
             output_schema=UnbanSubredditUserBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -604,7 +595,7 @@ class SendModMailBlock(Block):
             id="168b919c-0e06-471d-bd46-eb354ed3d278",
             description="Sends a modmail message from a subreddit to a user. Requires 'modmail' scope. Reddit scopes are account-wide, so this grants the ability across every subreddit you moderate, not only the one set here.",
             categories={BlockCategory.SOCIAL},
-            disabled=_reddit_disabled(),
+            disabled=reddit_disabled(),
             input_schema=SendModMailBlock.Input,
             output_schema=SendModMailBlock.Output,
             test_credentials=TEST_CREDENTIALS,

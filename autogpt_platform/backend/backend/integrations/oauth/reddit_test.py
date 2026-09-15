@@ -236,3 +236,51 @@ async def test_refresh_tokens_keeps_existing_scopes_when_absent(
     refreshed = await _handler_with_mocked_username(mocker)._refresh_tokens(_creds())
 
     assert refreshed.scopes == ["identity", "read", "modposts"]
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_for_tokens_falls_back_on_empty_scope_string(
+    mocker: MockerFixture,
+):
+    """An empty `scope` string is as uninformative as an absent one."""
+    _mock_token_response(
+        mocker,
+        {
+            "access_token": "access-token-value",
+            "refresh_token": "refresh-token-value",
+            "expires_in": 3600,
+            "scope": "   ",
+        },
+    )
+
+    creds = await _handler_with_mocked_username(mocker).exchange_code_for_tokens(
+        code="auth-code",
+        scopes=["identity", "read", "modposts"],
+        code_verifier=None,
+    )
+
+    assert creds.scopes == ["identity", "read", "modposts"]
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_for_tokens_records_scopes_beyond_those_requested(
+    mocker: MockerFixture,
+):
+    """Reddit granting more than was asked for is recorded as granted, not trimmed."""
+    _mock_token_response(
+        mocker,
+        {
+            "access_token": "access-token-value",
+            "refresh_token": "refresh-token-value",
+            "expires_in": 3600,
+            "scope": "identity read modposts modmail",
+        },
+    )
+
+    creds = await _handler_with_mocked_username(mocker).exchange_code_for_tokens(
+        code="auth-code",
+        scopes=["identity", "read"],
+        code_verifier=None,
+    )
+
+    assert creds.scopes == ["identity", "read", "modposts", "modmail"]

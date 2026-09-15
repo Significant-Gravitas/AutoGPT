@@ -64,14 +64,21 @@ def RedditCredentialsField(
     them — without the merge, a moderation block would mint a token that can't even
     call `client.user.me()`.
     """
-    merged_scopes = (
-        set(REDDIT_BASE_SCOPES) | required_scopes
-        if required_scopes is not None
-        else set()
-    )
+    if required_scopes is None:
+        merged_scopes: set[str] = set()
+    else:
+        merged_scopes = set(REDDIT_BASE_SCOPES) | required_scopes
     return CredentialsField(
         required_scopes=merged_scopes,
         description="Connect your Reddit account to access Reddit features.",
+    )
+
+
+def reddit_disabled() -> bool:
+    """Whether Reddit blocks should be disabled for want of app credentials."""
+    return (
+        not settings.secrets.reddit_client_id
+        or not settings.secrets.reddit_client_secret
     )
 
 
