@@ -93,23 +93,22 @@ async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
         return None
 
 
-async def remove_from_workdir(paths: list[str], session_id: str) -> None:
-    """Best-effort delete. A file left behind is one the model can still read
-    or run after it has left the package, so a failure here is logged loudly
-    rather than swallowed."""
+async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
+    """Best-effort delete, returning the paths that are still there.
+
+    A file left behind is one the model can still read or run after it has
+    left the package, so the caller needs to know which ones to try again
+    rather than record as gone.  The sandbox runs one command for the batch,
+    so a failure there is reported against all of them.
+    """
     if not paths:
-        return
+        return []
     sandbox = get_current_sandbox()
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
             await sandbox.commands.run(f"rm -f {quoted}")
-            return
-        for path in paths:
-            try:
-                os.remove(path)
-            except FileNotFoundError:
-                pass
+            return []
     except Exception:
         logger.warning(
             "[workdir] failed to remove %d stale file(s) in session %s",
@@ -117,24 +116,44 @@ async def remove_from_workdir(paths: list[str], session_id: str) -> None:
             session_id,
             exc_info=True,
         )
+        return list(paths)
+    failed: list[str] = []
+    for path in paths:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.warning(
+                "[workdir] failed to remove %s in session %s",
+                path,
+                session_id,
+                exc_info=True,
+            )
+            failed.append(path)
+    return failed
 
 
-async def set_executable(paths: list[str], executable: bool, session_id: str) -> None:
-    """Best-effort ``chmod +x`` / ``-x``. Rewriting a file does not change an
-    existing mode, so clearing the bit needs its own call. A package whose
-    scripts are not executable is still usable through ``python script.py``, so
-    a failure here is logged and never surfaced."""
+async def set_executable(
+    paths: list[str], executable: bool, session_id: str
+) -> list[str]:
+    """Best-effort ``chmod +x`` / ``-x``, returning the paths it could not set.
+
+    Rewriting a file does not change an existing mode, so clearing the bit
+    needs its own call.  A package whose scripts are not executable is still
+    usable through ``python script.py``, so this never raises — but the caller
+    must not record a mode that was not applied, or the retry never comes.
+    The sandbox runs one command for the batch, so a failure there is reported
+    against all of them.
+    """
     if not paths:
-        return
+        return []
     sandbox = get_current_sandbox()
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
             await sandbox.commands.run(f"chmod {'+' if executable else '-'}x {quoted}")
-            return
-        for path in paths:
-            mode = os.stat(path).st_mode
-            os.chmod(path, mode | 0o111 if executable else mode & ~0o111)
+            return []
     except Exception:
         logger.warning(
             "[workdir] failed to set executable=%s on %d file(s) in session %s",
@@ -143,6 +162,22 @@ async def set_executable(paths: list[str], executable: bool, session_id: str) ->
             session_id,
             exc_info=True,
         )
+        return list(paths)
+    failed: list[str] = []
+    for path in paths:
+        try:
+            mode = os.stat(path).st_mode
+            os.chmod(path, mode | 0o111 if executable else mode & ~0o111)
+        except Exception:
+            logger.warning(
+                "[workdir] failed to set executable=%s on %s in session %s",
+                executable,
+                path,
+                session_id,
+                exc_info=True,
+            )
+            failed.append(path)
+    return failed
 
 
 def resolve_sandbox_path_or_error(

@@ -141,10 +141,13 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 # Note: system chromium tracks the Debian package schedule rather than a pinned
 # Chrome for Testing release. If agent-browser requires a specific Chrome version,
 # verify compatibility against the chromium package version in the base image.
+# agent-browser is pinned: the daemon's process lifecycle (idle shutdown,
+# Chromium reaping on close) has changed across releases, and an unpinned
+# install means two builds of the same commit can behave differently.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser \
+    && npm install -g agent-browser@0.37.1 \
     && rm -rf /tmp/* /root/.npm
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
