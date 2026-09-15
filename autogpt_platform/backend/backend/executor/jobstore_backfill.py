@@ -54,25 +54,38 @@ def main() -> int:
     engine = create_engine(url)
     metadata = MetaData(schema=schema)
 
-    total_changed = total_unreadable = 0
+    total_changed = total_unreadable = total_skipped = 0
     for tablename in TABLES:
-        changed, unreadable = _normalize_table(engine, metadata, tablename, args.apply)
+        changed, unreadable, skipped = _normalize_table(
+            engine, metadata, tablename, args.apply
+        )
         total_changed += changed
         total_unreadable += unreadable
+        total_skipped += skipped
 
     verb = "rewrote" if args.apply else "would rewrite"
     logger.info(f"\n{verb} {total_changed} row(s); {total_unreadable} unreadable")
     if not args.apply and total_changed:
         logger.info("re-run with --apply to write")
+    if total_skipped:
+        # The run is incomplete; saying so here is the point, since this is the
+        # line an operator reads to decide the backfill is done.
+        logger.warning(
+            f"{total_skipped} row(s) changed under the scan and were NOT rewritten; "
+            "re-run to pick them up"
+        )
+        return 1
     return 0
 
 
-def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int, int]:
+def _normalize_table(
+    engine, metadata, tablename: str, apply: bool
+) -> tuple[int, int, int]:
     try:
         table = Table(tablename, metadata, autoload_with=engine)
     except NoSuchTableError:
         logger.info(f"{tablename}: skipped (no such table)")
-        return 0, 0
+        return 0, 0, 0
 
     changed = unreadable = skipped = 0
     with engine.begin() as connection:
@@ -124,7 +137,7 @@ def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int
     logger.info(
         f"{tablename}: {len(rows)} row(s) scanned, {changed} to rewrite{suffix}"
     )
-    return changed, unreadable
+    return changed, unreadable, skipped
 
 
 def _has_enum(value: Any) -> bool:

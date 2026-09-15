@@ -54,7 +54,9 @@ def test_dry_run_reports_without_mutating():
         _insert(engine, "job1", {"provider": Provider.GITHUB})
         before = _job_state(engine, "job1")
 
-        changed, unreadable = _normalize_table(engine, MetaData(), TABLE, apply=False)
+        changed, unreadable, _ = _normalize_table(
+            engine, MetaData(), TABLE, apply=False
+        )
 
         assert (changed, unreadable) == (1, 0)
         assert _job_state(engine, "job1") == before
@@ -64,7 +66,7 @@ def test_apply_rewrites_the_enum_to_a_plain_value():
     with _db() as engine:
         _insert(engine, "job1", {"provider": Provider.GITHUB})
 
-        changed, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
+        changed, _, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
 
         assert changed == 1
         kwargs = pickle.loads(_job_state(engine, "job1"))["kwargs"]
@@ -79,7 +81,7 @@ def test_apply_is_idempotent():
         _normalize_table(engine, MetaData(), TABLE, apply=True)
         after_first = _job_state(engine, "job1")
 
-        changed, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
+        changed, _, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
 
         assert changed == 0
         assert _job_state(engine, "job1") == after_first
@@ -107,7 +109,7 @@ def test_unreadable_row_is_counted_and_left_untouched():
         _insert_raw(engine, "broken", UNREADABLE)
         _insert(engine, "job1", {"provider": Provider.GITHUB})
 
-        changed, unreadable = _normalize_table(engine, MetaData(), TABLE, apply=True)
+        changed, unreadable, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
 
         assert (changed, unreadable) == (1, 1)
         assert _job_state(engine, "broken") == UNREADABLE
@@ -118,7 +120,7 @@ def test_rows_without_enums_are_left_alone():
         _insert(engine, "job1", {"user_id": "u1", "cron": "0 * * * *"})
         before = _job_state(engine, "job1")
 
-        changed, unreadable = _normalize_table(engine, MetaData(), TABLE, apply=True)
+        changed, unreadable, _ = _normalize_table(engine, MetaData(), TABLE, apply=True)
 
         assert (changed, unreadable) == (0, 0)
         assert _job_state(engine, "job1") == before
@@ -127,6 +129,7 @@ def test_rows_without_enums_are_left_alone():
 def test_missing_table_is_skipped_not_raised():
     with _db() as engine:
         assert _normalize_table(engine, MetaData(), "no_such_table", apply=True) == (
+            0,
             0,
             0,
         )
@@ -162,11 +165,11 @@ def test_a_row_that_changed_under_the_scan_is_left_alone():
             return _strip_enums(value)
 
         with patch(f"{_BACKFILL}._strip_enums", side_effect=_interfere):
-            changed, unreadable = _normalize_table(
+            changed, unreadable, skipped = _normalize_table(
                 engine, MetaData(), TABLE, apply=True
             )
 
-        assert changed == 0
+        assert (changed, skipped) == (0, 1)
         assert _job_state(engine, "job1") == newer
 
 

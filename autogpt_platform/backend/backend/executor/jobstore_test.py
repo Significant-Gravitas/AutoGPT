@@ -150,6 +150,51 @@ def test_reconcile_leaves_a_still_broken_job_parked():
         assert store.get_parked_job_ids() == ["poisoned"]
 
 
+def test_a_row_repaired_under_the_scan_is_not_parked():
+    """Parking must not undo a repair that landed after the row was read."""
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        healthy_state = _job_state(store, "poisoned")
+        _poison(store, "poisoned")
+
+        def _repair_midway(job_state):
+            _set_job_state(store, "poisoned", healthy_state)
+            raise ValueError("still poisoned as far as this scan knows")
+
+        with patch.object(store, "_reconstitute_job", side_effect=_repair_midway):
+            store._get_jobs()
+
+        # The repair survives: the row is runnable, not re-parked.
+        assert _next_run_time(store, "poisoned") is not None
+        assert store.get_parked_job_ids() == []
+
+
+def test_reconcile_leaves_a_row_that_changed_under_the_scan_alone():
+    """A resume landing mid-reconcile must not be reverted to paused."""
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
+        healthy_state = _job_state(store, "poisoned")
+        _poison(store, "poisoned")
+        store._get_jobs()
+        _set_job_state(store, "poisoned", healthy_state)
+
+        real = store._reconstitute_job
+
+        def _resume_midway(job_state):
+            with store.engine.begin() as conn:
+                conn.execute(
+                    store.jobs_t.update()
+                    .where(store.jobs_t.c.id == "poisoned")
+                    .values(next_run_time=1.0)
+                )
+            return real(job_state)
+
+        with patch.object(store, "_reconstitute_job", side_effect=_resume_midway):
+            assert store.reconcile_repaired_jobs() == []
+
+        assert _next_run_time(store, "poisoned") == 1.0
+
+
 def test_parked_scan_limit_bounds_the_rows_read():
     with _store() as (store, scheduler):
         for i in range(5):

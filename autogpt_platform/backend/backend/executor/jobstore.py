@@ -29,41 +29,55 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
 
     def _get_jobs(self, *conditions):
         jobs = []
-        selectable = select(self.jobs_t.c.id, self.jobs_t.c.job_state).order_by(
-            self.jobs_t.c.next_run_time
-        )
+        selectable = select(
+            self.jobs_t.c.id, self.jobs_t.c.job_state, self.jobs_t.c.next_run_time
+        ).order_by(self.jobs_t.c.next_run_time)
         selectable = selectable.where(and_(*conditions)) if conditions else selectable
-        unrestorable: set[str] = set()
+        unrestorable: list = []
 
         with self.engine.begin() as connection:
             for row in connection.execute(selectable):
                 try:
                     jobs.append(self._reconstitute_job(row.job_state))
-                except BaseException:
-                    unrestorable.add(row.id)
-                    # Unconditioned _get_jobs still returns parked rows, so
-                    # without this every get_jobs() call re-reports them.
-                    if row.id not in self._parked_ids:
-                        self._parked_ids.add(row.id)
-                        self._logger.exception(
-                            'Unable to restore job "%s" -- parking it. The row is '
-                            "kept; repair it and set next_run_time to resume.",
-                            row.id,
-                        )
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except BaseException as e:
+                    unrestorable.append((row, e))
 
-            if unrestorable:
-                connection.execute(
-                    self.jobs_t.update()
-                    .where(
-                        and_(
-                            self.jobs_t.c.id.in_(unrestorable),
-                            self.jobs_t.c.next_run_time.is_not(None),
-                        )
+            for row, error in unrestorable:
+                if not self._park(connection, row):
+                    continue
+                # Unconditioned _get_jobs still returns parked rows, so
+                # without this every get_jobs() call re-reports them.
+                if row.id not in self._parked_ids:
+                    self._parked_ids.add(row.id)
+                    self._logger.error(
+                        'Unable to restore job "%s" -- parking it. The row is '
+                        "kept; repair it and set next_run_time to resume.",
+                        row.id,
+                        exc_info=error,
                     )
-                    .values(next_run_time=None)
-                )
 
         return jobs
+
+    def _park(self, connection, row) -> bool:
+        """Clear ``next_run_time`` for the row we read, and say whether we did.
+
+        Matching the scanned ``job_state`` too keeps a repair or resume that
+        landed since the scan from being silently undone.
+        """
+        result = connection.execute(
+            self.jobs_t.update()
+            .where(
+                and_(
+                    self.jobs_t.c.id == row.id,
+                    self.jobs_t.c.job_state == row.job_state,
+                    self.jobs_t.c.next_run_time.is_not(None),
+                )
+            )
+            .values(next_run_time=None)
+        )
+        return result.rowcount == 1
 
     def get_parked_job_ids(self, limit: int | None = None) -> list[str]:
         """Ids of rows that are paused *and* still unrestorable.
@@ -83,6 +97,8 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
             for row in connection.execute(selectable):
                 try:
                     self._reconstitute_job(row.job_state)
+                except (KeyboardInterrupt, SystemExit):
+                    raise
                 except BaseException:
                     parked.append(row.id)
         return parked
@@ -107,18 +123,28 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
             for row in connection.execute(selectable):
                 try:
                     job = self._reconstitute_job(row.job_state)
+                except (KeyboardInterrupt, SystemExit):
+                    raise
                 except BaseException:
                     continue  # still unrestorable: genuinely parked
                 if job.next_run_time is None:
                     continue  # an ordinary paused job; nothing to reconcile
                 job.next_run_time = None
-                connection.execute(
+                result = connection.execute(
                     self.jobs_t.update()
-                    .where(self.jobs_t.c.id == row.id)
+                    .where(
+                        and_(
+                            self.jobs_t.c.id == row.id,
+                            self.jobs_t.c.job_state == row.job_state,
+                            self.jobs_t.c.next_run_time.is_(None),
+                        )
+                    )
                     .values(
                         job_state=pickle.dumps(job.__getstate__(), self.pickle_protocol)
                     )
                 )
+                if result.rowcount != 1:
+                    continue  # resumed or repaired under the scan; leave it be
                 self._parked_ids.discard(row.id)
                 healed.append(row.id)
         return healed
