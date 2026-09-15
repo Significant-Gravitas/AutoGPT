@@ -337,26 +337,25 @@ async def edit_submission(
     version_id: str = Path(description="Store listing version ID"),
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceAgentSubmission:
-    """Update a pending marketplace listing submission."""
-    try:
-        submission = await store_db.edit_store_submission(
-            user_id=auth.user_id,
-            store_listing_version_id=version_id,
-            name=request.name,
-            sub_heading=request.sub_heading,
-            description=request.description,
-            image_urls=request.image_urls,
-            video_url=request.video_url,
-            agent_output_demo_url=request.agent_output_demo_url,
-            categories=request.categories,
-            changes_summary=request.changes_summary,
-            recommended_schedule_cron=request.recommended_schedule_cron,
-            instructions=request.instructions,
-            organization_id=auth.organization_id,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    """Replace a pending marketplace listing submission.
 
+    Every field is written, so send the whole listing; omitting one clears it.
+    """
+    submission = await store_db.edit_store_submission(
+        user_id=auth.user_id,
+        store_listing_version_id=version_id,
+        name=request.name,
+        sub_heading=request.sub_heading,
+        description=request.description,
+        image_urls=request.image_urls,
+        video_url=request.video_url,
+        agent_output_demo_url=request.agent_output_demo_url,
+        categories=request.categories,
+        changes_summary=request.changes_summary,
+        recommended_schedule_cron=request.recommended_schedule_cron,
+        instructions=request.instructions,
+        organization_id=auth.organization_id,
+    )
     return MarketplaceAgentSubmission.from_internal(submission)
 
 

@@ -17,7 +17,7 @@ from .integrations import integrations_router
 from .library import library_router
 from .marketplace import marketplace_router
 from .runs import runs_router
-from .schedules import graph_schedules_router, schedules_router
+from .schedules import schedules_router
 from .search import search_router
 
 # Declared once, on the parent router, so every v2 operation advertises the one
@@ -41,7 +41,6 @@ v2_router = APIRouter(responses=ERROR_RESPONSES)
 v2_router.include_router(blocks_router, prefix="/blocks")
 v2_router.include_router(credits_router, prefix="/credits")
 v2_router.include_router(file_workspace_router, prefix="/files")
-v2_router.include_router(graph_schedules_router, prefix="/graphs")
 v2_router.include_router(graphs_router, prefix="/graphs")
 v2_router.include_router(identity_router)
 v2_router.include_router(integrations_router, prefix="/integrations")

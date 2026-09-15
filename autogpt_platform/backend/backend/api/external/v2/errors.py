@@ -25,6 +25,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.features.store.exceptions import UnauthorizedError as StoreForbidden
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import (
@@ -57,6 +58,9 @@ def add_v2_exception_handlers(app: fastapi.FastAPI) -> None:
     for exception, status_code in {
         NotFoundError: status.HTTP_404_NOT_FOUND,
         PrismaRecordNotFoundError: status.HTTP_404_NOT_FOUND,
+        # 404 not 403: whether a listing exists in another tenant is not this
+        # credential's business, which is how `in_tenant` treats every other row.
+        StoreForbidden: status.HTTP_404_NOT_FOUND,
         NotAuthorizedError: status.HTTP_403_FORBIDDEN,
         UserPaywalledError: status.HTTP_402_PAYMENT_REQUIRED,
         PreconditionFailed: status.HTTP_428_PRECONDITION_REQUIRED,

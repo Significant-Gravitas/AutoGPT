@@ -145,6 +145,22 @@ validation) and is `null` otherwise.
 | `internal_error` | 500 |
 | `service_unavailable` | 503 |
 
+## Retrying a run
+
+`POST /library/agents/{id}/runs` and `POST /library/presets/{id}/runs` take an
+`Idempotency-Key` header. Repeating a request with the same value returns the run
+the first one started instead of starting a second one and charging for it again.
+A retry sent while the first request is still in flight gets `409`; retry once it
+completes. Keys are scoped to the caller and expire after 24 hours.
+
+```bash
+curl -X POST https://backend.agpt.co/external-api/v2/library/agents/$ID/runs \
+  -H "X-API-Key: $KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"inputs": {}}'
+```
+
 ## Pagination
 
 Every list endpoint takes the same two query parameters and returns the same
@@ -211,7 +227,7 @@ A few endpoints require two scopes at once:
 
 | Endpoint | Scopes |
 |----------|--------|
-| `POST /graphs/{graph_id}/schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
+| `POST /schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
 | `POST /library/presets/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
 | `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
 | `DELETE /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
