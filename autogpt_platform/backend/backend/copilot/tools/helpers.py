@@ -416,6 +416,7 @@ async def execute_block(
                 input_data=input_data,
                 creds_manager=creds_manager,
                 user_id=user_id,
+                expert_id=expert_id,
             )
         except MissingAutoCredentialsError as e:
             await _release_credential_leases(credential_leases)
