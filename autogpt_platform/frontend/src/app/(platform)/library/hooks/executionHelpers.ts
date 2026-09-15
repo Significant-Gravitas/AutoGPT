@@ -3,6 +3,10 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 
 export const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
 
+// Match AgentActivityDropdown/helpers.tsx getExecutionDuration: only the first
+// few seconds stay vague; after that show second-level precision (#9690 Part 2).
+const SHORT_DURATION_THRESHOLD_SECONDS = 5;
+
 // Shared scheduled-predicate used by fleet summary, sitrep, status-map, and the
 // list filter so the four call sites stay in lockstep. Only the current user's
 // actual schedule (`is_scheduled`) counts — `recommended_schedule_cron` is a
@@ -41,23 +45,24 @@ export function endedAfter(exec: GraphExecutionMeta, cutoff: number): boolean {
 export function runningMessage(
   status: string,
   startedAt?: string | Date | null,
+  nowMs: number = Date.now(),
 ): string {
   if (status === AgentExecutionStatus.QUEUED) return "Queued for execution";
   if (status === AgentExecutionStatus.REVIEW) return "Awaiting review";
   if (!startedAt) return "Currently executing";
-  const ms =
-    Date.now() -
-    (startedAt instanceof Date
+  const startedMs =
+    startedAt instanceof Date
       ? startedAt.getTime()
-      : new Date(startedAt).getTime());
-  return `Running for ${formatRelativeDuration(ms)}`;
+      : new Date(startedAt).getTime();
+  return `Running for ${formatRelativeDuration(nowMs - startedMs)}`;
 }
 
 export function formatRelativeDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return "a few seconds";
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
+  if (seconds < SHORT_DURATION_THRESHOLD_SECONDS) return "a few seconds";
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   const remainingMin = minutes % 60;
   if (hours < 24)
