@@ -70,7 +70,7 @@ async def submit_skill(
                 "submittedAt": datetime.datetime.now(datetime.timezone.utc),
             }
         )
-        await _snapshot_files(tx, version.id, files)
+        await snapshot_version_files(version.id, files, tx)
     return skill_model.SkillSubmission.from_db(version, listing)
 
 
@@ -130,7 +130,7 @@ async def edit_skill_submission(
         )
         if updated is None:
             raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
-        await _snapshot_files(tx, updated.id, files)
+        await snapshot_version_files(updated.id, files, tx)
     return skill_model.SkillSubmission.from_db(updated, listing)
 
 
@@ -203,25 +203,10 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     ]
 
 
-async def _read_library_package(
-    user_id: str, slug: str
-) -> tuple[ParsedSkill, list[SkillFile]]:
-    """The creator's skill as one consistent version — its parsed ``SKILL.md``
-    and the files beside it, read together so a store landing between them
-    cannot publish one version's body with another's files."""
-    package = await read_user_skill_package(user_id, slug)
-    skill = (
-        parse_skill_markdown(package.skill_md, fallback_name=slug)
-        if package is not None
-        else None
-    )
-    if package is None or skill is None:
-        raise NotFoundError(f"Skill '{slug}' is not in your library")
-    return skill, package.files
-
-
-async def _snapshot_files(
-    tx, skill_listing_version_id: str, files: list[SkillFile]
+async def snapshot_version_files(
+    skill_listing_version_id: str,
+    files: list[SkillFile],
+    tx: prisma.Prisma | None = None,
 ) -> None:
     """Make *files* the version's package, replacing whatever it held.
 
@@ -249,6 +234,23 @@ async def _snapshot_files(
             for f in files
         ]
     )
+
+
+async def _read_library_package(
+    user_id: str, slug: str
+) -> tuple[ParsedSkill, list[SkillFile]]:
+    """The creator's skill as one consistent version — its parsed ``SKILL.md``
+    and the files beside it, read together so a store landing between them
+    cannot publish one version's body with another's files."""
+    package = await read_user_skill_package(user_id, slug)
+    skill = (
+        parse_skill_markdown(package.skill_md, fallback_name=slug)
+        if package is not None
+        else None
+    )
+    if package is None or skill is None:
+        raise NotFoundError(f"Skill '{slug}' is not in your library")
+    return skill, package.files
 
 
 async def _owned_version(

@@ -31,6 +31,8 @@ from backend.copilot.tools.skills import (
 )
 from backend.data import db as database
 
+from .skill_submission_db import snapshot_version_files
+
 logger = logging.getLogger(__name__)
 
 _CONTENT_DIR = Path(__file__).parent / "starter_skills"
@@ -60,10 +62,8 @@ async def seed_starter_skills() -> list[str]:
     """Upsert every starter listing. Returns the listing ids."""
     listing_ids = []
     for entry in STARTER_SKILLS:
-        # A starter's package files are read and validated here but not stored:
-        # a listing version carries only its SKILL.md today.
         parsed, files = _load(entry["slug"])
-        listing = await _upsert_listing(entry, parsed)
+        listing = await _upsert_listing(entry, parsed, files)
         listing_ids.append(listing.id)
         logger.info(
             f"Seeded starter skill '{entry['slug']}' (#{listing.id})"
@@ -73,7 +73,7 @@ async def seed_starter_skills() -> list[str]:
 
 
 async def _upsert_listing(
-    entry: StarterSkill, parsed: ParsedSkill
+    entry: StarterSkill, parsed: ParsedSkill, files: list[SkillFile]
 ) -> prisma.models.SkillListing:
     listing = await prisma.models.SkillListing.prisma().upsert(
         where={"slug": entry["slug"]},
@@ -83,7 +83,7 @@ async def _upsert_listing(
         },
         include={"ActiveVersion": True},
     )
-    version = await _upsert_version(listing, entry, parsed)
+    version = await _upsert_version(listing, entry, parsed, files)
     if listing.activeVersionId != version.id:
         listing = (
             await prisma.models.SkillListing.prisma().update(
@@ -100,8 +100,9 @@ async def _upsert_version(
     listing: prisma.models.SkillListing,
     entry: StarterSkill,
     parsed: ParsedSkill,
+    files: list[SkillFile],
 ) -> prisma.models.SkillListingVersion:
-    """Rewrite the listing's live version in place.
+    """Rewrite the listing's live version in place, package and all.
 
     A starter skill is platform-authored, so there is no review to preserve and
     no creator waiting on a version history — editing the markdown should change
@@ -125,10 +126,13 @@ async def _upsert_version(
             where={"id": existing.id}, data=content
         )
         if updated is not None:
+            await snapshot_version_files(updated.id, files)
             return updated
-    return await prisma.models.SkillListingVersion.prisma().create(
+    created = await prisma.models.SkillListingVersion.prisma().create(
         data={**content, "skillListingId": listing.id}
     )
+    await snapshot_version_files(created.id, files)
+    return created
 
 
 def _load(slug: str) -> tuple[ParsedSkill, list[SkillFile]]:
