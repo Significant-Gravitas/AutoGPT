@@ -273,6 +273,8 @@ app = fastapi.FastAPI(
     lifespan=lifespan_context,
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
+    # fastapi>=0.132 rejects JSON bodies sent without a Content-Type; keep accepting them.
+    strict_content_type=False,
 )
 
 app.add_middleware(SecurityHeadersMiddleware)

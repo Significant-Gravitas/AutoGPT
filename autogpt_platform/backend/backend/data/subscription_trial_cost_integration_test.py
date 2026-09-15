@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import httpx
+import httpx2
 import pytest
 from fastapi import FastAPI
 from prisma.models import SubscriptionTrial
@@ -70,8 +70,8 @@ async def test_attribution_crosses_actual_database_rpc_models(enrollment):
         where={"id": enrollment.id},
         data={"status": "active", "consumedAt": datetime.now(UTC)},
     )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://trial-rpc"
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app), base_url="http://trial-rpc"
     ) as client:
         request = {
             "user_id": enrollment.user_id,

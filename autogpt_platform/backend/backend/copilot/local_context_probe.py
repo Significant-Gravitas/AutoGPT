@@ -27,7 +27,7 @@ turn has already loaded the model.
 import logging
 import time
 
-import httpx
+import httpx2
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ async def _detect_window(base_url: str, model: str) -> int | None:
     base = base_url.rstrip("/")
     model_base = model.split(":")[0]
 
-    async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
+    async with httpx2.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
         # 1. Ollama — GET {root}/api/ps -> models[].context_length.
         # The window is a server-wide setting (OLLAMA_CONTEXT_LENGTH), so any
         # loaded model reflects it; prefer a name match, else the first model.

@@ -9,7 +9,7 @@ the Shared Payment Token flow needs stays available on every deployment.
 
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from pydantic import ValidationError
 
@@ -367,7 +367,7 @@ async def test_link_error_message_is_surfaced_not_swallowed(monkeypatch):
         async def request(self, **kwargs):
             return _Resp({"error": {"message": "merchant_name is not allowed"}})
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda *a, **kw: _Client())
 
     with pytest.raises(Exception, match="merchant_name is not allowed"):
         await sr.link_api_request(TEST_CREDENTIALS, "POST", "/spend_requests", {})
@@ -385,7 +385,7 @@ async def test_link_error_falls_back_when_the_body_is_not_json(monkeypatch):
         async def request(self, **kwargs):
             return _Resp(None, text="<html>gateway timeout</html>")
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda *a, **kw: _Client())
 
     with pytest.raises(Exception, match="400"):
         await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
@@ -433,7 +433,7 @@ async def test_a_wrong_shaped_error_body_falls_back_without_raising(monkeypatch)
             async def request(self, **kwargs):
                 return _Resp(payload, text="raw upstream body")
 
-        monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+        monkeypatch.setattr(httpx2, "AsyncClient", lambda *a, **kw: _Client())
 
         with pytest.raises(RuntimeError) as exc:
             await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
@@ -521,7 +521,7 @@ async def test_a_redirect_is_an_error_not_an_empty_result(monkeypatch):
         async def request(self, **kwargs):
             return _Resp(None, text="moved", status_code=308)
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda *a, **kw: _Client())
 
     with pytest.raises(RuntimeError, match="308"):
         await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/payment-details")
@@ -542,7 +542,7 @@ async def test_an_unbounded_upstream_message_is_truncated(monkeypatch):
         async def request(self, **kwargs):
             return _Resp({"error": {"message": "x" * 20_000}})
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda *a, **kw: _Client())
 
     with pytest.raises(RuntimeError) as exc:
         await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")

@@ -1,7 +1,7 @@
 import datetime
 from typing import AsyncGenerator
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 import pytest_mock
@@ -23,15 +23,15 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(server, mock_jwt_user) -> AsyncGenerator[httpx2.AsyncClient, None]:
     """Create async HTTP client with auth overrides"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     # Override get_jwt_payload dependency to return our test user
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app),
         base_url="http://test",
     ) as http_client:
         yield http_client
@@ -65,7 +65,7 @@ def sample_pending_review(test_user_id: str) -> PendingHumanReviewModel:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_pending_reviews_empty(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     snapshot: Snapshot,
     test_user_id: str,
@@ -85,7 +85,7 @@ async def test_get_pending_reviews_empty(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_pending_reviews_with_data(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
@@ -109,7 +109,7 @@ async def test_get_pending_reviews_with_data(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_pending_reviews_for_execution_success(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
@@ -139,7 +139,7 @@ async def test_get_pending_reviews_for_execution_success(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_pending_reviews_for_execution_not_available(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Test access denied when user doesn't own the execution"""
@@ -156,7 +156,7 @@ async def test_get_pending_reviews_for_execution_not_available(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_approve_success(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -236,7 +236,7 @@ async def test_process_review_action_approve_success(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_reject_success(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -312,7 +312,7 @@ async def test_process_review_action_reject_success(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_mixed_success(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -438,7 +438,7 @@ async def test_process_review_action_mixed_success(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_empty_request(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
@@ -457,7 +457,7 @@ async def test_process_review_action_empty_request(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_review_not_found(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -511,7 +511,7 @@ async def test_process_review_action_review_not_found(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_partial_failure(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -561,7 +561,7 @@ async def test_process_review_action_partial_failure(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_invalid_node_exec_id(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -601,7 +601,7 @@ async def test_process_review_action_invalid_node_exec_id(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_auto_approve_creates_auto_approval_records(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -731,7 +731,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_without_auto_approve_still_loads_settings(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -844,7 +844,7 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
@@ -1025,7 +1025,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_per_review_auto_approve_granularity(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,

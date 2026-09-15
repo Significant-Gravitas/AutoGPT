@@ -6,7 +6,7 @@ from functools import cached_property
 from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import orjson
 import pytest
 from fastapi import FastAPI
@@ -195,18 +195,18 @@ class TestDynamicClientConnectionHealing:
                 self._connection_failure_count = 0
                 self._last_client_reset = 0
 
-            def _create_sync_client(self) -> httpx.Client:
-                return Mock(spec=httpx.Client)
+            def _create_sync_client(self) -> httpx2.Client:
+                return Mock(spec=httpx2.Client)
 
-            def _create_async_client(self) -> httpx.AsyncClient:
-                return Mock(spec=httpx.AsyncClient)
+            def _create_async_client(self) -> httpx2.AsyncClient:
+                return Mock(spec=httpx2.AsyncClient)
 
             @cached_property
-            def sync_client(self) -> httpx.Client:
+            def sync_client(self) -> httpx2.Client:
                 return self._create_sync_client()
 
             @cached_property
-            def async_client(self) -> httpx.AsyncClient:
+            def async_client(self) -> httpx2.AsyncClient:
                 return self._create_async_client()
 
             def _handle_connection_error(self, error: Exception) -> None:
@@ -447,7 +447,7 @@ class TestHTTPErrorRetryBehavior:
         mock_response = Mock()
         mock_response.status_code = 404
         mock_response.json.return_value = {"message": "Not found"}
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "404 Not Found", request=Mock(), response=mock_response
         )
 
@@ -470,7 +470,7 @@ class TestHTTPErrorRetryBehavior:
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.json.return_value = {"message": "Internal server error"}
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "500 Internal Server Error", request=Mock(), response=mock_response
         )
 
@@ -496,7 +496,7 @@ class TestHTTPErrorRetryBehavior:
             "type": "ValueError",
             "args": ["Invalid parameter value"],
         }
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "400 Bad Request", request=Mock(), response=mock_response
         )
 
@@ -528,7 +528,7 @@ class TestHTTPErrorRetryBehavior:
                 "type": exc_type.__name__,
                 "args": ["Unique constraint failed on the fields: (`path`)"],
             }
-            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
                 "400 Bad Request", request=Mock(), response=mock_response
             )
 
@@ -567,7 +567,7 @@ class TestHTTPErrorRetryBehavior:
             "args": ["Graph validation failed: 2 issues on 1 nodes"],
             "extras": {"node_errors": node_errors},
         }
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "400 Bad Request", request=Mock(), response=mock_response
         )
 
@@ -594,7 +594,7 @@ class TestHTTPErrorRetryBehavior:
             "type": "GraphValidationError",
             "args": ["Graph validation failed: 1 issues on 1 nodes"],
         }
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "400 Bad Request", request=Mock(), response=mock_response
         )
 
@@ -623,7 +623,7 @@ class TestHTTPErrorRetryBehavior:
             "args": ["Graph validation failed: 1 issues on 1 nodes"],
             "extras": {"node_errors": None},
         }
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "400 Bad Request", request=Mock(), response=mock_response
         )
 
@@ -707,7 +707,7 @@ class TestHTTPErrorRetryBehavior:
         mock_response = Mock()
         mock_response.status_code = 400
         mock_response.json.return_value = wire_payload
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "400 Bad Request", request=Mock(), response=mock_response
         )
 
@@ -732,7 +732,7 @@ class TestHTTPErrorRetryBehavior:
             mock_response = Mock()
             mock_response.status_code = status_code
             mock_response.json.return_value = {"message": f"Error {status_code}"}
-            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
                 f"{status_code} Error", request=Mock(), response=mock_response
             )
 
@@ -754,7 +754,7 @@ class TestHTTPErrorRetryBehavior:
             mock_response = Mock()
             mock_response.status_code = status_code
             mock_response.json.return_value = {"message": f"Error {status_code}"}
-            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
                 f"{status_code} Error", request=Mock(), response=mock_response
             )
 
@@ -837,8 +837,8 @@ async def test_service():
 async def wait_until_service_ready(base_url: str, timeout: float = 10):
     start_time = time.time()
     while time.time() - start_time <= timeout:
-        async with httpx.AsyncClient(timeout=5) as client:
-            with contextlib.suppress(httpx.ConnectError):
+        async with httpx2.AsyncClient(timeout=5) as client:
+            with contextlib.suppress(httpx2.ConnectError):
                 response = await client.get(f"{base_url}/health_check", timeout=5)
 
                 if response.status_code == 200 and response.json() == "OK":
@@ -851,7 +851,7 @@ async def wait_until_service_ready(base_url: str, timeout: float = 10):
 
 async def send_slow_request(base_url: str) -> dict:
     """Send a slow request and return the result"""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx2.AsyncClient(timeout=30) as client:
         response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 5})
         assert response.status_code == 200
         return response.json()
@@ -877,12 +877,12 @@ async def test_graceful_shutdown(test_service):
 
     # Try to send a new request - should be rejected or connection refused
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx2.AsyncClient(timeout=5) as client:
             response = await client.post(f"{test_service_url}/fast_endpoint", json={})
             # Should get 503 Service Unavailable during shutdown
             assert response.status_code == 503
             assert "shutting down" in response.json()["detail"].lower()
-    except httpx.ConnectError:
+    except httpx2.ConnectError:
         # Connection refused is also acceptable - server stopped accepting
         pass
 
@@ -912,7 +912,7 @@ async def test_health_check_during_shutdown(test_service):
     service, test_service_url = test_service
 
     # Health check should pass initially
-    async with httpx.AsyncClient(timeout=5) as client:
+    async with httpx2.AsyncClient(timeout=5) as client:
         response = await client.get(f"{test_service_url}/health_check")
         assert response.status_code == 200
 
@@ -924,11 +924,11 @@ async def test_health_check_during_shutdown(test_service):
 
     # Health check should now fail or connection should be refused
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx2.AsyncClient(timeout=5) as client:
             response = await client.get(f"{test_service_url}/health_check")
             # Could either get 503, 500 (unhealthy), or connection error
             assert response.status_code in [500, 503]
-    except (httpx.ConnectError, httpx.ConnectTimeout):
+    except (httpx2.ConnectError, httpx2.ConnectTimeout):
         # Connection refused/timeout is also acceptable
         pass
 

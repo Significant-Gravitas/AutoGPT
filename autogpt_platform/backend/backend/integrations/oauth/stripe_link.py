@@ -10,7 +10,7 @@ import time
 from typing import ClassVar
 from urllib.parse import urlparse
 
-import httpx
+import httpx2
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
@@ -104,7 +104,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             "authorization_details[][actions][]": self.SOURCE_ACTIONS,
         }
 
-        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/code",
                 data=form,
@@ -123,7 +123,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         )
 
     async def poll_for_tokens(self, device_code: str) -> DeviceAuthPollResult:
-        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/token",
                 data={
@@ -193,7 +193,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         left with an approved device code and no credential.
         """
         try:
-            async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+            async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
                 response = await client.get(
                     f"{LINK_API_BASE_URL}/userinfo",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -220,7 +220,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         if not credentials.refresh_token:
             raise RuntimeError("No refresh token available")
 
-        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/token",
                 data={
@@ -250,7 +250,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         if not credentials.refresh_token:
             return False
 
-        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        async with httpx2.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/revoke",
                 data={

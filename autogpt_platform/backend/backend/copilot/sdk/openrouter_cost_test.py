@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2
 import pytest
 
 from backend.copilot.model import ChatSession
@@ -50,7 +50,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("httpx2.AsyncClient.get", new_callable=AsyncMock) as mock_get,
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -103,14 +103,14 @@ class TestRecordTurnCostFromOpenRouter:
         real_cost = 0.02900595
 
         async def _get(self, url, **kwargs):  # noqa: ARG001
-            return httpx.Response(200, json=_mock_generation_response(real_cost))
+            return httpx2.Response(200, json=_mock_generation_response(real_cost))
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -144,7 +144,7 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, url, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -153,7 +153,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -183,11 +183,11 @@ class TestRecordTurnCostFromOpenRouter:
         fallback = 0.05
         seq = iter(
             [
-                httpx.Response(200, json=_mock_generation_response(0.03)),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
+                httpx2.Response(200, json=_mock_generation_response(0.03)),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
             ]
         )
 
@@ -199,7 +199,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -229,14 +229,14 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
             call_count["n"] += 1
-            return httpx.Response(401, text="unauthorized")
+            return httpx2.Response(401, text="unauthorized")
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -267,8 +267,8 @@ class TestRecordTurnCostFromOpenRouter:
         states rather than giving up on first 404."""
         seq = iter(
             [
-                httpx.Response(404, text="not found"),
-                httpx.Response(200, json=_mock_generation_response(0.025)),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(200, json=_mock_generation_response(0.025)),
             ]
         )
 
@@ -280,7 +280,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -309,14 +309,14 @@ class TestRecordTurnCostFromOpenRouter:
         fallback = 0.02
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
-            raise httpx.ConnectError("no network")
+            raise httpx2.ConnectError("no network")
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -361,7 +361,7 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -370,7 +370,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -401,14 +401,14 @@ class TestRecordTurnCostFromOpenRouter:
         (tmp_path / session_id).mkdir()
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
-            return httpx.Response(200, json=_mock_generation_response(0.02))
+            return httpx2.Response(200, json=_mock_generation_response(0.02))
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -485,7 +485,7 @@ class TestRecordTurnCostFromOpenRouter:
             # If the sweep leaks a stale/foreign ID, the test fails here
             # with a KeyError rather than silently over-billing.
             assert gen_id in costs_by_id, f"sweep leaked out-of-scope gen_id {gen_id}"
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -494,7 +494,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -531,14 +531,14 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(real_cost))
+            return httpx2.Response(200, json=_mock_generation_response(real_cost))
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
@@ -590,15 +590,15 @@ class TestLangfuseTraceBackfill:
         async def _get(_self, _url, **_kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
-                return httpx.Response(200, json=_mock_generation_response(0.012))
-            return httpx.Response(404, json={"error": "not found"})
+                return httpx2.Response(200, json=_mock_generation_response(0.012))
+            return httpx2.Response(404, json={"error": "not found"})
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.asyncio.sleep",
                 new_callable=AsyncMock,
@@ -640,14 +640,14 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(0.01))
+            return httpx2.Response(200, json=_mock_generation_response(0.01))
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
@@ -681,14 +681,14 @@ class TestLangfuseTraceBackfill:
         mock_lf.create_event = MagicMock(side_effect=RuntimeError("network down"))
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(0.02))
+            return httpx2.Response(200, json=_mock_generation_response(0.02))
 
         with (
             patch(
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
