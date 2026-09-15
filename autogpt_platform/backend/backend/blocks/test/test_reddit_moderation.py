@@ -89,15 +89,52 @@ def test_default_reddit_scopes_remain_implicit_for_legacy_blocks():
     assert "credentials_scopes" not in extra
 
 
-def test_get_mod_queue_uses_modqueue_and_submission_fullnames(mocker):
-    queued_item = SimpleNamespace(
-        id="abc123",
-        fullname="t3_abc123",
-        title="Queued title",
-        author="queued-user",
-        permalink="/r/test/comments/abc123/queued_title/",
-        mod_reason_title="",
-    )
+@pytest.mark.parametrize(
+    ("queued_item", "only", "expected"),
+    [
+        pytest.param(
+            SimpleNamespace(
+                id="abc123",
+                fullname="t3_abc123",
+                title="Queued title",
+                author="queued-user",
+                permalink="/r/test/comments/abc123/queued_title/",
+                mod_reason_title="",
+            ),
+            "submissions",
+            {
+                "id": "t3_abc123",
+                "type": "submission",
+                "title": "Queued title",
+                "author": "queued-user",
+                "permalink": "/r/test/comments/abc123/queued_title/",
+                "reason": "",
+            },
+            id="submission",
+        ),
+        pytest.param(
+            # No `title`, no author, no mod reason: the comment defaults.
+            SimpleNamespace(
+                id="xyz789",
+                fullname="t1_xyz789",
+                author=None,
+                permalink="/r/test/comments/abc123/comment/",
+                mod_reason_title=None,
+            ),
+            "comments",
+            {
+                "id": "t1_xyz789",
+                "type": "comment",
+                "title": "[comment]",
+                "author": "[deleted]",
+                "permalink": "/r/test/comments/abc123/comment/",
+                "reason": "",
+            },
+            id="comment",
+        ),
+    ],
+)
+def test_get_mod_queue_maps_listing_items(mocker, queued_item, only, expected):
     sub = MagicMock()
     sub.mod.modqueue.return_value = [queued_item]
     client = _patch_praw(mocker)
@@ -107,46 +144,11 @@ def test_get_mod_queue_uses_modqueue_and_submission_fullnames(mocker):
         TEST_CREDENTIALS,
         subreddit="test",
         limit=5,
-        only="submissions",
+        only=only,
     )
 
-    sub.mod.modqueue.assert_called_once_with(limit=5, only="submissions")
-    assert items == [
-        {
-            "id": "t3_abc123",
-            "type": "submission",
-            "title": "Queued title",
-            "author": "queued-user",
-            "permalink": "/r/test/comments/abc123/queued_title/",
-            "reason": "",
-        }
-    ]
-
-
-def test_get_mod_queue_preserves_comment_fullnames(mocker):
-    queued_item = SimpleNamespace(
-        id="xyz789",
-        fullname="t1_xyz789",
-        author=None,
-        permalink="/r/test/comments/abc123/comment/",
-        mod_reason_title=None,
-    )
-    sub = MagicMock()
-    sub.mod.modqueue.return_value = [queued_item]
-    client = _patch_praw(mocker)
-    client.subreddit.return_value = sub
-
-    items = ModQueueBlock.get_mod_queue(
-        TEST_CREDENTIALS,
-        subreddit="test",
-        limit=5,
-        only="comments",
-    )
-
-    assert items[0]["id"] == "t1_xyz789"
-    assert items[0]["type"] == "comment"
-    assert items[0]["title"] == "[comment]"
-    assert items[0]["author"] == "[deleted]"
+    sub.mod.modqueue.assert_called_once_with(limit=5, only=only)
+    assert items == [expected]
 
 
 @pytest.mark.parametrize(
@@ -310,37 +312,46 @@ async def test_mod_queue_run_fans_out_every_item_and_emits_one_batch(mocker):
     ]
 
 
-def test_remove_post_targets_comment_with_mod_note(mocker):
-    moderated_comment = MagicMock()
+@pytest.mark.parametrize(
+    ("post_id", "kind", "bare_id", "spam", "mod_note", "expected_kwargs"),
+    [
+        pytest.param(
+            "t1_xyz789",
+            "comment",
+            "xyz789",
+            False,
+            "Rule 3",
+            {"spam": False, "mod_note": "Rule 3"},
+            id="comment-with-mod-note",
+        ),
+        pytest.param(
+            "t3_abc123",
+            "submission",
+            "abc123",
+            True,
+            None,
+            {"spam": True},
+            id="submission-without-mod-note",
+        ),
+    ],
+)
+def test_remove_post_targets_the_right_thing(
+    mocker, post_id, kind, bare_id, spam, mod_note, expected_kwargs
+):
     client = _patch_praw(mocker)
-    client.comment.return_value = moderated_comment
+    target = MagicMock()
+    getattr(client, kind).return_value = target
 
     result = RemoveRedditPostBlock.remove_post(
         TEST_CREDENTIALS,
-        post_id="t1_xyz789",
-        spam=False,
-        mod_note="Rule 3",
+        post_id=post_id,
+        spam=spam,
+        mod_note=mod_note,
     )
 
     assert result is True
-    client.comment.assert_called_once_with(id="xyz789")
-    moderated_comment.mod.remove.assert_called_once_with(spam=False, mod_note="Rule 3")
-
-
-def test_remove_post_omits_mod_note_when_unset(mocker):
-    moderated_submission = MagicMock()
-    client = _patch_praw(mocker)
-    client.submission.return_value = moderated_submission
-
-    RemoveRedditPostBlock.remove_post(
-        TEST_CREDENTIALS,
-        post_id="t3_abc123",
-        spam=True,
-        mod_note=None,
-    )
-
-    client.submission.assert_called_once_with(id="abc123")
-    moderated_submission.mod.remove.assert_called_once_with(spam=True)
+    getattr(client, kind).assert_called_once_with(id=bare_id)
+    target.mod.remove.assert_called_once_with(**expected_kwargs)
 
 
 def test_remove_post_rejects_bare_id_before_calling_reddit(mocker):
@@ -355,58 +366,52 @@ def test_remove_post_rejects_bare_id_before_calling_reddit(mocker):
     client.comment.assert_not_called()
 
 
-def test_approve_post_calls_mod_approve(mocker):
-    moderated_submission = MagicMock()
+@pytest.mark.parametrize(
+    ("post_id", "kind", "bare_id"),
+    [
+        pytest.param("t3_abc123", "submission", "abc123", id="submission"),
+        pytest.param("t1_xyz789", "comment", "xyz789", id="comment"),
+    ],
+)
+def test_approve_post_resolves_target_and_approves(mocker, post_id, kind, bare_id):
     client = _patch_praw(mocker)
-    client.submission.return_value = moderated_submission
+    target = MagicMock()
+    getattr(client, kind).return_value = target
 
     assert (
-        ApproveRedditPostBlock.approve_post(TEST_CREDENTIALS, post_id="t3_abc123")
-        is True
+        ApproveRedditPostBlock.approve_post(TEST_CREDENTIALS, post_id=post_id) is True
     )
 
-    client.submission.assert_called_once_with(id="abc123")
-    moderated_submission.mod.approve.assert_called_once_with()
+    getattr(client, kind).assert_called_once_with(id=bare_id)
+    target.mod.approve.assert_called_once_with()
 
 
-def test_approve_post_resolves_comments(mocker):
-    moderated_comment = MagicMock()
+@pytest.mark.parametrize(
+    ("post_id", "kind", "bare_id", "lock", "called", "not_called"),
+    [
+        pytest.param(
+            "t3_abc123", "submission", "abc123", True, "lock", "unlock", id="lock"
+        ),
+        pytest.param(
+            "t1_xyz789", "comment", "xyz789", False, "unlock", "lock", id="unlock"
+        ),
+    ],
+)
+def test_set_lock_calls_the_matching_mod_action(
+    mocker, post_id, kind, bare_id, lock, called, not_called
+):
     client = _patch_praw(mocker)
-    client.comment.return_value = moderated_comment
-
-    ApproveRedditPostBlock.approve_post(TEST_CREDENTIALS, post_id="t1_xyz789")
-
-    client.comment.assert_called_once_with(id="xyz789")
-    moderated_comment.mod.approve.assert_called_once_with()
-
-
-def test_set_lock_locks(mocker):
-    moderated_submission = MagicMock()
-    client = _patch_praw(mocker)
-    client.submission.return_value = moderated_submission
+    target = MagicMock()
+    getattr(client, kind).return_value = target
 
     assert (
-        LockRedditPostBlock.set_lock(TEST_CREDENTIALS, post_id="t3_abc123", lock=True)
-        is True
+        LockRedditPostBlock.set_lock(TEST_CREDENTIALS, post_id=post_id, lock=lock)
+        is lock
     )
 
-    moderated_submission.mod.lock.assert_called_once_with()
-    moderated_submission.mod.unlock.assert_not_called()
-
-
-def test_set_lock_unlocks(mocker):
-    moderated_comment = MagicMock()
-    client = _patch_praw(mocker)
-    client.comment.return_value = moderated_comment
-
-    assert (
-        LockRedditPostBlock.set_lock(TEST_CREDENTIALS, post_id="t1_xyz789", lock=False)
-        is False
-    )
-
-    client.comment.assert_called_once_with(id="xyz789")
-    moderated_comment.mod.unlock.assert_called_once_with()
-    moderated_comment.mod.lock.assert_not_called()
+    getattr(client, kind).assert_called_once_with(id=bare_id)
+    getattr(target.mod, called).assert_called_once_with()
+    getattr(target.mod, not_called).assert_not_called()
 
 
 def test_ban_user_passes_full_kwargs(mocker):
