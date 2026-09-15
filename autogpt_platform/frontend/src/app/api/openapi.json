@@ -13629,7 +13629,7 @@
     },
     "/api/skills": {
       "get": {
-        "tags": ["skills"],
+        "tags": ["v1", "skills"],
         "summary": "List user-distilled copilot skills",
         "description": "Return the skills owned by personal Otto, or by one expert.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
         "operationId": "listCopilotSkills",
@@ -13674,7 +13674,7 @@
         }
       },
       "post": {
-        "tags": ["skills"],
+        "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
         "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
@@ -13729,7 +13729,7 @@
     },
     "/api/skills/{name}": {
       "delete": {
-        "tags": ["skills"],
+        "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
         "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
         "operationId": "deleteCopilotSkill",
@@ -13785,7 +13785,7 @@
         }
       },
       "get": {
-        "tags": ["skills"],
+        "tags": ["v1", "skills"],
         "summary": "Read a single copilot skill with its full SKILL.md body",
         "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
         "operationId": "readCopilotSkill",

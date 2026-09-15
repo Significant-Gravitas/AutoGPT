@@ -48,7 +48,7 @@ def test_skill_operation_is_published(method: str, path: str, operation_id: str)
     """The mounted surface is contract: the generated frontend client is built from it."""
     operation = real_app.openapi()["paths"][path][method]
     assert operation["operationId"] == operation_id
-    assert operation["tags"] == ["skills"]
+    assert operation["tags"] == ["v1", "skills"]
 
 
 def test_skill_surface_has_no_other_operations():

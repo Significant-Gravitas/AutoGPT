@@ -393,7 +393,7 @@ app.include_router(
 )
 app.include_router(
     skills_routes.router,
-    tags=["skills"],
+    tags=["v1", "skills"],
     prefix="/api/skills",
 )
 app.include_router(
