@@ -10,6 +10,22 @@ from backend.data.sharing.workspace_refs import cut_lands_inside_artifact_link
 # whether a cut falls inside an open Markdown code block.
 _CODE_FENCE = re.compile(r"```(\w*)")
 
+# The one reply the bot does not deliver. A message on a chat platform can
+# genuinely need no answer: an acknowledgement, two humans talking in a thread
+# the bot is subscribed to, a bare ping. The bot had no way to say so, and an
+# empty reply became "AutoGPT didn't produce a response." Stated on every bot
+# turn rather than in the system prompt, which is static, cached, and shared
+# with web chat, where a human is waiting and silence would be a bug. Whole
+# message, exact case: a reply that merely contains the word is delivered.
+NO_REPLY = "NO_REPLY"
+
+_NO_REPLY_RULE = (
+    f"[If this message needs no response from you, for example it is only an "
+    f"acknowledgement or is not addressed to you, reply with exactly "
+    f"{NO_REPLY} as your entire message and nothing else. Otherwise answer "
+    f"normally. You may use tools first to decide.]"
+)
+
 
 def format_batch(batch: list[tuple[str, str, str]], platform: str) -> str:
     """Format one or more pending messages into a single prompt for Otto.
@@ -17,16 +33,19 @@ def format_batch(batch: list[tuple[str, str, str]], platform: str) -> str:
     Each batch entry is (username, user_id, text). When multiple messages are
     batched together (because they arrived while the bot was streaming a prior
     response), they're labelled individually so the LLM can address each.
+    Every turn opens with the NO_REPLY rule, so the model knows silence is
+    available to it before it reads the message.
     """
     platform_display = platform.capitalize()
     if len(batch) == 1:
         username, user_id, text = batch[0]
         return (
+            f"{_NO_REPLY_RULE}\n"
             f"[Message sent by {username} ({platform_display} user ID: {user_id})]\n"
             f"{text}"
         )
 
-    lines = ["[Multiple messages — please address them together]"]
+    lines = [_NO_REPLY_RULE, "[Multiple messages — please address them together]"]
     for username, user_id, text in batch:
         lines.append(
             f"\n[From {username} ({platform_display} user ID: {user_id})]\n{text}"
