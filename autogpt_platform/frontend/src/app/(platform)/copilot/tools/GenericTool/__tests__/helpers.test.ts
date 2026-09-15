@@ -42,9 +42,9 @@ describe("formatToolName", () => {
     expect(formatToolName("WebSearch")).toBe("WebSearch");
   });
 
-  it("uses friendly display name for sub-Otto tools", () => {
-    expect(formatToolName("run_sub_session")).toBe("Sub-Otto");
-    expect(formatToolName("get_sub_session_result")).toBe("Sub-Otto result");
+  it("uses friendly display name for subtask tools", () => {
+    expect(formatToolName("run_sub_session")).toBe("Subtask");
+    expect(formatToolName("get_sub_session_result")).toBe("Subtask result");
   });
 
   it("keeps expert tool names as nouns so every wrapper reads right", () => {
