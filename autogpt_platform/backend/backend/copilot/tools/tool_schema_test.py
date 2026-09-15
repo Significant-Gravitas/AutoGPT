@@ -147,7 +147,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_651
+# Bumped 67_651 -> 68_236 for pause_schedule and resume_schedule, the two tools
+# this PR adds. Measured the way this test does — one json.dumps over the whole
+# registry — at 68,235 with them merged onto #14415's head; the assertion is a
+# strict <, so this admits exactly that and nothing beyond it.
+_CHAR_BUDGET = 68_236
 
 
 @pytest.fixture(scope="module")

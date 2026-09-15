@@ -464,3 +464,63 @@ async def test_list_schedules_marks_paused_entries(list_tool, session):
     assert (
         mock_client.get_execution_schedules.call_args.kwargs["include_paused"] is True
     )
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [
+        (DeleteScheduleTool(), "delete_schedule"),
+        (ResumeScheduleTool(), "resume_schedule"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_archived_experts_paused_schedule_is_out_of_reach(
+    tool, method, session
+):
+    """detach_expert_triggers pauses rather than deletes so re-hire can restore
+    the cadence. Deleting one loses it permanently; resuming one produces a
+    schedule that fires and is refused at run time. The REST listing already
+    hides these rows, so the tools have to agree."""
+    paused = _make_graph_info(schedule_id="archived-job", expert_id="gone")
+    paused = paused.model_copy(update={"next_run_time": ""})
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            AsyncMock(return_value=set()),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, schedule_id="archived-job"
+        )
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    getattr(mock_client, method).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_live_experts_paused_schedule_is_still_reachable(session):
+    """The guard keys on the expert being gone, not on the schedule being
+    paused — pausing one and resuming it must keep working."""
+    paused = _make_graph_info(schedule_id="live-job", expert_id="expert-a")
+    paused = paused.model_copy(update={"next_run_time": ""})
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+    mock_client.resume_schedule = AsyncMock(return_value=True)
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await ResumeScheduleTool()._execute(
+            user_id=_USER, session=session, schedule_id="live-job"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    mock_client.resume_schedule.assert_awaited_once()

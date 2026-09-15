@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
+from backend.api.features.schedule_visibility import hidden_expert_ids
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -32,13 +33,21 @@ async def _find_scoped_schedule(
     # include_paused: a paused expert schedule or fired one-shot must still be
     # reachable — the default listing hides them.
     jobs = await scheduler.get_execution_schedules(user_id=user_id, include_paused=True)
-    return next(
+    match = next(
         (
             job
             for job in jobs
             if job.id == schedule_id and _is_in_session_scope(job, session)
         ),
         None,
+    )
+    if match is None or not match.expert_id or match.next_run_time:
+        return match
+    # An archived expert's paused schedules are the ones the archive flow keeps
+    # for re-hire; the REST listing already hides them, and delete/resume here
+    # would lose or revive them behind that flow's back.
+    return (
+        None if match.expert_id in await hidden_expert_ids([match], user_id) else match
     )
 
 
@@ -391,6 +400,23 @@ class _ToggleScheduleTool(BaseTool):
                 else f"Schedule {schedule_id} was already {state}."
             ),
             session_id=session_id,
+        )
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Halting an expert's automation is the one new action here that stops
+        # work, so it belongs in the owner's feed beside schedule.deleted.
+        if not isinstance(result, ScheduleToggledResponse):
+            return None
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.paused" if self._pause else "schedule.resumed",
+            title="Paused a schedule" if self._pause else "Resumed a schedule",
+            schedule_id=result.schedule_id,
         )
 
 

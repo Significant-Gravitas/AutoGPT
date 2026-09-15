@@ -480,6 +480,26 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
     )
 
 
+async def active_expert_ids(user_id: str, expert_ids: set[str]) -> set[str]:
+    """Which of *expert_ids* are live hires of *user_id*, in one query.
+
+    The batched form of :func:`owns_active_expert`, for callers holding a set:
+    a per-id loop is unbounded in the number of experts on a request that
+    previously did no expert work at all.
+    """
+    if not expert_ids:
+        return set()
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={
+            "id": {"in": sorted(expert_ids)},
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    return {row.id for row in rows}
+
+
 async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
     """True iff *user_id* owns *expert_id* as a live, private hire.
 
