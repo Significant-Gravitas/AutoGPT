@@ -110,20 +110,6 @@ class InstallExpertWorkflowTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        # An expert installs onto itself, so an unrestricted library_agent_id
-        # would let it reach any agent the owner has — including another
-        # expert's private workflows — and then run it. Marketplace sources are
-        # public, so they stay open; the owner's library is the owner's call.
-        if session.expert_id is not None and library_agent_id.strip():
-            return ErrorResponse(
-                message=(
-                    "An expert cannot install a workflow out of the account's "
-                    "library. Ask the user to install it for you, or give a "
-                    "marketplace agent with username_agent_slug."
-                ),
-                error="access_denied",
-                session_id=session_id,
-            )
         try:
             listing_id = store_listing_version_id.strip() or None
             if username_agent_slug.strip():
