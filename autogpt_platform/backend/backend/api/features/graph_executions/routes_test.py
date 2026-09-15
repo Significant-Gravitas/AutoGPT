@@ -119,12 +119,21 @@ def test_execution_path_is_served_by_this_module(path: str):
 @pytest.mark.parametrize(
     "path,module",
     [
-        ("/api/graphs/{graph_id}", "backend.api.features.v1"),
-        ("/api/graphs/{graph_id}/execute/{graph_version}", "backend.api.features.v1"),
-        ("/api/graphs/{graph_id}/settings", "backend.api.features.v1"),
-        ("/api/graphs/{graph_id}/versions", "backend.api.features.v1"),
-        ("/api/graphs/{graph_id}/versions/active", "backend.api.features.v1"),
-        ("/api/graphs/{graph_id}/versions/{version}", "backend.api.features.v1"),
+        ("/api/graphs/{graph_id}", "backend.api.features.graphs.routes"),
+        (
+            "/api/graphs/{graph_id}/execute/{graph_version}",
+            "backend.api.features.graphs.routes",
+        ),
+        ("/api/graphs/{graph_id}/settings", "backend.api.features.graphs.routes"),
+        ("/api/graphs/{graph_id}/versions", "backend.api.features.graphs.routes"),
+        (
+            "/api/graphs/{graph_id}/versions/active",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/graphs/{graph_id}/versions/{version}",
+            "backend.api.features.graphs.routes",
+        ),
         (
             "/api/graphs/{graph_id}/schedules",
             "backend.api.features.schedules.routes",
