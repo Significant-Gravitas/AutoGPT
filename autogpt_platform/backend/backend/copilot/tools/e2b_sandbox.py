@@ -246,23 +246,21 @@ async def connect_owned(
     (from Redis, a message, or a caller) must never be trusted: the box's
     stamped ``autogpt_owner`` / ``autogpt_kind`` metadata is the record of
     who it belongs to.  Raises :class:`SandboxNotOwnedError` otherwise.
-    *timeout* re-arms the box's running-time limit on connect (a resumed
-    desktop would otherwise get the SDK's 300 s default).
+
+    The stamp is read *before* connecting: a connect is not passive, it
+    resumes a paused box and re-arms its running-time limit, so a foreign
+    id must be refused without ever waking someone else's box.  *timeout*
+    is that limit for the owner's box (a resumed desktop would otherwise get
+    the SDK's default).
     """
-    if timeout is None:
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-    else:
-        sandbox = await AsyncSandbox.connect(
-            sandbox_id, api_key=api_key, timeout=timeout
-        )
-    info = await sandbox.get_info()
+    info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
     expected = owner.metadata(sandbox_kind)
     stamped = info.metadata or {}
     if any(stamped.get(key) != value for key, value in expected.items()):
         raise SandboxNotOwnedError(
             f"Sandbox {sandbox_id[:12]} is not {owner}'s {sandbox_kind} box"
         )
-    return sandbox
+    return await AsyncSandbox.connect(sandbox_id, api_key=api_key, timeout=timeout)
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
@@ -720,6 +718,12 @@ async def _act_on_sandbox(
             owner,
         )
         return True
+    except SandboxNotOwnedError as exc:
+        # A cached id that is not the owner's box any more is never going to
+        # be: forget it, or every later pause and kill fails the same way.
+        logger.warning("[E2B] Refusing to %s: %s", action, exc)
+        await _clear_stored_sandbox_id(owner, sandbox_kind)
+        return False
     except Exception as exc:
         logger.warning(
             "[E2B] Failed to %s %s sandbox %.12s for %s: %s",

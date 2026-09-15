@@ -15,7 +15,6 @@ from cryptography.fernet import InvalidToken
 from pydantic import BaseModel, ValidationError
 
 from backend.util.encryption import JSONCryptor
-from backend.util.settings import Config
 
 # The token is bound to the owner and only redeemable with the owner's
 # session, so its lifetime is about how long a stored chat card keeps
@@ -30,18 +29,20 @@ class DesktopPreview(BaseModel):
 
 
 def create_preview_link(user_id: str, live_url: str) -> str:
-    """An owner-bound link to *live_url* that discloses nothing about it."""
+    """An owner-bound link to *live_url* that discloses nothing about it.
+
+    Origin-relative: the owner redeems it on whatever origin they are on, so
+    a preview deployment, a custom domain or a plain-http local stack still
+    sends the session cookie, and the link never leaks the platform's host.
+    """
     if not user_id:
         raise ValueError("Live view requires an authenticated user")
-    base_url = Config().frontend_base_url.rstrip("/")
-    if not base_url:
-        raise ValueError("Live view requires FRONTEND_BASE_URL to be configured")
     token = JSONCryptor().encrypt(
         DesktopPreview(
             purpose="e2b-desktop-preview", user_id=user_id, url=live_url
         ).model_dump()
     )
-    return f"{base_url}/api/proxy/api/desktop-preview?{urlencode({'token': token})}"
+    return f"/api/proxy/api/desktop-preview?{urlencode({'token': token})}"
 
 
 def resolve_preview_link(user_id: str, token: str) -> str | None:

@@ -11,7 +11,11 @@ from backend.util.desktop_preview import resolve_preview_link
 router = APIRouter()
 
 
-@router.get("/desktop-preview", response_class=RedirectResponse)
+@router.get(
+    "/desktop-preview",
+    response_class=RedirectResponse,
+    responses={404: {"description": "Preview unavailable"}},
+)
 async def open_desktop_preview(
     token: Annotated[str, Query(max_length=8192)],
     user_id: Annotated[str, Security(get_user_id)],

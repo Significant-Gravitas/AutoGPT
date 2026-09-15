@@ -6056,6 +6056,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Preview unavailable" },
           "422": {
             "description": "Validation Error",
             "content": {

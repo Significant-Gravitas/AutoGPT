@@ -91,6 +91,8 @@ class StartDesktopTool(BaseTool):
                 session_id=session_id,
             )
 
+        # ``execute()`` already refuses an unauthenticated caller (the tool
+        # requires auth); this guards a direct ``_execute`` call.
         if not user_id:
             return ErrorResponse(
                 message="A desktop needs a signed-in user to hand its link to.",

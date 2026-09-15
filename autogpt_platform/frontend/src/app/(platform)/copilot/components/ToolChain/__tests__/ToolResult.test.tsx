@@ -976,6 +976,31 @@ describe("ToolResult start_desktop", () => {
     expect(screen.queryByText(/"kind"/)).toBeNull();
   });
 
+  it("shows a shared-transcript viewer a notice, not the owner-only frame", () => {
+    render(
+      <ToolResult
+        readOnly
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "/api/proxy/api/desktop-preview?token=abc",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+              requires_auth: true,
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
   it("falls back to the generic view when the stream is missing", () => {
     render(
       <ToolResult
