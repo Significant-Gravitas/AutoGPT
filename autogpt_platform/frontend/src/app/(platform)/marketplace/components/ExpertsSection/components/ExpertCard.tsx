@@ -5,8 +5,9 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
-import { getExpertAccent, getExpertRoleLabel } from "../helpers";
+import { getExpertAccent } from "../helpers";
 import { formatSkillTitle } from "../../SkillsSection/helpers";
 import {
   ArrowRight02Icon,

@@ -5,11 +5,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import {
-  getExpertRoleLabel,
-  getRaisedExpertAccent,
-} from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";

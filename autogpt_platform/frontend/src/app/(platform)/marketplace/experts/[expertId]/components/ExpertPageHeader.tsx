@@ -6,11 +6,9 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { ReactNode } from "react";
-import {
-  getExpertRoleLabel,
-  type ExpertAccent,
-} from "../../../components/ExpertsSection/helpers";
+import { type ExpertAccent } from "../../../components/ExpertsSection/helpers";
 
 interface Props {
   expert: Expert;

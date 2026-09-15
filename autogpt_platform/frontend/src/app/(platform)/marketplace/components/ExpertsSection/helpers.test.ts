@@ -4,7 +4,6 @@ import {
   getExpertAccent,
   getExpertAccessProviders,
   getExpertFirstName,
-  getExpertRoleLabel,
 } from "./helpers";
 
 describe("getExpertAccent", () => {
@@ -21,21 +20,6 @@ describe("getExpertAccent", () => {
     expect(getExpertAccent("Sales").pill).toContain("amber");
     expect(getExpertAccent("Ops").pill).toContain("sky");
     expect(getExpertAccent("Astrologer").pill).toContain("zinc");
-  });
-});
-
-describe("getExpertRoleLabel", () => {
-  test("shortens long roster roles used in pills", () => {
-    expect(getExpertRoleLabel("Social & Content Repurposing")).toBe(
-      "Social Media",
-    );
-    expect(getExpertRoleLabel("Market & Competitor Intelligence")).toBe(
-      "Market Intelligence",
-    );
-  });
-
-  test("keeps other roles unchanged", () => {
-    expect(getExpertRoleLabel("Email & Lifecycle")).toBe("Email & Lifecycle");
   });
 });
 

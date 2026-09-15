@@ -1,8 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
-import {
-  getExpertRoleLabel,
-  getRaisedExpertAccent,
-} from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   Avatar,
@@ -22,6 +19,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
