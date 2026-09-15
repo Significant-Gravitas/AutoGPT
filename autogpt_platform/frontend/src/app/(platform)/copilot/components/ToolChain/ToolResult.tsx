@@ -147,16 +147,50 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+const CAPABILITY_RUN_TOOLS = new Set([
+  "run_capability",
+  "resume_capability",
+  "describe_capability",
+]);
+
+function isMcpCapabilityRow(
+  row: ChainRow,
+  output: Record<string, unknown>,
+): boolean {
+  if (!row.tool || !CAPABILITY_RUN_TOOLS.has(row.tool)) return false;
+  const input = asObject(row.input);
+  const id = (input && str(input, "id")) ?? "";
+  return (
+    id.startsWith("mcp:") || id.startsWith("https://") || "server_url" in output
+  );
+}
+
+function capabilityAsBlockItem(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...item,
+    description: item.purpose,
+    categories: [
+      item.kind === "mcp_server"
+        ? "integration"
+        : item.class === "primitive"
+          ? "building block"
+          : String(item.kind ?? ""),
+    ],
+  };
+}
+
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   const setupInfo = asObject(output.setup_info);
   if (!setupInfo) return null;
   const setupOutput = output as unknown as SetupRequirementsResponse;
 
-  if (row.tool === "run_mcp_tool") {
+  if (row.tool === "run_mcp_tool" || isMcpCapabilityRow(row, output)) {
     return (
       <MCPSetupCard
         output={setupOutput}
-        retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server URL and arguments."
+        retryInstruction="I've connected the integration. Please retry the same call."
       />
     );
   }
@@ -285,13 +319,23 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       const blocks = output && asItems(output.blocks);
       return blocks ? <BlockListCard blocks={blocks} /> : null;
     }
+    case "find_capability": {
+      const items = output && asItems(output.capabilities);
+      return items ? (
+        <BlockListCard blocks={items.map(capabilityAsBlockItem)} />
+      ) : null;
+    }
     case "run_block":
-    case "continue_run_block": {
+    case "continue_run_block":
+    case "describe_capability":
+    case "run_capability":
+    case "resume_capability": {
       if (!output) return null;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
         return <BlockOutputCard output={output} />;
+      if ("result" in output) return <KeyValueList value={output.result} />;
       return null;
     }
     case "connect_integration":
