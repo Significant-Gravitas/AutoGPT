@@ -30,6 +30,8 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
+import backend.api.features.billing.subscriptions.routes as subscriptions_routes
 import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
@@ -37,10 +39,9 @@ import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
-import backend.api.features.credits.routes as credits_routes
-import backend.api.features.executions.review.routes
-import backend.api.features.executions.routes as executions_routes
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.graph_executions.review.routes
+import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
@@ -64,7 +65,6 @@ import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
-import backend.api.features.subscriptions.routes as subscriptions_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -408,7 +408,7 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
-    executions_routes.router,
+    graph_executions_routes.router,
     tags=["v1"],
     prefix="/api",
 )
@@ -518,7 +518,7 @@ if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
         prefix="/api",
     )
 app.include_router(
-    backend.api.features.executions.review.routes.router,
+    backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
 )

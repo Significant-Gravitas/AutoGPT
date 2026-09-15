@@ -7281,7 +7281,7 @@
       "post": {
         "tags": ["v1", "files"],
         "summary": "Upload file to cloud storage",
-        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
+        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7780,7 +7780,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__executions__model__ShareResponse"
+                  "$ref": "#/components/schemas/backend__api__features__graph_executions__model__ShareResponse"
                 }
               }
             }
@@ -32007,7 +32007,7 @@
         "required": ["share_url", "share_token"],
         "title": "ShareResponse"
       },
-      "backend__api__features__executions__model__ShareResponse": {
+      "backend__api__features__graph_executions__model__ShareResponse": {
         "properties": {
           "share_url": { "type": "string", "title": "Share Url" },
           "share_token": { "type": "string", "title": "Share Token" }
