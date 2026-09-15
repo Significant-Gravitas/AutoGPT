@@ -27854,7 +27854,8 @@
             "title": "Session Id"
           },
           "schedule_id": { "type": "string", "title": "Schedule Id" },
-          "paused": { "type": "boolean", "title": "Paused" }
+          "paused": { "type": "boolean", "title": "Paused" },
+          "changed": { "type": "boolean", "title": "Changed", "default": true }
         },
         "type": "object",
         "required": ["message", "schedule_id", "paused"],

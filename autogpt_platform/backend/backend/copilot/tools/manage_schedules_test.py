@@ -572,3 +572,35 @@ async def test_list_keeps_a_live_experts_paused_schedule(list_tool, session):
     assert isinstance(result, ScheduleListResponse)
     assert [s.schedule_id for s in result.schedules] == ["paused"]
     assert result.schedules[0].paused is True
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "changed", "expect_event"),
+    [
+        (PauseScheduleTool(), "pause_schedule", True, True),
+        (PauseScheduleTool(), "pause_schedule", False, False),
+        (ResumeScheduleTool(), "resume_schedule", True, True),
+        (ResumeScheduleTool(), "resume_schedule", False, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_no_op_toggle_leaves_no_activity_event(
+    tool, method, changed, expect_event, session
+):
+    """The scheduler returns False when the schedule was already in that state.
+    The activity log is append-only, so pausing an already-paused schedule must
+    not leave a schedule.paused entry the user never caused."""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="sched-1")]
+    )
+    setattr(mock_client, method, AsyncMock(return_value=changed))
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(
+            user_id=_USER, session=session, schedule_id="sched-1"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    assert result.changed is changed
+    assert (tool.activity_event(session, result) is not None) is expect_event

@@ -334,6 +334,9 @@ class ScheduleToggledResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SCHEDULE_TOGGLED
     schedule_id: str
     paused: bool
+    # False when the schedule was already in that state. The activity log is
+    # append-only, so a no-op must not leave an entry in it.
+    changed: bool = True
 
 
 class _ToggleScheduleTool(BaseTool):
@@ -401,6 +404,7 @@ class _ToggleScheduleTool(BaseTool):
         return ScheduleToggledResponse(
             schedule_id=schedule_id,
             paused=self._pause,
+            changed=changed,
             message=(
                 f"Schedule {schedule_id} {state}."
                 if changed
@@ -417,7 +421,7 @@ class _ToggleScheduleTool(BaseTool):
     ) -> ActivityEventDraft | None:
         # Halting an expert's automation is the one new action here that stops
         # work, so it belongs in the owner's feed beside schedule.deleted.
-        if not isinstance(result, ScheduleToggledResponse):
+        if not isinstance(result, ScheduleToggledResponse) or not result.changed:
             return None
         return ActivityEventDraft(
             category="SCHEDULE",
