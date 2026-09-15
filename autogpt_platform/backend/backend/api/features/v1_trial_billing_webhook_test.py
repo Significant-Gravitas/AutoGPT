@@ -10,7 +10,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 
-from backend.api.features.subscriptions import routes as subscriptions_routes
+from backend.api.features.billing.subscriptions import routes as subscriptions_routes
 
 app = fastapi.FastAPI()
 app.include_router(subscriptions_routes.router)

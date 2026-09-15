@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
-from backend.api.features.executions.routes import router
+from backend.api.features.graph_executions.routes import router
 from backend.data.workspace import WorkspaceFile
 
 app = FastAPI()
@@ -68,17 +68,17 @@ class TestDownloadSharedFile:
     def test_valid_token_and_file_returns_attachment(self):
         with (
             patch(
-                "backend.api.features.executions.routes.execution_db.get_shared_execution_file",
+                "backend.api.features.graph_executions.routes.execution_db.get_shared_execution_file",
                 new_callable=AsyncMock,
                 return_value="exec-123",
             ),
             patch(
-                "backend.api.features.executions.routes.get_workspace_file_by_id",
+                "backend.api.features.graph_executions.routes.get_workspace_file_by_id",
                 new_callable=AsyncMock,
                 return_value=_make_workspace_file(),
             ),
             patch(
-                "backend.api.features.executions.routes.create_file_download_response",
+                "backend.api.features.graph_executions.routes.create_file_download_response",
                 side_effect=_mock_download_response(),
             ),
         ):
@@ -98,7 +98,7 @@ class TestDownloadSharedFile:
 
     def test_token_not_in_allowlist_returns_404(self):
         with patch(
-            "backend.api.features.executions.routes.execution_db.get_shared_execution_file",
+            "backend.api.features.graph_executions.routes.execution_db.get_shared_execution_file",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -110,12 +110,12 @@ class TestDownloadSharedFile:
     def test_file_missing_from_workspace_returns_404(self):
         with (
             patch(
-                "backend.api.features.executions.routes.execution_db.get_shared_execution_file",
+                "backend.api.features.graph_executions.routes.execution_db.get_shared_execution_file",
                 new_callable=AsyncMock,
                 return_value="exec-123",
             ),
             patch(
-                "backend.api.features.executions.routes.get_workspace_file_by_id",
+                "backend.api.features.graph_executions.routes.get_workspace_file_by_id",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -128,7 +128,7 @@ class TestDownloadSharedFile:
     def test_uniform_404_prevents_enumeration(self):
         """Both failure modes produce identical 404 — no information leak."""
         with patch(
-            "backend.api.features.executions.routes.execution_db.get_shared_execution_file",
+            "backend.api.features.graph_executions.routes.execution_db.get_shared_execution_file",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -138,12 +138,12 @@ class TestDownloadSharedFile:
 
         with (
             patch(
-                "backend.api.features.executions.routes.execution_db.get_shared_execution_file",
+                "backend.api.features.graph_executions.routes.execution_db.get_shared_execution_file",
                 new_callable=AsyncMock,
                 return_value="exec-123",
             ),
             patch(
-                "backend.api.features.executions.routes.get_workspace_file_by_id",
+                "backend.api.features.graph_executions.routes.get_workspace_file_by_id",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

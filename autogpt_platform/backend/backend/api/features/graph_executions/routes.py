@@ -8,11 +8,11 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 
-from backend.api.features.executions.activity_gate import (
+from backend.api.features.graph_executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
 )
-from backend.api.features.executions.model import (
+from backend.api.features.graph_executions.model import (
     ExecutionShareRequest,
     ExecutionShareResponse,
 )

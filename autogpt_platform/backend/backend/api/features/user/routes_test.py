@@ -90,7 +90,7 @@ def test_get_or_create_user_route(
     mock_result = Mock(user=mock_user, was_created=False)
 
     mocker.patch(
-        "backend.api.features.auth.routes.get_or_create_user_with_status",
+        "backend.api.features.user.routes.get_or_create_user_with_status",
         return_value=mock_result,
     )
 
@@ -118,7 +118,7 @@ def test_get_or_create_user_route_reports_creation(
     }
 
     mocker.patch(
-        "backend.api.features.auth.routes.get_or_create_user_with_status",
+        "backend.api.features.user.routes.get_or_create_user_with_status",
         return_value=Mock(user=mock_user, was_created=True),
     )
 
@@ -143,7 +143,7 @@ def test_update_user_email_route(
 ) -> None:
     """Test update user email endpoint"""
     mocker.patch(
-        "backend.api.features.auth.routes.update_user_email",
+        "backend.api.features.user.routes.update_user_email",
         return_value=None,
     )
 
@@ -219,7 +219,7 @@ def test_auth_surface_has_no_other_operations():
         (method.lower(), route.path)
         for route in real_app.routes
         if isinstance(route, APIRoute)
-        and route.endpoint.__module__ == "backend.api.features.auth.routes"
+        and route.endpoint.__module__ == "backend.api.features.user.routes"
         for method in route.methods
         if method != "HEAD"
     }

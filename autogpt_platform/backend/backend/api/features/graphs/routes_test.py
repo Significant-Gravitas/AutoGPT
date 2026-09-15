@@ -160,19 +160,19 @@ def test_graph_surface_has_no_other_operations():
         ("/api/graphs/{graph_id}/schedules", "backend.api.features.schedules.routes"),
         (
             "/api/graphs/{graph_id}/executions",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
         (
             "/api/graphs/{graph_id}/executions/{graph_exec_id}/share",
-            "backend.api.features.executions.routes",
+            "backend.api.features.graph_executions.routes",
         ),
     ],
 )
