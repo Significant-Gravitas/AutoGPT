@@ -26,7 +26,15 @@ def resolve_entry(index: CapabilityIndex, capability_id: str) -> CapabilityEntry
         return entry
     if "://" in key:
         host = urlsplit(key).hostname
-        return index.get(f"mcp:{host}") if host else None
+        by_host = index.get(f"mcp:{host}") if host else None
+        if by_host is not None:
+            return by_host
+        # Two catalog presets can share a host, so those entries are keyed by
+        # slug; match the full server URL instead.
+        return next(
+            (e for e in index.entries if e.connection.key == key),
+            None,
+        )
     if not key.startswith(("tool:", "block:", "mcp:")):
         entry = index.get(f"mcp:{key.lower()}")
         if entry is not None:
