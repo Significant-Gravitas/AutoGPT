@@ -1553,7 +1553,7 @@ async def test_a_manifest_path_with_a_parent_segment_is_dropped():
         outside = os.path.join(patched.workdir, "outside.txt")
         with open(outside, "w") as f:
             f.write("not the package's")
-        manifest = os.path.join(patched.workdir, "skills", "big", ".package.json")
+        manifest = os.path.join(patched.workdir, ".skill-packages", "big.json")
         with open(manifest, "w") as f:
             json.dump({"../../outside.txt": "deadbeef"}, f)
 
