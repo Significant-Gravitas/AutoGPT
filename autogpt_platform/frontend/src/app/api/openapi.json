@@ -13793,6 +13793,66 @@
         }
       }
     },
+    "/api/skills/package": {
+      "post": {
+        "tags": ["v1", "skills"],
+        "summary": "Upload a copilot skill as a zipped package",
+        "description": "Create a skill from a zipped package — a root ``SKILL.md`` plus the\nfiles beside it.\n\nThe zip is transport only: it is unpacked here and stored as the skill's\nfolder, so the model reaches ``scripts/`` and ``references/`` by path\nexactly as it does for a package copied from another skill.",
+        "operationId": "uploadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Store the skill as this expert's own.",
+              "title": "Expert Id"
+            },
+            "description": "Store the skill as this expert's own."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadCopilotSkillPackage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillInfo" }
+              }
+            }
+          },
+          "400": {
+            "description": "Unreadable archive, or a malformed SKILL.md or path"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Per-user skill limit reached" },
+          "413": {
+            "description": "Archive, file or file count over the package limit"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/skills/{name}": {
       "delete": {
         "tags": ["v1", "skills"],
@@ -13886,6 +13946,61 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/{name}/package": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Download a copilot skill as a zipped package",
+        "description": "Return the skill's whole folder as a zip — ``SKILL.md`` at the root,\nsiblings at their relative paths, executable bits preserved — so a\ndownload re-uploads to the same tree.\n\nBuilt-in defaults are single on-disk files and are not downloadable here;\nGET ``/skills/{name}`` serves their body.",
+        "operationId": "downloadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to download",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to download"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Download this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Download this expert's own copy of the skill."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skill folder as a zip archive",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
               }
             }
           },
@@ -15186,7 +15301,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's skill library.",
+        "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15200,6 +15315,17 @@
               "title": "Slug"
             },
             "description": "Slug of the skill listing"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Install into this expert's skills instead of the caller's own.",
+              "title": "Expert Id"
+            },
+            "description": "Install into this expert's skills instead of the caller's own."
           }
         ],
         "responses": {
@@ -15214,7 +15340,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Skill not found" },
+          "404": { "description": "Skill or expert not found" },
           "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",
@@ -17822,6 +17948,14 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "Body_uploadCopilotSkillPackage": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_uploadCopilotSkillPackage"
+      },
       "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -18836,10 +18970,10 @@
             "title": "Is Default",
             "default": false
           },
-          "sibling_files": {
-            "items": { "type": "string" },
+          "files": {
+            "items": { "$ref": "#/components/schemas/CopilotSkillFile" },
             "type": "array",
-            "title": "Sibling Files",
+            "title": "Files",
             "default": []
           }
         },
@@ -18847,6 +18981,21 @@
         "required": ["name", "description", "body"],
         "title": "CopilotSkillDetail",
         "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "CopilotSkillFile",
+        "description": "One file of a skill package, by its path relative to the skill folder\n(``scripts/run.py``) — the path the SKILL.md body references it by."
       },
       "CopilotSkillInfo": {
         "properties": {
