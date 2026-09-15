@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 class ContinueRunBlockTool(BaseTool):
     """Tool for continuing a block execution after human review approval."""
 
+    # Returns execute_block's result, same as run_block.
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "continue_run_block"
@@ -151,6 +154,7 @@ class ContinueRunBlockTool(BaseTool):
             dry_run=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
         # Delete review record after successful execution (one-time use)

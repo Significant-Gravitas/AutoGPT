@@ -1306,7 +1306,7 @@ class TestMoonshotHelperReexports:
 class TestIdleTimeoutThreshold:
     """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
     fires when the SDK is idle with no tool pending. The longer 2-hour cap
-    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    applies while any tool call is pending so a 45-min sub-Otto isn't
     killed, but a truly hung tool still eventually frees session resources."""
 
     def _make_adapter(self, current: dict, resolved: set):
@@ -1352,7 +1352,7 @@ class TestIdleTimeoutThreshold:
 
     def test_hung_tool_cap_is_2_hours(self):
         # Hard cap protects against a hung tool leaking resources forever.
-        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        # 2 hours is plenty for any legitimate sub-Otto or graph run.
         assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
 
     def test_long_cap_is_strictly_longer_than_short_cap(self):

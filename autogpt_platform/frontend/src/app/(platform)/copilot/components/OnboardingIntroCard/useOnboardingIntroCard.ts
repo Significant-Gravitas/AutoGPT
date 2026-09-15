@@ -34,7 +34,6 @@ export function useOnboardingIntroCard() {
   const { enabled: isBrainDumpEnabled, ready: isFlagReady } = useFlagStatus(
     Flag.ONBOARDING_BRAIN_DUMP,
   );
-
   // localStorage answers first so a returning user never flashes the
   // greeting; only when it has no answer do we ask the server. The flag
   // is keyed to the user id, so a fresh account on the same browser
@@ -111,9 +110,8 @@ export function useOnboardingIntroCard() {
         const latest = query.state.data;
         if (!latest || latest.status !== 200) return false;
         const body = latest.data;
-        if (!body.greeting_done && body.greeting_pending) {
-          return PENDING_POLL_MS;
-        }
+        if (body.greeting_done) return false;
+        if (body.greeting_pending) return PENDING_POLL_MS;
         return false;
       },
     },

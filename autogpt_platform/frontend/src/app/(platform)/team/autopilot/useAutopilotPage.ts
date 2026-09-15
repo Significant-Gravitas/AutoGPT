@@ -35,7 +35,7 @@ export function useAutopilotPage({ enabled }: Args) {
     query: { select: (res) => okData(res) ?? [], enabled },
   });
 
-  // Autopilot owns every library workflow no expert has claimed, so the
+  // Otto owns every library workflow no expert has claimed, so the
   // whole library has to be in hand before the split is derived.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = libraryQuery;
   useEffect(() => {

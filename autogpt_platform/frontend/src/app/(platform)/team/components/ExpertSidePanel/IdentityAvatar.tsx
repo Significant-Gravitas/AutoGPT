@@ -1,14 +1,20 @@
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 import { cn } from "@/lib/utils";
 
 export interface PanelIdentity {
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
   isAutopilot?: boolean;
 }
 
@@ -20,27 +26,27 @@ interface Props {
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
   if (identity.isAutopilot) {
+    return <AutopilotAvatar size={imageSize} className={className} />;
+  }
+  if (!isUploadedAvatar(identity.avatarUrl)) {
     return (
-      <span
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-zinc-200",
-          className,
-        )}
-      >
-        <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-[55%]" />
-      </span>
+      <BotAvatar
+        config={expertAvatarConfig(identity)}
+        size={imageSize}
+        showBadge={false}
+        title={identity.name}
+        className={className}
+      />
     );
   }
   return (
-    <Avatar className={cn("shrink-0", className)}>
-      {identity.avatarUrl ? (
-        <AvatarImage
-          src={identity.avatarUrl}
-          alt={identity.name}
-          width={imageSize}
-          height={imageSize}
-        />
-      ) : null}
+    <Avatar className={cn("shrink-0 border border-stone-500", className)}>
+      <AvatarImage
+        src={identity.avatarUrl ?? undefined}
+        alt={identity.name}
+        width={imageSize}
+        height={imageSize}
+      />
       <AvatarFallback>{identity.name}</AvatarFallback>
     </Avatar>
   );

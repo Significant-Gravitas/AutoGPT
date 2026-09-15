@@ -97,7 +97,7 @@ class User(BaseModel):
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
-    # Default AutoPilot connection for chats nobody routed explicitly. Kept as
+    # Default Otto connection for chats nobody routed explicitly. Kept as
     # plain strings here: the data layer stores the choice, the copilot layer
     # decides what a given value means (and treats one it doesn't recognise as
     # "automatic", so a value written by a newer server can't break an older one).
@@ -735,7 +735,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         """Whether this selection needs a credential at all.
 
         A field may declare a discriminator value that maps to no provider,
-        meaning that choice is credential-free — AutoPilot's `platform`
+        meaning that choice is credential-free — Otto's `platform`
         transport runs on platform credits and needs nothing connected.
 
         Callers must consult this before resolving, discriminating, or
