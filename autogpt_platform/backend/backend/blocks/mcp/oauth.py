@@ -9,7 +9,8 @@ This handler accepts those endpoints at construction time.
 import logging
 import time
 import urllib.parse
-from typing import ClassVar, Optional
+from base64 import b64encode
+from typing import ClassVar, Literal, Optional
 
 from pydantic import SecretStr
 
@@ -19,6 +20,10 @@ from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
+
+MCPTokenEndpointAuthMethod = Literal[
+    "none", "client_secret_post", "client_secret_basic"
+]
 
 
 class MCPOAuthHandler(BaseOAuthHandler):
@@ -43,9 +48,24 @@ class MCPOAuthHandler(BaseOAuthHandler):
         token_url: str,
         revoke_url: str | None = None,
         resource_url: str | None = None,
+        token_endpoint_auth_method: MCPTokenEndpointAuthMethod | None = None,
     ):
+        if token_endpoint_auth_method not in (
+            None,
+            "none",
+            "client_secret_post",
+            "client_secret_basic",
+        ):
+            raise ValueError("Unsupported MCP client authentication method")
         self.client_id = client_id
-        self.client_secret = client_secret
+        self.token_endpoint_auth_method: MCPTokenEndpointAuthMethod = (
+            token_endpoint_auth_method
+            if token_endpoint_auth_method is not None
+            else "client_secret_post" if client_secret else "none"
+        )
+        self.client_secret = (
+            "" if self.token_endpoint_auth_method == "none" else client_secret
+        )
         self.redirect_uri = redirect_uri
         self.authorize_url = authorize_url
         self.token_url = token_url
@@ -84,14 +104,13 @@ class MCPOAuthHandler(BaseOAuthHandler):
         scopes: list[str],
         code_verifier: Optional[str],
     ) -> OAuth2Credentials:
+        client_auth, headers = self._token_client_auth()
         data: dict[str, str] = {
+            **client_auth,
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": self.redirect_uri,
-            "client_id": self.client_id,
         }
-        if self.client_secret:
-            data["client_secret"] = self.client_secret
         if code_verifier:
             data["code_verifier"] = code_verifier
         if self.resource_url:
@@ -100,7 +119,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         response = await Requests(raise_for_status=True).post(
             self.token_url,
             data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers=headers,
         )
         tokens = response.json()
 
@@ -130,6 +149,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
             metadata={
                 "mcp_token_url": self.token_url,
                 "mcp_resource_url": self.resource_url,
+                "mcp_token_endpoint_auth_method": self.token_endpoint_auth_method,
             },
         )
 
@@ -139,20 +159,19 @@ class MCPOAuthHandler(BaseOAuthHandler):
         if not credentials.refresh_token:
             raise ValueError("No refresh token available for MCP OAuth credentials")
 
+        client_auth, headers = self._token_client_auth()
         data: dict[str, str] = {
+            **client_auth,
             "grant_type": "refresh_token",
             "refresh_token": credentials.refresh_token.get_secret_value(),
-            "client_id": self.client_id,
         }
-        if self.client_secret:
-            data["client_secret"] = self.client_secret
         if self.resource_url:
             data["resource"] = self.resource_url
 
         response = await Requests(raise_for_status=True).post(
             self.token_url,
             data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers=headers,
         )
         tokens = response.json()
 
@@ -188,17 +207,33 @@ class MCPOAuthHandler(BaseOAuthHandler):
             return False
 
         try:
+            client_auth, headers = self._token_client_auth()
             data = {
+                **client_auth,
                 "token": credentials.access_token.get_secret_value(),
                 "token_type_hint": "access_token",
-                "client_id": self.client_id,
             }
-            await Requests().post(
+            await Requests(raise_for_status=True).post(
                 self.revoke_url,
                 data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers=headers,
             )
             return True
         except Exception:
             logger.warning("Failed to revoke MCP OAuth tokens", exc_info=True)
             return False
+
+    def _token_client_auth(self) -> tuple[dict[str, str], dict[str, str]]:
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        if self.token_endpoint_auth_method == "client_secret_basic":
+            client_id = urllib.parse.quote_plus(self.client_id, safe="")
+            client_secret = urllib.parse.quote_plus(self.client_secret, safe="")
+            encoded = b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+            return {}, headers
+        data = {"client_id": self.client_id}
+        if self.token_endpoint_auth_method == "client_secret_post":
+            data["client_secret"] = self.client_secret
+        elif self.token_endpoint_auth_method != "none":
+            raise ValueError("Unsupported MCP client authentication method")
+        return data, headers
