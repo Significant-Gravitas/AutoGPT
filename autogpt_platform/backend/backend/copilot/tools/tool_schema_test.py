@@ -131,6 +131,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     #14244 agent-collab-architecture              +0
 #     #14209 autopilot-auto-mode-v2                 +0
 #     #14432 secrt-2593-publish                     +0
+#     #14365 sandbox-e2b-desktop (start_desktop)  +670  (branch measures 63,417)
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
 # make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
