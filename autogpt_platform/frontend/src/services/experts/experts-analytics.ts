@@ -5,8 +5,6 @@
 
 import posthog from "posthog-js";
 
-// The ``expert_published`` wrapper lands with the PR that calls it — knip
-// fails an export nothing uses yet.
 type ExpertsEvent =
   | "hire_started"
   | "hire_flow_completed"
@@ -44,4 +42,8 @@ export function trackExpertDownloaded(payload: ExpertPortabilityPayload) {
 
 export function trackExpertImported(payload: ExpertPortabilityPayload) {
   trackExperts("expert_imported", { ...payload });
+}
+
+export function trackExpertPublished(payload: ExpertPortabilityPayload) {
+  trackExperts("expert_published", { ...payload });
 }

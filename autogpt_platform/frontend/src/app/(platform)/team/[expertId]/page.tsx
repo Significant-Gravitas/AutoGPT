@@ -12,6 +12,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
@@ -61,6 +62,7 @@ export default function ExpertDetailPage() {
   const router = useRouter();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const { enabled: canExport } = useFlagStatus(Flag.EXPERT_PORTABILITY);
+  const { user } = useAuth();
   const {
     expert,
     isLoading,
@@ -248,7 +250,11 @@ export default function ExpertDetailPage() {
           </TabsLineContent>
 
           <TabsLineContent value="settings">
-            <ExpertSettingsSection expert={expert} onFire={openFire} />
+            <ExpertSettingsSection
+              expert={expert}
+              canPublish={Boolean(canExport) && user?.role === "admin"}
+              onFire={openFire}
+            />
           </TabsLineContent>
         </TabsLine>
 

@@ -175,14 +175,20 @@ describe("ExpertReviewDialog", () => {
     expect(
       screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Remove Draft Poster" }),
-    );
+  // The publish route builds the package from the stored expert and takes no
+  // edits, so a control here could only lie about what reaches the marketplace.
+  test("publish mode confirms and never edits", async () => {
+    renderDialog({ mode: "publish" });
 
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.queryByLabelText("Name")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled"),
-    ).toBe(false);
+      screen.queryAllByRole("button", { name: /^(Remove|Keep) / }),
+    ).toEqual([]);
+    expect(screen.queryAllByRole("switch")).toEqual([]);
+    expect(screen.getByText("Schedule · Every day at 07:40")).toBeDefined();
   });
 
   test("Escape closes and Enter never submits", async () => {
