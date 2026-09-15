@@ -19,6 +19,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
+from backend.data import credit_metadata
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
@@ -3547,11 +3548,24 @@ def test_reset_usage_returns_402_when_insufficient_credits(
 
 def test_reset_usage_success(mocker: pytest_mock.MockerFixture) -> None:
     """POST /usage/reset returns 200 with updated usage on success."""
-    _mock_reset_internals(mocker, remaining_balance=8_900)
+    mocker.patch.object(
+        credit_metadata,
+        "CURRENT_CREDIT_MARKERS",
+        credit_metadata.CreditMetadataMarkers(
+            reconciliation_delta_input_key="reconciled_delta_v2",
+            execution_fee_input_key="charge_v2",
+            execution_fee_input_value="Execution Cost v2",
+            daily_reset_reason="reset v2",
+            copilot_session_prefix="copilot-session-v2-",
+        ),
+    )
+    mock_credit = _mock_reset_internals(mocker, remaining_balance=8_900)
 
     response = client.post("/usage/reset")
 
     assert response.status_code == 200
+    metadata = mock_credit.spend_credits.await_args.kwargs["metadata"]
+    assert metadata.reason == "reset v2"
     data = response.json()
     assert data["success"] is True
     assert data["credits_charged"] == 100

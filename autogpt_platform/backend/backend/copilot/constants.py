@@ -1,5 +1,7 @@
 """Shared constants for the CoPilot module."""
 
+from backend.data import credit_metadata
+
 # Otto is the account's built-in helper — the identity every session
 # without an expert speaks as, and the fixed author of the morning briefing.
 AUTOPILOT_NAME = "Otto"
@@ -38,7 +40,7 @@ STREAM_ERROR_MARKER = f"{COPILOT_SYSTEM_PREFIX} The assistant ran into an error 
 COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 
 # Sub-prefixes for session-scoped and node-scoped synthetic IDs.
-COPILOT_SESSION_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}session-"
+COPILOT_SESSION_PREFIX = credit_metadata.CURRENT_CREDIT_MARKERS.copilot_session_prefix
 COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
 
 # Separator used in synthetic node_exec_id to encode node_id.

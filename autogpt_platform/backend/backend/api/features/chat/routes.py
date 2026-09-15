@@ -142,6 +142,7 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     save_default_chat_route,
 )
+from backend.data import credit_metadata
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -1304,7 +1305,7 @@ async def reset_copilot_usage(
                 user_id=user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
-                    reason="CoPilot daily rate limit reset",
+                    reason=credit_metadata.CURRENT_CREDIT_MARKERS.daily_reset_reason,
                 ),
             )
         except InsufficientBalanceError as e:
