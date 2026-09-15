@@ -51,9 +51,9 @@ logger = logging.getLogger(__name__)
 
 # A resolved mention, held behind private-use markers while the text is
 # HTML-escaped.
-_MENTION_OPEN = "E000"
-_MENTION_CLOSE = "E001"
-_MENTION_STASH_RE = re.compile(r"E000([^E000E001]+)E001")
+_MENTION_OPEN = "\ue000"
+_MENTION_CLOSE = "\ue001"
+_MENTION_STASH_RE = re.compile("\ue000([^\ue000\ue001]+)\ue001")
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
 _NOT_YOUR_QUESTION = (
     "This question was for someone else — they still need to answer it."

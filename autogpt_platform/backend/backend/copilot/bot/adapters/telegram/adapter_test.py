@@ -288,6 +288,18 @@ class TestOutbound:
         assert kwargs["text"] == "<b>bold</b> &amp; plain"
 
     @pytest.mark.asyncio
+    async def test_text_that_looks_like_a_marker_is_left_alone(self):
+        """The stash markers are private-use characters, never text a model
+        writes, so ordinary words and hex like E000 pass through untouched."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "code E000 and E001 for @Bently", (("Bently", "7"),)
+        )
+        assert a._client.call.call_args.kwargs["text"] == (
+            'code E000 and E001 for <a href="tg://user?id=7">@Bently</a>'
+        )
+
+    @pytest.mark.asyncio
     async def test_mentions_by_name_and_id_ping_and_everything_else_is_escaped(
         self,
     ):
