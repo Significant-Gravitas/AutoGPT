@@ -140,6 +140,28 @@ class TestTeamBuildingSupplement:
         assert "hire_expert" not in result
 
 
+class TestChatPlatformSupplement:
+    """The silence rule belongs to sessions a chat bot opened, and to no
+    others: on the web a human is waiting, and silence there is a bug."""
+
+    def test_a_web_session_gets_nothing(self):
+        assert prompting.get_chat_platform_supplement(None) == ""
+        assert prompting.get_chat_platform_supplement("") == ""
+
+    def test_every_bot_platform_gets_the_same_rule(self):
+        rules = {
+            prompting.get_chat_platform_supplement(p)
+            for p in ("discord", "slack", "telegram", "teams")
+        }
+        assert len(rules) == 1, "one string, so the prompt cache is shared"
+        rule = rules.pop()
+        assert f"exactly `{prompting.NO_REPLY}` as your entire message" in rule
+        assert "Otherwise answer normally" in rule
+
+    def test_the_word_is_exact_and_case_sensitive(self):
+        assert prompting.NO_REPLY == "NO_REPLY"
+
+
 class TestExpertOversightSupplement:
     """The chat-reading tools are in the ``expert_admin`` group, so only an
     Otto session with the team flag on can call them — a turn that

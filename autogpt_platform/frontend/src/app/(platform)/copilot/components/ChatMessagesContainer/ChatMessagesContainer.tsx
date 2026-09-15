@@ -20,7 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
-import { revealKickoffMessages } from "../../expertKickoff";
+import { hideKickoffMessages } from "../../expertKickoff";
 import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
@@ -323,7 +323,7 @@ export function ChatMessagesContainer({
 }: Props) {
   const isCompact = variant === "compact";
   const messages = useMemo(
-    () => revealKickoffMessages(allMessages),
+    () => hideKickoffMessages(allMessages),
     [allMessages],
   );
   // Hide the container for one frame when messages first load so

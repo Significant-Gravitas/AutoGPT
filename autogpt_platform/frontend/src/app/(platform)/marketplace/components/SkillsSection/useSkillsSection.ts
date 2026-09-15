@@ -4,17 +4,26 @@ import { okData } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { SHELF_SIZE } from "./helpers";
 
-export function useSkillsSection() {
+interface Args {
+  category?: string | null;
+}
+
+export function useSkillsSection({ category }: Args = {}) {
   const { isLoggedIn } = useAuth();
 
   const query = useGetV2ListMarketplaceSkills(
-    { page_size: SHELF_SIZE },
-    { query: { select: (response) => okData(response) } },
+    { page_size: SHELF_SIZE, ...(category ? { category } : {}) },
+    {
+      query: {
+        select: (response) => okData(response),
+        placeholderData: (previousData) => previousData,
+      },
+    },
   );
 
   // An install lands under the listing's slug, so the user's own skill names
   // are what says which shelf cards are already added.
-  const installed = useListCopilotSkills({
+  const installed = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled: isLoggedIn },
   });
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { getExpertCover } from "../../helpers";
@@ -45,7 +46,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
               )}
             >
               <Icon icon={accent.roleIcon} size={12} />
-              {expert.role}
+              {getExpertRoleLabel(expert.role)}
             </Text>
             <IntegrationIcons
               expertName={expert.name}

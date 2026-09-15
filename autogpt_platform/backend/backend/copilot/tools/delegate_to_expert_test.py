@@ -394,6 +394,24 @@ class TestDelegation:
         assert mock_sessions[0].dry_run is True
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, roster, mock_turn, mock_sessions
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_handoff_message_names_the_delegating_expert(
         self, roster, mock_turn, mock_sessions
     ):
@@ -439,7 +457,7 @@ class TestDelegation:
         assert r.expert is not None
         assert r.expert.id == "expert-b"
         assert r.expert.name == "Bea"
-        assert "Sub-Otto" not in r.message
+        assert "Subtask" not in r.message
         assert "Bea" in r.message
 
     @pytest.mark.asyncio
@@ -675,6 +693,13 @@ class TestBorrowedThreadLimits:
     private scratch space — the user can open the returned link and type into
     it. The delegator is owed its answer, not a live window or a stop button."""
 
+    @pytest.fixture(autouse=True)
+    def mock_stream_registry(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            AsyncMock(return_value=None),
+        )
+
     async def _delegate(self, parent) -> None:
         await DelegateToExpertTool()._execute(
             user_id="alice",
@@ -685,9 +710,11 @@ class TestBorrowedThreadLimits:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_name", ["Bea", "Subtask Reviewer"])
     async def test_delegator_cannot_cancel_a_teammates_turn(
-        self, roster, mock_turn, mock_sessions, monkeypatch
+        self, roster, mock_turn, mock_sessions, monkeypatch, expert_name
     ):
+        roster["expert-b"].name = expert_name
         cancel = AsyncMock()
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.enqueue_cancel_task",
@@ -708,9 +735,11 @@ class TestBorrowedThreadLimits:
         cancel.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_name", ["Bea", "Subtask Reviewer"])
     async def test_delegator_gets_no_message_window_into_the_thread(
-        self, roster, mock_turn, mock_sessions, monkeypatch
+        self, roster, mock_turn, mock_sessions, monkeypatch, expert_name
     ):
+        roster["expert-b"].name = expert_name
         snapshot = AsyncMock()
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result._build_progress_snapshot",
@@ -733,6 +762,9 @@ class TestBorrowedThreadLimits:
 
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "running"
+        assert r.expert is not None and r.expert.name == expert_name
+        assert r.message.startswith(f"{expert_name} is still running after ")
+        assert r.message.count(expert_name) == 1
         assert r.progress is None
         snapshot.assert_not_awaited()
 

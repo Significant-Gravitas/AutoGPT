@@ -26,9 +26,9 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         <div className="flex min-w-0 flex-col gap-2">
           {withHeading && <Text variant="h2">Scheduled</Text>}
           <Text variant="body" className="!text-zinc-500">
-            Every automated job in one place — follow-up messages your Otto will
-            send itself AND recurring agent runs from the builder. Open a row to
-            jump into the session / agent, or cancel one you no longer need.
+            Every automated job in one place — your experts&apos; scheduled
+            follow-ups and recurring agent runs from the builder. Open an item
+            to view its chat or agent, or cancel one you no longer need.
           </Text>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
