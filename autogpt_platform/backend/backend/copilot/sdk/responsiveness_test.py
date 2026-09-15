@@ -8,12 +8,13 @@ the per-turn ``mode`` argument.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.expert_context import ExpertSessionUnavailableError
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, PendingQuestion
 
 from .service import (
     _enqueue_graphiti_turn,
@@ -149,19 +150,39 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope():
 
 @pytest.mark.asyncio
 async def test_expert_identity_failure_precedes_memory_read_and_write():
+    """Identity raise must not leave a stuck Home card (#14118).
+
+    clear_pending_question runs on the user-message turn *before*
+    build_expert_identity_suffix, so org/team / archived failures still
+    clear pending_question while memory read/write never runs.
+    """
     session = _make_session("user-1", expert_id="expert-1")
+    session.metadata.pending_question = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
     identity_mock = AsyncMock(
         side_effect=ExpertSessionUnavailableError(
-            "The expert for this session no longer exists or is archived."
+            "This expert session must be reopened in its personal workspace."
         )
     )
     fetch_mock = AsyncMock()
     enqueue_mock = AsyncMock()
+    clear_db = AsyncMock()
+    call_order: list[str] = []
+
+    async def _identity(*args, **kwargs):
+        call_order.append("identity")
+        return await identity_mock(*args, **kwargs)
+
+    async def _clear_db(*args, **kwargs):
+        call_order.append("clear_db")
+        return await clear_db(*args, **kwargs)
 
     with (
         patch(
             "backend.copilot.sdk.service.build_expert_identity_suffix",
-            new=identity_mock,
+            new=_identity,
         ),
         patch(
             "backend.copilot.sdk.service._fetch_graphiti_context",
@@ -170,6 +191,10 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
         patch(
             "backend.copilot.sdk.service._enqueue_graphiti_turn",
             new=enqueue_mock,
+        ),
+        patch(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=_clear_db)),
         ),
         pytest.raises(ExpertSessionUnavailableError),
     ):
@@ -187,6 +212,9 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
     fetch_mock.assert_not_awaited()
     enqueue_mock.assert_not_awaited()
     assert session.messages == []
+    assert session.metadata.pending_question is None
+    clear_db.assert_awaited_once_with(session.session_id, session.user_id)
+    assert call_order == ["clear_db", "identity"]
 
 
 @pytest.mark.asyncio
