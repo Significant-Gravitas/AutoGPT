@@ -35,6 +35,7 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
+from backend.api.rest_api import app as real_app
 from backend.data.model import AutoTopUpConfig, TransactionHistory
 from backend.data.org_credit import OrgCreditModel
 
@@ -334,9 +335,19 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
     """Introspect the mounted app so a *new* ungated /credits route fails.
 
     ``GATED_ROUTES`` above is hand-maintained, so on its own it can only prove
-    that the routes someone remembered to list are gated. This walks the real
-    routing table instead: every ``/credits*`` route must either carry the
-    MANAGE_BILLING dependency or be an explicit, documented exemption.
+    that the routes someone remembered to list are gated. This walks the routing
+    table instead: every ``/credits*`` route must either carry the MANAGE_BILLING
+    dependency or be an explicit, documented exemption.
+
+    Scope, deliberately: this walks ``v1_router``'s own mount, not the real app,
+    so it does not see the eight ``/api/credits*`` routes served by other modules
+    (admin, trials, exports). Widening it to ``real_app`` makes all eight
+    unexpected at once and needs each audited against this rule on its own —
+    a security review, not a refactor, tracked as SECRT-2650. Until then this
+    cannot catch an ungated route outside ``v1_router``, and once the credits
+    section moves to its own module it will see nothing at all: that move must
+    mount ``real_app`` and carry the eight in a ``PENDING_AUDIT`` set, so a
+    ninth unexpected route still fails while none of the eight is signed off.
     """
     gated: set[str] = set()
     ungated: set[str] = set()
@@ -383,7 +394,7 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
     """
     ungated = {
         route.name
-        for route in app.routes
+        for route in real_app.routes
         if isinstance(route, APIRoute)
         and "get_credit_model" in inspect.getsource(route.endpoint)
         and OrgAction.MANAGE_BILLING not in _enforced_org_actions(route.dependant)
