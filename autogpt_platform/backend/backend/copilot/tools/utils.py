@@ -458,28 +458,57 @@ async def match_user_credentials_to_graph(
         _,
         _,
     ) in aggregated_creds.items():
-        # Find first matching credential by provider, type, scopes, and host/URL
-        matching_cred = next(
-            (
-                cred
-                for cred in available_creds
-                if cred.provider in credential_requirements.provider
-                and cred.type in credential_requirements.supported_types
-                and (
-                    cred.type != "oauth2"
-                    or _credential_has_required_scopes(cred, credential_requirements)
-                )
-                and (
-                    cred.type != "host_scoped"
-                    or _credential_is_for_host(cred, credential_requirements)
-                )
-                and (
-                    cred.provider != ProviderName.MCP
-                    or _credential_is_for_mcp_server(cred, credential_requirements)
-                )
-            ),
-            None,
+        # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+        # Per-field attribution for the graph path (the block-path matcher above
+        # does not run for graph prompts, so without this we are blind here).
+        logger.warning(
+            "[SCOPEDEBUG] graph user=%s field=%s provider=%s scopes=%s",
+            user_id,
+            credential_field_name,
+            sorted(str(p) for p in credential_requirements.provider),
+            sorted(credential_requirements.required_scopes or []),
         )
+        logger.warning(
+            "[SCOPEDEBUG] graph matching %d rows against provider=%s scopes=%s",
+            len(available_creds),
+            sorted(str(p) for p in credential_requirements.provider),
+            sorted(credential_requirements.required_scopes or []),
+        )
+        # Find first matching credential by provider, type, scopes, and host/URL
+        matching_cred = None
+        for cred in available_creds:
+            if cred.provider not in credential_requirements.provider:
+                continue
+            if cred.type not in credential_requirements.supported_types:
+                continue
+            if cred.type == "oauth2" and not _credential_has_required_scopes(
+                cred, credential_requirements
+            ):
+                # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
+                logger.warning(
+                    "[SCOPEDEBUG] graph SKIP scopes row=%s scopes=%s",
+                    cred.id,
+                    sorted(getattr(cred, "scopes", None) or []),
+                )
+                continue
+            if cred.type == "host_scoped" and not _credential_is_for_host(
+                cred, credential_requirements
+            ):
+                continue
+            if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
+                cred, credential_requirements
+            ):
+                # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
+                logger.warning(
+                    "[SCOPEDEBUG] graph SKIP mcp row=%s",
+                    cred.id,
+                )
+                continue
+            matching_cred = cred
+            break
+        if matching_cred is None:
+            # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
+            logger.warning("[SCOPEDEBUG] graph no row matched")
 
         if matching_cred:
             try:
