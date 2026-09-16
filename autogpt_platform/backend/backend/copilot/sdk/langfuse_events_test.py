@@ -67,6 +67,24 @@ class TestEmitCompactionEvent:
         mock_get_client.side_effect = RuntimeError("langfuse unconfigured")
         emit_compaction_event(path="sdk_internal", stats=_stats())
 
+    @patch("backend.copilot.sdk.langfuse_events.get_client")
+    def test_after_source_and_schema_version(self, mock_get_client):
+        client = _client(mock_get_client)
+        emit_compaction_event(
+            path="sdk_internal", stats=_stats(), after_source="no_summary_line"
+        )
+        metadata = client.create_event.call_args.kwargs["metadata"]
+        assert metadata["after_source"] == "no_summary_line"
+        assert metadata["schema"] == 2
+
+    @patch("backend.copilot.sdk.langfuse_events.get_client")
+    def test_after_source_omitted_when_absent(self, mock_get_client):
+        client = _client(mock_get_client)
+        emit_compaction_event(path="sdk_internal", stats=_stats())
+        metadata = client.create_event.call_args.kwargs["metadata"]
+        assert "after_source" not in metadata
+        assert metadata["schema"] == 2
+
 
 class TestEmitTurnUsageEvent:
     @patch("backend.copilot.sdk.langfuse_events.get_client")
@@ -92,6 +110,38 @@ class TestEmitTurnUsageEvent:
         assert kwargs["metadata"]["cache_creation_tokens"] == 0
         assert kwargs["metadata"]["model"] == "gpt-6-astra"
         assert kwargs["metadata"]["provider"] == "codex"
+        assert kwargs["metadata"]["schema"] == 2
+
+    @patch("backend.copilot.sdk.langfuse_events.get_client")
+    def test_boundary_peak_estimate_key(self, mock_get_client):
+        client = _client(mock_get_client)
+        emit_turn_usage_event(
+            trace_id="trace-1",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            cost_usd=None,
+            model="gpt-6-astra",
+            provider="codex",
+            codex_boundary_peak_estimate=244800,
+        )
+        metadata = client.create_event.call_args.kwargs["metadata"]
+        assert metadata["codex_boundary_peak_estimate"] == 244800
+
+        client.reset_mock()
+        emit_turn_usage_event(
+            trace_id="trace-1",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            cost_usd=None,
+            model="m",
+            provider="anthropic",
+        )
+        metadata = client.create_event.call_args.kwargs["metadata"]
+        assert "codex_boundary_peak_estimate" not in metadata
 
     @patch("backend.copilot.sdk.langfuse_events.get_client")
     def test_inner_codex_gauge_included_when_provided(self, mock_get_client):

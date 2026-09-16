@@ -487,20 +487,25 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     return removed
 
 
-def read_compacted_entries(transcript_path: str) -> list[dict] | None:
-    """Read compacted entries from the CLI session file after compaction.
+AfterSource = Literal[
+    "read", "no_summary_line", "unreadable", "no_path", "outside_base"
+]
+"""How the post-compaction read behind a row/event resolved."""
 
-    Parses the JSONL file line-by-line, finds the ``isCompactSummary: true``
-    entry, and returns it plus all entries after it.
 
-    The CLI writes the compaction summary BEFORE sending the next message,
-    so the file is guaranteed to be flushed by the time we read it.
+def read_compacted_entries_detailed(
+    transcript_path: str,
+) -> tuple[list[dict] | None, AfterSource]:
+    """Read compacted entries plus the outcome of the read itself.
 
-    Returns a list of parsed dicts, or ``None`` if the file cannot be read
-    or no compaction summary is found.
+    Same contract as :func:`read_compacted_entries`, but the second
+    element names *why* entries are missing instead of collapsing every
+    failure into ``None``. A missing after-count with ``no_summary_line``
+    means the CLI compacted without writing a summary we can find;
+    ``unreadable``/``no_path``/``outside_base`` mean we never got to look.
     """
     if not transcript_path:
-        return None
+        return None, "no_path"
 
     _pbase = projects_base()
     real_path = os.path.realpath(transcript_path)
@@ -508,7 +513,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         logger.warning(
             "[Transcript] transcript_path outside projects base: %s", transcript_path
         )
-        return None
+        return None, "outside_base"
 
     try:
         content = Path(real_path).read_text()
@@ -516,7 +521,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         logger.warning(
             "[Transcript] Failed to read session file %s: %s", transcript_path, e
         )
-        return None
+        return None, "unreadable"
 
     lines = content.strip().split("\n")
     compact_idx: int | None = None
@@ -531,8 +536,11 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
             compact_idx = idx  # don't break — find the LAST summary
 
     if compact_idx is None:
-        logger.debug("[Transcript] No compaction summary found in %s", transcript_path)
-        return None
+        # INFO, not DEBUG: a compaction whose payoff we cannot measure is
+        # the exact signal the cascade diagnosis needs, and DEBUG never
+        # reaches the preview/prod logs where that diagnosis happens.
+        logger.info("[Transcript] No compaction summary found in %s", transcript_path)
+        return None, "no_summary_line"
 
     entries: list[dict] = []
     for line in lines[compact_idx:]:
@@ -548,6 +556,24 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         transcript_path,
         compact_idx + 1,
     )
+    return entries, "read"
+
+
+def read_compacted_entries(transcript_path: str) -> list[dict] | None:
+    """Read compacted entries from the CLI session file after compaction.
+
+    Parses the JSONL file line-by-line, finds the ``isCompactSummary: true``
+    entry, and returns it plus all entries after it.
+
+    The CLI writes the compaction summary BEFORE sending the next message,
+    so the file is guaranteed to be flushed by the time we read it.
+
+    Returns a list of parsed dicts, or ``None`` if the file cannot be read
+    or no compaction summary is found. Prefer
+    :func:`read_compacted_entries_detailed` when the caller needs to know
+    *why* the read came back empty.
+    """
+    entries, _ = read_compacted_entries_detailed(transcript_path)
     return entries
 
 

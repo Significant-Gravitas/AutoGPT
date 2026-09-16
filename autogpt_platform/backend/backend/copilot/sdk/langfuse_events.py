@@ -21,11 +21,17 @@ logger = logging.getLogger(__name__)
 
 CompactionPath = Literal["pre_query", "sdk_internal"]
 
+# Event metadata schema version. Bump when a shipped event gains, loses,
+# or renames keys so dashboards can split rather than average across the
+# boundary. (Schema 1 = the unversioned first deploy.)
+EVENT_SCHEMA_VERSION = 2
+
 
 def emit_compaction_event(
     *,
     path: CompactionPath,
     stats: CompactionStats | None,
+    after_source: str | None = None,
     log_prefix: str = "",
 ) -> None:
     """Emit one event per completed compaction cycle on the current trace.
@@ -34,13 +40,19 @@ def emit_compaction_event(
     needed — the event lands on the turn's trace. *stats* may be None
     when the cycle produced no counts; the event still records that a
     cycle ran, which is what makes back-to-back compactions visible.
+    *after_source* names how the post-compaction read resolved (or
+    ``compress_result`` when the counts came from our own compressor
+    rather than a transcript read); it is what makes a missing
+    ``tokensAfter`` diagnosable instead of merely absent.
     """
-    metadata: dict[str, Any] = {"path": path}
+    metadata: dict[str, Any] = {"schema": EVENT_SCHEMA_VERSION, "path": path}
     if stats is not None:
         # to_wire() carries the camelCase names the tool row's JSON output
         # uses, so the same cycle reads identically in the DB and Langfuse.
         metadata.update(stats.to_wire())
     metadata["dropped"] = stats.dropped if stats is not None else False
+    if after_source is not None:
+        metadata["after_source"] = after_source
     try:
         get_client().create_event(name="copilot-compaction", metadata=metadata)
     except Exception:
@@ -61,6 +73,7 @@ def emit_turn_usage_event(
     provider: str,
     codex_input_tokens: int | None = None,
     codex_cached_input_tokens: int | None = None,
+    codex_boundary_peak_estimate: int | None = None,
     log_prefix: str = "",
 ) -> None:
     """Attach the turn's token usage to its Langfuse trace.
@@ -70,14 +83,19 @@ def emit_turn_usage_event(
     trace id was captured. The reconcile path covers OpenRouter turns;
     this covers the Codex/subscription/direct turns it never sees.
 
-    The ``codex_*`` pair carries the inner gauge — the Codex gateway's
-    turn-aggregate input counts — next to the CLI-side numbers, so one
-    event shows both sides of the outer/inner window split. Omitted on
-    non-Codex routes.
+    The ``codex_*`` fields carry the inner gauge next to the CLI-side
+    numbers, so one event shows both sides of the outer/inner window
+    split. Omitted on non-Codex routes. ``codex_input_tokens`` is the
+    gateway's turn-aggregate (a billing total, not a size — it sums
+    every invoke); ``codex_boundary_peak_estimate`` is the max
+    per-request estimate the gateway actually reported, tracked
+    independently of completed results so it survives turns whose
+    conversations raised before recording anything.
     """
     if trace_id is None:
         return
     metadata: dict[str, Any] = {
+        "schema": EVENT_SCHEMA_VERSION,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "cache_read_tokens": cache_read_tokens,
@@ -90,6 +108,8 @@ def emit_turn_usage_event(
         metadata["codex_input_tokens"] = codex_input_tokens
     if codex_cached_input_tokens is not None:
         metadata["codex_cached_input_tokens"] = codex_cached_input_tokens
+    if codex_boundary_peak_estimate is not None:
+        metadata["codex_boundary_peak_estimate"] = codex_boundary_peak_estimate
     try:
         get_client().create_event(
             trace_context={"trace_id": trace_id},
@@ -103,6 +123,7 @@ def emit_turn_usage_event(
 
 
 __all__ = [
+    "EVENT_SCHEMA_VERSION",
     "CompactionPath",
     "emit_compaction_event",
     "emit_turn_usage_event",

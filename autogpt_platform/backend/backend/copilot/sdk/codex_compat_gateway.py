@@ -165,6 +165,10 @@ class CodexAnthropicGateway:
         self._conversations: dict[str, _Conversation] = {}
         self._tool_calls: dict[str, _ToolCallRecord] = {}
         self._results: list[CodexInvocationResult] = []
+        # Max per-request estimate reported to the CLI this turn. Tracked
+        # at the boundary (not derived from _results) so it survives turns
+        # whose conversations raised before recording anything.
+        self._peak_boundary_estimate: int = 0
         self._closed = False
         self._close_lock = asyncio.Lock()
 
@@ -199,6 +203,24 @@ class CodexAnthropicGateway:
     @property
     def results(self) -> tuple[CodexInvocationResult, ...]:
         return tuple(self._results)
+
+    @property
+    def peak_boundary_estimate(self) -> int:
+        """Max per-request input estimate reported this turn (0 = none yet)."""
+        return self._peak_boundary_estimate
+
+    def _record_boundary_estimate(self, estimate: int) -> None:
+        """Record one reported boundary estimate and its running peak.
+
+        Logged per request: this series is the CLI's trigger input on the
+        Codex route, and the peak is the turn summary that survives
+        conversations which raise before recording a result.
+        """
+        self._peak_boundary_estimate = max(self._peak_boundary_estimate, estimate)
+        logger.info(
+            f"codex boundary: estimate={estimate} "
+            f"peak={self._peak_boundary_estimate} model={self.model}"
+        )
 
     async def start(self) -> None:
         await self.__aenter__()
@@ -344,6 +366,7 @@ class CodexAnthropicGateway:
             )
 
         input_tokens = _estimate_input_tokens(payload)
+        self._record_boundary_estimate(input_tokens)
         if payload.get("stream") is True:
             return await self._streaming_response(
                 request,

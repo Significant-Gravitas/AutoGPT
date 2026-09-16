@@ -824,3 +824,31 @@ def test_serialize_messages_keeps_inline_system_turns() -> None:
 def test_serialize_messages_rejects_unknown_roles() -> None:
     with pytest.raises(ValueError):
         _serialize_messages([{"role": "tool", "content": "result"}])
+
+
+def _unstarted_gateway() -> CodexAnthropicGateway:
+    # No `async with`: construction alone never binds a socket, so this
+    # runs anywhere (unlike the request-level tests elsewhere in this file).
+    return CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-6-astra",
+        transport=_FakeTransport(_FakeAgentSession()),
+    )
+
+
+class TestBoundaryPeakEstimate:
+    def test_peak_tracks_max_across_boundaries(self) -> None:
+        gateway = _unstarted_gateway()
+        assert gateway.peak_boundary_estimate == 0
+        gateway._record_boundary_estimate(100_000)
+        gateway._record_boundary_estimate(244_800)
+        gateway._record_boundary_estimate(50_000)
+        assert gateway.peak_boundary_estimate == 244_800
+
+    def test_boundary_series_logged_per_request(self, caplog) -> None:
+        gateway = _unstarted_gateway()
+        with caplog.at_level(
+            logging.INFO, logger="backend.copilot.sdk.codex_compat_gateway"
+        ):
+            gateway._record_boundary_estimate(244_800)
+        assert "codex boundary: estimate=244800 peak=244800" in caplog.text

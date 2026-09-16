@@ -846,6 +846,7 @@ class TestCompactionLangfuseEvents:
         kwargs = mock_emit.call_args.kwargs
         assert kwargs["path"] == "pre_query"
         assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "compress_result"
 
     @pytest.mark.asyncio
     @patch("backend.copilot.sdk.compaction.emit_compaction_event")
@@ -855,12 +856,15 @@ class TestCompactionLangfuseEvents:
         tracker.on_compact()
         tracker.emit_start_if_ready()
         stats = CompactionStats(tokens_before=128_000, tokens_after=31_000)
-        result = await tracker.emit_end_if_ready(session, stats)
+        result = await tracker.emit_end_if_ready(
+            session, stats, after_source="no_summary_line"
+        )
         assert result.just_ended is True
         mock_emit.assert_called_once()
         kwargs = mock_emit.call_args.kwargs
         assert kwargs["path"] == "sdk_internal"
         assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "no_summary_line"
 
     @pytest.mark.asyncio
     @patch("backend.copilot.sdk.compaction.emit_compaction_event")
