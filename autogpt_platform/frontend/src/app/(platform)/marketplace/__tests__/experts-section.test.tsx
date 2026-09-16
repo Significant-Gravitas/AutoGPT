@@ -248,6 +248,27 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Hired")).toBeDefined();
   });
 
+  test("emits the section view event once the shelf has rendered", async () => {
+    const funnelBodies: { type: string }[] = [];
+    server.use(
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        funnelBodies.push((await request.json()) as { type: string });
+        return HttpResponse.json({ status: "ok" });
+      }),
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findByText("Maria");
+    await waitFor(() =>
+      expect(funnelBodies.map((body) => body.type)).toContain(
+        "experts_section_viewed",
+      ),
+    );
+  });
+
   test("template becomes viewable again once the expert is fired", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),

@@ -5414,12 +5414,53 @@ async def test_install_workflow_emits_workflow_installed(
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
     emit.assert_awaited_once_with(
         test_user.id,
         "workflow_installed_on_expert",
-        {"expert_id": hired.expert.id, "store_listing_version_id": slv_id},
+        {
+            "expert_id": hired.expert.id,
+            "source": "marketplace",
+            "store_listing_version_id": slv_id,
+        },
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_emits_for_the_library_source_too(
+    server: SpinTestServer, test_user
+):
+    """Installing one of the caller's own library agents is the same funnel
+    step as installing a marketplace listing, and must be counted as one."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent = await experts_db.library_db.add_store_agent_to_library(
+        slv_id, test_user.id
+    )
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent.id
+        )
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": hired.expert.id,
+            "source": "library",
+            "library_agent_id": library_agent.id,
+        },
+    )
+
+    # A repeat install is the same attachment, so it is not a second step.
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent.id
+        )
+    emit.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -5429,7 +5470,9 @@ async def test_install_workflow_race_returns_winner_without_emitting(
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    winner = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    winner = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
     winner_row = await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"id": winner.id}, include=experts_db._WORKFLOW_ROW_INCLUDE
     )
@@ -5453,7 +5496,9 @@ async def test_install_workflow_race_returns_winner_without_emitting(
         ),
         patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit,
     ):
-        raced = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        raced = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
     assert raced.id == winner.id
     emit.assert_not_awaited()
@@ -5515,6 +5560,39 @@ async def test_update_soul_skips_writing_style_when_existing_voice_changes(
             ),
         )
 
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_copilot_soul_patch_emits_writing_style_on_first_add(
+    server: SpinTestServer, test_user
+):
+    """The copilot's Soul-edit path writes voicePreferences without going
+    through update_soul, so it needs the same first-add gate."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_soul_fields(
+        test_user.id, hired.expert.id, voice_preferences=""
+    )
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        applied = await experts_db.update_soul_fields_if_current(
+            test_user.id,
+            hired.expert.id,
+            voice_preferences="Warm, concise, and direct.",
+            expected_voice_preferences="",
+        )
+    assert applied
+    emit.assert_awaited_once_with(
+        test_user.id, "writing_style_added", {"expert_id": hired.expert.id}
+    )
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.update_soul_fields_if_current(
+            test_user.id,
+            hired.expert.id,
+            voice_preferences="Warm and brief.",
+            expected_voice_preferences="Warm, concise, and direct.",
+        )
     emit.assert_not_awaited()
 
 

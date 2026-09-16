@@ -199,6 +199,43 @@ describe("Marketplace expert page", () => {
     );
   });
 
+  test("emits the profile-opened and hire-started funnel events", async () => {
+    const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+    server.use(
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        funnelBodies.push(
+          (await request.json()) as {
+            type: string;
+            data: Record<string, unknown>;
+          },
+        );
+        return HttpResponse.json({ status: "ok" });
+      }),
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+    );
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        funnelBodies.find((body) => body.type === "expert_profile_opened")
+          ?.data,
+      ).toEqual({ template_id: mariaTemplate.id }),
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        funnelBodies.find((body) => body.type === "hire_started")?.data,
+      ).toEqual({ template_id: mariaTemplate.id }),
+    );
+  });
+
   test("says when a bundled workflow runs on a schedule, before hiring", async () => {
     server.use(
       getListExpertTemplatesMockHandler([

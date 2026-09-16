@@ -494,6 +494,41 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
   expect(funnelEvents).not.toContain("briefing_opened");
 });
 
+test("tracks briefing outcomes and team members with useful dimensions", async () => {
+  const user = userEvent.setup();
+  const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+  mockDashboard(dashboard);
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      funnelBodies.push(
+        (await request.json()) as {
+          type: string;
+          data: Record<string, unknown>;
+        },
+      );
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("link", { name: /Your camera research is ready/ }),
+  );
+  await user.click(await screen.findByRole("link", { name: "Manage Maria" }));
+
+  await waitFor(() => {
+    expect(
+      funnelBodies.find((body) => body.type === "briefing_outcome_clicked")
+        ?.data,
+    ).toEqual({ status: "completed" });
+    expect(
+      funnelBodies.find((body) => body.type === "home_team_member_clicked")
+        ?.data,
+    ).toEqual({ expert_id: "maria" });
+  });
+});
+
 test("shows a retryable page error when the aggregate cannot load", async () => {
   let attempts = 0;
   const funnelEvents: string[] = [];
@@ -632,7 +667,14 @@ test("view events fire exactly once under StrictMode effect replay", async () =>
       return HttpResponse.json({ status: "ok" });
     }),
   );
-  mockDashboard(dashboard);
+  // briefing_opened is an exposure event, so the briefing has to actually render.
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      narrative: "Two runs finished overnight.",
+    },
+  });
 
   render(
     <StrictMode>
@@ -640,7 +682,7 @@ test("view events fire exactly once under StrictMode effect replay", async () =>
     </StrictMode>,
   );
 
-  await screen.findByRole("heading", { name: "Your briefing" });
+  await screen.findByRole("heading", { name: "Recent work" });
   await waitFor(() => {
     expect(funnelEvents).toContain("home_viewed");
     expect(funnelEvents).toContain("briefing_opened");

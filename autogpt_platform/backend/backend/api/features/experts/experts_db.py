@@ -1829,6 +1829,15 @@ async def _install_library_workflow(
         data={"expertId": expert_id, "libraryAgentId": library_agent_id},
         include=_WORKFLOW_ROW_INCLUDE,
     )
+    await emit_funnel_event(
+        user_id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": expert_id,
+            "source": "library",
+            "library_agent_id": library_agent_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -1874,6 +1883,7 @@ async def _install_marketplace_workflow(
         "workflow_installed_on_expert",
         {
             "expert_id": expert_id,
+            "source": "marketplace",
             "store_listing_version_id": store_listing_version_id,
         },
     )
