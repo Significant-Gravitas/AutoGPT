@@ -125,7 +125,7 @@ class CatalogPayload(BaseModel):
     providers: list[CatalogProvider]
     creators: list[CatalogCreator]
     models: list[CatalogModel] = Field(max_length=MAX_CATALOG_MODELS)
-    # surface -> mode -> tier -> model slug (e.g. routing["copilot"]["fast"]
-    # ["standard"]). The admin-set config layer of model resolution: LD
-    # per-user override above it, ChatConfig env defaults below it.
-    routing: dict[str, dict[str, dict[str, str]]] = {}
+    # surface -> tier -> model slug (e.g. routing["copilot"]["standard"]).
+    # The admin-set config layer of model resolution: LD per-user override
+    # above it, ChatConfig env defaults below it.
+    routing: dict[str, dict[str, str]] = {}

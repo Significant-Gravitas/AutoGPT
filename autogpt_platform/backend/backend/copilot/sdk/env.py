@@ -48,15 +48,19 @@ def build_sdk_env(
     model: str | None = None,
     codex_gateway_url: str | None = None,
     codex_gateway_token: str | None = None,
+    local_context_window: int | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
-    Four modes (checked in order):
+    Five modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
-    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
+    2. **Local** — the operator backend's Anthropic-compatible Messages
+       endpoint (base URL derived from the chat URL, chat API key as the
+       auth token). No Langfuse trace headers.
+    3. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
+    4. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
        from the parent environment (no overrides needed).
-    4. **OpenRouter** (default) — overrides base URL and auth token to
+    5. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
@@ -67,6 +71,10 @@ def build_sdk_env(
     or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
     vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
     Moonshot since the cache-cost rationale doesn't apply there).
+
+    *local_context_window* is the probed backend window, used only on the
+    local route (see ``sdk/context_window.py``).  Callers without a probe
+    leave it unset and the profile's blind constant applies.
     """
     if (codex_gateway_url is None) != (codex_gateway_token is None):
         raise ValueError(
@@ -86,7 +94,7 @@ def build_sdk_env(
     # A connected Codex account is a request-scoped auth transport.  It must
     # win over the deployment-wide profile, including ``local``: the loopback
     # gateway speaks the Anthropic wire protocol expected by Claude Code even
-    # when the configured baseline provider does not.
+    # when the configured provider does not.
     codex_route = codex_gateway_url is not None
     if codex_route and codex_gateway_token is not None:
         no_proxy = _loopback_no_proxy_value()
@@ -100,20 +108,25 @@ def build_sdk_env(
             "no_proxy": no_proxy,
         }
 
-    # Transports that don't run the SDK at all (currently: ``local`` —
-    # Ollama et al. don't implement Anthropic's wire protocol) must not
-    # reach this builder. The processor downgrades extended_thinking →
-    # fast for those transports, so an entry here indicates a bug
-    # upstream.  Fail loudly rather than constructing a doomed env.
-    elif not config.transport.supports_sdk:
-        raise RuntimeError(
-            f"build_sdk_env() called under transport "
-            f"{config.transport.name!r}, which doesn't support the SDK. "
-            "The request should have been downgraded to the baseline "
-            "path — see executor.processor.resolve_use_sdk."
-        )
+    # --- Mode 2: local backend's Anthropic-compatible Messages endpoint ---
+    # Backends that serve /v1/messages with tool use (Ollama 0.14+, vLLM,
+    # llama.cpp server, LiteLLM proxy) look like any other Anthropic base
+    # URL to the CLI: strip the OpenAI-compat version suffix and pass the
+    # chat API key as the auth token. No Langfuse trace headers — there
+    # is no proxy hop to forward them.
+    elif config.transport.name == "local":
+        base = (config.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+            "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
+            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
+        }
 
-    # --- Mode 1: Claude Code subscription auth ---
+    # --- Mode 3: Claude Code subscription auth ---
     elif config.use_claude_code_subscription:
         validate_subscription()
         env = {
@@ -122,7 +135,7 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": "",
         }
 
-    # --- Mode 2: Direct Anthropic (no proxy hop) ---
+    # --- Mode 4: Direct Anthropic (no proxy hop) ---
     elif not config.openrouter_active:
         # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
         # rather than subscription auth if the container has those tokens set.
@@ -131,7 +144,7 @@ def build_sdk_env(
             "CLAUDE_CODE_REFRESH_TOKEN": "",
         }
 
-    # --- Mode 3: OpenRouter proxy ---
+    # --- Mode 5: OpenRouter proxy ---
     else:
         base = (config.base_url or "").rstrip("/")
         if base.endswith("/v1"):
@@ -182,7 +195,9 @@ def build_sdk_env(
     # an emergent property of whichever bundled CLI we happen to ship.
     # Each route is held to its coding engine's default window (see
     # ``sdk/context_window.py``); the platform route keeps the 200K default.
-    window = pinned_context_window(config, model, codex_route=codex_route)
+    window = pinned_context_window(
+        config, model, codex_route=codex_route, local_window=local_context_window
+    )
     env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
     # The window above is clamped by the model's own window, which this

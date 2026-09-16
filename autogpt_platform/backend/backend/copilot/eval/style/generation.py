@@ -1,6 +1,6 @@
-"""One expert turn the way the baseline engine sends it: production's system
-prompt, first-turn context blocks and tool schemas, the routed model, the
-OpenAI-compat transport.
+"""One expert turn the way production's OpenAI-compat path sends it:
+production's system prompt, first-turn context blocks and tool schemas,
+the routed model, the OpenAI-compat transport.
 
 Tool calls get a stub result and the loop continues, so the model reaches
 its written answer instead of narrating a tool call as text — which is what
@@ -19,7 +19,7 @@ from openai.types.chat import (
 from pydantic import BaseModel, Field
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.baseline.service import (
+from backend.copilot.cache_markers import (
     _build_cached_system_message,
     _fresh_anthropic_caching_headers,
     _mark_tools_with_cache_control,
@@ -85,8 +85,9 @@ class Turn(BaseModel):
 
 
 def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
-    """The baseline engine's main client: OpenRouter, or api.anthropic.com's
-    OpenAI-compat endpoint when only an Anthropic key is configured."""
+    """Production's OpenAI-compat main client: OpenRouter, or
+    api.anthropic.com's OpenAI-compat endpoint when only an Anthropic key
+    is configured."""
     api_key, base_url = config.main_client_credentials
     return openai.AsyncOpenAI(api_key=api_key or "", base_url=base_url)
 
@@ -119,7 +120,7 @@ async def generate_turn(
     messages: list[dict[str, Any]] = [system, {"role": "user", "content": user_message}]
     extra_body = (
         {"usage": {"include": True}}
-        if config.baseline_provider == "openrouter"
+        if config.openai_compat_provider == "openrouter"
         else None
     )
     turn = Turn(

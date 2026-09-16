@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from backend.copilot.response_model import (
     ResponseType,
     StreamCompactionProgress,
-    StreamModeChanged,
     StreamToolDisplayAvailable,
     ToolDisplayData,
 )
@@ -23,18 +22,6 @@ def test_tool_display_serializes_as_persistent_ai_sdk_data_part():
         "type": "data-tool-display",
         "id": "call-1",
         "data": {"toolCallId": "call-1", "displayName": 'Résumé "Daily"'},
-    }
-
-
-def test_mode_changed_serializes_as_ai_sdk_data_part():
-    """The frontend reads ``dataPart.data.mode`` — mode must be nested under
-    ``data``, not serialized as a top-level sibling of ``type``."""
-    sse = StreamModeChanged(mode="extended_thinking").to_sse()
-    assert sse.startswith("data: ")
-    payload = json.loads(sse[len("data: ") :])
-    assert payload == {
-        "type": "data-mode-changed",
-        "data": {"mode": "extended_thinking"},
     }
 
 

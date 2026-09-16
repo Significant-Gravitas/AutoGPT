@@ -210,39 +210,29 @@ async def test_the_spawn_note_is_empty_without_a_tree(ledger, monkeypatch) -> No
     assert await build_spawn_state_note() == ""
 
 
-# ── engine wiring ──────────────────────────────────────────────────────
-# Both stream functions need a live database, a model route and an LLM to
-# reach their injection point, so the seam is pinned by inspection — the
-# pattern ``markers_test`` already uses on the same two functions.
+# ── SDK wiring ─────────────────────────────────────────────────────────
+# The stream function needs a live database, a model route and an LLM to
+# reach its injection point, so the seam is pinned by inspection — the
+# pattern ``markers_test`` already uses on the same function.
 
 
-def _stream_sources() -> dict[str, str]:
-    from backend.copilot.baseline.service import stream_chat_completion_baseline
+def _sdk_source() -> str:
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
-    return {
-        "baseline": inspect.getsource(stream_chat_completion_baseline),
-        "sdk": inspect.getsource(stream_chat_completion_sdk),
-    }
+    return inspect.getsource(stream_chat_completion_sdk)
 
 
-@pytest.mark.parametrize("engine", ["baseline", "sdk"])
-def test_both_engines_build_the_block_every_turn(engine: str) -> None:
-    assert "build_turn_budget_block(" in _stream_sources()[engine]
+def test_sdk_builds_the_block_every_turn() -> None:
+    assert "build_turn_budget_block(" in _sdk_source()
 
 
-@pytest.mark.parametrize(
-    ("engine", "transcribed"),
-    [("baseline", "user_message_for_transcript"), ("sdk", "current_message")],
-)
-def test_the_block_never_reaches_the_variable_the_transcript_records(
-    engine: str, transcribed: str
-) -> None:
+def test_the_block_never_reaches_the_variable_the_transcript_records() -> None:
     """The transcript is replayed on the next turn; one stale figure per turn
-    is what folding the block into it would leave behind. Both engines reach
+    is what folding the block into it would leave behind. The SDK reaches
     the block through a ``budget_status`` local, so naming only the builder
     would miss every regression that actually folds it in."""
-    tree = ast.parse(textwrap.dedent(_stream_sources()[engine]))
+    transcribed = "current_message"
+    tree = ast.parse(textwrap.dedent(_sdk_source()))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -251,6 +241,4 @@ def test_the_block_never_reaches_the_variable_the_transcript_records(
             continue
         folded = ast.unparse(node.value)
         for carrier in ("build_turn_budget_block", "budget_status"):
-            assert (
-                carrier not in folded
-            ), f"{engine}: {carrier} was assigned into {transcribed}"
+            assert carrier not in folded, f"{carrier} was assigned into {transcribed}"

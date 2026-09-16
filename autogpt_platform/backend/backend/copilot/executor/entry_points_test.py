@@ -59,13 +59,13 @@ def test_no_call_site_enqueues_a_turn_without_an_envelope() -> None:
 
 
 def test_no_engine_re_entry_drops_the_envelope() -> None:
-    """The engines re-enter themselves (auto-continue), and those calls are a
+    """The SDK engine re-enters itself (auto-continue), and those calls are a
     second way to produce an unenforced turn: the parameter defaults to None,
     which clears the contextvar for the rest of the turn even though the turn
     genuinely has an envelope. Swept for the same reason as the enqueue sites.
     """
     offenders: list[str] = []
-    targets = {"stream_chat_completion_sdk", "stream_chat_completion_baseline"}
+    targets = {"stream_chat_completion_sdk"}
     for path in _PACKAGE_ROOT.rglob("*.py"):
         if path.name.endswith("_test.py"):
             continue

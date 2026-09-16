@@ -374,14 +374,13 @@ describe("getLatestCompactionPhase", () => {
   });
 
   it("survives ANY transient data part landing mid-compaction", () => {
-    // data-pending-drained and data-mode-changed are real parts the backend
+    // data-pending-drained and data-status are real parts the backend
     // emits mid-turn; an enumerated deny-list dropped the phase (and the
     // bar) the moment one arrived.
     const parts = [
       openRow,
       summarizing,
       dataPart("data-pending-drained", { count: 1 }),
-      dataPart("data-mode-changed", { mode: "chat" }),
       dataPart("data-status", { message: "working" }),
       dataPart("data-some-future-part"),
     ];

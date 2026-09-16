@@ -91,7 +91,7 @@ _dynamic_models: dict[str, RegistryModel] = {}
 # Date-stripped slug → model (claude-haiku-4-5 → the -20251001 entry), so
 # the router's snapshot-suffix fallback is an O(1) lookup, not a scan.
 _date_stripped_models: dict[str, RegistryModel] = {}
-_routes: dict[tuple[str, str, str], str] = {}
+_routes: dict[tuple[str, str], str] = {}
 _loaded = False
 
 
@@ -146,9 +146,8 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
         payload = get_catalog()
     models = _build_models(payload)
     routes = {
-        (surface, mode, tier): slug
-        for surface, modes in payload.routing.items()
-        for mode, tiers in modes.items()
+        (surface, tier): slug
+        for surface, tiers in payload.routing.items()
         for tier, slug in tiers.items()
     }
     _dynamic_models = models
@@ -192,11 +191,11 @@ def get_all_models() -> list[RegistryModel]:
     return list(_dynamic_models.values())
 
 
-def get_route(surface: str, mode: str, tier: str) -> str | None:
+def get_route(surface: str, tier: str) -> str | None:
     """Return the catalog's routing-cell slug, if the cell is set.
 
     Pure L1 lookup — callers own validation of the returned slug (existence
     and is_enabled are checked by the resolver so a stale cell degrades to
     the next routing layer instead of serving a dead model).
     """
-    return _routes.get((surface, mode, tier))
+    return _routes.get((surface, tier))

@@ -325,7 +325,6 @@ def stubbed_models(tmp_path: Path):
     from .assembly import RoutedModel
 
     routed = RoutedModel(
-        mode="thinking",
         slug="anthropic/claude-x",
         transport_slug="anthropic/claude-x",
         source="env",

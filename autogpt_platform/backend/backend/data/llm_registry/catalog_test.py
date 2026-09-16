@@ -64,18 +64,17 @@ def _resolve_cell(by_slug: dict, value: str):
 
 def test_routing_cells_reference_enabled_models():
     by_slug = {m.slug: m for m in CATALOG.models}
-    for surface, modes in CATALOG.routing.items():
-        for mode, tiers in modes.items():
-            for tier, slug in tiers.items():
-                cell = f"routing[{surface}][{mode}][{tier}]"
-                model = _resolve_cell(by_slug, slug)
-                assert model is not None, f"{cell}: unknown model {slug}"
-                assert model.is_enabled, f"{cell}: model {slug} is disabled"
+    for surface, tiers in CATALOG.routing.items():
+        for tier, slug in tiers.items():
+            cell = f"routing[{surface}][{tier}]"
+            model = _resolve_cell(by_slug, slug)
+            assert model is not None, f"{cell}: unknown model {slug}"
+            assert model.is_enabled, f"{cell}: model {slug} is disabled"
 
 
-# NOTE: there is deliberately no "matrix fully specified" guard. Cells ship
+# NOTE: there is deliberately no "tiers fully specified" guard. Cells ship
 # empty and get claimed one at a time — an unset cell means env vars keep
-# that (mode, tier), which is the intended rollout-safe default. Cells that
+# that tier, which is the intended rollout-safe default. Cells that
 # DO exist are governed by the reference and spelling tests above/below.
 
 
@@ -352,18 +351,17 @@ def test_routing_cells_use_transport_ready_spellings():
         candidates |= {c.replace(".", "-") for c in set(candidates)}
         return any(c in slugs for c in candidates)
 
-    for surface, modes in CATALOG.routing.items():
-        for mode, tiers in modes.items():
-            for tier, cell in tiers.items():
-                where = f"routing[{surface}][{mode}][{tier}] = {cell!r}"
-                assert tolerant_match(cell), f"{where} matches no catalog model"
-                assert not cell.startswith("claude-"), (
-                    f"{where}: bare claude-* cells 404 on OpenRouter — use "
-                    "the vendor-prefixed dot form (anthropic/claude-…4.6)"
+    for surface, tiers in CATALOG.routing.items():
+        for tier, cell in tiers.items():
+            where = f"routing[{surface}][{tier}] = {cell!r}"
+            assert tolerant_match(cell), f"{where} matches no catalog model"
+            assert not cell.startswith("claude-"), (
+                f"{where}: bare claude-* cells 404 on OpenRouter — use "
+                "the vendor-prefixed dot form (anthropic/claude-…4.6)"
+            )
+            if cell.startswith("anthropic/"):
+                tail = cell.split("/", 1)[1]
+                assert "." in tail, (
+                    f"{where}: dash-form anthropic/ cells exist on no "
+                    "transport — use the dot form (anthropic/claude-…4.6)"
                 )
-                if cell.startswith("anthropic/"):
-                    tail = cell.split("/", 1)[1]
-                    assert "." in tail, (
-                        f"{where}: dash-form anthropic/ cells exist on no "
-                        "transport — use the dot form (anthropic/claude-…4.6)"
-                    )

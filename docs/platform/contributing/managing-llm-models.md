@@ -40,13 +40,13 @@ Each `CatalogModel` entry:
 > legacy price change may simply delete the snapshot test instead
 > (it is cutover proof, not a permanent fixture).
 
-`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination. **Cells ship empty**: an unset cell means the `CHAT_*_MODEL` env vars keep that combination, and *claiming* a cell is the explicit act of moving its control into the catalog:
+`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each tier. **Cells ship empty**: an unset cell means the `CHAT_*_MODEL` env vars keep that tier, and *claiming* a cell is the explicit act of moving its control into the catalog:
 
 ```python
-# Claiming thinking.standard — env vars keep the other three cells:
+# Claiming standard — env vars keep the other tier:
 routing={
     "copilot": {
-        "thinking": {"standard": "anthropic/claude-sonnet-4.6"},
+        "standard": "anthropic/claude-sonnet-4.6",
     },
 }
 ```
@@ -86,13 +86,13 @@ Two notes. The file is public: a `HIDDEN` model is hidden from pickers, **not fr
 
 ## How AutoPilot picks a model
 
-Each `(mode, tier)` cell resolves through three layers, top wins:
+Each tier resolves through three layers, top wins:
 
-1. **LaunchDarkly `copilot-model-routing`** — per-user JSON flag returning model slugs; used for cohort experiments and rollouts. Optional: when LD is down, resolution falls through and only A/B targeting is lost.
+1. **LaunchDarkly `copilot-model-routing`** — per-user JSON flag returning model slugs (`{"standard": ..., "advanced": ...}`); used for cohort experiments and rollouts. Optional: when LD is down, resolution falls through and only A/B targeting is lost.
 2. **Catalog routing cell** — the PR-authored default above.
 3. **`CHAT_*_MODEL` environment variables** — the bootstrap floor (see `.env.default`).
 
-On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged every time, reported to Sentry once per slug — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Self-hosted installs and local transports skip the gate entirely (LD → env, their slugs are their own business). Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain (message stamping covers the baseline path today).
+On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged every time, reported to Sentry once per slug — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Self-hosted installs and local transports skip the gate entirely (LD → env, their slugs are their own business). Assistant messages are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality.
 
 ## Rolling out a new model
 

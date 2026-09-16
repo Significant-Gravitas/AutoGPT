@@ -19,14 +19,13 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.experts.seed import ROSTER, RosterEntry
 from backend.copilot.config import ChatConfig
-from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     render_expert_identity_suffix,
     render_expert_workflows_block,
     render_team_context,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import ModelMode, resolve_model_route
+from backend.copilot.model_router import resolve_model_route
 from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -54,7 +53,6 @@ DELEGATION_ENABLED = True
 
 
 class RoutedModel(BaseModel):
-    mode: ModelMode
     slug: str
     transport_slug: str
     source: str
@@ -148,20 +146,12 @@ def chat_system_prompt(expert: Expert | None) -> str:
 
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
-    """The model an expert turn runs on: the engine decision, then the
-    router's ``(mode, standard)`` cell. No user id, so LaunchDarkly is
-    skipped and this is the catalog/env layer; a proposed LD value is
-    checked by hand with ``--model``."""
-    use_sdk = await resolve_use_sdk(
-        None,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    mode: ModelMode = "thinking" if use_sdk else "fast"
-    route = await resolve_model_route(mode, "standard", None, config=config)
+    """The model an expert turn runs on: the router's ``standard`` tier.
+    No user id, so LaunchDarkly is skipped and this is the catalog/env
+    layer; a proposed LD value is checked by hand with ``--model``.
+    """
+    route = await resolve_model_route("standard", None, config=config)
     return RoutedModel(
-        mode=mode,
         slug=route.model,
         transport_slug=normalize_model_for_transport(route.model, config),
         source=route.source,

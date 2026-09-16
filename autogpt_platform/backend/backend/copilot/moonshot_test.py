@@ -7,7 +7,6 @@ import pytest
 from backend.copilot.moonshot import (
     is_moonshot_model,
     moonshot_context_window,
-    moonshot_supports_cache_control,
     override_cost_usd,
     rate_card_usd,
 )
@@ -150,34 +149,6 @@ class TestOverrideCostUsd:
         )
         expected = (1000 + 5000 + 2000) * 0.60 / 1_000_000
         assert recomputed == pytest.approx(expected, rel=1e-9)
-
-
-class TestSupportsCacheControl:
-    """Gate for emitting ``cache_control: {type: ephemeral}`` on message
-    blocks.  True for Moonshot (Anthropic-compat endpoint accepts it)
-    and False for everything else this module knows about — Anthropic
-    callers use their own ``_is_anthropic_model`` check which is
-    combined with this one into a wider gate."""
-
-    def test_moonshot_supports_cache_control(self) -> None:
-        assert moonshot_supports_cache_control("moonshotai/kimi-k2.6") is True
-
-    def test_future_moonshot_sku_supports_cache_control(self) -> None:
-        assert moonshot_supports_cache_control("moonshotai/kimi-k3.0") is True
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "openai/gpt-4o",
-            "google/gemini-2.5-flash",
-            "xai/grok-4",
-            "deepseek/deepseek-v3",
-            "",
-            None,
-        ],
-    )
-    def test_non_moonshot_does_not_support_cache_control(self, model) -> None:
-        assert moonshot_supports_cache_control(model) is False
 
 
 class TestMoonshotContextWindow:

@@ -40,7 +40,7 @@ describe("copilotChatRegistry onData wiring", () => {
     const handler = vi.fn();
     runtime.onData = handler;
 
-    const part = { type: "data-mode-changed", data: { mode: "fast" } };
+    const part = { type: "data-status", data: { message: "working" } };
     chatOptions().onData?.(part);
 
     expect(handler).toHaveBeenCalledWith(part);
@@ -50,7 +50,7 @@ describe("copilotChatRegistry onData wiring", () => {
   it("ignores data parts when no handler is registered", () => {
     getOrCreateCopilotChatRuntime("s1");
     expect(() =>
-      chatOptions().onData?.({ type: "data-mode-changed" }),
+      chatOptions().onData?.({ type: "data-status" }),
     ).not.toThrow();
   });
 
@@ -60,7 +60,7 @@ describe("copilotChatRegistry onData wiring", () => {
     runtime.onData = handler;
     runtime.onData = undefined;
 
-    chatOptions().onData?.({ type: "data-mode-changed" });
+    chatOptions().onData?.({ type: "data-status" });
 
     expect(handler).not.toHaveBeenCalled();
     expect(runtime.onData).toBeUndefined();

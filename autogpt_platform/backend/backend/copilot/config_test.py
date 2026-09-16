@@ -4,7 +4,7 @@ import pytest
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
-from .config import ChatConfig, _host_matches
+from .config import LOCAL_CONTEXT_FALLBACK, ChatConfig, _host_matches
 
 # Env vars that the ChatConfig validators read — must be cleared so they don't
 # override the explicit constructor values we pass in each test.  Includes the
@@ -344,22 +344,6 @@ class TestSdkModelVendorCompatibility:
         )
         assert cfg.thinking_standard_model == "moonshotai/kimi-k2.6"
 
-    def test_fast_standard_model_also_validated(self):
-        """Baseline (fast) tier slugs flow through the same
-        ``normalize_model_for_transport``, so the validator must catch
-        non-Anthropic fast-path slugs at boot — otherwise they'd fail
-        per-turn at runtime when LD or env serves them."""
-        with pytest.raises(Exception, match="fast_standard_model"):
-            ChatConfig(
-                use_openrouter=False,
-                api_key=None,
-                base_url=None,
-                use_claude_code_subscription=False,
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
-                thinking_advanced_model="anthropic/claude-opus-4-7",
-                fast_standard_model="moonshotai/kimi-k2.6",
-            )
-
     def test_bare_non_claude_slug_rejected(self):
         """Bare slugs without the ``vendor/`` prefix must start with
         ``claude-`` — otherwise the runtime ``normalize_model_for_transport``
@@ -389,18 +373,6 @@ class TestSdkModelVendorCompatibility:
             aux_api_key="or-aux-key",
         )
         assert cfg.thinking_standard_model == "claude-sonnet-4-6"
-
-    def test_fast_advanced_model_also_validated(self):
-        with pytest.raises(Exception, match="fast_advanced_model"):
-            ChatConfig(
-                use_openrouter=False,
-                api_key=None,
-                base_url=None,
-                use_claude_code_subscription=False,
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
-                thinking_advanced_model="anthropic/claude-opus-4-7",
-                fast_advanced_model="openai/gpt-5",
-            )
 
     def test_empty_fallback_skipped(self):
         """Empty ``claude_agent_fallback_model`` (no fallback configured)
@@ -432,14 +404,13 @@ class TestTransportProfile:
         cfg = ChatConfig(use_local=True, api_key="ollama", base_url="http://h:11434/v1")
         p = cfg.transport
         assert p.name == "local"
-        assert p.supports_sdk is False
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
-        assert p.inherit_fast_model_for_aux is True
+        assert p.inherit_chat_model_for_aux is True
         assert p.cost_log_provider == "ollama"
         assert p.dispatch_provider == "ollama"
         assert p.supports_flex_tier is False
-        assert p.sdk_context_window == 200_000
+        assert p.sdk_context_window == LOCAL_CONTEXT_FALLBACK == 32_768
 
     def test_openrouter_profile_shape(self):
         cfg = ChatConfig(
@@ -449,11 +420,10 @@ class TestTransportProfile:
         )
         p = cfg.transport
         assert p.name == "openrouter"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert "OPEN_ROUTER_API_KEY" in p.api_key_fallback_envs
         assert "OPENAI_API_KEY" in p.api_key_fallback_envs
-        assert p.inherit_fast_model_for_aux is False
+        assert p.inherit_chat_model_for_aux is False
         assert p.cost_log_provider == "open_router"
         assert p.dispatch_provider == "open_router"
         assert p.supports_flex_tier is True
@@ -463,10 +433,9 @@ class TestTransportProfile:
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
         p = cfg.transport
         assert p.name == "subscription"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
-        assert p.inherit_fast_model_for_aux is False
+        assert p.inherit_chat_model_for_aux is False
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
@@ -478,28 +447,11 @@ class TestTransportProfile:
         )
         p = cfg.transport
         assert p.name == "direct_anthropic"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint == "anthropic"
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
         assert p.sdk_context_window == 1_000_000
-
-    def test_thinking_available_alias_matches_profile(self):
-        """``thinking_available`` is a backwards-compat alias used by
-        ``executor.processor.resolve_use_sdk`` — must stay in
-        sync with ``transport.supports_sdk``."""
-        for kwargs in (
-            dict(use_local=True, api_key="ollama", base_url="http://h:11434/v1"),
-            dict(use_claude_code_subscription=True),
-            dict(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
-        ):
-            cfg = _make_direct_safe_config(**kwargs)
-            assert cfg.thinking_available == cfg.transport.supports_sdk
 
 
 class TestApiKeyFallback:
@@ -544,24 +496,24 @@ class TestApiKeyFallback:
 class TestLocalAuxModels:
     """``title_model`` / ``simulation_model`` cloud defaults instant-404
     on a local backend; under the local transport they inherit the
-    operator's ``fast_standard_model`` so the local install needs only
+    operator's ``thinking_standard_model`` so the local install needs only
     one model slug instead of three."""
 
-    def test_local_inherits_fast_model(self):
+    def test_local_inherits_chat_model(self):
         cfg = ChatConfig(
             use_local=True,
             api_key="ollama",
             base_url="http://h:11434/v1",
-            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            thinking_standard_model="llama3.1:8b-instruct-q4_K_M",
         )
         assert cfg.title_model == "llama3.1:8b-instruct-q4_K_M"
         assert cfg.simulation_model == "llama3.1:8b-instruct-q4_K_M"
-        # ``fast_advanced_model`` must inherit too — without it, the
+        # ``thinking_advanced_model`` must inherit too — without it, the
         # "advanced" tier button in the UI sends the cloud opus slug to
         # Ollama and 404s. Boot-time vendor validator is skipped under
         # local transport so the misconfig wouldn't surface until the
         # first advanced-tier turn.
-        assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.thinking_advanced_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_explicit_aux_model_wins(self):
         """Operators who genuinely want a different aux model (e.g.
@@ -570,17 +522,17 @@ class TestLocalAuxModels:
             use_local=True,
             api_key="ollama",
             base_url="http://h:11434/v1",
-            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            thinking_standard_model="llama3.1:8b-instruct-q4_K_M",
             title_model="qwen3:0.6b",
             simulation_model="qwen3:4b",
-            fast_advanced_model="llama3.1:70b",
+            thinking_advanced_model="llama3.1:70b",
         )
         assert cfg.title_model == "qwen3:0.6b"
         assert cfg.simulation_model == "qwen3:4b"
-        assert cfg.fast_advanced_model == "llama3.1:70b"
+        assert cfg.thinking_advanced_model == "llama3.1:70b"
 
     def test_non_default_cloud_slug_rewritten_under_local(self):
-        """Any ``provider/slug`` value is rewritten to ``fast_standard_model``
+        """Any ``provider/slug`` value is rewritten to ``thinking_standard_model``
         under local transport — not just the exact cloud default. Operators
         who pinned a cloud slug (e.g. ``anthropic/claude-opus-4.6``) before
         adding ``CHAT_USE_LOCAL=true`` would otherwise hit a 404 on the
@@ -590,14 +542,14 @@ class TestLocalAuxModels:
             use_local=True,
             api_key="ollama",
             base_url="http://h:11434/v1",
-            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            thinking_standard_model="llama3.1:8b-instruct-q4_K_M",
             title_model="openai/gpt-4o-mini",
             simulation_model="google/gemini-2.5-flash",
-            fast_advanced_model="anthropic/claude-opus-4.6",
+            thinking_advanced_model="anthropic/claude-opus-4.6",
         )
         assert cfg.title_model == "llama3.1:8b-instruct-q4_K_M"
         assert cfg.simulation_model == "llama3.1:8b-instruct-q4_K_M"
-        assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.thinking_advanced_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
@@ -610,7 +562,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
-        assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
+        assert cfg.thinking_advanced_model == "anthropic/claude-opus-5"
 
 
 class TestLocalRequirementsValidator:
@@ -655,13 +607,11 @@ class TestLocalRequirementsValidator:
 
 class TestLocalTransport:
     """``use_local=True`` exposes a 4th ``effective_transport`` value
-    (``'local'``) for self-hosted OpenAI-compatible endpoints (Ollama et al.).
+    (``'local'``) for self-hosted LLM endpoints (Ollama et al.).
 
-    Local transport is mutually exclusive with the SDK path because the
-    Claude Agent SDK CLI speaks Anthropic's wire protocol and Ollama
-    doesn't implement it. ``thinking_available`` reports this so the
-    request layer can downgrade gracefully (see
-    ``executor.processor.resolve_use_sdk``)."""
+    Local runs the SDK path: the CLI is pointed at the backend's
+    Anthropic-compatible Messages endpoint (see
+    ``sdk/env.build_sdk_env`` mode 2)."""
 
     def test_local_transport_overrides_subscription(self):
         """An operator opting into local self-hosting must not have their
@@ -690,33 +640,10 @@ class TestLocalTransport:
         )
         assert cfg.effective_transport == "local"
 
-    def test_thinking_available_false_under_local(self):
-        cfg = ChatConfig(
-            use_local=True,
-            api_key="ollama",
-            base_url="http://localhost:11434/v1",
-        )
-        assert cfg.thinking_available is False
-
-    def test_thinking_available_true_otherwise(self):
-        """Every non-local transport can serve SDK turns — the Claude
-        Agent CLI works against subscription, OpenRouter, or direct
-        Anthropic auth."""
-        for kwargs in (
-            dict(use_claude_code_subscription=True),
-            dict(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
-            dict(use_openrouter=False, api_key=None, base_url=None),
-        ):
-            cfg = _make_direct_safe_config(**kwargs)
-            assert cfg.thinking_available is True
-
     def test_local_skips_sdk_vendor_validator(self):
-        """Operators on local transport must not be forced to set
-        anthropic/* placeholders for SDK fields they will never use."""
+        """Bare local tags (``llama3.2:3b``) aren't vendor-validatable —
+        any tag the backend serves is legitimate there, so the cloud
+        vendor check is skipped and SDK slugs pass through verbatim."""
         cfg = ChatConfig(
             use_local=True,
             use_openrouter=False,
@@ -733,7 +660,6 @@ class TestLocalTransport:
         cfg = ChatConfig()
         assert cfg.use_local is False
         assert cfg.effective_transport != "local"
-        assert cfg.thinking_available is True
 
     def test_env_var_picked_up(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHAT_USE_LOCAL", "true")
@@ -742,6 +668,112 @@ class TestLocalTransport:
         cfg = ChatConfig()
         assert cfg.use_local is True
         assert cfg.effective_transport == "local"
+
+
+class TestRemovedSdkToggleWarning:
+    """The ``CHAT_USE_CLAUDE_AGENT_SDK`` toggle died with the baseline
+    engine — a stale setting must warn at boot, not fail or vanish."""
+
+    def test_stale_toggle_warns(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("CHAT_USE_CLAUDE_AGENT_SDK", "false")
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            _make_direct_safe_config()
+        assert any("CHAT_USE_CLAUDE_AGENT_SDK" in r.message for r in caplog.records)
+
+    def test_unset_toggle_is_quiet(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            _make_direct_safe_config()
+        assert not [
+            r for r in caplog.records if "CHAT_USE_CLAUDE_AGENT_SDK" in r.message
+        ]
+
+
+class TestRetiredFastNames:
+    """The ``CHAT_FAST_*`` model names survive only as lowest-precedence
+    aliases for the ``thinking_*`` tiers — a stale env file keeps resolving
+    to the tier it used to name, but warns at boot."""
+
+    def test_fast_standard_alias_sets_standard_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_FAST_STANDARD_MODEL", "anthropic/claude-sonnet-4-6")
+        cfg = ChatConfig()
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
+
+    def test_fast_model_alias_sets_standard_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_FAST_MODEL", "anthropic/claude-sonnet-4-6")
+        cfg = ChatConfig()
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
+
+    def test_fast_advanced_alias_sets_advanced_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "anthropic/claude-opus-4-7")
+        cfg = ChatConfig()
+        assert cfg.thinking_advanced_model == "anthropic/claude-opus-4-7"
+
+    def test_current_names_win_over_retired_aliases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Precedence: CHAT_THINKING_* > CHAT_MODEL > CHAT_FAST_*."""
+        monkeypatch.setenv("CHAT_FAST_STANDARD_MODEL", "anthropic/claude-sonnet-4-6")
+        monkeypatch.setenv("CHAT_FAST_MODEL", "anthropic/claude-sonnet-4-6")
+        monkeypatch.setenv("CHAT_MODEL", "anthropic/claude-sonnet-4-7")
+        cfg = ChatConfig()
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-7"
+        monkeypatch.setenv(
+            "CHAT_THINKING_STANDARD_MODEL", "anthropic/claude-sonnet-4-8"
+        )
+        cfg = ChatConfig()
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-8"
+
+    def test_retired_names_warn_at_boot(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "anthropic/claude-opus-4-7")
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            ChatConfig()
+        assert any(
+            "CHAT_FAST_ADVANCED_MODEL" in r.message and "retired" in r.message
+            for r in caplog.records
+        )
+
+    def test_current_names_are_quiet(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("CHAT_MODEL", "anthropic/claude-sonnet-4-6")
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            ChatConfig()
+        assert not [r for r in caplog.records if "retired" in r.message]
+
+
+class TestPromptCacheTtlAlias:
+    """``prompt_cache_ttl`` reads ``CHAT_PROMPT_CACHE_TTL`` with the old
+    ``CHAT_BASELINE_PROMPT_CACHE_TTL`` name kept as a fallback alias."""
+
+    def test_default_is_1h(self):
+        assert ChatConfig().prompt_cache_ttl == "1h"
+
+    def test_current_name_sets_ttl(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_PROMPT_CACHE_TTL", "5m")
+        assert ChatConfig().prompt_cache_ttl == "5m"
+
+    def test_legacy_name_still_resolves(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_BASELINE_PROMPT_CACHE_TTL", "5m")
+        assert ChatConfig().prompt_cache_ttl == "5m"
+
+    def test_current_name_wins_over_legacy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_BASELINE_PROMPT_CACHE_TTL", "5m")
+        monkeypatch.setenv("CHAT_PROMPT_CACHE_TTL", "1h")
+        assert ChatConfig().prompt_cache_ttl == "1h"
 
 
 class TestRenderReasoningInUi:
@@ -779,12 +811,12 @@ class TestStreamReplayCount:
             ChatConfig(stream_replay_count=0)
 
 
-class TestBaselineProvider:
-    """``baseline_provider`` keeps the baseline wire format and cost attribution
+class TestOpenaiCompatProvider:
+    """``openai_compat_provider`` keeps the wire format and cost attribution
     aligned with the endpoint ``main_client_credentials`` actually dials."""
 
     def test_subscription_with_openrouter_creds_resolves_to_openrouter(self):
-        """Subscription + OR creds present routes the baseline OpenAI-compat
+        """Subscription + OR creds present routes the OpenAI-compat
         client to OpenRouter (the CLI's OAuth can't drive it), so the wire
         format must be OpenRouter too. Regression for keying the dialect on
         ``transport.name == "openrouter"`` — ``"subscription"`` here — which
@@ -801,11 +833,11 @@ class TestBaselineProvider:
             "or-key",
             "https://openrouter.ai/api/v1",
         )
-        assert cfg.baseline_provider == "openrouter"
+        assert cfg.openai_compat_provider == "openrouter"
 
     def test_subscription_without_openrouter_resolves_to_anthropic(self):
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
-        assert cfg.baseline_provider == "anthropic"
+        assert cfg.openai_compat_provider == "anthropic"
 
     def test_local_creds_do_not_leak_to_openrouter(self):
         """A local install whose default ``api_key="ollama"`` satisfies the
@@ -817,7 +849,7 @@ class TestBaselineProvider:
             api_key="ollama",
             base_url="http://h:11434/v1",
         )
-        assert cfg.baseline_provider == "local"
+        assert cfg.openai_compat_provider == "local"
 
     def test_openrouter_transport_resolves_to_openrouter(self):
         cfg = ChatConfig(
@@ -825,7 +857,7 @@ class TestBaselineProvider:
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
-        assert cfg.baseline_provider == "openrouter"
+        assert cfg.openai_compat_provider == "openrouter"
 
     def test_direct_mode_resolves_to_anthropic(self):
         cfg = _make_direct_safe_config(
@@ -834,7 +866,7 @@ class TestBaselineProvider:
             api_key=None,
             base_url=None,
         )
-        assert cfg.baseline_provider == "anthropic"
+        assert cfg.openai_compat_provider == "anthropic"
 
 
 class TestMainClientCredentials:
@@ -1008,7 +1040,7 @@ class TestAuxProviderLabel:
             use_local=True,
             api_key="ollama",
             base_url="http://localhost:11434/v1",
-            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            thinking_standard_model="llama3.1:8b-instruct-q4_K_M",
         )
         assert cfg.aux_provider_label == "ollama"
         assert cfg.aux_provider_label == cfg.transport.cost_log_provider

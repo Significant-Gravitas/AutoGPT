@@ -50,6 +50,7 @@ from backend.copilot.model_router import (
 )
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.local_context_probe import probe_local_window_for_sdk
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -960,8 +961,8 @@ async def _consume_sdk_until_done(
 # Continuation query sent when relaunching an attempt after the
 # building-mode switch — the CLI session already holds the original user
 # message and all partial work, so this only needs to orient the model.
-# Sibling of the baseline engine-switch continuation prompt
-# (engine_switch.CONTINUATION_MESSAGE) — keep the two aligned when rewording.
+# The baseline engine-switch sibling of this prompt died with the baseline
+# engine; this message stands alone now.
 _BUILDING_MODE_CONTINUATION = (
     "Building mode is now active — the complete agent-building guide is in "
     "your system prompt (<building_guide>) and survives context compaction. "
@@ -2147,7 +2148,7 @@ def _resolve_sdk_model() -> str | None:
     """
     if config.claude_agent_model:
         return config.claude_agent_model
-    if config.use_claude_code_subscription:
+    if config.use_claude_code_subscription and config.transport.name != "local":
         return None
     return _normalize_model_name(config.thinking_standard_model)
 
@@ -2158,12 +2159,12 @@ async def _resolve_thinking_model_for_user(
 ) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
-    Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
+    Consults ``copilot-model-routing[{tier}]`` and falls back
     to the ``ChatConfig`` default on missing user / missing flag. Returns
     the model together with which routing layer picked it, so persisted
     assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model_route("thinking", tier, user_id, config=config)
+    return await resolve_model_route(tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -2197,7 +2198,7 @@ async def _resolve_sdk_model_for_request(
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
+    2. LaunchDarkly ``copilot-model-routing[{tier}]`` if it
        serves a value different from the config default for *user_id*.
        An LD-served override wins over subscription mode so admins can
        route specific users to a specific model without flipping
@@ -2231,13 +2232,16 @@ async def _resolve_sdk_model_for_request(
     # user somewhere).  Any LD override — even to the same value with
     # stripped whitespace normalised — is an explicit admin choice that
     # must be honoured.  Without this, a subscription-mode deployment
-    # silently ignores the ``copilot-model-routing[thinking][standard]``
+    # silently ignores the ``copilot-model-routing[standard]``
     # flag entirely, which defeats the point of cohort-based routing.
     ld_overrides_default = resolved.model != tier_default
     if (
         not ld_overrides_default
         and tier_name == "standard"
         and config.use_claude_code_subscription
+        # On local there is no subscription default to pick — the CLI
+        # talks to the operator backend, which needs a real slug.
+        and config.transport.name != "local"
     ):
         logger.info(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
@@ -4918,8 +4922,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "advanced" if model == "advanced" else "standard"
             )
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
-                # This turn is on the SDK engine by definition.
-                "thinking",
                 tier_name,
                 credential_lease,
             )
@@ -4943,6 +4945,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             fallback_model = _resolve_fallback_model()
 
+        # On the local transport the CLI pin comes from the backend's
+        # probed window (fail-fast below the SDK floor — see the probe).
+        # Skipped on the Codex route, which bypasses the profile.
+        local_window: int | None = None
+        if codex_gateway is None and config.transport.name == "local":
+            local_window = await probe_local_window_for_sdk(
+                config.base_url or "",
+                sdk_model or "",
+                explicit_window=config.claude_agent_context_window,
+            )
+
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
         sdk_env = build_sdk_env(
@@ -4952,6 +4965,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=_resolve_env_model(sdk_model, fallback_model),
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
+            local_context_window=local_window,
         )
         # What this turn's subprocess was pinned to (window/trigger/flags —
         # never secrets). Without this the pin is unobservable anywhere:
@@ -6145,14 +6159,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 cache_read_tokens=turn_cache_read_tokens,
                 cache_creation_tokens=turn_cache_creation_tokens,
                 log_prefix=log_prefix,
-                cost_usd=turn_cost_usd,
+                # Local turns cost the platform nothing (operator hardware);
+                # the CLI-reported number is meaningless there.
+                cost_usd=(0.0 if config.transport.name == "local" else turn_cost_usd),
                 model=effective_model,
                 # ``provider`` labels the cost-analytics row; the cost
                 # value still comes from the SDK-reported number.
-                # Tracks the actual upstream so the row matches reality:
-                # OpenRouter when ``openrouter_active``, Anthropic
-                # otherwise.
-                provider=("open_router" if config.openrouter_active else "anthropic"),
+                # Tracks the actual upstream so the row matches reality.
+                provider=config.transport.cost_log_provider,
             )
             # Sync path only — when the reconcile fires it emits the
             # authoritative usage event itself (with the real OpenRouter

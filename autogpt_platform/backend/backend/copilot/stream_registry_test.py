@@ -549,18 +549,16 @@ def test_reconstruct_chunk_round_trips_pending_drained():
     assert chunk.drainedCount == 3
 
 
-def test_reconstruct_mode_changed_chunk():
-    """Regression: MODE_CHANGED was missing from the reconstruction map, so
-    the picker-sync event was silently dropped after the Redis stream."""
-    from backend.copilot.response_model import StreamModeChanged
+def test_reconstruct_ignores_retired_mode_changed_chunk():
+    """``data-mode-changed`` died with the baseline engine, but chunks
+    already in Redis (1h stream TTL) must replay without raising — the
+    registry drops unknown types with a warning."""
     from backend.copilot.stream_registry import _reconstruct_chunk
 
-    chunk = _reconstruct_chunk(
-        {"type": "data-mode-changed", "mode": "extended_thinking"}
+    assert (
+        _reconstruct_chunk({"type": "data-mode-changed", "mode": "extended_thinking"})
+        is None
     )
-    assert isinstance(chunk, StreamModeChanged)
-    assert chunk.mode == "extended_thinking"
-    assert '"data"' in chunk.to_sse()
 
 
 def test_reconstruct_chunk_round_trips_compaction_progress():

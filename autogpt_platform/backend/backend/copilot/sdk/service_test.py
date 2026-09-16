@@ -602,6 +602,23 @@ class TestResolveSdkModel:
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() is None
 
+    def test_local_subscription_returns_real_slug_not_none(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Local + subscription flag: there is no subscription default
+        for the CLI to pick (it talks to the operator backend), so the
+        resolver returns the normalised thinking slug instead of None."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="llama3.2:3b",
+            claude_agent_model=None,
+            use_local=True,
+            use_claude_code_subscription=True,
+            api_key="ollama",
+            base_url="http://localhost:11434/v1",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "llama3.2:3b"
+
     def test_model_without_provider_prefix(self, monkeypatch, _clean_config_env):
         """When model has no provider prefix, it still normalizes correctly."""
         from backend.copilot import config as cfg_mod
@@ -682,6 +699,32 @@ class TestResolveSdkModelForRequestLdFallback:
         assert resolved == ("moonshotai/kimi-k2.6", "ld")
 
     @pytest.mark.asyncio
+    async def test_local_subscription_with_no_ld_opinion_returns_real_slug(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Local + subscription flag with LD unset: the subscription-None
+        branch must not fire (no subscription default exists on local),
+        so the tier default normalises through instead."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="llama3.2:3b",
+            claude_agent_model=None,
+            use_local=True,
+            use_claude_code_subscription=True,
+            api_key="ollama",
+            base_url="http://localhost:11434/v1",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value=ResolvedModel("llama3.2:3b", "env")),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+        assert resolved == ("llama3.2:3b", "env")
+
+    @pytest.mark.asyncio
     async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
         self, monkeypatch, _clean_config_env
     ):
@@ -718,7 +761,7 @@ class TestResolveSdkModelForRequestLdFallback:
         self, monkeypatch, _clean_config_env
     ):
         """Bug reported in local test: subscription mode + LD serving Kimi
-        on ``copilot-model-routing[thinking][standard]`` returned
+        on ``copilot-model-routing[standard]`` returned
         ``None`` (CLI picked subscription default Opus), silently
         ignoring the LD override.  An LD value different from the
         config default is an explicit admin decision and must win.

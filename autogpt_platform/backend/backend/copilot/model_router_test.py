@@ -29,10 +29,10 @@ def _function_calls(module_name: str, obj_name: str, callee: str) -> bool:
     return False
 
 
-async def resolve_model(mode, tier, user_id, *, config):
+async def resolve_model(tier, user_id, *, config):
     """Test-local stand-in for the deleted back-compat wrapper: these tests
     assert on resolution VALUES; the routing source is covered elsewhere."""
-    return (await resolve_model_route(mode, tier, user_id, config=config)).model
+    return (await resolve_model_route(tier, user_id, config=config)).model
 
 
 @pytest.fixture(autouse=True)
@@ -51,45 +51,32 @@ def _empty_catalog_by_default():
 def _make_config() -> ChatConfig:
     """Build a config with the canonical defaults so tests read naturally."""
     return ChatConfig(
-        fast_standard_model="anthropic/claude-sonnet-4-6",
-        fast_advanced_model="anthropic/claude-opus-4.7",
         thinking_standard_model="anthropic/claude-sonnet-4-6",
         thinking_advanced_model="anthropic/claude-opus-4.7",
     )
 
 
 _FULL_PAYLOAD = {
-    "fast": {
-        "standard": "fast-standard-model",
-        "advanced": "fast-advanced-model",
-    },
+    "standard": "flat-standard-model",
+    "advanced": "flat-advanced-model",
+}
+
+_LEGACY_PAYLOAD = {
     "thinking": {
-        "standard": "thinking-standard-model",
-        "advanced": "thinking-advanced-model",
+        "standard": "legacy-standard-model",
+        "advanced": "legacy-advanced-model",
     },
 }
 
 
 class TestConfigDefault:
-    def test_fast_standard(self):
+    def test_standard(self):
         cfg = _make_config()
-        assert _config_default(cfg, "fast", "standard") == cfg.fast_standard_model
+        assert _config_default(cfg, "standard") == cfg.thinking_standard_model
 
-    def test_fast_advanced(self):
+    def test_advanced(self):
         cfg = _make_config()
-        assert _config_default(cfg, "fast", "advanced") == cfg.fast_advanced_model
-
-    def test_thinking_standard(self):
-        cfg = _make_config()
-        assert (
-            _config_default(cfg, "thinking", "standard") == cfg.thinking_standard_model
-        )
-
-    def test_thinking_advanced(self):
-        cfg = _make_config()
-        assert (
-            _config_default(cfg, "thinking", "advanced") == cfg.thinking_advanced_model
-        )
+        assert _config_default(cfg, "advanced") == cfg.thinking_advanced_model
 
 
 class TestResolveModel:
@@ -98,8 +85,8 @@ class TestResolveModel:
         """Without user_id there's no LD context — skip the lookup entirely."""
         cfg = _make_config()
         with patch("backend.copilot.model_router.get_feature_flag_value") as mock_flag:
-            result = await resolve_model("fast", "standard", None, config=cfg)
-        assert result == cfg.fast_standard_model
+            result = await resolve_model("standard", None, config=cfg)
+        assert result == cfg.thinking_standard_model
         mock_flag.assert_not_called()
 
     @pytest.mark.asyncio
@@ -111,117 +98,112 @@ class TestResolveModel:
         whitespace-stripped LD side, bypassing subscription mode for
         every anonymous request.  Strip at the source."""
         cfg = ChatConfig(
-            fast_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing ws
-            fast_advanced_model="anthropic/claude-opus-4.7",
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing ws
             thinking_advanced_model="anthropic/claude-opus-4.7",
         )
-        result = await resolve_model("fast", "standard", None, config=cfg)
+        result = await resolve_model("standard", None, config=cfg)
         assert result == "anthropic/claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_payload_none_falls_back(self):
-        """LD unset / serving ``None`` → ChatConfig default for every cell."""
+        """LD unset / serving ``None`` → ChatConfig default for every tier."""
         cfg = _make_config()
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         ):
             assert (
-                await resolve_model("fast", "standard", "u", config=cfg)
-                == cfg.fast_standard_model
-            )
-            assert (
-                await resolve_model("fast", "advanced", "u", config=cfg)
-                == cfg.fast_advanced_model
-            )
-            assert (
-                await resolve_model("thinking", "standard", "u", config=cfg)
+                await resolve_model("standard", "u", config=cfg)
                 == cfg.thinking_standard_model
             )
             assert (
-                await resolve_model("thinking", "advanced", "u", config=cfg)
+                await resolve_model("advanced", "u", config=cfg)
                 == cfg.thinking_advanced_model
             )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "mode, tier, expected",
+        "tier, expected",
         [
-            ("fast", "standard", "fast-standard-model"),
-            ("fast", "advanced", "fast-advanced-model"),
-            ("thinking", "standard", "thinking-standard-model"),
-            ("thinking", "advanced", "thinking-advanced-model"),
+            ("standard", "flat-standard-model"),
+            ("advanced", "flat-advanced-model"),
         ],
     )
-    async def test_full_payload_routes_each_cell(self, mode, tier, expected):
-        """Full JSON with all 4 cells → each cell returns its mapped value."""
+    async def test_full_payload_routes_each_tier(self, tier, expected):
+        """Full flat JSON → each tier returns its mapped value."""
         cfg = _make_config()
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=_FULL_PAYLOAD),
         ):
-            result = await resolve_model(mode, tier, "user-1", config=cfg)
+            result = await resolve_model(tier, "user-1", config=cfg)
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_partial_payload_missing_mode_falls_back(self):
-        """Only ``fast`` provided → present cells returned, missing mode falls back."""
+    @pytest.mark.parametrize(
+        "tier, expected",
+        [
+            ("standard", "legacy-standard-model"),
+            ("advanced", "legacy-advanced-model"),
+        ],
+    )
+    async def test_legacy_nested_payload_is_honored(self, tier, expected):
+        """The pre-collapse ``{"thinking": {...}}`` shape keeps working so
+        in-flight flag edits survive the migration — re-author flat."""
         cfg = _make_config()
-        payload = {
-            "fast": {
-                "standard": "fast-standard-override",
-                "advanced": "fast-advanced-override",
-            }
-        }
+        with patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=_LEGACY_PAYLOAD),
+        ):
+            result = await resolve_model(tier, "user-1", config=cfg)
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_flat_wins_over_legacy_nested(self):
+        """A payload carrying both shapes serves the flat cell — flat is
+        the current authoring, nested is the tolerated leftover."""
+        cfg = _make_config()
+        payload = {**_FULL_PAYLOAD, **_LEGACY_PAYLOAD}
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=payload),
         ):
             assert (
-                await resolve_model("fast", "standard", "u", config=cfg)
-                == "fast-standard-override"
+                await resolve_model("standard", "u", config=cfg)
+                == "flat-standard-model"
             )
             assert (
-                await resolve_model("fast", "advanced", "u", config=cfg)
-                == "fast-advanced-override"
-            )
-            assert (
-                await resolve_model("thinking", "standard", "u", config=cfg)
-                == cfg.thinking_standard_model
-            )
-            assert (
-                await resolve_model("thinking", "advanced", "u", config=cfg)
-                == cfg.thinking_advanced_model
+                await resolve_model("advanced", "u", config=cfg)
+                == "flat-advanced-model"
             )
 
     @pytest.mark.asyncio
     async def test_partial_payload_missing_tier_falls_back(self):
-        """Only ``fast.standard`` set → that cell returned, fast.advanced falls back."""
+        """Only ``standard`` set → that tier returned, advanced falls back."""
         cfg = _make_config()
-        payload = {"fast": {"standard": "fast-standard-override"}}
+        payload = {"standard": "flat-standard-override"}
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=payload),
         ):
             assert (
-                await resolve_model("fast", "standard", "u", config=cfg)
-                == "fast-standard-override"
+                await resolve_model("standard", "u", config=cfg)
+                == "flat-standard-override"
             )
             assert (
-                await resolve_model("fast", "advanced", "u", config=cfg)
-                == cfg.fast_advanced_model
+                await resolve_model("advanced", "u", config=cfg)
+                == cfg.thinking_advanced_model
             )
 
     @pytest.mark.asyncio
     async def test_whitespace_is_stripped(self):
         cfg = _make_config()
-        payload = {"thinking": {"advanced": "  xai/grok-4  "}}
+        payload = {"advanced": "  xai/grok-4  "}
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=payload),
         ):
-            result = await resolve_model("thinking", "advanced", "user-1", config=cfg)
+            result = await resolve_model("advanced", "user-1", config=cfg)
         assert result == "xai/grok-4"
 
     @pytest.mark.asyncio
@@ -237,15 +219,15 @@ class TestResolveModel:
     async def test_non_dict_payload_falls_back_with_warning(
         self, caplog, bogus_payload
     ):
-        """Non-dict payload → all cells fall back + warning logged."""
+        """Non-dict payload → all tiers fall back + warning logged."""
         cfg = _make_config()
         with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
             with patch(
                 "backend.copilot.model_router.get_feature_flag_value",
                 new=AsyncMock(return_value=bogus_payload),
             ):
-                result = await resolve_model("fast", "standard", "user-1", config=cfg)
-        assert result == cfg.fast_standard_model
+                result = await resolve_model("standard", "user-1", config=cfg)
+        assert result == cfg.thinking_standard_model
         assert any("expected a JSON object" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
@@ -259,14 +241,14 @@ class TestResolveModel:
         must say 'non-string' (skipped for ``None`` since that means the
         cell is simply unset, not misconfigured)."""
         cfg = _make_config()
-        payload = {"fast": {"advanced": value}}
+        payload = {"advanced": value}
         with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
             with patch(
                 "backend.copilot.model_router.get_feature_flag_value",
                 new=AsyncMock(return_value=payload),
             ):
-                result = await resolve_model("fast", "advanced", "user-1", config=cfg)
-        assert result == cfg.fast_advanced_model
+                result = await resolve_model("advanced", "user-1", config=cfg)
+        assert result == cfg.thinking_advanced_model
         if value is None:
             # ``None`` is a missing cell, not a misconfiguration — no warning.
             assert not any(
@@ -282,37 +264,36 @@ class TestResolveModel:
         string' — not 'non-string' — so the operator doesn't chase a
         type bug when the flag is simply unset to an empty value."""
         cfg = _make_config()
-        payload = {"fast": {"standard": ""}}
+        payload = {"standard": ""}
         with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
             with patch(
                 "backend.copilot.model_router.get_feature_flag_value",
                 new=AsyncMock(return_value=payload),
             ):
-                result = await resolve_model("fast", "standard", "user-1", config=cfg)
-        assert result == cfg.fast_standard_model
+                result = await resolve_model("standard", "user-1", config=cfg)
+        assert result == cfg.thinking_standard_model
         messages = [r.message for r in caplog.records]
         assert any("empty string" in m for m in messages)
         assert not any("non-string" in m for m in messages)
 
     @pytest.mark.asyncio
-    async def test_mode_cell_not_dict_falls_back_silently(self):
-        """LD payload has ``"fast": "claude"`` (string instead of dict) —
-        treat the whole mode as missing and fall back without spamming
-        a warning per cell (the non-dict-payload branch already warns
-        once for the top-level shape issue when applicable)."""
+    async def test_legacy_thinking_row_not_dict_falls_back_silently(self):
+        """LD payload has ``"thinking": "claude"`` (string instead of dict) —
+        the legacy row is unusable, so treat it as missing and fall back
+        from the config default."""
         cfg = _make_config()
-        payload = {"fast": "anthropic/claude-sonnet-4-6"}
+        payload = {"thinking": "anthropic/claude-sonnet-4-6"}
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=payload),
         ):
             assert (
-                await resolve_model("fast", "standard", "u", config=cfg)
-                == cfg.fast_standard_model
+                await resolve_model("standard", "u", config=cfg)
+                == cfg.thinking_standard_model
             )
             assert (
-                await resolve_model("fast", "advanced", "u", config=cfg)
-                == cfg.fast_advanced_model
+                await resolve_model("advanced", "u", config=cfg)
+                == cfg.thinking_advanced_model
             )
 
     @pytest.mark.asyncio
@@ -325,8 +306,8 @@ class TestResolveModel:
                 "backend.copilot.model_router.get_feature_flag_value",
                 new=AsyncMock(side_effect=RuntimeError("LD down")),
             ):
-                result = await resolve_model("fast", "standard", "user-1", config=cfg)
-        assert result == cfg.fast_standard_model
+                result = await resolve_model("standard", "user-1", config=cfg)
+        assert result == cfg.thinking_standard_model
         records = [r for r in caplog.records if "LD lookup failed" in r.message]
         assert records, "expected an LD-failure warning"
         assert records[0].exc_info is not None
@@ -347,12 +328,10 @@ class TestResolveModel:
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(side_effect=_capture),
         ):
-            await resolve_model("fast", "standard", "u", config=cfg)
-            await resolve_model("fast", "advanced", "u", config=cfg)
-            await resolve_model("thinking", "standard", "u", config=cfg)
-            await resolve_model("thinking", "advanced", "u", config=cfg)
+            await resolve_model("standard", "u", config=cfg)
+            await resolve_model("advanced", "u", config=cfg)
 
-        assert calls == ["copilot-model-routing"] * 4
+        assert calls == ["copilot-model-routing"] * 2
 
 
 class TestRegistryGating:
@@ -423,7 +402,7 @@ class TestRegistryGating:
     def _ld(self, mocker, slug):
         mocker.patch(
             "backend.copilot.model_router.get_feature_flag_value",
-            new=AsyncMock(return_value={"fast": {"standard": slug}}),
+            new=AsyncMock(return_value={"standard": slug}),
         )
 
     @pytest.mark.asyncio
@@ -432,7 +411,7 @@ class TestRegistryGating:
 
         self._ld(mocker, "known/model")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("known/model", "ld")
 
@@ -442,7 +421,7 @@ class TestRegistryGating:
 
         self._ld(mocker, "typo/model")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved.source == "env"
         self.sentry.assert_called_once()
@@ -456,9 +435,7 @@ class TestRegistryGating:
 
         self._ld(mocker, "typo/model")
         for _ in range(3):
-            await resolve_model_route(
-                "fast", "standard", "user-1", config=_make_config()
-            )
+            await resolve_model_route("standard", "user-1", config=_make_config())
         self.sentry.assert_called_once()
 
     @pytest.mark.asyncio
@@ -476,7 +453,7 @@ class TestRegistryGating:
         ]
         self._ld(mocker, "anthropic/claude-haiku-4-5")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("anthropic/claude-haiku-4-5", "ld")
         self.sentry.assert_not_called()
@@ -506,7 +483,7 @@ class TestRegistryGating:
         assert "gpt-5.4" not in self.reg._date_stripped_models
         self._ld(mocker, "openai/gpt-5.4")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("openai/gpt-5.4", "ld")
         self.sentry.assert_not_called()
@@ -517,7 +494,7 @@ class TestRegistryGating:
 
         self._ld(mocker, "disabled/model")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved.source == "env"
         self.sentry.assert_called_once()
@@ -529,7 +506,7 @@ class TestRegistryGating:
 
         self._ld(mocker, "hidden/model")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("hidden/model", "ld")
         self.sentry.assert_not_called()
@@ -542,9 +519,9 @@ class TestRegistryGating:
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         )
-        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
+        self.reg._routes = {("copilot", "standard"): "cell/model"}
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("cell/model", "catalog")
 
@@ -553,9 +530,9 @@ class TestRegistryGating:
         from backend.copilot.model_router import resolve_model_route
 
         self._ld(mocker, "known/model")
-        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
+        self.reg._routes = {("copilot", "standard"): "cell/model"}
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("known/model", "ld")
 
@@ -567,20 +544,18 @@ class TestRegistryGating:
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         )
-        self.reg._routes = {("copilot", "fast", "standard"): "disabled/model"}
+        self.reg._routes = {("copilot", "standard"): "disabled/model"}
         cfg = _make_config()
-        resolved = await resolve_model_route("fast", "standard", "user-1", config=cfg)
-        assert resolved == (cfg.fast_standard_model, "env")
+        resolved = await resolve_model_route("standard", "user-1", config=cfg)
+        assert resolved == (cfg.thinking_standard_model, "env")
         assert "refused catalog slug" in self.sentry.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_no_user_skips_ld_but_uses_db_cell(self):
         from backend.copilot.model_router import resolve_model_route
 
-        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
-        resolved = await resolve_model_route(
-            "fast", "standard", None, config=_make_config()
-        )
+        self.reg._routes = {("copilot", "standard"): "cell/model"}
+        resolved = await resolve_model_route("standard", None, config=_make_config())
         assert resolved == ("cell/model", "catalog")
 
     @pytest.mark.asyncio
@@ -591,7 +566,7 @@ class TestRegistryGating:
         self.reg._dynamic_models = {}
         self._ld(mocker, "totally/unregistered")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("totally/unregistered", "ld")
         self.sentry.assert_not_called()
@@ -606,7 +581,7 @@ class TestRegistryGating:
         self.reg._dynamic_models["claude-opus-4-6"] = self.make("claude-opus-4-6")
         self._ld(mocker, "anthropic/claude-opus-4.6")
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("anthropic/claude-opus-4.6", "ld")
         self.sentry.assert_not_called()
@@ -622,11 +597,9 @@ class TestRegistryGating:
             new=AsyncMock(return_value=None),
         )
         self.reg._dynamic_models["claude-sonnet-4-6"] = self.make("claude-sonnet-4-6")
-        self.reg._routes = {
-            ("copilot", "fast", "standard"): "anthropic/claude-sonnet-4.6"
-        }
+        self.reg._routes = {("copilot", "standard"): "anthropic/claude-sonnet-4.6"}
         resolved = await resolve_model_route(
-            "fast", "standard", "user-1", config=_make_config()
+            "standard", "user-1", config=_make_config()
         )
         assert resolved == ("anthropic/claude-sonnet-4.6", "catalog")
 
@@ -647,9 +620,8 @@ class TestRegistryGating:
         # before anyone claims a cell.
         cells = [
             slug
-            for surface, modes in get_catalog().routing.items()
+            for surface, tiers in get_catalog().routing.items()
             if surface != "copilot_codex"
-            for tiers in modes.values()
             for slug in tiers.values()
         ] + [
             "anthropic/claude-sonnet-4.6",
@@ -680,13 +652,14 @@ class TestLocalTransportSkipsCells:
 
     @pytest.mark.asyncio
     async def test_local_transport_resolves_env_not_cell(self, mocker):
+        from types import SimpleNamespace
         from unittest.mock import PropertyMock
 
         import backend.data.llm_registry.registry as reg
         from backend.copilot.model_router import resolve_model_route
 
         old_routes = reg._routes
-        reg._routes = {("copilot", "fast", "standard"): "claude-sonnet-4-6"}
+        reg._routes = {("copilot", "standard"): "claude-sonnet-4-6"}
         mocker.patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=None),
@@ -694,18 +667,16 @@ class TestLocalTransportSkipsCells:
         cfg = _make_config()
         mocker.patch.object(
             type(cfg),
-            "baseline_provider",
+            "transport",
             new_callable=PropertyMock,
-            return_value="local",
+            return_value=SimpleNamespace(name="local"),
         )
         try:
-            resolved = await resolve_model_route(
-                "fast", "standard", "user-1", config=cfg
-            )
+            resolved = await resolve_model_route("standard", "user-1", config=cfg)
         finally:
             reg._routes = old_routes
 
-        assert resolved == (cfg.fast_standard_model, "env")
+        assert resolved == (cfg.thinking_standard_model, "env")
 
 
 class TestExecutorCatalogLoad:
@@ -756,11 +727,11 @@ class TestSelfHostedSkipsCells:
         old_models, old_routes = reg._dynamic_models, reg._routes
         mocker.patch(
             "backend.copilot.model_router.get_feature_flag_value",
-            new=AsyncMock(return_value={"fast": {"standard": "qwen3:8b-custom"}}),
+            new=AsyncMock(return_value={"standard": "qwen3:8b-custom"}),
         )
         try:
             resolved = await resolve_model_route(
-                "fast", "standard", "user-1", config=_make_config()
+                "standard", "user-1", config=_make_config()
             )
         finally:
             reg._dynamic_models, reg._routes = old_models, old_routes
@@ -775,20 +746,18 @@ class TestSelfHostedSkipsCells:
         old_models, old_routes = reg._dynamic_models, reg._routes
         # behave_as defaults to LOCAL in the test env — that IS the case
         # under test; no patch needed. Transport stays cloud (openrouter).
-        reg._routes = {("copilot", "fast", "standard"): "anthropic/claude-sonnet-4.6"}
+        reg._routes = {("copilot", "standard"): "anthropic/claude-sonnet-4.6"}
         mocker.patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         )
         cfg = _make_config()
         try:
-            resolved = await resolve_model_route(
-                "fast", "standard", "user-1", config=cfg
-            )
+            resolved = await resolve_model_route("standard", "user-1", config=cfg)
         finally:
             reg._dynamic_models, reg._routes = old_models, old_routes
 
-        assert resolved == (cfg.fast_standard_model, "env")
+        assert resolved == (cfg.thinking_standard_model, "env")
 
 
 class TestEnvFloorIncidentPath:
@@ -838,14 +807,12 @@ class TestEnvFloorIncidentPath:
         reg._dynamic_models = {"claude-sonnet-4-6": _entry("claude-sonnet-4-6", False)}
         reg._routes = {}
         try:
-            resolved = await resolve_model_route(
-                "fast", "standard", "user-1", config=cfg
-            )
+            resolved = await resolve_model_route("standard", "user-1", config=cfg)
         finally:
             reg._dynamic_models, reg._routes = old
 
         # Serves anyway (last resort) but Sentry heard about it.
-        assert resolved == (cfg.fast_standard_model, "env")
+        assert resolved == (cfg.thinking_standard_model, "env")
         sentry.assert_called_once()
 
 

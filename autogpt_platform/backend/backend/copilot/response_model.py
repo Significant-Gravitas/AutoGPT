@@ -62,7 +62,6 @@ class ResponseType(str, Enum):
     # buffer at a tool boundary. Lets the client promote queued chips to
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
-    MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
     # ``context_compaction`` tool row's JSON output.
@@ -352,28 +351,6 @@ class StreamCursor(StreamBaseResponse):
         data = {
             "type": self.type.value,
             "data": {"chunkId": self.chunkId},
-        }
-        return f"data: {json.dumps(data)}\n\n"
-
-
-class StreamModeChanged(StreamBaseResponse):
-    """The backend switched the session's engine/mode server-side.
-
-    Emitted when a baseline turn registers an engine switch (agent building
-    mode) so the frontend can sync its Thinking/Fast mode picker to the
-    engine the session will actually run on.
-    """
-
-    type: ResponseType = ResponseType.MODE_CHANGED
-    mode: Literal["extended_thinking", "fast"] = Field(
-        ..., description="New effective mode"
-    )
-
-    def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part."""
-        data = {
-            "type": self.type.value,
-            "data": {"mode": self.mode},
         }
         return f"data: {json.dumps(data)}\n\n"
 

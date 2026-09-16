@@ -48,7 +48,6 @@ from .response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
-    StreamModeChanged,
     StreamPendingDrained,
     StreamProviderFailure,
     StreamReasoningDelta,
@@ -1201,7 +1200,6 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.STATUS.value: StreamStatus,
     ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
-    ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
 }

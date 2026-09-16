@@ -128,7 +128,7 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
         experts, fixtures, rubric, chat_model=chat_route, judge_model=judge_route
     )
     print(
-        f"chat model {chat_model} ({routed.mode}/standard via {routed.source}"
+        f"chat model {chat_model} (standard via {routed.source}"
         f"{', overridden' if options.model else ''}); "
         f"judge {judge_model}; fingerprint {fingerprint(parts)}"
     )

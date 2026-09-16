@@ -1,8 +1,7 @@
 """Tests for backend/copilot/local_context_probe.py.
 
-Covers the core compaction-target regression (no more 120k default for local
-models) plus all four probe strategies and the fallback/cache paths. All probes
-are mocked — no network.
+Covers the probed-window strategies, the SDK status/floor paths, and
+the fallback/cache paths. All probes are mocked — no network.
 """
 
 import logging
@@ -14,11 +13,13 @@ import pytest
 from backend.copilot.local_context_probe import (
     _MINIMUM_SAFE_WINDOW,
     LOCAL_CONTEXT_FALLBACK,
+    SDK_MINIMUM_CONTEXT_WINDOW,
     _last_window,
     _probe_cache,
     _server_root,
-    compaction_target_for_window,
     probe_local_context_window,
+    probe_local_context_window_status,
+    probe_local_window_for_sdk,
 )
 
 
@@ -40,25 +41,6 @@ def _mock_client(responses) -> MagicMock:
     client.__aexit__ = AsyncMock(return_value=False)
     client.get = AsyncMock(side_effect=responses)
     return client
-
-
-class TestCompactionTargetForWindow:
-    def test_32k_window_is_not_the_broken_120k_default(self):
-        # The whole point: a 32k local window must yield ~9k, not 120_000.
-        assert compaction_target_for_window(32_768) == 8_768
-
-    def test_64k_window(self):
-        assert compaction_target_for_window(65_536) == 41_536
-
-    def test_ornith_262k_window(self):
-        assert compaction_target_for_window(262_144) == 238_144
-
-    def test_tiny_window_clamps_to_floor(self):
-        assert compaction_target_for_window(4_096) == 4_096
-        assert compaction_target_for_window(1_000) == 4_096
-
-    def test_fallback_constant_yields_sane_target(self):
-        assert compaction_target_for_window(LOCAL_CONTEXT_FALLBACK) == 8_768
 
 
 class TestServerRoot:
@@ -107,7 +89,6 @@ class TestProbeStrategies:
                 "http://localhost:11434/v1", "llama3.1:8b-instruct-q4_K_M"
             )
         assert window == 32_768
-        assert compaction_target_for_window(window) == 8_768
 
     @pytest.mark.asyncio
     async def test_ollama_falls_back_to_first_loaded_model_window(self):
@@ -194,7 +175,6 @@ class TestFallbackAndWarnings:
                 "http://localhost:11434/v1", "llama3.1:8b"
             )
         assert window == LOCAL_CONTEXT_FALLBACK
-        assert compaction_target_for_window(window) > 0
 
     @pytest.mark.asyncio
     async def test_window_below_minimum_logs_warning(self, caplog):
@@ -302,3 +282,124 @@ class TestCaching:
         assert wa == 32_768
         assert wb == 16_384  # not modelA's cached 32_768
         assert cls.call_count == 2  # second model re-probed, not served from cache
+
+
+class TestProbeStatusProvenance:
+    """``probe_local_context_window_status`` reports whether the window
+    was positively detected — the SDK floor guard must only fire on
+    detected windows (failing closed on unknown ones would deadlock
+    first turns, which are what load the model)."""
+
+    def setup_method(self):
+        _probe_cache.clear()
+        _last_window.clear()
+
+    @pytest.mark.asyncio
+    async def test_fresh_detection_is_detected(self):
+        client = _mock_client(
+            [_resp(200, {"models": [{"name": "m", "context_length": 131_072}]})]
+        )
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            probe = await probe_local_context_window_status(
+                "http://localhost:11434/v1", "m"
+            )
+        assert probe.window == 131_072
+        assert probe.detected is True
+
+    @pytest.mark.asyncio
+    async def test_total_miss_is_not_detected(self):
+        client = _mock_client(OSError("connection refused"))
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            probe = await probe_local_context_window_status(
+                "http://localhost:11434/v1", "m"
+            )
+        assert probe.window == LOCAL_CONTEXT_FALLBACK
+        assert probe.detected is False
+
+    @pytest.mark.asyncio
+    async def test_remembered_window_is_detected(self):
+        """A window remembered from an earlier turn still counts as a
+        positive report — the backend told us this number once."""
+        client = _mock_client(
+            [
+                _resp(200, {"models": [{"name": "m", "context_length": 8192}]}),
+                _resp(200, {"models": []}),
+                _resp(404, {}),
+                _resp(404, {}),
+                _resp(404, {}),
+            ]
+        )
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            first = await probe_local_context_window_status("http://h:11434/v1", "m")
+            _probe_cache[("http://h:11434/v1", "m")] = (
+                first.window,
+                time.monotonic() - 400,
+            )  # force-expire so the next call re-probes
+            second = await probe_local_context_window_status("http://h:11434/v1", "m")
+        assert (first.window, first.detected) == (8192, True)
+        assert (second.window, second.detected) == (8192, True)
+
+
+class TestProbeLocalWindowForSdk:
+    """``probe_local_window_for_sdk`` resolves the CLI pin: explicit
+    operator value as-is, else the probed window, refusing to run when
+    the backend positively reports less than the SDK floor."""
+
+    def setup_method(self):
+        _probe_cache.clear()
+        _last_window.clear()
+
+    @pytest.mark.asyncio
+    async def test_explicit_window_wins_without_probing(self):
+        with patch("backend.copilot.local_context_probe.httpx.AsyncClient") as cls:
+            window = await probe_local_window_for_sdk(
+                "http://localhost:11434/v1", "m", explicit_window=65_536
+            )
+        assert window == 65_536
+        assert cls.call_count == 0  # operator asserts the probe is wrong: no probe
+
+    @pytest.mark.asyncio
+    async def test_detected_window_above_floor_passes(self):
+        client = _mock_client(
+            [_resp(200, {"models": [{"name": "m", "context_length": 131_072}]})]
+        )
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            window = await probe_local_window_for_sdk(
+                "http://localhost:11434/v1", "m", explicit_window=None
+            )
+        assert window == 131_072
+
+    @pytest.mark.asyncio
+    async def test_detected_window_below_floor_raises_with_remediation(self):
+        assert SDK_MINIMUM_CONTEXT_WINDOW == 65_000
+        client = _mock_client(
+            [_resp(200, {"models": [{"name": "m", "context_length": 32_768}]})]
+        )
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            with pytest.raises(RuntimeError, match="OLLAMA_CONTEXT_LENGTH"):
+                await probe_local_window_for_sdk(
+                    "http://localhost:11434/v1", "m", explicit_window=None
+                )
+
+    @pytest.mark.asyncio
+    async def test_unknown_window_proceeds_on_fallback(self):
+        """Nothing loaded yet (first turn) → the blind fallback, not a
+        fail-closed error — the turn itself is what loads the model."""
+        client = _mock_client(OSError("connection refused"))
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            window = await probe_local_window_for_sdk(
+                "http://localhost:11434/v1", "m", explicit_window=None
+            )
+        assert window == LOCAL_CONTEXT_FALLBACK

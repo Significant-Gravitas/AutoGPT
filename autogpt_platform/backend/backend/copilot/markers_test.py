@@ -116,59 +116,42 @@ class TestRecognisingMarkers:
 class TestTheMarkerReachesTheDatabase:
     """Building the marker is not the same as saving it.
 
-    The baseline yields the error and its consumer immediately breaks and
-    closes the generator, so the tail of its ``finally`` -- including the
-    session upsert -- never runs. A marker appended there is constructed
-    correctly and then discarded, which is exactly what happened: the append
-    reported success while the row never appeared in Postgres.
+    The SDK turn persists the session in a ``finally`` so messages
+    survive early exits (user stop, processor break). That persist
+    must be shielded: the consumer closes the generator on the
+    error yield, and an unshielded upsert would be cancelled
+    mid-await — the marker would be constructed correctly and
+    then discarded, the exact failure this guards against.
 
-    The failure path therefore has to persist the marker itself, before it
-    yields the error that ends the stream.
-
-    These two are structural guards, not behavioural proof: they assert the
-    ordering in the source rather than driving a real turn, because standing
-    up that generator needs a provider, a session, tools and an execution
-    context. The behavioural evidence is a live run against a deployment --
-    a 404 leaves a non-retryable card and a dead endpoint leaves a retryable
-    one -- and these keep the ordering from silently regressing afterwards.
+    Structural guards, not behavioural proof: they assert the
+    mechanism in the source rather than driving a real turn,
+    because standing up that generator needs a provider, a
+    session, tools and an execution context.
     """
 
-    def test_the_error_path_persists_before_it_yields(self) -> None:
+    def test_the_finally_persist_is_shielded(self) -> None:
         import inspect
 
-        from backend.copilot.baseline import service
+        from backend.copilot.sdk import service
 
-        source = inspect.getsource(service.stream_chat_completion_baseline)
-        marker_at = source.find("append_error_marker(")
-        assert marker_at != -1, "the failure path no longer records a marker"
-
-        upsert_at = source.find("upsert_chat_session", marker_at)
-        error_yield_at = source.find("yield StreamError(", marker_at)
-        assert upsert_at != -1, "the marker is appended but never persisted"
-        assert error_yield_at != -1
-
-        # Persisting after the error is yielded is the bug this guards:
-        # the consumer closes the generator on that yield.
-        assert upsert_at < error_yield_at, (
-            "the marker must be persisted before StreamError is yielded -- "
-            "the consumer closes the generator on it, so anything after is "
-            "not guaranteed to run"
+        source = inspect.getsource(service.stream_chat_completion_sdk)
+        assert "asyncio.shield(upsert_chat_session(session))" in source, (
+            "the session persist must survive generator teardown — an "
+            "unshielded upsert is cancelled when the consumer closes the "
+            "generator on the error yield"
         )
 
-    def test_the_marker_is_not_left_to_the_finally_block(self) -> None:
+    def test_the_sdk_appends_error_markers(self) -> None:
         import inspect
 
-        from backend.copilot.baseline import service
+        from backend.copilot.sdk import service
 
-        source = inspect.getsource(service.stream_chat_completion_baseline)
-        finally_at = source.rfind("\n    finally:")
-        marker_at = source.find("append_error_marker(")
-        assert marker_at != -1
-        assert finally_at != -1
-        assert marker_at < finally_at, (
-            "the marker moved into finally, where generator teardown cuts it "
-            "short at the first await"
-        )
+        # Markers are appended in the shared dispatch helper every StreamError flows
+        # through, not inline in the entry point.
+        source = inspect.getsource(service._dispatch_response)
+        assert (
+            "_append_error_marker(" in source
+        ), "the failure path no longer records a marker"
 
 
 class TestTheMarkerCarriesTheFailure:

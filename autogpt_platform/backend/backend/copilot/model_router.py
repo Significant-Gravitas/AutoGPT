@@ -1,6 +1,6 @@
 """Model selection for the copilot: LaunchDarkly → registry cell → env.
 
-Each cell of the ``(mode, tier)`` matrix resolves through three layers:
+Each tier resolves through three layers:
 
 1. The JSON-valued LaunchDarkly flag ``copilot-model-routing`` (per-user —
    cohort experiments and rollouts live here, and the flag returns model
@@ -20,24 +20,17 @@ operator's custom model). An EMPTY registry never gates anything either;
 production processes always load it (fail-hard boot), so that branch is
 defense-in-depth for exotic embedders only.
 
-Matrix:
-
-    +----------+----------+----------+
-    |          | standard | advanced |
-    +----------+----------+----------+
-    | fast     |    .     |    .     |
-    | thinking |    .     |    .     |
-    +----------+----------+----------+
-
-LD payload shape::
+LD payload shape (flat)::
 
     {
-      "fast":     {"standard": "anthropic/claude-sonnet-4-6", "advanced": "anthropic/claude-opus-4-6"},
-      "thinking": {"standard": "moonshotai/kimi-k2.6",         "advanced": "anthropic/claude-opus-4-6"}
+      "standard": "anthropic/claude-sonnet-4-6",
+      "advanced": "anthropic/claude-opus-4-6"
     }
 
-Missing mode, missing tier-within-mode, non-string cell value, non-dict
-payload, or LD failure all fall through to the next layer.
+The pre-collapse nested shape (``{"thinking": {"standard": ...}}``) is
+still honored so in-flight flag edits keep working — re-author flat at
+leisure. A missing tier, a non-string cell value, a non-dict payload, or
+LD failure all fall through to the next layer.
 """
 
 from __future__ import annotations
@@ -63,7 +56,6 @@ from backend.util.settings import BehaveAs, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
 CodexRoutingSource = Literal[
     "catalog",
@@ -87,18 +79,14 @@ class ResolvedCodexModel(NamedTuple):
     source: CodexRoutingSource
 
 
-_CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
-    ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
-    ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
-    ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
+_CODEX_PREFERRED_MODELS: dict[ModelTier, str] = {
+    "standard": LLMModel.GPT5_6_TERRA.value,
+    "advanced": LLMModel.GPT6_ASTRA.value,
 }
 
-_CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
-    ("fast", "standard"): "low",
-    ("fast", "advanced"): "medium",
-    ("thinking", "standard"): "high",
-    ("thinking", "advanced"): "xhigh",
+_CODEX_PREFERRED_EFFORTS: dict[ModelTier, CodexReasoningEffort] = {
+    "standard": "high",
+    "advanced": "xhigh",
 }
 
 
@@ -186,13 +174,7 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     return reason
 
 
-def _config_default(config: ChatConfig, mode: ModelMode, tier: ModelTier) -> str:
-    if mode == "fast":
-        return (
-            config.fast_advanced_model
-            if tier == "advanced"
-            else config.fast_standard_model
-        )
+def _config_default(config: ChatConfig, tier: ModelTier) -> str:
     return (
         config.thinking_advanced_model
         if tier == "advanced"
@@ -200,8 +182,13 @@ def _config_default(config: ChatConfig, mode: ModelMode, tier: ModelTier) -> str
     )
 
 
-async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str | None:
-    """Extract the (mode, tier) slug from the LD JSON flag, or None."""
+async def _ld_cell_value(tier: ModelTier, user_id: str) -> str | None:
+    """Extract the tier slug from the LD JSON flag, or None.
+
+    Reads the flat shape (``{"standard": ...}``); the pre-collapse
+    nested shape (``{"thinking": {"standard": ...}}``) is honored while
+    operators re-author. Flat wins when both are present.
+    """
     try:
         payload: object = await get_feature_flag_value(
             Flag.COPILOT_MODEL_ROUTING.value, user_id, default=None
@@ -209,8 +196,7 @@ async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str 
     except Exception:
         logger.warning(
             "[model_router] LD lookup failed for copilot-model-routing — "
-            "falling through for (%s, %s)",
-            mode,
+            "falling through for %s",
             tier,
             exc_info=True,
         )
@@ -222,28 +208,17 @@ async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str 
     if not isinstance(payload, dict):
         logger.warning(
             "[model_router] copilot-model-routing expected a JSON object, got %r — "
-            "falling through for (%s, %s)",
+            "falling through for %s",
             payload,
-            mode,
             tier,
         )
         return None
 
-    mode_cell = payload.get(mode)
-    if mode in payload and not isinstance(mode_cell, dict):
-        # Operator typed something at the mode level (e.g. a string) instead of
-        # a {tier: model} dict — surface the typo in logs.
-        logger.warning(
-            "[model_router] copilot-model-routing[%s] expected a JSON object, "
-            "got %r — falling through for tier %s",
-            mode,
-            mode_cell,
-            tier,
-        )
-    if not isinstance(mode_cell, dict):
-        return None
-
-    value = mode_cell.get(tier)
+    value: object = payload.get(tier)
+    if value is None:
+        nested = payload.get("thinking")
+        if isinstance(nested, dict):
+            value = nested.get(tier)
     if isinstance(value, str) and value.strip():
         return value.strip()
     if value is not None:
@@ -253,23 +228,19 @@ async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str 
             else f"non-string ({type(value).__name__})"
         )
         logger.warning(
-            "[model_router] copilot-model-routing[%s][%s] returned %s — "
-            "falling through",
-            mode,
+            "[model_router] copilot-model-routing[%s] returned %s — " "falling through",
             tier,
             reason,
         )
     return None
 
 
-async def _env_floor(
-    config: ChatConfig, mode: ModelMode, tier: ModelTier
-) -> ResolvedModel:
+async def _env_floor(config: ChatConfig, tier: ModelTier) -> ResolvedModel:
     """Serve the env default — the LAST layer, served even when the catalog
     refuses it (refusing would leave nothing). A kill switch pointing here
     is an incident the operator must hear about: log + Sentry, then serve.
     """
-    env_slug = _config_default(config, mode, tier).strip()
+    env_slug = _config_default(config, tier).strip()
     if await _registry_refuses(env_slug, "env") is not None:
         logger.error(
             "[model_router] env default %r is refused by the catalog "
@@ -281,13 +252,12 @@ async def _env_floor(
 
 
 async def resolve_model_route(
-    mode: ModelMode,
     tier: ModelTier,
     user_id: str | None,
     *,
     config: ChatConfig,
 ) -> ResolvedModel:
-    """Resolve a ``(mode, tier)`` cell through LD → registry cell → env.
+    """Resolve a tier through LD → registry cell → env.
 
     Every layer's slug is validated against the registry (see module
     docstring); a refused slug falls through to the next layer. The returned
@@ -304,19 +274,18 @@ async def resolve_model_route(
     #   404 at request time
     # Both resolve LD → env, exactly as before the catalog existed.
     gated = (
-        settings.config.behave_as == BehaveAs.CLOUD
-        and config.baseline_provider != "local"
+        settings.config.behave_as == BehaveAs.CLOUD and config.transport.name != "local"
     )
 
     if user_id:
-        ld_slug = await _ld_cell_value(mode, tier, user_id)
+        ld_slug = await _ld_cell_value(tier, user_id)
         if ld_slug and (not gated or await _registry_refuses(ld_slug, "ld") is None):
             return ResolvedModel(ld_slug, "ld")
 
     if not gated:
-        return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
+        return ResolvedModel(_config_default(config, tier).strip(), "env")
 
-    cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
+    cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, tier)
     if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:
         # Cells carry TRANSPORT-READY spellings (e.g. the vendor-prefixed
         # dot form ``anthropic/claude-sonnet-4.6`` OpenRouter serves) and are
@@ -324,24 +293,23 @@ async def resolve_model_route(
         # and the slug-tolerant gate above maps them to catalog identity.
         return ResolvedModel(cell_slug, "catalog")
 
-    return await _env_floor(config, mode, tier)
+    return await _env_floor(config, tier)
 
 
 async def resolve_codex_model_route(
-    mode: ModelMode,
     tier: ModelTier,
     credential_lease: CredentialLease | CodexCredentialLease,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""
     advertised = await _advertised_codex_models(credential_lease)
 
-    if catalog_route := _codex_catalog_route(advertised, mode, tier):
+    if catalog_route := _codex_catalog_route(advertised, tier):
         return catalog_route
 
-    if preferred_route := _codex_preferred_route(advertised, mode, tier):
+    if preferred_route := _codex_preferred_route(advertised, tier):
         return preferred_route
 
-    if account_route := _codex_account_route(advertised, mode, tier):
+    if account_route := _codex_account_route(advertised, tier):
         return account_route
 
     raise RuntimeError("codex_model_unavailable")
@@ -357,22 +325,20 @@ async def _advertised_codex_models(
 
 def _codex_catalog_route(
     advertised: list[CodexModelInfo],
-    mode: ModelMode,
     tier: ModelTier,
 ) -> ResolvedCodexModel | None:
-    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
+    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, tier)
     if not catalog_slug:
         return None
 
     model = next((item for item in advertised if item.model == catalog_slug), None)
     if model is not None and _codex_catalog_allows(catalog_slug):
-        return _resolved_codex_model(model, mode, tier, "catalog")
+        return _resolved_codex_model(model, tier, "catalog")
 
     logger.warning(
         "[model_router] Codex catalog route %r is disabled or unavailable "
-        "for this account; falling through for (%s, %s)",
+        "for this account; falling through for %s",
         catalog_slug,
-        mode,
         tier,
     )
     return None
@@ -380,22 +346,20 @@ def _codex_catalog_route(
 
 def _codex_preferred_route(
     advertised: list[CodexModelInfo],
-    mode: ModelMode,
     tier: ModelTier,
 ) -> ResolvedCodexModel | None:
-    preferred_slug = _CODEX_PREFERRED_MODELS[(mode, tier)]
+    preferred_slug = _CODEX_PREFERRED_MODELS[tier]
     preferred = next(
         (model for model in advertised if model.model == preferred_slug),
         None,
     )
     if preferred is None or not _codex_catalog_allows(preferred_slug):
         return None
-    return _resolved_codex_model(preferred, mode, tier, "preferred")
+    return _resolved_codex_model(preferred, tier, "preferred")
 
 
 def _codex_account_route(
     advertised: list[CodexModelInfo],
-    mode: ModelMode,
     tier: ModelTier,
 ) -> ResolvedCodexModel | None:
     candidates: tuple[tuple[CodexRoutingSource, bool], ...] = (
@@ -414,19 +378,18 @@ def _codex_account_route(
             None,
         )
         if model is not None:
-            return _resolved_codex_model(model, mode, tier, source)
+            return _resolved_codex_model(model, tier, source)
     return None
 
 
 def _resolved_codex_model(
     model: CodexModelInfo,
-    mode: ModelMode,
     tier: ModelTier,
     source: CodexRoutingSource,
 ) -> ResolvedCodexModel:
     return ResolvedCodexModel(
         model.model,
-        _codex_effort(model, mode, tier),
+        _codex_effort(model, tier),
         source,
     )
 
@@ -451,10 +414,9 @@ def _codex_account_fallback_allowed(slug: str) -> bool:
 
 def _codex_effort(
     model: CodexModelInfo,
-    mode: ModelMode,
     tier: ModelTier,
 ) -> CodexReasoningEffort | None:
-    preferred = _CODEX_PREFERRED_EFFORTS[(mode, tier)]
+    preferred = _CODEX_PREFERRED_EFFORTS[tier]
     if preferred in model.supported_reasoning_efforts:
         return preferred
     if model.default_reasoning_effort in model.supported_reasoning_efforts:

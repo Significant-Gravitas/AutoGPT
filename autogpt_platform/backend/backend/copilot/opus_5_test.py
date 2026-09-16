@@ -14,6 +14,9 @@ def isolated_catalog_and_config(monkeypatch):
     for key in os.environ:
         if key.startswith("CHAT_"):
             monkeypatch.delenv(key)
+    # pydantic-settings also reads backend/.env directly — disable the file
+    # source so a local-flavored developer file can't leak llama slugs in.
+    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
     for field in ("_dynamic_models", "_date_stripped_models", "_routes"):
         monkeypatch.setattr(registry, field, {})
     monkeypatch.setattr(registry, "_loaded", False)
@@ -33,14 +36,14 @@ async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
         aux_api_key="test-key",
     )
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
-    route = await router.resolve_model_route("thinking", "advanced", "user", config=cfg)
+    route = await router.resolve_model_route("advanced", "user", config=cfg)
 
     assert route.model == "anthropic/claude-opus-5"
     assert route.source == "env"
     assert "refused" not in caplog.text
     expected = "anthropic/claude-opus-5" if use_openrouter else "claude-opus-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
-    assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
+    assert cfg.thinking_advanced_model == "anthropic/claude-opus-5"
     assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
 
 

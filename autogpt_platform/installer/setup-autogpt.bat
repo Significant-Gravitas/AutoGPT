@@ -184,8 +184,8 @@ echo API available at: http://localhost:8006
 if "%WITH_OLLAMA%"=="1" (
     echo.
     echo AutoPilot wired to Ollama ^(model: %OLLAMA_MODEL%^)
-    echo Extended-thinking mode auto-downgrades to fast — Ollama doesn't speak
-    echo Anthropic's wire protocol. See docs/platform/copilot-local-llm.md.
+    echo See docs/platform/copilot-local-llm.md for the context-window
+    echo and endpoint requirements.
 )
 echo.
 echo To stop services: docker compose down
@@ -380,8 +380,8 @@ echo # See docs/platform/copilot-local-llm.md for the full reference.>>.env
 echo CHAT_USE_LOCAL=true>>.env
 echo CHAT_BASE_URL=%HOST_URL%/v1>>.env
 echo CHAT_API_KEY=ollama>>.env
-echo CHAT_FAST_STANDARD_MODEL=%OLLAMA_MODEL%>>.env
-echo CHAT_FAST_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
+echo CHAT_MODEL=%OLLAMA_MODEL%>>.env
+echo CHAT_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
 echo OLLAMA_HOST=%HOST_URL%>>.env
 echo %END_MARKER%>>.env
 

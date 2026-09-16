@@ -146,15 +146,11 @@ def test_the_baseline_records_which_delegation_state_it_measured():
 @pytest.mark.asyncio
 async def test_chat_model_comes_from_the_router_without_launchdarkly():
     config = ChatConfig(
-        use_claude_agent_sdk=True,
+        use_local=False,
         thinking_standard_model="anthropic/claude-style-test",
         use_claude_code_subscription=False,
     )
-    with patch(
-        "backend.copilot.engine.is_feature_enabled", AsyncMock(return_value=True)
-    ):
-        routed = await resolve_chat_model(config)
-    assert routed.mode == "thinking"
+    routed = await resolve_chat_model(config)
     assert routed.slug == "anthropic/claude-style-test"
     assert routed.source == "env"
 

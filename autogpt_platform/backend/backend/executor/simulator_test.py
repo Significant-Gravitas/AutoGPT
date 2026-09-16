@@ -722,8 +722,7 @@ class TestDefaultSimulatorModel:
 
 class TestExtractCostUsd:
     """Provider-reported USD cost via typed ``model_extra`` — mirrors
-    ``copilot.tools.web_search._extract_cost_usd`` and
-    ``copilot.baseline.service._extract_usage_cost``."""
+    ``copilot.tools.web_search._extract_cost_usd``."""
 
     def test_returns_cost_value(self) -> None:
         assert _extract_cost_usd(_sim_usage(cost=0.000157)) == pytest.approx(0.000157)

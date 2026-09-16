@@ -156,8 +156,8 @@ const RESUME_REPLAY_CHUNKS: UIMessageChunk[] = [
 ];
 
 /**
- * A turn the backend started on its own (the engine-switch continuation
- * dispatched with ``is_user_message=False``): the completed answer is
+ * A turn the backend started on its own (a continuation dispatched with
+ * ``is_user_message=False``): the completed answer is
  * followed straight by the running turn's persisted half, with no user row
  * between them. Both rows are consecutive assistants, so hydration merges
  * them unless the active turn's ``started_at`` splits them apart.
