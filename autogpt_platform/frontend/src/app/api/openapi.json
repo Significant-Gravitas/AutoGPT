@@ -5529,7 +5529,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "List Stripe invoices",
-        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "description": "Recent Stripe invoices for the caller's active org, for billing managers.\n\nThe invoices belong to the org the request resolves to (the caller's\npersonal org when no ``X-Org-Id`` is supplied), so this is restricted to\norg roles holding ``MANAGE_BILLING``.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the org has no Stripe customer yet.",
         "operationId": "getV1List stripe invoices",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7846,7 +7846,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__v1__ShareResponse"
+                  "$ref": "#/components/schemas/backend__api__features__graph_executions__model__ShareResponse"
                 }
               }
             }
@@ -27469,6 +27469,10 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "expert_workflow",
+          "expert_workflows",
+          "expert_credentials",
+          "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",
           "trigger_setup",
@@ -32497,7 +32501,7 @@
         "required": ["share_url", "share_token"],
         "title": "ShareResponse"
       },
-      "backend__api__features__v1__ShareResponse": {
+      "backend__api__features__graph_executions__model__ShareResponse": {
         "properties": {
           "share_url": { "type": "string", "title": "Share Url" },
           "share_token": { "type": "string", "title": "Share Token" }

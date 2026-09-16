@@ -10,6 +10,7 @@ import {
   expertNotionConfig,
   isLegacyAvatarUrl,
   notionAvatarUrlFor,
+  notionAvatarImageUrlFor,
   notionConfigForLegacyUrl,
   notionConfigForName,
   parseNotionAvatarUrl,
@@ -26,6 +27,14 @@ describe("config encoding", () => {
     const config = notionConfigForName("Maria");
 
     expect(parseNotionAvatarUrl(notionAvatarUrlFor(config))).toEqual(config);
+  });
+
+  it("adds a render version to the image URL without changing stored URLs", () => {
+    const config = notionConfigForName("Maria");
+
+    expect(notionAvatarImageUrlFor(config)).toBe(
+      `${notionAvatarUrlFor(config)}?v=2`,
+    );
   });
 
   it("writes the slots in draw order", () => {
@@ -117,11 +126,18 @@ describe("seeding", () => {
     expect(bare("beard")).toBeGreaterThan(0.45);
   });
 
+  it("does not add face marks to generated avatars", () => {
+    const random = seededRandom(hashSeed("sample"));
+    const faces = Array.from({ length: 400 }, () => randomNotionConfig(random));
+
+    expect(faces.every((face) => face.parts.details === 0)).toBe(true);
+  });
+
   it("hashes a name the same way regardless of characters outside the BMP", () => {
     // "🤖" is a surrogate pair in UTF-16; hashing by code point keeps this
     // in sync with the backend's ord()-based _hash_seed.
     expect(notionAvatarUrlFor(notionConfigForName("Otto 🤖"))).toBe(
-      "/avatars/notion/7-10-18-11-6-5-37-3-4-1.teal.svg",
+      "/avatars/notion/7-10-18-11-6-5-37-3-0-1.teal.svg",
     );
   });
 });
@@ -204,6 +220,18 @@ describe("colour tokens", () => {
 
     expect(new Set(discs).size).toBe(COLOR_FAMILIES.length);
     expect(discs.every(Boolean)).toBe(true);
+  });
+
+  it("keeps every disc close to white", () => {
+    for (const { disc } of NOTION_COLORS) {
+      const channels = disc
+        .match(/[\da-f]{2}/gi)
+        ?.map((value) => Number.parseInt(value, 16));
+
+      expect(channels).toHaveLength(3);
+      const mean = (channels ?? []).reduce((sum, value) => sum + value, 0) / 3;
+      expect(mean).toBeGreaterThanOrEqual(244);
+    }
   });
 
   it("has no opinion about a family it does not know", () => {

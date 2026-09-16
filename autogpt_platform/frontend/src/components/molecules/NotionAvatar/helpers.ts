@@ -37,25 +37,23 @@ export interface NotionColorOption {
   disc: string;
 }
 
-// One disc per accent family, so every swatch in the picker visibly changes
-// the face. Halfway between Tailwind's 100 and 200: paler than a 200, while
-// still telling rose from red and teal from cyan, which a 100 cannot.
+// Keep each disc close to white, with enough hue to match the expert's accent.
 export const NOTION_COLORS: NotionColorOption[] = [
-  { id: "rose", label: "Rose", disc: "#fed8dc" },
-  { id: "red", label: "Red", disc: "#fed6d6" },
-  { id: "orange", label: "Orange", disc: "#fee2c0" },
-  { id: "amber", label: "Amber", disc: "#feeca8" },
-  { id: "yellow", label: "Yellow", disc: "#fef4a6" },
-  { id: "lime", label: "Lime", disc: "#e2fab4" },
-  { id: "green", label: "Green", disc: "#ccfadc" },
-  { id: "emerald", label: "Emerald", disc: "#bcf6da" },
-  { id: "teal", label: "Teal", disc: "#b2f8ea" },
-  { id: "cyan", label: "Cyan", disc: "#baf6fd" },
-  { id: "sky", label: "Sky", disc: "#cdecfe" },
-  { id: "blue", label: "Blue", disc: "#cde2fe" },
-  { id: "indigo", label: "Indigo", disc: "#d4dcfe" },
-  { id: "violet", label: "Violet", disc: "#e5e0fe" },
-  { id: "fuchsia", label: "Fuchsia", disc: "#f8dcfe" },
+  { id: "rose", label: "Rose", disc: "#fff1f2" },
+  { id: "red", label: "Red", disc: "#fef2f2" },
+  { id: "orange", label: "Orange", disc: "#fff7ed" },
+  { id: "amber", label: "Amber", disc: "#fffbeb" },
+  { id: "yellow", label: "Yellow", disc: "#fefce8" },
+  { id: "lime", label: "Lime", disc: "#f7fee7" },
+  { id: "green", label: "Green", disc: "#f0fdf4" },
+  { id: "emerald", label: "Emerald", disc: "#ecfdf5" },
+  { id: "teal", label: "Teal", disc: "#f0fdfa" },
+  { id: "cyan", label: "Cyan", disc: "#ecfeff" },
+  { id: "sky", label: "Sky", disc: "#f0f9ff" },
+  { id: "blue", label: "Blue", disc: "#eff6ff" },
+  { id: "indigo", label: "Indigo", disc: "#eef2ff" },
+  { id: "violet", label: "Violet", disc: "#f5f3ff" },
+  { id: "fuchsia", label: "Fuchsia", disc: "#fdf4ff" },
 ];
 
 // Rows the picker offers, in the order they appear: the face itself, then the
@@ -143,9 +141,14 @@ export function decodeNotionConfig(value: string): NotionAvatarConfig | null {
 }
 
 const NOTION_URL_PATTERN = /^\/avatars\/notion\/([\d-]+\.[a-z]+)\.svg$/;
+const NOTION_AVATAR_RENDER_VERSION = 2;
 
 export function notionAvatarUrlFor(config: NotionAvatarConfig): string {
   return `/avatars/notion/${encodeNotionConfig(config)}.svg`;
+}
+
+export function notionAvatarImageUrlFor(config: NotionAvatarConfig): string {
+  return `${notionAvatarUrlFor(config)}?v=${NOTION_AVATAR_RENDER_VERSION}`;
 }
 
 export function parseNotionAvatarUrl(
@@ -206,6 +209,7 @@ export function randomNotionConfig(
   NOTION_CATEGORIES.forEach((category) => {
     parts[category] = weightedPart(category, random);
   });
+  parts.details = 0;
   return {
     parts,
     color: NOTION_COLORS[Math.floor(random() * NOTION_COLORS.length)].id,

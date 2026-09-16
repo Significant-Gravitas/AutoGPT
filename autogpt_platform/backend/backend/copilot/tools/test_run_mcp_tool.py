@@ -1196,8 +1196,11 @@ async def test_credential_lookup_normalizes_trailing_slash():
                     session=session,
                     server_url=url_with_slash,
                 )
-            # Credential lookup should use the normalized URL (no trailing slash)
-            mock_lookup.assert_called_once_with(_USER_ID, "https://mcp.example.com/mcp")
+            # Credential lookup should use the normalized URL (no trailing slash),
+            # and a personal session narrows by nothing.
+            mock_lookup.assert_called_once_with(
+                _USER_ID, "https://mcp.example.com/mcp", allowed_ids=None
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1462,3 +1465,63 @@ async def test_rejected_card_differs_from_never_connected_by_the_rejection():
     assert {k: v for k, v in rejected.model_dump().items() if k not in ignored} == {
         k: v for k, v in never_connected.model_dump().items() if k not in ignored
     }
+
+
+# ---------------------------------------------------------------------------
+# Expert credential grants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_ungranted_mcp_credential_is_refused_for_an_expert():
+    response = await _run_with_grants([])
+    assert isinstance(response, ErrorResponse)
+    assert response.error == "credential_not_granted"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_granted_mcp_credential_is_used():
+    response = await _run_with_grants(["mcp-cred"])
+    assert isinstance(response, MCPToolsDiscoveredResponse)
+
+
+async def _run_with_grants(allowed: list[str]):
+    """Discover tools in an expert session whose grant list is *allowed*, with
+    one stored MCP credential for the server."""
+    creds = OAuth2Credentials(
+        id="mcp-cred",
+        provider="mcp",
+        title="MCP: remote.mcpservers.org",
+        access_token=SecretStr("test-token-abc"),
+        scopes=[],
+        metadata={"mcp_server_url": _SERVER_URL},
+    )
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    client = AsyncMock()
+    client.list_tools = AsyncMock(return_value=_make_tool_list("fetch"))
+
+    # The real lookup narrows by allowed_ids before ranking, so the stub has to
+    # as well — otherwise the tool never sees the filter it now relies on.
+    async def _lookup(_user_id, _url, allowed_ids=None):
+        if allowed_ids is not None and creds.id not in allowed_ids:
+            return None
+        return creds
+
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new=_lookup,
+        ),
+        patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
+        patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=client),
+    ):
+        return await RunMCPToolTool()._execute(
+            user_id=_USER_ID,
+            session=make_session(_USER_ID, expert_id="expert-a"),
+            server_url=_SERVER_URL,
+        )

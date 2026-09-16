@@ -55,6 +55,41 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["sales"],
         "required_providers": ["google"],
     },
+    {
+        "slug": "seo-content-brief",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "on-page-seo-audit",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "content-repurposing",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "competitor-teardown",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "icp-and-positioning",
+        "categories": ["marketing", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "lifecycle-email-map",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "email-deliverability-guardrails",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
 ]
 
 
