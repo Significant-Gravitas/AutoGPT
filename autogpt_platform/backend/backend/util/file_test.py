@@ -10,6 +10,8 @@ import pytest
 from backend.data.execution import ExecutionContext
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.file import (
+    TEMP_DIR,
+    get_exec_file_path,
     is_media_file_ref,
     parse_data_uri,
     resolve_media_content,
@@ -27,6 +29,50 @@ def make_test_context(
         user_id=user_id,
         graph_exec_id=graph_exec_id,
     )
+
+
+def test_get_exec_file_path_allows_paths_inside_execution_directory():
+    graph_exec_id = "test-exec-123"
+
+    result = get_exec_file_path(graph_exec_id, "clips/output.mp4")
+
+    expected = (
+        TEMP_DIR / "exec_file" / graph_exec_id / "clips/output.mp4"
+    ).resolve()
+
+    assert result == str(expected)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../other-exec/secret.txt",
+        "../../secret.txt",
+        "/etc/passwd",
+    ],
+)
+def test_get_exec_file_path_rejects_paths_outside_execution_directory(path):
+    with pytest.raises(
+        ValueError,
+        match="escapes execution directory",
+    ):
+        get_exec_file_path("test-exec-123", path)
+
+
+@pytest.mark.parametrize(
+    "graph_exec_id",
+    [
+        "../other-exec",
+        "../../other-exec",
+        "/tmp/other-exec",
+    ],
+)
+def test_get_exec_file_path_rejects_execution_directory_escape(graph_exec_id):
+    with pytest.raises(
+        ValueError,
+        match="escapes execution directory",
+    ):
+        get_exec_file_path(graph_exec_id, "secret.txt")
 
 
 class TestFileCloudIntegration:
