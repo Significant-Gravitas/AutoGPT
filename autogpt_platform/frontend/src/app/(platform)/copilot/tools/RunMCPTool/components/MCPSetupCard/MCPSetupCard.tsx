@@ -25,7 +25,7 @@ import {
 } from "@/lib/mcp-auth";
 import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
@@ -148,6 +148,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
+  const loadingRef = useRef(false);
+  const isUnmountedRef = useRef(false);
+  const preOpenedWindowRef = useRef<Window | null>(null);
 
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
@@ -167,7 +170,19 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const setConnected = setLocalConnected;
 
   // Abort any in-progress OAuth popup when the component unmounts.
-  useEffect(() => () => oauthAbortRef.current?.(), []);
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      oauthAbortRef.current?.();
+      // Close a window pre-opened by a flow still fetching the login URL —
+      // its abort isn't registered yet, so the line above can't reach it.
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
+    };
+  }, []);
 
   async function handleConnect() {
     // Re-entrancy guard: a rapid double-click would otherwise race the
@@ -179,12 +194,25 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // running.  Button is also ``disabled={loading}`` but disabled
     // <button> elements still fire ``click`` in some browsers.
     if (loading) return;
+    // ``loading`` is state and is not readable synchronously, so the guard
+    // above still lets a fast double-tap through — which would overwrite
+    // preOpenedWindowRef below and strand the first window. The ref closes
+    // that gap without changing the contract the comment describes.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setError(null);
     // Reset showManualToken so a prior 400 doesn't keep the input visible
     // when a later attempt fails with a non-400 (e.g. network) error.
     setShowManualToken(false);
     setLoading(true);
     oauthAbortRef.current?.();
+
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback, so
+    // nothing would open at all.
+    const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     try {
       // Only a 400 from the *initiate* call means "this server has no OAuth
@@ -219,10 +247,17 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         state_token: string;
       };
 
+      // Unmounted while the login URL was being fetched — the cleanup
+      // already closed the window; don't adopt it or touch state.
+      if (isUnmountedRef.current) return;
+
       const { promise, cleanup } = openOAuthPopup(login_url, {
         stateToken: state_token,
+        preOpenedWindow,
         useCrossOriginListeners: true,
       });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
       oauthAbortRef.current = cleanup.abort;
 
       const result = await promise;
@@ -276,6 +311,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         setError(msg);
       }
     } finally {
+      // Close the dangling about:blank window only while this flow still owns
+      // it. After handoff the ref is null, so this is a no-op and the helper
+      // owns the window.
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
+      }
+      loadingRef.current = false;
       setLoading(false);
       oauthAbortRef.current = null;
     }
