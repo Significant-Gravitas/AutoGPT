@@ -249,3 +249,65 @@ describe("handleStreamError — telling the two usage limits apart", () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 });
+
+describe("handleStreamError — structured detail from a pre-stream 429/etc.", () => {
+  beforeEach(() => {
+    mockToast.mockClear();
+  });
+
+  it("recovers a ProviderFailure from an object `detail` and opens the switch-connection path", () => {
+    // The platform usage-cap 429 raises before streaming starts, so it
+    // never rides the live-stream envelope `handleStreamError` normally gets
+    // — it only reaches the client as FastAPI's `{"detail": ...}` body. If
+    // `detail` is an object (the structured envelope) rather than a string,
+    // it must still be recognised, not silently dropped to string-guessing.
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        JSON.stringify({
+          detail: {
+            kind: "usage_limit",
+            message: "You've reached your daily usage limit. Resets in 1h 0m.",
+            authProvider: "platform",
+            credentialId: null,
+            resetsAt: 1999999999,
+            retryable: false,
+            reconnectFixesIt: false,
+          },
+        }),
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    expect(onRateLimit.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        kind: "usage_limit",
+        authProvider: "platform",
+      }),
+    );
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("still handles a plain string `detail` the old way (backward compat)", () => {
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        '{"detail":"You\'ve reached your daily usage limit. Resets in 1h."}',
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+    // No structured envelope was recoverable, so the second arg is undefined
+    // — same behaviour as before this fix, for every backend that still
+    // sends a bare string.
+    expect(onRateLimit.mock.calls[0][1]).toBeUndefined();
+  });
+});
