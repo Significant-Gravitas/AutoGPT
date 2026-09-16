@@ -29,6 +29,22 @@ app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 client = fastapi.testclient.TestClient(app)
 
 
+def _request_context(user_id: str, team_id: str | None = None):
+    from autogpt_libs.auth.models import RequestContext
+
+    return RequestContext(
+        user_id=user_id,
+        org_id="test-org",
+        team_id=team_id,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=True,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, test_user_id):
     from autogpt_libs.auth.dependencies import get_request_context
@@ -38,17 +54,7 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
     async def _fake_request_context() -> RequestContext:
-        return RequestContext(
-            user_id=test_user_id,
-            org_id="test-org",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
-        )
+        return _request_context(test_user_id)
 
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
@@ -94,8 +100,8 @@ def test_graph_operation_is_published(method: str, path: str, operation_id: str)
     operation = real_app.openapi()["paths"][path][method]
     assert operation["operationId"] == operation_id
     assert operation["tags"] == ["v1", "graphs"]
-    # All ten are authenticated, and the dependency now lives on the router
-    # rather than on each route — so nothing else would notice it going missing.
+    # Publishing `security` is all this proves; the dependency behind it is
+    # asserted by test_graph_route_requires_an_authenticated_user below.
     assert "security" in operation
 
 
@@ -137,7 +143,7 @@ def test_graph_surface_has_no_other_operations():
     assert served == set(EXPECTED_OPERATIONS)
 
 
-# /api/graphs/{graph_id}/* is now served by three modules. Every fourth segment
+# /api/graphs/{graph_id}/* is served by three modules. Every fourth segment
 # is literal, so order between them is unobservable - this is what keeps it so.
 @pytest.mark.parametrize(
     "path,module",
@@ -519,8 +525,20 @@ def test_execute_graph_skips_the_balance_check_for_a_dry_run(
 
 def test_execute_graph_forwards_the_org_and_team_scope(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
-    """Dropping either would run the graph outside the caller's tenancy."""
+    """Dropping either would run the graph outside the caller's tenancy.
+
+    The file-wide context has team_id=None, which cannot tell a forwarded team
+    from a dropped one, so this test supplies a context that carries one.
+    """
+    from autogpt_libs.auth.dependencies import get_request_context
+
+    async def _team_scoped_context():
+        return _request_context(test_user_id, team_id="test-team")
+
+    app.dependency_overrides[get_request_context] = _team_scoped_context
+
     credit_model = Mock()
     credit_model.get_credits = AsyncMock(return_value=100)
     mocker.patch(
@@ -538,6 +556,7 @@ def test_execute_graph_forwards_the_org_and_team_scope(
     assert response.status_code == 200
     kwargs = started.await_args.kwargs
     assert kwargs["organization_id"] == "test-org"
+    assert kwargs["team_id"] == "test-team"
     assert kwargs["graph_version"] == 2
 
 

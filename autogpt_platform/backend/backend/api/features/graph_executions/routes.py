@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -34,7 +33,6 @@ from backend.executor import utils as execution_utils
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-logger = logging.getLogger(__name__)
 settings = Settings()
 
 # No router-level auth dependency: the two /public/shared routes are

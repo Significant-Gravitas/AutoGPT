@@ -5,7 +5,6 @@ import { RAISE_PROMPTS, type RaiseDraft } from "./helpers";
 export const BEAT_KEYS = [
   "role",
   "name",
-  "color",
   "avatar",
   "about",
   "voice",
@@ -45,7 +44,6 @@ export function buildFlowItems(
   const questions: Record<BeatKey, string> = {
     role: RAISE_PROMPTS.roleQuestion,
     name: RAISE_PROMPTS.nameQuestion,
-    color: RAISE_PROMPTS.colorQuestion,
     avatar: RAISE_PROMPTS.avatarQuestion(draft.name),
     about: RAISE_PROMPTS.aboutQuestion(draft.name),
     voice: RAISE_PROMPTS.voiceQuestion(draft.name),
@@ -79,18 +77,22 @@ export function stepId(beat: BeatKey) {
   return `${beat}-step`;
 }
 
-// Each beat's question is asked once the beat before it has an answer.
-export function beatTriggers(draft: RaiseDraft): Record<BeatKey, boolean> {
+// Each beat's question is asked once the beat before it has an answer. The
+// skills beat is also conditional: with nothing to offer it never opens, and
+// the marketplace beat before it becomes the flow's last.
+export function beatTriggers(
+  draft: RaiseDraft,
+  hasSkillsBeat: boolean,
+): Record<BeatKey, boolean> {
   return {
     role: draft.hasStarted,
     name: draft.role !== null,
-    color: draft.name !== "",
-    avatar: draft.color !== null,
+    avatar: draft.name !== "",
     about: draft.avatarUrl !== null,
     voice: draft.about !== null,
     budget: draft.voiceLabel !== null,
     marketplace: draft.budget !== null,
-    skills: draft.marketplace !== null,
+    skills: hasSkillsBeat && draft.marketplace !== null,
   };
 }
 
@@ -98,7 +100,6 @@ function beatAnswers(draft: RaiseDraft): Record<BeatKey, boolean> {
   return {
     role: draft.role !== null,
     name: draft.name !== "",
-    color: draft.color !== null,
     avatar: draft.avatarUrl !== null,
     about: draft.about !== null,
     voice: draft.voiceLabel !== null,
@@ -121,10 +122,9 @@ export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
       return { role: null };
     case "name":
       return { name: "" };
-    case "color":
-      return { color: null };
     case "avatar":
-      return { avatarUrl: null };
+      // Colour is answered in the same beat, so going back re-opens both.
+      return { avatarUrl: null, color: null };
     case "about":
       return { about: null };
     case "voice":

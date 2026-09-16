@@ -46,6 +46,7 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
 interface Props {
   row: ChainRow;
   isLast: boolean;
+  readOnly?: boolean;
 }
 
 const SUB_SESSION_TOOLS = new Set([
@@ -71,7 +72,7 @@ function isLiveSubSessionRow(row: ChainRow): boolean {
   );
 }
 
-export function ChainRowView({ row, isLast }: Props) {
+export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -203,7 +204,7 @@ export function ChainRowView({ row, isLast }: Props) {
                   live={liveReasoning}
                 />
               ) : (
-                <ToolResult row={row} />
+                <ToolResult row={row} readOnly={readOnly} />
               )}
             </div>
           </div>
