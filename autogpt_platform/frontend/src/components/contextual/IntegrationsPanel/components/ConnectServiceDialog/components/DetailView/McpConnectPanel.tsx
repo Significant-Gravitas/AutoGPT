@@ -42,6 +42,17 @@ interface Props {
 
 type Phase = "form" | "manual-token";
 
+// A server URL next to a secret reads as a login form to password managers,
+// which then offer the saved site credential for both fields. Each vendor
+// honours its own opt-out attribute, so all of them are set.
+const noPasswordManager = {
+  autoComplete: "off",
+  "data-1p-ignore": true,
+  "data-lpignore": "true",
+  "data-bwignore": true,
+  "data-form-type": "other",
+} as const;
+
 export function McpConnectPanel({ onSuccess }: Props) {
   const queryClient = useQueryClient();
   const { data: savedCredentials } = useGetV1ListCredentials({
@@ -228,6 +239,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
         onChange={(e) => handleServerUrlChange(e.target.value)}
         disabled={isSubmitting}
         autoFocus
+        {...noPasswordManager}
       />
 
       {phase === "manual-token" ? (
@@ -253,6 +265,8 @@ export function McpConnectPanel({ onSuccess }: Props) {
             }}
             disabled={isSubmitting}
             hint={mcpAuthTokenHint(authScheme)}
+            {...noPasswordManager}
+            autoComplete="new-password"
           />
         </>
       ) : null}
