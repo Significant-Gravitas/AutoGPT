@@ -112,10 +112,6 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Otto-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-# SECRT-2605 adds edit_chat_platform_message (mirroring post_to_chat_platform's
-# platform/target enums plus channel_id/ref_id/content) and a line in
-# post_to_chat_platform's description pointing at it: ~600 chars, which the
-# ceiling below already covers, so it needs no bump of its own.
 # Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
 # nine tools grew 50-400 chars each with no single PR at fault, dev reached
 # 60,984, and the next PR to add anything was ejected from the merge queue.
@@ -163,7 +159,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
 # 68,237 — dev widened raise_expert by two characters after this line was first
 # set, which reddened three interpreters on a branch that had added nothing.
-_CHAR_BUDGET = 68_997
+# Bumped 68_997 -> 70_712 for SECRT-2605: edit_chat_platform_message (mirroring
+# post_to_chat_platform's platform/target enums plus channel_id/ref_id/content)
+# measures 1,460, and the line in post_to_chat_platform's description pointing
+# at it 255. Measured on the branch merged with dev: 70,711, plus one.
+_CHAR_BUDGET = 70_712
 
 
 @pytest.fixture(scope="module")
