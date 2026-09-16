@@ -132,6 +132,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     #14209 autopilot-auto-mode-v2                 +0
 #     #14432 secrt-2593-publish                     +0
 #     #14365 sandbox-e2b-desktop (start_desktop)  +670  (branch measures 63,417)
+# Bumped 67_651 -> 68_382 on 2026-09-16 when #14365 merged dev. The expert PRs
+# above landed at 67,888 together (dev's registry today, measured with
+# start_desktop removed), more than the per-branch rows sum to, so
+# start_desktop's delta (+493 once merged, the +670 above was against an
+# older dev) no longer fit. Merged registry measures 68,381.
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
 # make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
@@ -148,7 +153,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_651
+_CHAR_BUDGET = 68_382
 
 
 @pytest.fixture(scope="module")
