@@ -123,9 +123,11 @@ class TestDiscoverTools:
             authorization="Bearer my-secret-token",
         )
 
+    @pytest.mark.parametrize("use_saved_credentials", [None, True, False])
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_discover_tools_auto_uses_stored_credential(self, client):
-        """When no explicit token is given, stored MCP credentials are used."""
+    async def test_discover_tools_respects_saved_credential_preference(
+        self, client, use_saved_credentials
+    ):
         stored_cred = OAuth2Credentials(
             provider="mcp",
             title="MCP: example.com",
@@ -143,7 +145,7 @@ class TestDiscoverTools:
                 "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
                 new_callable=AsyncMock,
                 return_value=stored_cred,
-            ),
+            ) as lookup,
         ):
             instance = MockClient.return_value
             instance.close = AsyncMock()
@@ -152,16 +154,24 @@ class TestDiscoverTools:
             )
             instance.list_tools = AsyncMock(return_value=[])
 
-            response = await client.post(
-                "/discover-tools",
-                json={"server_url": "https://mcp.example.com/mcp"},
-            )
+            payload = {"server_url": "https://mcp.example.com/mcp"}
+            if use_saved_credentials is not None:
+                payload["use_saved_credentials"] = use_saved_credentials
+            response = await client.post("/discover-tools", json=payload)
 
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            authorization="Bearer stored-token-123",
+            authorization=(
+                None if use_saved_credentials is False else "Bearer stored-token-123"
+            ),
         )
+        if use_saved_credentials is False:
+            lookup.assert_not_awaited()
+        else:
+            lookup.assert_awaited_once_with(
+                "test-user-id", "https://mcp.example.com/mcp"
+            )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):

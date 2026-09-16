@@ -32,7 +32,9 @@ export function useSetupNeeded({ enabled }: Args) {
     },
   });
   const connectable = new Set(
-    toConnectableProviders(providersQuery.data ?? []).map((p) => p.id),
+    toConnectableProviders(
+      (providersQuery.data ?? []).filter((provider) => !provider.mcp_server),
+    ).map((p) => p.id),
   );
 
   const { mutate: grant, isPending: isGranting } = useGrantExpertCredentials({
