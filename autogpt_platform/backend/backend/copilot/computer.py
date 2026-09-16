@@ -32,11 +32,14 @@ from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools.e2b_sandbox import (
     METADATA_MOUNTS,
     SandboxKind,
+    SandboxNotOwnedError,
     SandboxOwner,
+    connect_owned,
     find_owned_sandbox_id,
     list_owned_sandboxes,
 )
 from backend.data.redis_client import get_redis_async
+from backend.util.desktop_preview import create_preview_link
 
 logger = logging.getLogger(__name__)
 
@@ -138,20 +141,25 @@ async def open_desktop(
     mounts: Mapping[str, str],
     api_key: str,
     *,
-    user_id: Optional[str] = None,
+    user_id: Optional[str],
     session_id: Optional[str] = None,
 ) -> tuple[DesktopStream, bool, bool]:
     """Return ``(stream, created, shared)`` — resuming the owner's desktop if it exists.
 
     Shared by the ``start_desktop`` tool and the HTTP endpoints, so a desktop
     opened from the expert page is the same box the expert's next turn finds.
-    *user_id* / *session_id* are provenance only, stamped on a newly created box.
+    *user_id* is who the stream link is issued to (see ``_owner_bound``) and,
+    with *session_id*, provenance stamped on a newly created box.  A cached
+    or recovered sandbox id is only reattached after E2B confirms the box is
+    the owner's.
 
     One opener at a time per owner: the panel's Start and the model's
     ``start_desktop`` (or two tabs) can both miss the cache, and without the
     lock each would create a box, one of which nothing would ever find again.
     A second opener waits for the first and then reattaches to its box.
     """
+    if not user_id:
+        raise ValueError("A desktop needs an authenticated user to issue its link to")
     redis = await get_redis_async()
     key = owner.key("desktop")
     lock_key = f"{key}:lock"
@@ -186,7 +194,7 @@ async def _open_desktop_locked(
     redis: Any,
     key: str,
     *,
-    user_id: Optional[str],
+    user_id: str,
     session_id: Optional[str],
 ) -> tuple[DesktopStream, bool, bool]:
     raw = await redis.get(key)
@@ -195,13 +203,13 @@ async def _open_desktop_locked(
         # An expert's desktop outlives the Redis cache; E2B metadata is the record.
         sandbox_id = await find_owned_sandbox_id(owner, "desktop", api_key)
     if sandbox_id:
-        desktop = await _reconnect_desktop(sandbox_id, api_key, redis, key)
+        desktop = await _reconnect_desktop(sandbox_id, owner, api_key, redis, key)
         if desktop is not None:
             # From here on a failure is a real error on a live box, not a
             # reason to abandon it and create another.
             await desktop.ensure_display(*_DESKTOP_RESOLUTION)
             await redis.set(key, sandbox_id, ex=owner.ttl)
-            stream = await desktop.start_stream()
+            stream = _owner_bound(await desktop.start_stream(), user_id)
             return stream, False, await desktop.is_workspace_mounted()
 
     desktop, persistence = await DesktopSession.create(
@@ -228,27 +236,34 @@ async def _open_desktop_locked(
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(desktop.kill(), timeout=_KILL_TIMEOUT_SECONDS)
         raise
-    stream = await desktop.start_stream()
+    stream = _owner_bound(await desktop.start_stream(), user_id)
     return stream, True, persistence.volume_mounted
 
 
 async def _reconnect_desktop(
-    sandbox_id: str, api_key: str, redis: Any, key: str
+    sandbox_id: str, owner: SandboxOwner, api_key: str, redis: Any, key: str
 ) -> Optional[DesktopSession]:
     """Reattach to a cached or recovered desktop, or ``None`` if it is gone.
 
-    Only a box E2B no longer has is given up on (and dropped from the cache
-    so the owner gets a new one).  A transient failure is retried once and
-    then raised: forking an expert's desktop over a network blip is worse
-    than asking the user to try again.
+    Reattaches only once E2B confirms the box is the owner's.  A box E2B no
+    longer has, or one stamped for someone else, is given up on and dropped
+    from the cache so the owner gets one of their own.  A transient failure
+    is retried once and then raised: forking an expert's desktop over a
+    network blip is worse than asking the user to try again.
     """
     for attempt in (1, 2):
         try:
-            return await DesktopSession.connect(
-                sandbox_id, api_key, timeout_seconds=chat_config.e2b_desktop_timeout
+            return DesktopSession(
+                await connect_owned(
+                    sandbox_id,
+                    owner,
+                    "desktop",
+                    api_key,
+                    timeout=chat_config.e2b_desktop_timeout,
+                )
             )
-        except NotFoundException:
-            logger.warning("[E2B] Desktop %.12s is gone; replacing it", sandbox_id)
+        except (NotFoundException, SandboxNotOwnedError) as exc:
+            logger.warning("[E2B] Desktop %.12s replaced: %s", sandbox_id, exc)
             await redis.delete(key)
             return None
         except Exception as exc:
@@ -262,6 +277,18 @@ async def _reconnect_desktop(
                 continue
             raise
     raise AssertionError("unreachable")
+
+
+def _owner_bound(stream: DesktopStream, user_id: str) -> DesktopStream:
+    """The stream with its URL replaced by an owner-bound link.
+
+    The real URL carries the desktop's password.  It stays on the backend;
+    what the tool result, the chat message and the API hand out is a link
+    to ``/api/desktop-preview`` that only *user_id* can redeem.
+    """
+    return stream.model_copy(
+        update={"url": create_preview_link(user_id, stream.url), "requires_auth": True}
+    )
 
 
 def mounts_for(user_id: Optional[str], expert_id: Optional[str]) -> dict[str, str]:

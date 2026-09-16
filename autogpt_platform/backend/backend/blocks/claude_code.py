@@ -25,7 +25,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
-from backend.util.sandbox_metadata import SandboxMetadata
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -324,11 +324,20 @@ class ClaudeCodeBlock(Block):
         try:
             # Either reconnect to existing sandbox or create a new one
             if existing_sandbox_id:
-                # Reconnect to existing sandbox for conversation continuation
-                sandbox = await BaseAsyncSandbox.connect(
+                # Reconnect to existing sandbox for conversation continuation.
+                # The id is caller-supplied and any id connects under our key,
+                # so the box must be stamped with this user before it is used.
+                candidate = await BaseAsyncSandbox.connect(
                     sandbox_id=existing_sandbox_id,
                     api_key=e2b_api_key,
                 )
+                if not owned_by_user(
+                    (await candidate.get_info()).metadata, execution_context.user_id
+                ):
+                    raise PermissionError(
+                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                    )
+                sandbox = candidate
             else:
                 # Create new sandbox
                 sandbox = await BaseAsyncSandbox.create(

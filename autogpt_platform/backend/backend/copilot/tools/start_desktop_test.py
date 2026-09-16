@@ -11,6 +11,7 @@ from backend.blocks.desktop._api import (
     PersistenceInfo,
 )
 from backend.blocks.desktop._common import expert_volume_name, user_volume_name
+from backend.copilot.tools.e2b_sandbox import SandboxOwner
 from backend.util.sandbox_metadata import deployment_env
 
 from ._test_data import make_session
@@ -22,6 +23,19 @@ _STREAM = DesktopStream(
     url="https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
     sandbox_id="sbx-desktop-1",
 )
+
+
+def _preview_link(user_id: str, live_url: str) -> str:
+    return f"https://platform.example/api/proxy/api/desktop-preview?for={user_id}"
+
+
+@pytest.fixture(autouse=True)
+def _owner_bound_links():
+    """The real link needs FRONTEND_BASE_URL and a Fernet key; stub the wrapper."""
+    with patch(
+        "backend.copilot.computer.create_preview_link", side_effect=_preview_link
+    ):
+        yield
 
 
 def _make_redis(stored: str | None = None) -> MagicMock:
@@ -88,7 +102,11 @@ class TestStartDesktop:
 
         assert isinstance(result, DesktopStreamToolResponse)
         assert result.desktop_stream["kind"] == "desktop_stream"
-        assert result.desktop_stream["url"] == _STREAM.url
+        # The tool result, and so the stored message, carries an owner-bound
+        # link, never the stream URL with the desktop's password in it.
+        assert result.desktop_stream["url"] == _preview_link(_USER, _STREAM.url)
+        assert result.desktop_stream["requires_auth"] is True
+        assert _STREAM.url not in result.model_dump_json()
         # The desktop mounts the SAME per-user volume as the agent shell, and
         # is tagged so its owner can be found through the E2B API.
         create_kwargs = mock_session_cls.create.await_args.kwargs
@@ -126,50 +144,51 @@ class TestStartDesktop:
                 new=AsyncMock(return_value=redis),
             ),
             patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
+            patch("backend.copilot.computer.connect_owned") as connect_owned,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
             mock_config.e2b_desktop_timeout = 900
-            mock_session_cls.connect = AsyncMock(return_value=desktop)
+            connect_owned.return_value = box = MagicMock()
+            mock_session_cls.return_value = desktop
             mock_session_cls.create = AsyncMock()
 
             result = await tool._execute(user_id=_USER, session=session)
 
         assert isinstance(result, DesktopStreamToolResponse)
-        mock_session_cls.connect.assert_awaited_once_with(
-            "sbx-desktop-1", "e2b_test_key", timeout_seconds=900
+        # Reattached only after E2B confirmed the box is this session's desktop,
+        # with its running-time limit re-armed.
+        connect_owned.assert_awaited_once_with(
+            "sbx-desktop-1",
+            SandboxOwner(kind="session", id=session.session_id),
+            "desktop",
+            "e2b_test_key",
+            timeout=900,
         )
+        mock_session_cls.assert_called_once_with(box)
         mock_session_cls.create.assert_not_awaited()
         desktop.ensure_display.assert_awaited_once()
         assert "resumed" in result.message
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_user_id_creates_ephemeral_desktop(self):
+    async def test_no_user_id_gets_no_desktop(self):
+        """The stream link is issued to a user; without one there is nobody to
+        issue it to, so no box is created."""
         tool = StartDesktopTool()
         session = make_session(user_id=_USER)
-        desktop = _make_desktop()
-        redis = _make_redis(stored=None)
 
         with (
-            patch(
-                "backend.copilot.computer.get_redis_async",
-                new=AsyncMock(return_value=redis),
-            ),
             patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
-            mock_config.e2b_desktop_timeout = 900
-            mock_config.e2b_desktop_template = "desktop"
-            mock_session_cls.create = AsyncMock(
-                return_value=(desktop, PersistenceInfo(volume_mounted=False))
-            )
+            mock_session_cls.create = AsyncMock()
 
             result = await tool._execute(user_id=None, session=session)
 
-        assert isinstance(result, DesktopStreamToolResponse)
-        assert mock_session_cls.create.await_args.kwargs["volume_mounts"] is None
-        assert "ephemeral" in result.message
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "user_required"
+        mock_session_cls.create.assert_not_awaited()
 
 
 class TestExpertDesktop:
@@ -255,19 +274,25 @@ class TestExpertDesktop:
 
         with (
             patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
+            patch("backend.copilot.computer.connect_owned") as connect_owned,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             redis_patch, find_patch = self._patches(
                 redis, mock_session_cls, mock_config, found="sbx-desktop-1"
             )
-            mock_session_cls.connect = AsyncMock(return_value=desktop)
+            connect_owned.return_value = MagicMock()
+            mock_session_cls.return_value = desktop
             mock_session_cls.create = AsyncMock()
             with redis_patch, find_patch:
                 result = await tool._execute(user_id=_USER, session=session)
 
         assert isinstance(result, DesktopStreamToolResponse)
-        mock_session_cls.connect.assert_awaited_once_with(
-            "sbx-desktop-1", "e2b_test_key", timeout_seconds=900
+        connect_owned.assert_awaited_once_with(
+            "sbx-desktop-1",
+            SandboxOwner(kind="expert", id=self._EXPERT),
+            "desktop",
+            "e2b_test_key",
+            timeout=900,
         )
         mock_session_cls.create.assert_not_awaited()
         # The recovered id is re-cached under the expert key.
