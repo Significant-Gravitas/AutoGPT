@@ -152,11 +152,11 @@ async def _search_library(
                 search_term=query or None,
                 page_size=50 if not query else 10,
                 # Hide trigger agents — they aren't reusable as sub-agents
-                # (parent-coupled, single-purpose). AutoPilot accesses
+                # (parent-coupled, single-purpose). Otto accesses
                 # them via list_agent_triggers instead.
                 is_hidden=False,
                 # Load nodes so has_external_trigger / trigger_setup_info are
-                # populated — lets AutoPilot recognise (and set up) webhook
+                # populated — lets Otto recognise (and set up) webhook
                 # triggers from the listing without re-reading the full graph.
                 include_nodes=True,
             )

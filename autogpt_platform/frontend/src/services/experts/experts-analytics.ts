@@ -1,9 +1,10 @@
-// Experts + home-briefing funnel events (SECRT-2526 / SECRT-2552). Capture is
+// Experts + home funnel events (SECRT-2526 / SECRT-2552). Capture is
 // best-effort: a blocked analytics host must never break a hire, a briefing, or
-// a home render. Mirrors services/onboarding/brain-dump-analytics.ts but rides
-// the backend analytics sink (log_raw_analytics) instead of PostHog, so every
-// funnel event lands in one pipeline.
+// a home render. `trackFunnel` rides the backend analytics sink
+// (log_raw_analytics) so every funnel step lands in one pipeline; `trackExperts`
+// stays on PostHog, where the hire-flow timing series already lives.
 
+import posthog from "posthog-js";
 import { postAnalyticsLogRawAnalytics } from "@/app/api/__generated__/endpoints/analytics/analytics";
 
 export type FunnelViewEvent =
@@ -42,4 +43,17 @@ export function trackFunnel(
   }).catch(() => {
     // Analytics is never worth a broken interaction.
   });
+}
+
+type ExpertsEvent = "hire_flow_completed" | "hire_flow_abandoned";
+
+export function trackExperts(
+  event: ExpertsEvent,
+  properties?: Record<string, unknown>,
+) {
+  try {
+    posthog.capture(event, properties);
+  } catch {
+    // Analytics is never worth a broken hire.
+  }
 }

@@ -7,8 +7,9 @@ from pytest_mock import MockerFixture
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
+from backend.util.feature_flag import Flag
 
-from .service import build_home_dashboard
+from .service import _get_pending_questions, build_home_dashboard
 
 
 def _execution() -> GraphExecutionMeta:
@@ -84,6 +85,24 @@ def home_dependencies(mocker: MockerFixture):
         "backend.api.features.home.service.briefing_db.get_briefing_for_date",
         AsyncMock(return_value=None),
     )
+    # The flag-gated sources must be mocked even though the gates default to
+    # off: several tests patch `service.is_feature_enabled` module-wide to
+    # True, which opens these gates too. Left unmocked, they then run real
+    # Prisma queries on this test's function-scoped event loop — the closed
+    # loop leaves a dead connection in the shared engine pool that panics the
+    # query engine when a later (session-loop) test starts a transaction.
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_session_titles",
+        AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
 
 
 def _stored_briefing(**overrides) -> BriefingContent:
@@ -125,7 +144,7 @@ async def test_briefing_anchors_on_todays_persisted_row(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -155,7 +174,7 @@ async def test_briefing_rejects_a_row_with_negative_totals(
     otherwise taken as canonical — a negative total is a corrupt row, so it
     has to fail validation and drop home onto the live path."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     corrupt = _stored_briefing().model_dump(mode="json") | {"completed_total": -3}
@@ -175,7 +194,7 @@ async def test_briefing_anchors_on_a_row_the_job_could_not_deliver(
     failed. The job redelivers that same stored content, so it is still the
     canonical story — going live here would drift from the pending message."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -204,7 +223,7 @@ async def test_briefing_falls_back_to_live_when_the_stored_row_is_malformed(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     _patch_stored_briefing(mocker, {"unexpected": "shape"})
@@ -222,7 +241,7 @@ async def test_briefing_falls_back_to_live_when_the_lookup_raises(
     """A briefing the page cannot read is not worth a 500 — /home is the
     landing page, and every other tile on it is still fine."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -242,7 +261,7 @@ async def test_briefing_is_live_when_no_row_exists_yet(
 ) -> None:
     """A user who signed up after 9am has no briefing to anchor on."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -272,7 +291,7 @@ async def test_briefing_date_comes_from_the_requests_own_clock(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date", lookup
     )
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -289,7 +308,7 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     """Summaries are stored regardless of the flag, so the persisted path has
     to scrub them too — otherwise the card leaks what the gate hides."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
     mocker.patch(
@@ -314,7 +333,7 @@ async def test_activity_summary_surfaces_when_flag_enabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -328,7 +347,7 @@ async def test_activity_summary_hidden_when_flag_disabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
 
@@ -342,7 +361,7 @@ async def test_schedules_stay_owner_scoped_inside_an_organization(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()
@@ -370,7 +389,7 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()
@@ -388,3 +407,48 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     assert dashboard.upcoming_tasks == []
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+class TestPendingQuestionsFlagGate:
+    """Question items ship with the expert-team surface: without the
+    hire-experts flag, Home must not just return an empty list but must
+    never reach into chat_db at all — a return-value-only assertion would
+    still pass if someone deleted the flag check and the DB happened to
+    return nothing (e.g. no sessions yet)."""
+
+    @pytest.mark.asyncio
+    async def test_flag_off_returns_empty_and_never_touches_chat_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        is_enabled = mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=False),
+        )
+        get_sessions = mocker.patch(
+            "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+            AsyncMock(return_value=["should never be reached"]),
+        )
+
+        result = await _get_pending_questions(user_id="user-1")
+
+        assert result == []
+        get_sessions.assert_not_awaited()
+        is_enabled.assert_awaited_once_with(Flag.HIRE_EXPERTS, "user-1", default=False)
+
+    @pytest.mark.asyncio
+    async def test_flag_on_reads_pending_questions_from_chat_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=True),
+        )
+        get_sessions = mocker.patch(
+            "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+            AsyncMock(return_value=["session-info"]),
+        )
+
+        result = await _get_pending_questions(user_id="user-1")
+
+        assert result == ["session-info"]
+        get_sessions.assert_awaited_once_with("user-1")

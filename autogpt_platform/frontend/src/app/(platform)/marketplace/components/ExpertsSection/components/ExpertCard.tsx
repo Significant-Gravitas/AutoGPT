@@ -1,11 +1,14 @@
-import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+import Link from "next/link";
 import { getExpertAccent } from "../helpers";
+import { formatSkillTitle } from "../../SkillsSection/helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -14,19 +17,20 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  expert: Expert;
+  expert: ExpertTemplate;
   isHired: boolean;
-  onClick: () => void;
 }
 
-export function ExpertCard({ expert, isHired, onClick }: Props) {
+/** Each card is a plain link to the expert's own page, so a profile can be
+ *  shared and opened directly. */
+export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
+  const skills = expert.bundled_skills ?? [];
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+    <Link
+      href={`/marketplace/experts/${expert.id}`}
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div
         className={cn(
@@ -44,12 +48,12 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           </Avatar>
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+              "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm font-medium",
               accent.pill,
             )}
           >
-            <Icon icon={accent.roleIcon} size={14} />
-            {expert.role}
+            <Icon icon={accent.roleIcon} size={14} className="shrink-0" />
+            {getExpertRoleLabel(expert.role)}
           </span>
         </div>
 
@@ -64,23 +68,23 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           ) : null}
         </div>
 
-        {expert.skills && expert.skills.length > 0 ? (
+        {skills.length > 0 ? (
           <div>
             <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
               Skills
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {expert.skills.slice(0, 3).map((skill) => (
+              {skills.slice(0, 3).map((skill) => (
                 <span
-                  key={skill}
+                  key={skill.id}
                   className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
                 >
-                  {skill}
+                  {formatSkillTitle(skill.name)}
                 </span>
               ))}
-              {expert.skills.length > 3 ? (
+              {skills.length > 3 ? (
                 <span className="px-1 py-1 text-xs font-medium text-zinc-400">
-                  +{expert.skills.length - 3}
+                  +{skills.length - 3}
                 </span>
               ) : null}
             </div>
@@ -88,19 +92,21 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-zinc-500">
-            <Icon icon={FlashIcon} size={18} className={accent.icon} />
-            {expert.workflows.length}{" "}
-            {expert.workflows.length === 1 ? "workflow" : "workflows"}
-          </span>
+          {expert.workflows.length > 0 ? (
+            <span className="flex items-center gap-2 text-base text-zinc-500">
+              <Icon icon={FlashIcon} size={18} className={accent.icon} />
+              {expert.workflows.length}{" "}
+              {expert.workflows.length === 1 ? "workflow" : "workflows"}
+            </span>
+          ) : null}
           {isHired ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
               Hired
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
-              Hire
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+              View
               <Icon
                 icon={ArrowRight02Icon}
                 size={16}
@@ -110,6 +116,6 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           )}
         </div>
       </div>
-    </button>
+    </Link>
   );
 }

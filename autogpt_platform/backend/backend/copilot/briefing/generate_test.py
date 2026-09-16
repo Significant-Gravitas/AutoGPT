@@ -264,11 +264,25 @@ async def test_generate_skips_when_flag_off(monkeypatch):
     from backend.copilot.briefing import generate
 
     async def flag_off(*a, **kw):
-        return False
+        return False, True
 
-    monkeypatch.setattr(generate, "is_feature_enabled", flag_off)
+    monkeypatch.setattr(generate, "evaluate_feature_flag", flag_off)
     result = await generate.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "flag_disabled"}
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_an_unevaluated_flag_separately(monkeypatch):
+    """A flag read that FAILED yields False, same as a real "off". Only the
+    latter may unregister the cron, so the two must not share a reason."""
+    from backend.copilot.briefing import generate
+
+    async def flag_unreadable(*a, **kw):
+        return False, False
+
+    monkeypatch.setattr(generate, "evaluate_feature_flag", flag_unreadable)
+    result = await generate.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "flag_unavailable"}
 
 
 @pytest.mark.asyncio
@@ -278,6 +292,9 @@ async def test_generate_skips_when_already_delivered(monkeypatch):
     from backend.copilot.briefing import generate
 
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
     user = MagicMock()
     user.timezone = "UTC"
     monkeypatch.setattr(
@@ -308,6 +325,9 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
     monkeypatch.setattr(generate, "datetime", fake_datetime)
 
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -407,6 +427,9 @@ def _patch_generate_env(monkeypatch, generate, client):
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
     user = MagicMock()
     user.timezone = "UTC"
     monkeypatch.setattr(
@@ -532,6 +555,9 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     monkeypatch.setattr(generate, "datetime", fake_datetime)
 
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -731,6 +757,9 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -798,6 +827,9 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -867,6 +899,9 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
     monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -1076,6 +1111,9 @@ async def test_ai_summary_flag_off_skips_generation_entirely(
         generate_module,
         "is_feature_enabled",
         AsyncMock(side_effect=lambda flag, *a, **k: flag is Flag.HIRE_EXPERTS),
+    )
+    monkeypatch.setattr(
+        generate_module, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
     )
 
     result = await generate_module.generate_and_deliver_briefing("user-1")

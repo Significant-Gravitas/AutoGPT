@@ -30,6 +30,27 @@ const smoothShadowRing = plugin(function smoothShadowRing({
   });
 });
 
+// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
+// stay percent-encoded or the data URI terminates early.
+const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
+
+// Lays grain over an element's own background. Deliberately sets no `position`,
+// so it never fights the positioning utilities already on the target — callers
+// must position the element themselves.
+const grainTexture = plugin(function grainTexture({ addUtilities }) {
+  addUtilities({
+    ".grain-overlay::after": {
+      content: '""',
+      position: "absolute",
+      inset: "0",
+      backgroundImage: GRAIN_TEXTURE,
+      opacity: "0.5",
+      mixBlendMode: "soft-light",
+      pointerEvents: "none",
+    },
+  });
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -252,6 +273,22 @@ const config = {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(400%)" },
         },
+        "caret-blink": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
+        "shimmer-text": {
+          "0%": { backgroundPosition: "100% 0" },
+          "100%": { backgroundPosition: "0% 0" },
+        },
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "grow-line": {
+          from: { transform: "scaleY(0)" },
+          to: { transform: "scaleY(1)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -270,9 +307,18 @@ const config = {
         "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
+        "caret-blink": "caret-blink 1s step-end infinite",
+        "shimmer-text": "shimmer-text 2s linear infinite",
+        "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
       },
       transitionDuration: {
+        "400": "400ms",
         "2000": "2000ms",
+      },
+      transitionTimingFunction: {
+        // easeOutQuint — long, soft settle for accordion expand/collapse.
+        "out-quint": "cubic-bezier(0.23, 1, 0.32, 1)",
       },
     },
   },
@@ -280,6 +326,7 @@ const config = {
     tailwindcssAnimate,
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
+    grainTexture,
   ],
 } satisfies Config;
 

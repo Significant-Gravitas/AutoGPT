@@ -85,7 +85,7 @@ class InboundAttachment(BaseModel):
 
     The adapter downloads the bytes from the platform up-front (bounded by the
     adapter's ``max_attachment_bytes``); the handler then uploads them to the
-    user's workspace so AutoPilot can read them during the turn.
+    user's workspace so Otto can read them during the turn.
     """
 
     filename: str
@@ -133,10 +133,13 @@ class MessageContext:
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
-    # Users the bot is allowed to @-mention back in this turn — populated
-    # from the inbound platform message's mentions (excluding the bot itself).
-    # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
-    # get pinged even if the LLM produces `@theirname` in its output.
+    # Users the bot may @-mention back in this turn: the author and anyone
+    # mentioned in the inbound message (excluding the bot itself), as
+    # `(display_name, platform_user_id)` pairs. An adapter may widen this at
+    # send time to members and roles of the server it is posting in (Discord
+    # does, by looking up the names the model used); it must never widen it to
+    # everyone/here-style broadcasts. Names that resolve to nothing stay plain
+    # text.
     mentionable_users: tuple[tuple[str, str], ...] = ()
     # Other threads/channels the message linked or @-referenced, fetched by the
     # bot up-front so the model has their content without web-fetching Discord.
@@ -197,6 +200,61 @@ class PlatformAdapter(ABC):
         the URL inline in the text.
         """
         ...
+
+    @property
+    def max_choice_label_length(self) -> int:
+        """Longest option label this platform's native widget shows in full.
+
+        Past it the widget silently clips, so two options sharing a prefix
+        render identically while still dispatching their own full text — the
+        user cannot tell which button they are pressing. A question with any
+        option over this goes as numbered text instead, which shows all of
+        it. Discord buttons 80, Slack 75, Telegram 64, Teams 60.
+        """
+        return 80
+
+    @property
+    def max_choice_options(self) -> int:
+        """How many options this platform's native widget renders legibly.
+
+        `base` documents that an adapter decides whether `options` fits its
+        native widget, so the number belongs here rather than as one
+        platform-blind constant in the caller: Teams' Adaptive Cards render
+        roughly six actions and silently drop the tail, while Discord rows,
+        Slack action blocks and Telegram keyboards take the full ten.
+        """
+        return 10
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        """Whether `send_choice_buttons` can render native option buttons.
+
+        Default False — only platforms overriding `send_choice_buttons`
+        below flip this. Checked before spending a `bot.choices` token on a
+        question, so unsupported adapters never pay that cost.
+        """
+        return False
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        """Send `text` with native clickable option buttons/select where the
+        platform supports it, returning True once sent.
+
+        A click carries `token` and the clicked option's index (not the
+        option text -- Telegram's callback_data caps at 64 bytes); the
+        adapter resolves it via `bot.choices.resolve_choice` and feeds the
+        resolved text through its own `on_message` callback, exactly as if
+        the user had typed it. Returns False when the platform doesn't
+        implement this (or `options` doesn't fit its native widget), telling
+        the caller to fall back to plain numbered text. Default: unsupported.
+        """
+        return False
 
     @abstractmethod
     async def send_reply(

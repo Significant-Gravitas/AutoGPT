@@ -8,7 +8,7 @@ import type { QueryClient } from "@tanstack/react-query";
 // Schedule mutations (create / edit / delete) need to invalidate every
 // list query that might cache the affected row.  There are four:
 //   - user-wide /api/v1/schedules — unified `/library/followups` page
-//     AND the "Autopilot library" briefing pill count.
+//     AND the "Otto library" briefing pill count.
 //   - per-graph /api/v1/graphs/{id}/schedules — agent detail page
 //     sidebar + selected-schedule view.
 //   - copilot followups list — same scheduler primitive, separate
@@ -26,21 +26,26 @@ export function invalidateAllScheduleQueries(
   queryClient: QueryClient,
   graphId?: string,
 ) {
-  queryClient.invalidateQueries({
-    queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
-  });
-  queryClient.invalidateQueries({
-    queryKey: getListCopilotFollowupSchedulesQueryKey(),
-  });
-  // Partial-key match: hits every variant of the library agents query
-  // (search, filter, pagination, plus the infinite-query form used by
-  // `/library`'s agent list).  Required so `agent.is_scheduled` —
-  // computed server-side and fed into the fleet-summary "Scheduled"
-  // count — refreshes after a schedule mutation.
-  queryClient.invalidateQueries({ queryKey: ["/api/library/agents"] });
-  if (graphId) {
+  const invalidations = [
     queryClient.invalidateQueries({
-      queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
-    });
+      queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: getListCopilotFollowupSchedulesQueryKey(),
+    }),
+    // Partial-key match: hits every variant of the library agents query
+    // (search, filter, pagination, plus the infinite-query form used by
+    // `/library`'s agent list).  Required so `agent.is_scheduled` —
+    // computed server-side and fed into the fleet-summary "Scheduled"
+    // count — refreshes after a schedule mutation.
+    queryClient.invalidateQueries({ queryKey: ["/api/library/agents"] }),
+  ];
+  if (graphId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
+      }),
+    );
   }
+  return Promise.all(invalidations);
 }

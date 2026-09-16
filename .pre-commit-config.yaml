@@ -25,7 +25,9 @@ repos:
         description: Detects high entropy strings that are likely to be passwords.
         args: ["--baseline", ".secrets.baseline"]
         files: ^autogpt_platform/
-        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template))$
+        # The style eval's baseline is generated and holds sha256 content
+        # hashes of the assembled prompts, which read as high-entropy hex.
+        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template)|copilot/eval/style/baseline\.json)$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
@@ -190,6 +192,11 @@ repos:
         alias: isort-platform-backend
         entry: poetry -P autogpt_platform/backend run isort -p backend
         files: ^autogpt_platform/backend/
+        # Vendored upstream packages are test data compared byte for byte
+        # against what the code stored; sorting their imports rewrites the
+        # fixture. isort's own skip settings do not reach a file named on the
+        # command line, which is how this hook invokes it.
+        exclude: ^autogpt_platform/backend/test/fixtures/
         types: [file, python]
         language: system
 

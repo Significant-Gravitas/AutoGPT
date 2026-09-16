@@ -25,6 +25,7 @@ from prisma.models import (
 )
 
 from backend.blocks._base import BlockType
+from backend.copilot.model import ChatMessage
 from backend.copilot.sharing.db import (
     _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
@@ -32,6 +33,7 @@ from backend.copilot.sharing.db import (
     disable_chat_session_share,
     enable_chat_session_share,
     get_chat_share_state,
+    get_shared_chat_messages_paginated,
     link_new_execution_to_chat_share,
 )
 
@@ -108,6 +110,45 @@ class _TxStub:
 
     async def __aexit__(self, *args):
         return None
+
+
+@pytest.mark.asyncio
+async def test_shared_transcript_omits_hidden_kickoff_messages(
+    mock_prisma_calls,
+) -> None:
+    mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+        return_value=_mock_session()
+    )
+    page = SimpleNamespace(
+        messages=[
+            ChatMessage(
+                id="hidden",
+                role="user",
+                content="private kickoff prompt",
+                sequence=0,
+                metadata={"hidden": True, "kind": "expert_kickoff"},
+            ),
+            ChatMessage(
+                id="visible",
+                role="assistant",
+                content="Hello from your expert",
+                sequence=1,
+            ),
+        ],
+        has_more=False,
+        oldest_sequence=0,
+    )
+
+    with patch(
+        "backend.copilot.sharing.db.get_chat_messages_paginated",
+        new=AsyncMock(return_value=page),
+    ):
+        result = await get_shared_chat_messages_paginated("token-A")
+
+    assert result is not None
+    assert [message.content for message in result.messages] == [
+        "Hello from your expert"
+    ]
 
 
 @pytest.fixture()

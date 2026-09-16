@@ -12,10 +12,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
     InvalidInputError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
@@ -25,9 +27,45 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
-# Presets are returned in a single page; the response carries total_count so the
-# model can tell when the list is truncated and narrow via a filter instead.
-_LIST_PAGE_SIZE = 100
+_DEFAULT_PAGE_SIZE = 100
+_MAX_PAGE_SIZE = 100
+
+
+def _is_in_session_scope(preset: LibraryAgentPreset, session: ChatSession) -> bool:
+    return preset.expert_id == session.expert_id
+
+
+async def _get_scoped_preset(
+    user_id: str, preset_id: str, session: ChatSession
+) -> LibraryAgentPreset | None:
+    try:
+        preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
+    except NotFoundError:
+        return None
+    if preset is None or not _is_in_session_scope(preset, session):
+        return None
+    return preset
+
+
+async def _list_scoped_presets(
+    user_id: str,
+    graph_id: str | None,
+    session: ChatSession,
+    page: int,
+    page_size: int,
+) -> tuple[list[LibraryAgentPreset], int]:
+    response = await library_db().list_presets(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+        graph_id=graph_id,
+        expert_id=session.expert_id,
+        filter_by_expert=True,
+    )
+    scoped = [
+        preset for preset in response.presets if _is_in_session_scope(preset, session)
+    ]
+    return scoped, response.pagination.total_items
 
 
 class PresetSummary(BaseModel):
@@ -51,9 +89,9 @@ class PresetListResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.PRESET_LIST
     presets: list[PresetSummary]
-    # Total presets matching the filter; > len(presets) means the list is
-    # truncated to one page — narrow with graph_id/library_agent_id.
     total_count: int
+    page: int
+    page_size: int
 
 
 class PresetUpdatedResponse(ToolResponseBase):
@@ -110,6 +148,19 @@ class ListPresetsTool(BaseTool):
                     "type": "string",
                     "description": "Filter by graph.",
                 },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "Page number (1-based).",
+                },
+                "page_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _MAX_PAGE_SIZE,
+                    "default": _DEFAULT_PAGE_SIZE,
+                    "description": "Presets per page (1-100).",
+                },
             },
             "required": [],
         }
@@ -130,6 +181,21 @@ class ListPresetsTool(BaseTool):
 
         library_agent_id: str | None = kwargs.get("library_agent_id")
         graph_id: str | None = kwargs.get("graph_id")
+        page = kwargs.get("page", 1)
+        page_size = kwargs.get("page_size", _DEFAULT_PAGE_SIZE)
+        if (
+            isinstance(page, bool)
+            or not isinstance(page, int)
+            or page < 1
+            or isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= _MAX_PAGE_SIZE
+        ):
+            return ErrorResponse(
+                message="page must be at least 1 and page_size must be between 1 and 100.",
+                error="invalid_pagination",
+                session_id=session_id,
+            )
 
         ldb = library_db()
         if library_agent_id:
@@ -145,10 +211,10 @@ class ListPresetsTool(BaseTool):
                 )
             graph_id = lib_agent.graph_id
 
-        response = await ldb.list_presets(
-            user_id=user_id, page=1, page_size=_LIST_PAGE_SIZE, graph_id=graph_id
+        page_presets, total_count = await _list_scoped_presets(
+            user_id, graph_id, session, page, page_size
         )
-        total_count = response.pagination.total_items
+        start = (page - 1) * page_size
         presets = [
             PresetSummary(
                 id=p.id,
@@ -161,15 +227,19 @@ class ListPresetsTool(BaseTool):
                 webhook_url=p.webhook.url if p.webhook else None,
                 provider=p.webhook.provider if p.webhook else None,
             )
-            for p in response.presets
+            for p in page_presets
         ]
 
         if not presets:
-            message = "No presets found."
-        elif total_count > len(presets):
             message = (
-                f"Showing the first {len(presets)} of {total_count} presets. "
-                "Narrow the list with graph_id or library_agent_id."
+                "No presets found."
+                if total_count == 0
+                else f"No presets found on page {page}; {total_count} preset(s) match."
+            )
+        elif start > 0 or start + len(presets) < total_count:
+            message = (
+                f"Showing presets {start + 1}-{start + len(presets)} "
+                f"of {total_count}."
             )
         else:
             message = f"Found {total_count} preset(s)."
@@ -177,6 +247,8 @@ class ListPresetsTool(BaseTool):
             message=message,
             presets=presets,
             total_count=total_count,
+            page=page,
+            page_size=page_size,
             session_id=session_id,
         )
 
@@ -256,21 +328,20 @@ class UpdatePresetTool(BaseTool):
                 session_id=session_id,
             )
 
+        current = await _get_scoped_preset(user_id, preset_id, session)
+        if current is None:
+            return ErrorResponse(
+                message=f"Preset '{preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
+
         merged_inputs = None
         credentials = None
         new_inputs = kwargs.get("inputs")
         if new_inputs:
             # Reconfigure: merge over current inputs and reuse the stored
             # credentials so the webhook can be re-registered.
-            current = await library_db().get_preset(
-                user_id=user_id, preset_id=preset_id
-            )
-            if not current:
-                return ErrorResponse(
-                    message=f"Preset '{preset_id}' not found.",
-                    error="preset_not_found",
-                    session_id=session_id,
-                )
             merged_inputs = {**current.inputs, **new_inputs}
             credentials = current.credentials
 
@@ -290,7 +361,7 @@ class UpdatePresetTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        except (InvalidInputError, WebhookRegistrationError) as e:
+        except (InvalidInputError, MissingConfigError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=str(e),
                 error="preset_update_failed",
@@ -361,8 +432,8 @@ class DeletePresetTool(BaseTool):
             )
 
         # Fetch first for the name + a clean not-found message.
-        current = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
-        if not current:
+        current = await _get_scoped_preset(user_id, preset_id, session)
+        if current is None:
             return ErrorResponse(
                 message=f"Preset '{preset_id}' not found.",
                 error="preset_not_found",

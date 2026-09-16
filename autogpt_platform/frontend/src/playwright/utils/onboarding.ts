@@ -44,77 +44,78 @@ export async function skipOnboardingIfPresent(
   await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 }
 
-/**
- * Walk through the onboarding wizard in the browser. The Subscription step
- * is gated behind ENABLE_PLATFORM_PAYMENT and only walked when present.
- * Returns the data that was entered so tests can verify it was submitted.
- */
+export async function advanceToRoleStep(
+  page: Page,
+  plan: "pro" | "max" = "pro",
+) {
+  const role = page.getByText("What best describes you");
+  const subscription = page.getByText(/choose the plan that.s right/i);
+  const team = page.getByRole("heading", {
+    name: "Your own team of AI experts.",
+  });
+  const autopilot = page.getByRole("heading", {
+    name: "Meet Otto, your Head of AI.",
+  });
+
+  for (let step = 0; step < 4; step++) {
+    await expect(
+      role.or(subscription).or(team).or(autopilot).first(),
+    ).toBeVisible({ timeout: 10000 });
+    if (await role.isVisible()) return;
+    if (await subscription.isVisible()) {
+      await page
+        .getByRole("button", {
+          name: plan === "max" ? "Upgrade to Max" : "Get Pro",
+        })
+        .click();
+      await expect(subscription).toBeHidden({ timeout: 10000 });
+    } else {
+      const current = (await team.isVisible()) ? team : autopilot;
+      await page.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(current).toBeHidden({ timeout: 10000 });
+    }
+  }
+  await expect(role).toBeVisible({ timeout: 10000 });
+}
+
 export async function completeOnboardingWizard(
   page: Page,
   options?: {
-    name?: string;
     role?: string;
     painPoints?: string[];
     plan?: "pro" | "max";
   },
 ) {
-  const name = options?.name ?? "TestUser";
   const role = options?.role ?? "Engineering";
   const painPoints = options?.painPoints ?? ["Research", "Reports & data"];
   const plan = options?.plan ?? "pro";
 
-  // Step 1: Welcome — enter name
-  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible({
-    timeout: 10000,
-  });
-  await page.getByLabel("What should I call you?").fill(name);
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // Step 2: Role — select a role (auto-advances after selection)
-  await expect(page.getByText("What best describes you")).toBeVisible({
-    timeout: 5000,
-  });
+  await advanceToRoleStep(page, plan);
   await page.getByText(role, { exact: false }).click();
-
-  // Step 3: Pain points — select tasks
+  await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByText("What's eating your time?")).toBeVisible({
     timeout: 5000,
   });
   for (const point of painPoints) {
     await page.getByText(point, { exact: true }).click();
   }
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
 
-  // Subscription step (only when ENABLE_PLATFORM_PAYMENT is on) — pick a
-  // plan to advance. The "Team" CTA opens an external intake form and does
-  // not advance, so we don't exercise it here. Race the Subscription header
-  // against the Preparing header so the helper works in both flag states
-  // without a fixed timeout that flakes under slow renders.
-  const subscriptionHeader = page.getByText(/choose the plan that.s right/i);
-  const preparingHeader = page.getByText("Preparing your workspace...", {
+  const connect = page.getByRole("heading", {
+    name: "Already paying for an AI subscription?",
+  });
+  const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
-  const nextState = await Promise.race([
-    subscriptionHeader
-      .waitFor({ state: "visible", timeout: 10000 })
-      .then(() => "subscription" as const),
-    preparingHeader
-      .waitFor({ state: "visible", timeout: 10000 })
-      .then(() => "preparing" as const),
-  ]);
-
-  if (nextState === "subscription") {
-    const planCta = plan === "max" ? "Upgrade to Max" : "Get Pro";
-    await page.getByRole("button", { name: planCta }).click();
+  await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
+  if (await connect.isVisible()) {
+    await page.getByRole("button", { name: "Next", exact: true }).click();
   }
 
-  // Final step: Preparing — require the real transition state to appear first,
-  // then wait for the app shell on /copilot rather than racing the redirect.
-  await expect(preparingHeader).toBeVisible({ timeout: 10000 });
+  await expect(preparing).toBeVisible({ timeout: 10000 });
   await page.waitForURL(/\/copilot/, { timeout: 30000 });
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });
-
-  return { name, role, painPoints, plan };
+  return { role, painPoints, plan };
 }

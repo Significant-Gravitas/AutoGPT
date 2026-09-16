@@ -16,7 +16,7 @@ To run the AutoGPT Platform, follow these steps:
 1. Clone this repository to your local machine and navigate to the `autogpt_platform` directory within the repository:
 
    ```
-   git clone <https://github.com/Significant-Gravitas/AutoGPT.git | git@github.com:Significant-Gravitas/AutoGPT.git>
+   git clone https://github.com/Significant-Gravitas/AutoGPT.git
    cd AutoGPT/autogpt_platform
    ```
 
@@ -114,11 +114,14 @@ Here are some common scenarios where you might use multiple Docker Compose comma
    ```
    docker compose stop
    docker compose rm -f
-   docker compose pull
-   docker compose up -d
+   docker compose pull --ignore-buildable
+   docker compose up -d --build
    ```
 
-   This stops all services, removes containers, pulls the latest images, and restarts the system.
+   This stops all services, removes containers, pulls the latest images, and
+   restarts the system. `--ignore-buildable` skips the services this repo
+   builds from source; without it `pull` tries to fetch them from a registry
+   they were never published to and fails.
 
 5. Developing with live updates:
 

@@ -39,7 +39,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
           </Button>
         )}
       </PopoverTrigger>
-      {/* z-[80]: must layer above the AutoPilot mobile drawer
+      {/* z-[80]: must layer above the Otto mobile drawer
           (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
       <PopoverContent align={align} className="z-[80] w-72 p-4">
