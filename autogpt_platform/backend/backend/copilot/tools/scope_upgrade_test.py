@@ -18,11 +18,7 @@ from backend.blocks.linear.comment import LinearCreateCommentBlock
 from backend.copilot.tools import helpers as block_helpers
 from backend.copilot.tools import utils as tool_utils
 from backend.copilot.tools.models import SetupRequirementsResponse
-from backend.data.model import (
-    CredentialsFieldInfo,
-    CredentialsType,
-    OAuth2Credentials,
-)
+from backend.data.model import CredentialsFieldInfo, CredentialsType, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.sdk import SecretStr
 
