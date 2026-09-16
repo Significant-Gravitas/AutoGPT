@@ -21,7 +21,9 @@ removal of the thing that justified it.
 """
 
 import ast
+import importlib.util
 import inspect
+import sys
 import textwrap
 from collections.abc import Callable
 from typing import Any
@@ -473,8 +475,9 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
     route under another prefix.
 
     Coverage is every route reaching ``get_credit_model`` within
-    ``_CREDIT_MODEL_MAX_HOPS`` calls through module-level functions of
-    ``backend.api``/``backend.data`` — not every caller in the app: a longer
+    ``_CREDIT_MODEL_MAX_HOPS`` calls through functions of
+    ``backend.api``/``backend.data``, named either at module level or by an
+    import inside the calling function — not every caller in the app: a longer
     chain, a call through an instance attribute, or a dynamically resolved name
     stays out of view. The one-hop source match this replaced could not see
     ``/home`` at all, which is SECRT-2648.
@@ -493,6 +496,36 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
         "the caller's own data — add it to ORG_BALANCE_UNGATED with the reason. "
         f"Unexpected: {sorted(ungated - set(ORG_BALANCE_UNGATED))}"
     )
+
+
+def _defers_its_credit_import():
+    """Stand-in for a route that imports the credit model inside its body."""
+    from backend.data.credit import get_credit_model as _model_getter
+
+    return _model_getter
+
+
+def _defers_an_unrelated_import():
+    """The same shape, importing something that never reaches the org pool."""
+    from backend.data.model import AutoTopUpConfig
+
+    return AutoTopUpConfig
+
+
+@pytest.mark.parametrize(
+    "func, expected",
+    [(_defers_its_credit_import, True), (_defers_an_unrelated_import, False)],
+    ids=["deferred credit import", "deferred unrelated import"],
+)
+def test_walk_resolves_function_local_imports(func: Callable, expected: bool):
+    """A deferred import must not hide the credit model from the walk.
+
+    ``backend/api`` and ``backend/data`` carry 116 function-local ``import
+    backend…`` statements, so a route that defers its credit import is an
+    ordinary shape here, not a contrivance — and a name bound that way is
+    absent from ``__globals__``.
+    """
+    assert _reaches_credit_model(func) is expected
 
 
 def _reaches_credit_model(endpoint: Callable) -> bool:
@@ -525,21 +558,66 @@ def _reaches_credit_model(endpoint: Callable) -> bool:
 
 
 def _globals_referenced_by(func: Callable) -> list[Any]:
-    """Module-level objects named in ``func``'s source, resolved to objects."""
+    """Objects named in ``func``'s source, resolved to objects.
+
+    Deferred imports are common here — 116 function-local ``import backend…``
+    statements under ``backend/api`` and ``backend/data`` — and a name bound by
+    one is absent from ``__globals__``, so the import's own bindings are
+    resolved alongside them. Missing them would make a route that defers its
+    credit import invisible to an invariant whose whole job is to see it.
+    """
     try:
         tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
     except (OSError, TypeError, SyntaxError):
         return []
-    module_globals = getattr(func, "__globals__", {})
+    names = {**getattr(func, "__globals__", {}), **_local_import_bindings(tree, func)}
     referenced: list[Any] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id in module_globals:
-            referenced.append(module_globals[node.id])
+        if isinstance(node, ast.Name) and node.id in names:
+            referenced.append(names[node.id])
         elif isinstance(node, ast.Attribute):
-            obj = _resolve_dotted(node, module_globals)
+            obj = _resolve_dotted(node, names)
             if obj is not None:
                 referenced.append(obj)
     return referenced
+
+
+def _local_import_bindings(tree: ast.AST, func: Callable) -> dict[str, Any]:
+    """Names bound by ``import``/``from … import`` statements inside ``func``."""
+    package = getattr(func, "__module__", "").rsplit(".", 1)[0]
+    bindings: dict[str, Any] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                # `import a.b.c` binds `a`, and _resolve_dotted walks the rest;
+                # `import a.b.c as x` binds the leaf module to `x`.
+                name = alias.asname or alias.name.split(".")[0]
+                module = _import_module(alias.name if alias.asname else name, package)
+                if module is not None:
+                    bindings[name] = module
+        elif isinstance(node, ast.ImportFrom):
+            module = _import_module("." * node.level + (node.module or ""), package)
+            if module is None:
+                continue
+            for alias in node.names:
+                target = getattr(module, alias.name, None)
+                if target is not None:
+                    bindings[alias.asname or alias.name] = target
+    return bindings
+
+
+def _import_module(name: str, package: str) -> Any:
+    """Resolve an import target to a module, without importing anything new.
+
+    Only already-loaded modules are returned: the real app is imported by the
+    time this runs, so a miss means the module is genuinely unreachable, and
+    importing it here would run a deferred import's side effects inside a test.
+    """
+    try:
+        absolute = importlib.util.resolve_name(name, package)
+    except (ImportError, ValueError):
+        return None
+    return sys.modules.get(absolute)
 
 
 def _resolve_dotted(node: ast.Attribute, module_globals: dict) -> Any:
