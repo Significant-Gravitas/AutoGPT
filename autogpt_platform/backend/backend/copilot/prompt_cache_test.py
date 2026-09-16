@@ -17,6 +17,19 @@ import pytest
 _SVC = "backend.copilot.service"
 
 
+@pytest.fixture(autouse=True)
+def cold_prompt_cache(monkeypatch):
+    """Start every test from a process that has never fetched the prompt.
+
+    ``_cached_prompt`` is per-process state by design, so without this it leaks
+    between tests in collection order.
+    """
+    from backend.copilot import service
+
+    monkeypatch.setattr(service, "_cached_prompt", None)
+    monkeypatch.setattr(service, "_last_prompt_revalidation", 0.0)
+
+
 class TestBuildSystemPrompt:
     @pytest.mark.asyncio
     async def test_no_user_id_returns_static_prompt(self):
@@ -1134,7 +1147,8 @@ class _StuckRefreshLangfuse:
     When that thread is not running the queued key is never cleared
     (``_utils/prompt_cache.py:92-115``), so the cached path keeps returning the
     same version for the life of the process. Only ``cache_ttl_seconds=0``
-    reaches the server (``_client/client.py:3607``).
+    reaches the server (``_client/client.py:3607``), which is why the service
+    passes nothing else.
     """
 
     def __init__(self, cached: str, live: str):
@@ -1146,13 +1160,17 @@ class _StuckRefreshLangfuse:
 
     def get_prompt(self, name, **kwargs):
         self.calls.append(kwargs)
-        if kwargs.get("cache_ttl_seconds") == 0:
-            self.server_fetches += 1
-            if self.fetch_error is not None:
-                raise self.fetch_error
-            self._cached = self._live
+        if kwargs.get("cache_ttl_seconds") != 0:
+            return self._as_prompt(self._cached)
+        self.server_fetches += 1
+        if self.fetch_error is not None:
+            raise self.fetch_error
+        return self._as_prompt(self._live)
+
+    @staticmethod
+    def _as_prompt(text: str):
         prompt = MagicMock()
-        prompt.compile.return_value = self._cached
+        prompt.compile.return_value = text
         return prompt
 
 
@@ -1167,6 +1185,7 @@ def stuck_langfuse(monkeypatch):
     monkeypatch.setattr(service.config, "langfuse_prompt_cache_ttl", _TTL)
     monkeypatch.setattr(service, "_is_langfuse_configured", lambda: True)
     monkeypatch.setattr(service, "_get_langfuse", lambda: client)
+    monkeypatch.setattr(service, "_cached_prompt", "v35 prompt")
     monkeypatch.setattr(service, "_last_prompt_revalidation", time.monotonic())
     return client
 
@@ -1201,14 +1220,15 @@ class TestPromptRevalidation:
         assert stuck_langfuse.server_fetches == 1
 
     @pytest.mark.asyncio
-    async def test_the_turn_after_a_revalidation_is_served_from_cache(
+    async def test_the_turns_after_a_revalidation_cost_nothing(
         self, stuck_langfuse, open_window
     ):
         from backend.copilot.service import _fetch_langfuse_prompt
 
         await _fetch_langfuse_prompt()
 
-        assert await _fetch_langfuse_prompt() == "v36 prompt"
+        for _ in range(5):
+            assert await _fetch_langfuse_prompt() == "v36 prompt"
         assert stuck_langfuse.server_fetches == 1
 
     @pytest.mark.asyncio
@@ -1224,16 +1244,38 @@ class TestPromptRevalidation:
         assert stuck_langfuse.server_fetches == 1
 
     @pytest.mark.asyncio
-    async def test_a_failed_revalidation_waits_for_the_next_window(
+    async def test_an_outage_costs_one_fetch_per_window_not_per_turn(
         self, stuck_langfuse, open_window
     ):
         from backend.copilot.service import _fetch_langfuse_prompt
 
         stuck_langfuse.fetch_error = RuntimeError("langfuse unreachable")
-        await _fetch_langfuse_prompt()
+
+        for _ in range(5):
+            assert await _fetch_langfuse_prompt() == "v35 prompt"
+        assert stuck_langfuse.server_fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_a_zero_ttl_fetches_every_turn(self, stuck_langfuse, monkeypatch):
+        from backend.copilot import service
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        monkeypatch.setattr(service.config, "langfuse_prompt_cache_ttl", 0)
+
+        for _ in range(3):
+            await _fetch_langfuse_prompt()
+        assert stuck_langfuse.server_fetches == 3
+
+    @pytest.mark.asyncio
+    async def test_the_sdk_cache_is_never_relied_on(self, stuck_langfuse, open_window):
+        """Any call with a non-zero TTL would put us back on the wedged path."""
+        from backend.copilot.service import _fetch_langfuse_prompt
 
         await _fetch_langfuse_prompt()
-        assert stuck_langfuse.server_fetches == 1
+        await _fetch_langfuse_prompt()
+
+        assert stuck_langfuse.calls
+        assert all(c.get("cache_ttl_seconds") == 0 for c in stuck_langfuse.calls)
 
     @pytest.mark.asyncio
     async def test_every_call_binds_to_the_sdk_signature(
@@ -1249,8 +1291,7 @@ class TestPromptRevalidation:
         from backend.copilot.service import _fetch_langfuse_prompt
 
         await _fetch_langfuse_prompt()
-        await _fetch_langfuse_prompt()
 
-        assert any(c.get("cache_ttl_seconds") == 0 for c in stuck_langfuse.calls)
+        assert stuck_langfuse.calls
         for call in stuck_langfuse.calls:
             inspect.signature(Langfuse.get_prompt).bind(None, "CoPilot Prompt", **call)
