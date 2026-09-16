@@ -170,7 +170,8 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     dev e45aa33600                             68,237 (83 tools)
 #     + #14207 multi-expert-teams  +981          69,218 (84 tools)
 # Higher of the two conflicting values wins and is then re-measured, which is
-# what makes it 69,219 rather than this branch's earlier 68,604.
+# what makes it 69,219 rather than this branch's earlier 68,604. #14476 landed
+# mid-merge and is in here too; it moves API routes and no tools, so 69,218 holds.
 _CHAR_BUDGET = 69_219
 
 
