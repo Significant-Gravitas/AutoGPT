@@ -409,6 +409,16 @@ _PACKAGE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
 _ROOT_SKILL_MD = "SKILL.md"
 
 
+def skill_slug(name: str) -> str:
+    """The folder a skill called *name* is stored under.
+
+    One definition, because a caller that derives it differently writes to a
+    folder the readers never look in — and the expert exporter and importer
+    have to agree on it across a file.
+    """
+    return name.strip().lower()
+
+
 class SkillPackageError(ValueError):
     """A package that breaks a cap or a path rule.
 
@@ -654,7 +664,7 @@ async def store_user_skill(
     model's own ``store_skill`` from wiping a package it only rewrote the
     body of.
     """
-    name = name.strip().lower()
+    name = skill_slug(name)
     # Strip any server-injected XML tags (``<available_skills>``,
     # ``<env_context>``, etc.) from the persisted fields *before* storage —
     # when the skill is later loaded that text lands in conversation history
@@ -1203,7 +1213,7 @@ async def read_user_skill_package(
     ``SKILL.md`` with another's files. Exhausting the attempts raises rather
     than serving a package that may be mixed.
     """
-    slug = name.strip().lower()
+    slug = skill_slug(name)
     if not slug:
         return None
     manager = await _get_user_skill_manager(user_id, scope)

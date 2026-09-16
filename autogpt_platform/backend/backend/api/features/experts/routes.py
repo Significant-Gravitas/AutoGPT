@@ -1,12 +1,15 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
-from fastapi import APIRouter, Security
+import prisma.models
+from fastapi import APIRouter, Depends, Response, Security
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
+from backend.api.features.experts.expert_zip import zip_from_package
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -31,6 +34,14 @@ from backend.api.features.experts.models import (
     RaiseAttachment,
     RaiseResult,
     validate_avatar_url,
+)
+from backend.api.features.experts.package_export import (
+    build_expert_package,
+    package_filename,
+)
+from backend.api.features.experts.package_model import ExpertPackageError
+from backend.api.features.experts.portability_flag import (
+    require_expert_portability_flag,
 )
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
@@ -307,6 +318,80 @@ async def list_expert_setup_items(
 ) -> list[ExpertSetupItem]:
     """What still stands between each expert's scheduled workflows and a schedule."""
     return await expert_setup.list_setup_items(user_id)
+
+
+@router.get(
+    "/{expert_id}/package",
+    operation_id="download_expert_package",
+    dependencies=[Depends(require_expert_portability_flag)],
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            }
+        },
+        404: {"description": "Expert not found"},
+        413: {"description": "Expert is too large to package"},
+    },
+)
+async def download_expert_package(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Response:
+    """Return the expert as a ``.expert.zip``: identity, soul, skills,
+    workflows and an avatar.
+
+    Memory, conversations and workspace files are not in the format, so a
+    download is a portable copy of the expert rather than of its history.
+    """
+    row = await experts_db.get_owned_expert_row(user_id, expert_id)
+    if row is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    return await _package_response(row)
+
+
+@router.get(
+    "/templates/{template_id}/package",
+    operation_id="download_expert_template_package",
+    dependencies=[Depends(require_expert_portability_flag)],
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            }
+        },
+        404: {"description": "Expert not found"},
+        413: {"description": "Expert is too large to package"},
+    },
+)
+async def download_expert_template_package(
+    template_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Response:
+    """The marketplace version of the same download, built live from the
+    roster template."""
+    row = await experts_db.get_template_row(template_id)
+    if row is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    return await _package_response(row)
+
+
+async def _package_response(row: prisma.models.Expert) -> Response:
+    try:
+        package = await build_expert_package(row)
+    except ExpertPackageError as exc:
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
+        )
+    return Response(
+        content=await run_in_threadpool(zip_from_package, package),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{package_filename(row.name)}"'
+        },
+    )
 
 
 @router.get(

@@ -5246,3 +5246,47 @@ async def test_seed_roster_files_every_template_under_a_canonical_category(
     for entry in seed.ROSTER:
         assert seeded[entry["name"]].categories == entry["categories"]
         assert set(entry["categories"]) <= {c.value for c in StoreCategory}
+
+
+# ─── Rows loaded for export ────────────────────────────────────────────
+
+
+async def test_get_owned_expert_row_loads_a_workflows_whole_provenance(
+    server: SpinTestServer, test_user, other_user
+):
+    """The exporter needs the creator's username, which no other read of an
+    expert goes as deep as."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert
+
+    row = await experts_db.get_owned_expert_row(test_user.id, hired.id)
+
+    assert row is not None
+    workflow = (row.Workflows or [])[0]
+    assert workflow.LibraryAgent is not None
+    assert workflow.StoreListingVersion is not None
+    assert workflow.StoreListingVersion.StoreListing is not None
+    assert workflow.StoreListingVersion.StoreListing.CreatorProfile is not None
+
+
+async def test_get_owned_expert_row_hides_another_users_expert(
+    server: SpinTestServer, test_user, other_user
+):
+    """Indistinguishable from a missing expert, so the route never confirms
+    that someone else's exists."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert
+
+    assert await experts_db.get_owned_expert_row(other_user.id, hired.id) is None
+
+
+async def test_get_template_row_serves_live_templates_only(server: SpinTestServer):
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    assert await experts_db.get_template_row(template.id) is not None
+
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"isArchived": True}
+    )
+    assert await experts_db.get_template_row(template.id) is None
