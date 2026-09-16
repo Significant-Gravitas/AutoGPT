@@ -1,4 +1,4 @@
-"""Authorization tests for the org-scoped credits routes in v1.py.
+"""Authorization tests for the org-scoped credits routes.
 
 SECRT-2449: the credits balance/transaction/invoice/top-up routes resolve
 their credit model through the request's org context, so for a real (pooled)
@@ -41,15 +41,11 @@ from backend.data.org_credit import OrgCreditModel
 
 from .billing.credits import routes as credits_routes
 from .billing.subscriptions import routes as subscriptions_routes
-from .v1 import v1_router
 
 app = fastapi.FastAPI()
-# Both halves of /credits now live in their own modules. v1_router stays mounted
-# because this suite's role matrix still reaches routes left behind in it; every
-# further layer that moves a /credits route has to add its router here too, and
-# the durable fix is to give the request-level tests the real app as the two
-# introspection tests already use.
-app.include_router(v1_router)
+# Every /credits route this matrix exercises now lives in one of these two
+# modules; the durable fix is to give the request-level tests the real app as
+# the two introspection tests already use.
 app.include_router(credits_routes.router)
 app.include_router(subscriptions_routes.router)
 client = fastapi.testclient.TestClient(app)
@@ -109,7 +105,7 @@ class GatedRoute(pydantic.BaseModel):
     body: dict | None = None
 
 
-# Every route in v1.py carrying
+# Every route carrying
 # ``Security(requires_org_permission(OrgAction.MANAGE_BILLING))`` (via the
 # ``BillingManagerContext`` alias). Kept in sync with the app by
 # ``test_every_credits_route_is_gated_or_explicitly_exempt``; ``name`` is the
@@ -388,9 +384,9 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
     table instead: every ``/credits*`` route must either carry the MANAGE_BILLING
     dependency or be an explicit, documented exemption.
 
-    It walks ``real_app``, not a locally-mounted router: this layer moves the
-    credits routes out of ``v1_router``, so a ``v1_router``-only mount would see
-    nothing at all here and pass vacuously. (#14475's docstring asked for a
+    It walks ``real_app``, not a locally-mounted router: a local mount only sees
+    the routers this file happens to mount, so a ``/credits`` route served by any
+    other one would pass vacuously. (#14475's docstring asked for a
     ``PENDING_AUDIT`` set of names; T250.2's audit then found none of the eight
     needs a gate, so they are asserted by what makes them safe instead — see
     ADMIN_CREDITS_ROUTES and TRIAL_CREDITS_ROUTES above, SECRT-2650.)

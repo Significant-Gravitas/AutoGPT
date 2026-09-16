@@ -24,21 +24,18 @@ from backend.util.settings import Settings
 settings = Settings()
 logger = logging.getLogger(__name__)
 
-
-# Define the API routes
-v1_router = APIRouter()
-
-
-########################################################
-##################### Auth #############################
-########################################################
+# Nothing is hoisted onto this router, tags included. Six of the seven routes
+# take Security(requires_user); POST /auth/user/preferences/from-email takes
+# none — it is reached from an email link and verifies its own signed token —
+# so a router-level dependency would silently authenticate it.
+router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
 USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
-@v1_router.post(
+@router.post(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
@@ -79,7 +76,7 @@ async def get_or_create_user_route(
     return user.model_dump()
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/email",
     summary="Update user email",
     tags=["auth"],
@@ -93,7 +90,7 @@ async def update_user_email_route(
     return {"email": email}
 
 
-@v1_router.get(
+@router.get(
     "/auth/user/timezone",
     summary="Get user timezone",
     tags=["auth"],
@@ -107,7 +104,7 @@ async def get_user_timezone_route(
     return TimezoneResponse(timezone=user.timezone)
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/timezone",
     summary="Update user timezone",
     tags=["auth"],
@@ -121,7 +118,7 @@ async def update_user_timezone_route(
     return TimezoneResponse(timezone=user.timezone)
 
 
-@v1_router.get(
+@router.get(
     "/auth/user/preferences",
     summary="Get notification preferences",
     tags=["auth"],
@@ -134,7 +131,7 @@ async def get_preferences(
     return preferences
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/preferences",
     summary="Update notification preferences",
     tags=["auth"],
@@ -148,7 +145,7 @@ async def update_preferences(
     return output
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/preferences/from-email",
     summary="Apply a volume-knob choice from a Briefing footer link",
     tags=["auth"],
