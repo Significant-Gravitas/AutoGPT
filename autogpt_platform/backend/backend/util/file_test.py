@@ -36,9 +36,7 @@ def test_get_exec_file_path_allows_paths_inside_execution_directory():
 
     result = get_exec_file_path(graph_exec_id, "clips/output.mp4")
 
-    expected = (
-        TEMP_DIR / "exec_file" / graph_exec_id / "clips/output.mp4"
-    ).resolve()
+    expected = (TEMP_DIR / "exec_file" / graph_exec_id / "clips/output.mp4").resolve()
 
     assert result == str(expected)
 

@@ -123,6 +123,8 @@ def get_exec_file_path(graph_exec_id: str, path: str) -> str:
                 f"File path too long: {len(path)} characters. Maximum path length exceeded."
             ) from e
         raise ValueError(f"Invalid file path: {e}") from e
+
+
 def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
     """
     Utility to remove the {temp}/exec_file/{exec_id} folder and its contents.
