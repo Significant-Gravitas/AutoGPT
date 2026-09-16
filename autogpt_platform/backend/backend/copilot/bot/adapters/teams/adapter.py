@@ -28,9 +28,11 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -43,13 +45,17 @@ from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.redis_client import get_redis_async
 
-from . import auth, commands, config
+from . import auth, choice_ui, commands, config
 from .api_client import TeamsApiError, TeamsClient
 from .text import mention_entities, mention_token, to_teams_markdown
 
 logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
 # the next reply falls back to the default host until it is relearned.
@@ -197,6 +203,15 @@ class TeamsAdapter(WebhookAdapter):
         if _is_own_id((activity.get("from") or {}).get("id"), _configured_bot_ids()):
             return  # Our own echo.
 
+        # An Action.Submit click on a choice card arrives as an ordinary
+        # message activity carrying `value` (Teams' classic card-action
+        # flow, not the newer Universal Actions invoke) -- not a command or
+        # typed text.
+        parsed_choice = choice_ui.parse_choice_value(activity.get("value"))
+        if parsed_choice is not None:
+            await self._dispatch_choice_click(activity, *parsed_choice)
+            return
+
         command = commands.parse_command(_activity_text(activity))
         if command is not None:
             try:
@@ -214,6 +229,61 @@ class TeamsAdapter(WebhookAdapter):
             await self._on_message_callback(ctx, self)
         except Exception:
             logger.exception("Teams activity handler failed")
+
+    async def _dispatch_choice_click(
+        self, activity: dict[str, Any], token: str, index: int
+    ) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply.
+
+        Teams' classic card actions have no update-the-original-card API
+        wired here (unlike the other adapters' edit-in-place ack) — a short
+        confirmation is posted as a new message instead, then the answer
+        flows into a normal turn.
+        """
+        conversation_id = (activity.get("conversation") or {}).get("id")
+        if not conversation_id:
+            return
+        clicker_id = str((activity.get("from") or {}).get("id", ""))
+        resolved = await choices.resolve_choice("teams", token, index, clicker_id)
+        if resolved.text is None:
+            await self._post(
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": (
+                        _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE
+                    ),
+                },
+            )
+            return
+        option = resolved.text
+        # The token is already consumed, so the answer exists only here. The
+        # ack is cosmetic; a Connector error must not cost the user the turn.
+        try:
+            await self._post(
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": self.localize_markup(f"✅ You answered: {option}"),
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to acknowledge Teams choice click; continuing the turn"
+            )
+        if self._on_message_callback is None:
+            return
+        # `bot_mentioned=True` explicitly, as every other adapter does on a
+        # click. An Action.Submit carries no mention entities, so deriving it
+        # from the activity yields False, and in a *channel* the turn is then
+        # dropped by the handler's `if not ctx.bot_mentioned: return` — after
+        # the ack above has already told the user their answer was accepted.
+        ctx = await self._build_context({**activity, "text": option})
+        if ctx is not None:
+            ctx.bot_mentioned = True
+            await self._on_message_callback(ctx, self)
 
     async def _is_duplicate_activity(self, activity: dict[str, Any]) -> bool:
         """Drop redeliveries — first delivery of an activity id wins.
@@ -345,6 +415,37 @@ class TeamsAdapter(WebhookAdapter):
         }
         await self._post(channel_id, activity)
 
+    @property
+    def max_choice_label_length(self) -> int:
+        return 60
+
+    @property
+    def max_choice_options(self) -> int:
+        # An Adaptive Card renders about six actions before Teams collapses
+        # the rest into an overflow the user can miss entirely.
+        return 6
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        activity = {
+            "type": "message",
+            "attachments": [
+                choice_ui.choice_card(self.localize_markup(text), token, options)
+            ],
+        }
+        await self._post(channel_id, activity)
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         """Inline a small image; degrade anything else to a note.
 
@@ -417,8 +518,8 @@ class TeamsAdapter(WebhookAdapter):
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
-        first_id = await self._send_chunked(channel_id, text, ())
-        return PostedRef(id=first_id) if first_id else None
+        first_id, sent = await self._send_chunked(channel_id, text, ())
+        return PostedRef(id=first_id, chunk_count=sent) if first_id else None
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -427,6 +528,25 @@ class TeamsAdapter(WebhookAdapter):
         # same degradation Telegram uses for its unnamed topics.
         body = f"**{name}**\n\n{text}" if name else text
         return await self.post_channel_message(channel_id, body)
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        activity = {
+            "type": "message",
+            "text": self.localize_markup(text),
+            "textFormat": "markdown",
+        }
+        try:
+            await self._client.update_activity(
+                self._service_url_for(channel_id), channel_id, ref_id, activity
+            )
+        except TeamsApiError as e:
+            logger.exception("Failed to edit Teams activity %s", ref_id)
+            if e.status_code == 404:
+                return EditOutcome.NOT_FOUND
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         """Create (or fetch) the bot's 1:1 conversation with a user.
@@ -455,13 +575,15 @@ class TeamsAdapter(WebhookAdapter):
         channel_id: str,
         text: str,
         mentionable_users: tuple[tuple[str, str], ...],
-    ) -> Optional[str]:
-        """Post ``text`` in message-sized chunks; return the first activity id.
+    ) -> tuple[Optional[str], int]:
+        """Post ``text`` in message-sized chunks; return the first activity id
+        and how many chunks landed.
 
         Chunks are awaited in sequence: Teams does not guarantee ordering for
         messages posted in quick succession.
         """
         first_id: Optional[str] = None
+        sent = 0
         for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
             rendered, pinged = resolve_mentions(chunk, mentionable_users, mention_token)
             activity: dict[str, Any] = {
@@ -473,8 +595,10 @@ class TeamsAdapter(WebhookAdapter):
             if entities:
                 activity["entities"] = entities
             activity_id = await self._post(channel_id, activity)
+            if activity_id:
+                sent += 1
             first_id = first_id or activity_id
-        return first_id
+        return first_id, sent
 
     async def _post(self, channel_id: str, activity: dict[str, Any]) -> Optional[str]:
         return await self._client.send_activity(
@@ -587,21 +711,26 @@ def _mentions_bot(activity: dict[str, Any]) -> bool:
 def _mentionable_users(
     activity: dict[str, Any],
 ) -> tuple[tuple[str, str], ...]:
-    """Users the bot may ping back — those @mentioned in this message.
+    """Users the bot may ping back: the author, and those @mentioned in this
+    message.
 
-    Teams offers no cheap roster read, so the allowlist is exactly who the
-    author already addressed, which is the conservative reading of the shared
-    mention-safety contract.
+    Teams offers no cheap roster read, so beyond the author the allowlist is
+    exactly who the author already addressed, which is the conservative
+    reading of the shared mention-safety contract.
     """
     users: list[tuple[str, str]] = []
     own = _bot_identities(activity)
+    sender = activity.get("from") or {}
+    if sender.get("id") and sender.get("name") and not _is_own_id(sender["id"], own):
+        users.append((sender["name"], sender["id"]))
     for entity in activity.get("entities") or []:
         if entity.get("type") != "mention":
             continue
         mentioned = entity.get("mentioned") or {}
         user_id, name = mentioned.get("id"), mentioned.get("name")
         if user_id and name and not _is_own_id(user_id, own):
-            users.append((name, user_id))
+            if (name, user_id) not in users:
+                users.append((name, user_id))
     return tuple(users)
 
 

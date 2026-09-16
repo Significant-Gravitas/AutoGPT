@@ -55,7 +55,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
-  name: "Outreach playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],
@@ -124,7 +125,7 @@ describe("Marketplace skill page", () => {
     expect(screen.queryByTestId("skill-install-button")).toBeNull();
   });
 
-  test("shows the instructions the AutoPilot will follow", async () => {
+  test("shows the instructions experts will follow", async () => {
     renderPage([]);
 
     expect(
@@ -159,7 +160,7 @@ describe("Marketplace skill page", () => {
     );
     await userEvent.click(button);
 
-    expect(await screen.findByText("Added to AutoPilot")).toBeDefined();
+    expect(await screen.findByText("Installed")).toBeDefined();
     const connectStep = await screen.findByTestId("skill-connect-step");
     // The unconnected case is the normal path, so it must not read as a
     // failure: no error/warning wording, and the install already succeeded.
@@ -186,7 +187,7 @@ describe("Marketplace skill page", () => {
     );
     await userEvent.click(button);
 
-    expect(await screen.findByText("Added to AutoPilot")).toBeDefined();
+    expect(await screen.findByText("Installed")).toBeDefined();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
 
@@ -194,7 +195,7 @@ describe("Marketplace skill page", () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
     renderPage([]);
 
-    const cta = await screen.findByRole("link", { name: "Add to AutoPilot" });
+    const cta = await screen.findByRole("link", { name: "Install skill" });
     expect(cta.getAttribute("href")).toBe(
       "/signup?next=%2Fmarketplace%2Fskills%2Foutreach-playbook",
     );
@@ -206,7 +207,7 @@ describe("Marketplace skill page", () => {
     renderPage([]);
 
     expect(
-      await screen.findByText("Added to AutoPilot", undefined, {
+      await screen.findByText("Installed", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
@@ -247,7 +248,7 @@ describe("Marketplace skill page", () => {
     await userEvent.click(screen.getByTestId("skill-install-button"));
 
     expect(await screen.findByTestId("skill-install-button")).toBeDefined();
-    expect(screen.queryByText("Added to AutoPilot")).toBeNull();
+    expect(screen.queryByText("Installed")).toBeNull();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
 

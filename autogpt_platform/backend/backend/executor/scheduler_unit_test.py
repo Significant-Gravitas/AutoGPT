@@ -46,6 +46,17 @@ from backend.util.exceptions import (
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
 
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
+
+
 # ---------------------------------------------------------------------------
 # _build_trigger
 # ---------------------------------------------------------------------------
@@ -456,7 +467,7 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     """The scope pre-check can race an archive/delete, after which
     ``create_chat_session`` drops the attribution and hands back a plain
     session. Dispatching there would write an expert's follow-up into
-    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    Otto memory scope, so the turn is skipped — but the schedule is
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
@@ -600,7 +611,7 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     """A follow-up fired into a chat the user already owns must not persist as
     role="user".
 
-    ``origin`` is a property of the session, so an interactive Autopilot chat
+    ``origin`` is a property of the session, so an interactive Otto chat
     stays interactive when a schedule fires into it — the confirm gate in
     ``expert_proposal`` falls back to the newest user-message sequence to prove
     a human answered the preview. A machine-authored turn landing as role="user"
@@ -1510,7 +1521,10 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
-        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            return_value=MagicMock(get_parked_job_ids=MagicMock(return_value=[])),
+        ),
         patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
         patch(
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
@@ -1636,6 +1650,10 @@ class TestScheduleOrgVisibility:
         sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
         with (
             patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            # None of these fixture jobs are paused, so the active-only path
+            # (what get_execution_schedules actually calls unless
+            # include_paused=True) can return the same list.
+            patch.object(Scheduler, "_get_active_jobs_cached", lambda self: jobs),
             patch(
                 "backend.executor.scheduler._job_to_info",
                 side_effect=fake_job_to_info,
@@ -1949,4 +1967,29 @@ class TestMorningBriefingSchedule:
         assert any(
             "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
+        )
+
+
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    # Two caches, not one: the default path reads the SQL-filtered
+    # _get_active_jobs_cached and only include_paused reads the unfiltered
+    # _get_jobs_cached. Patching one leaves the other on the real jobstore,
+    # which this Scheduler.__new__ instance does not have.
+    active = [j for j in jobs if j.next_run_time is not None]
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch.object(Scheduler, "_get_active_jobs_cached", return_value=active),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
         )

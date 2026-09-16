@@ -45,7 +45,7 @@ PROVIDER_ENV_VARS: dict[str, list[str]] = {
 
 # 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
 # (a Redis blip drops the message), so the TTL is the floor on how long a stale
-# token can survive when it fails.  Five minutes was long enough for AutoPilot
+# token can survive when it fails.  Five minutes was long enough for Otto
 # to verify a re-authorization against the provider and report it as failed.
 _TOKEN_CACHE_TTL = 60.0  # seconds — for found tokens
 _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results

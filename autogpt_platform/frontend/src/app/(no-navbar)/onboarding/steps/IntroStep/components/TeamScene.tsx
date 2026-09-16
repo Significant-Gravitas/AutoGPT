@@ -1,15 +1,16 @@
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import {
-  AUTOPILOT_AVATAR,
-  type AvatarConfig,
-  type AvatarStatus,
-} from "@/components/molecules/BotAvatar/helpers";
+  notionConfigForName,
+  type NotionColorId,
+} from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { motion } from "framer-motion";
-import { facing } from "../helpers";
 
 interface Member {
   name: string;
-  config: AvatarConfig;
+  /** Otto keeps his own drawing; everyone else gets a name-seeded face. */
+  color?: NotionColorId;
   status: AvatarStatus;
   size: number;
   x: number;
@@ -23,8 +24,7 @@ const CORNER = 10;
 
 const TEAM: Member[] = [
   {
-    name: "AutoPilot",
-    config: AUTOPILOT_AVATAR,
+    name: "Otto",
     status: "idle",
     size: 104,
     x: 210,
@@ -32,34 +32,34 @@ const TEAM: Member[] = [
   },
   {
     name: "Ops",
-    config: { shape: "squircle", color: "mint", accessory: "headset" },
+    color: "emerald",
     status: "working",
     size: 84,
     x: 105,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Research",
-    config: { shape: "round", color: "sky", accessory: "glasses" },
+    color: "sky",
     status: "thinking",
     size: 84,
     x: 210,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Marketing",
-    config: { shape: "bean", color: "coral", accessory: "bow" },
+    color: "orange",
     status: "done",
     size: 84,
     x: 315,
     y: 176,
-    parent: "AutoPilot",
+    parent: "Otto",
   },
   {
     name: "Finance",
-    config: { shape: "wide", color: "amber", accessory: "badge" },
+    color: "amber",
     status: "idle",
     size: 72,
     x: 52,
@@ -68,7 +68,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Support",
-    config: { shape: "dome", color: "plum", accessory: "flower" },
+    color: "rose",
     status: "working",
     size: 72,
     x: 158,
@@ -77,7 +77,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Sales",
-    config: { shape: "round", color: "indigo", accessory: "star" },
+    color: "indigo",
     status: "idle",
     size: 72,
     x: 262,
@@ -86,7 +86,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Design",
-    config: { shape: "squircle", color: "butter", accessory: "headband" },
+    color: "yellow",
     status: "thinking",
     size: 72,
     x: 368,
@@ -100,10 +100,6 @@ const PARENTS = TEAM.filter((m) => TEAM.some((c) => c.parent === m.name));
 
 function depth(member: Member): number {
   return member.parent ? depth(BY_NAME[member.parent]) + 1 : 0;
-}
-
-function yawToward(member: Member): number {
-  return ((WIDTH / 2 - member.x) / WIDTH) * 40;
 }
 
 function branch(parent: Member): string {
@@ -135,7 +131,7 @@ export function TeamScene() {
     <div className="flex h-full items-center justify-center">
       <svg
         role="img"
-        aria-label="AutoPilot and your team of AI experts"
+        aria-label="Otto and your team of AI experts"
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-auto w-full max-w-[420px]"
       >
@@ -175,14 +171,19 @@ export function TeamScene() {
                 ease: EASE,
               }}
             >
-              <BotAvatar
-                config={member.config}
-                status={member.status}
-                size={member.size}
-                poseOffset={facing(yawToward(member))}
-                trackPointer={member.name === "AutoPilot"}
-                showBadge={false}
-              />
+              {member.color ? (
+                <NotionAvatarImage
+                  config={{
+                    ...notionConfigForName(member.name),
+                    color: member.color,
+                  }}
+                  status={member.status}
+                  size={member.size}
+                  title={member.name}
+                />
+              ) : (
+                <AutopilotAvatar size={member.size} />
+              )}
             </motion.div>
           </foreignObject>
         ))}

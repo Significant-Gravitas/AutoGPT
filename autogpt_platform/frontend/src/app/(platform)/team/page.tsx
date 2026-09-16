@@ -101,7 +101,7 @@ export default function TeamPage() {
               Team
             </Text>
             <Text variant="body" tone="secondary" className="max-w-prose">
-              Autopilot and your hired experts, ready to work.
+              Otto and your hired experts, ready to work.
             </Text>
           </div>
           <TeamHeaderActions />

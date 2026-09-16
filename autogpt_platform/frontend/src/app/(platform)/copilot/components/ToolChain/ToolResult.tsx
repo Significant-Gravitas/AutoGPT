@@ -6,6 +6,8 @@ import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -192,7 +194,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -385,6 +391,16 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop": {
+      // The live desktop is the whole point of the tool: embed the stream
+      // instead of letting the payload fall through to a truncated key/value
+      // dump. The same renderer serves block outputs and attachments.
+      const stream = output ? output.desktop_stream : null;
+      if (stream && desktopStreamRenderer.canRender(stream)) {
+        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+      }
+      return null;
+    }
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -399,9 +415,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -430,7 +447,7 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, readOnly);
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;

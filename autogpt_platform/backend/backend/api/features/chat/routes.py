@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -22,6 +23,13 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
+from backend.copilot.computer import (
+    ComputerInfo,
+    computer_owner,
+    describe_computer,
+    mounts_for,
+    open_desktop,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
@@ -102,6 +110,7 @@ from backend.copilot.tools.manage_presets import (
 from backend.copilot.tools.manage_schedules import (
     ScheduleDeletedResponse,
     ScheduleListResponse,
+    ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -117,6 +126,7 @@ from backend.copilot.tools.models import (
     DocSearchResultsResponse,
     ErrorResponse,
     ExecutionStartedResponse,
+    ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
@@ -605,8 +615,8 @@ class SetDefaultTransportRequest(BaseModel):
     """The connection new chats should start on.
 
     ``auth_provider: null`` clears the choice and hands the decision back to
-    the server. Sending ``codex`` requires naming the credential, so the
-    default keeps pointing at one account rather than "whichever ChatGPT".
+    the server. A user-backed provider requires naming the credential, so the
+    default keeps pointing at one account rather than whichever account exists.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -644,7 +654,7 @@ async def set_default_chat_transport(
         )
     except InvalidDefaultChatRoute as e:
         raise HTTPException(
-            status_code=404 if e.detail == "codex_credential_not_found" else 422,
+            status_code=404 if e.detail.endswith("_credential_not_found") else 422,
             detail=e.detail,
         ) from e
     return ChatTransportsResponse(transports=transports)
@@ -661,10 +671,10 @@ async def _resolve_new_session_llm_route(
         await enforce_codex_access_http(user_id)
 
     if request is not None and request.builder_graph_id is not None:
-        if auth_provider == "codex" or credential_id is not None:
+        if auth_provider != "platform" or credential_id is not None:
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{auth_provider}_builder_session_unsupported",
             )
         if not is_deployment_chat_available():
             raise HTTPException(
@@ -684,10 +694,10 @@ async def _resolve_new_session_llm_route(
                     status_code=422,
                     detail="codex_credential_not_allowed",
                 )
-            if auth_provider == "codex" and credential_id is None:
+            if auth_provider != "platform" and credential_id is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="codex_credential_required",
+                    detail=f"{auth_provider}_credential_required",
                 )
             selected_route = next(
                 (
@@ -700,10 +710,10 @@ async def _resolve_new_session_llm_route(
                 None,
             )
             if selected_route is None:
-                if auth_provider == "codex":
+                if auth_provider != "platform":
                     raise HTTPException(
                         status_code=404,
-                        detail="codex_credential_not_found",
+                        detail=f"{auth_provider}_credential_not_found",
                     )
                 raise HTTPException(
                     status_code=503,
@@ -800,10 +810,10 @@ async def create_session(
     )
 
     if builder_graph_id:
-        if llm_auth_provider == "codex":
+        if llm_auth_provider != "platform":
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{llm_auth_provider}_builder_session_unsupported",
             )
         session = await get_or_create_builder_session(
             user_id,
@@ -847,6 +857,76 @@ async def create_session(
         metadata=session.metadata,
         expert_id=session.expert_id,
     )
+
+
+@router.get(
+    "/sessions/{session_id}/computer",
+    dependencies=[Security(auth.requires_user)],
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def get_session_computer(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ComputerInfo:
+    """The computer behind this chat.
+
+    A plain chat has its own box; a chat that runs as a hired expert reports
+    the expert's persistent computer instead. Listing never wakes a paused box.
+    """
+    # Metadata only: the panel polls this, and the history is not needed.
+    session = await _validate_and_get_session(session_id, user_id)
+    return await describe_computer(
+        computer_owner(session_id, session.expert_id),
+        mounts_for(user_id, session.expert_id),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/desktop",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Session not found or access denied"},
+        502: {"description": "The desktop could not be started"},
+        503: {"description": "E2B is not configured"},
+    },
+)
+async def start_session_desktop(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> DesktopStream:
+    """Start or resume the desktop behind this chat and return its live stream.
+
+    Same box the ``start_desktop`` tool uses from inside a turn, so the side
+    panel and the model always look at one screen.
+    """
+    # Same gate as a turn: an archived expert's chat must not resurrect the
+    # expert's box (the archive already killed it, and nothing would kill
+    # the new one).
+    session = await _validate_and_get_writable_session(session_id, user_id)
+    api_key = ChatConfig().active_e2b_api_key
+    if not api_key:
+        raise HTTPException(
+            status_code=503, detail="E2B is not configured on this deployment."
+        )
+    try:
+        stream, _created, _shared = await open_desktop(
+            computer_owner(session_id, session.expert_id),
+            mounts_for(user_id, session.expert_id),
+            api_key,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "[E2B] start_session_desktop failed for %s: %s",
+            session_id[:12],
+            exc,
+            exc_info=True,
+        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise HTTPException(status_code=502, detail="Failed to start the desktop.")
+    return stream
 
 
 @router.delete(
@@ -958,8 +1038,11 @@ async def change_session_connection_route(
 
     if auth_provider == "platform" and credential_id is not None:
         raise HTTPException(status_code=422, detail="codex_credential_not_allowed")
-    if auth_provider == "codex" and credential_id is None:
-        raise HTTPException(status_code=422, detail="codex_credential_required")
+    if auth_provider != "platform" and credential_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{auth_provider}_credential_required",
+        )
 
     transports = await get_chat_transports(user_id)
     target = next(
@@ -975,8 +1058,11 @@ async def change_session_connection_route(
     if target is None:
         # Same shapes the session-creation path uses, so a client that already
         # handles them does not need a second vocabulary for the same refusals.
-        if auth_provider == "codex":
-            raise HTTPException(status_code=404, detail="codex_credential_not_found")
+        if auth_provider != "platform":
+            raise HTTPException(
+                status_code=404,
+                detail=f"{auth_provider}_credential_not_found",
+            )
         raise HTTPException(status_code=503, detail="chat_transport_not_configured")
 
     changed = await update_session_llm_route(
@@ -1550,23 +1636,6 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    # The Advanced tier is a paid capability, and it was only enforced where
-    # the picker decides what to grey out. A client that skips the picker and
-    # posts model="advanced" was served it, on our credits. Checked first,
-    # before the session is touched or the message stored: a turn we are going
-    # to refuse should leave nothing behind.
-    if request.model == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            # Not knowing is not permission. The picker stays generous when
-            # the lookup is down; spending does not.
-            raise HTTPException(
-                status_code=503, detail="advanced_tier_unavailable"
-            ) from None
-        if not entitled:
-            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
-
     import time
 
     stream_start_time = time.perf_counter()
@@ -1583,6 +1652,22 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+
+    # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
+    # Every other route can spend platform-gated premium inference, so a client
+    # that skips the picker still has to hold the Advanced entitlement.
+    if (
+        request.model == "advanced"
+        and session.metadata.llm_auth_provider != "microsoft_365_copilot"
+    ):
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            raise HTTPException(
+                status_code=503, detail="advanced_tier_unavailable"
+            ) from None
+        if not entitled:
+            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1767,6 +1852,8 @@ async def stream_chat_post(
             message_metadata=message_metadata,
             message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
+            expert_id=session.expert_id,
+            session_origin=session.metadata.origin,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,
@@ -2304,6 +2391,7 @@ ToolResponseUnion = (
     | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
+    | ScheduleToggledResponse
     | PresetListResponse
     | PresetUpdatedResponse
     | PresetDeletedResponse
@@ -2313,6 +2401,7 @@ ToolResponseUnion = (
     | MemoryForgetConfirmResponse
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
+    | ExpertOnboardingResponse
 )
 
 

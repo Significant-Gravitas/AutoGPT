@@ -3,12 +3,9 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  AUTOPILOT_AVATAR,
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 export interface PanelIdentity {
@@ -26,29 +23,21 @@ interface Props {
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
   if (identity.isAutopilot) {
-    return (
-      <BotAvatar
-        config={AUTOPILOT_AVATAR}
-        size={imageSize}
-        showBadge={false}
-        title={identity.name}
-        className={className}
-      />
-    );
+    return <AutopilotAvatar size={imageSize} className={className} />;
   }
-  if (!isUploadedAvatar(identity.avatarUrl)) {
+  const config = expertNotionConfig(identity);
+  if (config) {
     return (
-      <BotAvatar
-        config={expertAvatarConfig(identity)}
+      <NotionAvatarImage
+        config={config}
         size={imageSize}
-        showBadge={false}
         title={identity.name}
         className={className}
       />
     );
   }
   return (
-    <Avatar className={cn("shrink-0", className)}>
+    <Avatar className={cn("shrink-0 border border-stone-500", className)}>
       <AvatarImage
         src={identity.avatarUrl ?? undefined}
         alt={identity.name}

@@ -3,12 +3,9 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  AUTOPILOT_AVATAR,
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -42,31 +39,22 @@ export function ExpertAvatar({
   }
 
   if (isAutopilot && !avatarUrl) {
-    return (
-      <BotAvatar
-        config={AUTOPILOT_AVATAR}
-        size={isSmall ? 24 : 36}
-        animated={!isSmall}
-        showBadge={false}
-        title={name}
-      />
-    );
+    return <AutopilotAvatar size={isSmall ? 24 : 36} />;
   }
 
-  if (!isUploadedAvatar(avatarUrl)) {
+  const config = expertNotionConfig({ name, avatarUrl, color });
+  if (config) {
     return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
+      <NotionAvatarImage
+        config={config}
         size={isSmall ? 24 : 36}
-        animated={!isSmall}
-        showBadge={false}
         title={name}
       />
     );
   }
 
   return (
-    <Avatar className={sizeClass}>
+    <Avatar className={cn("border border-stone-500", sizeClass)}>
       <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
     </Avatar>

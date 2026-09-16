@@ -14,25 +14,24 @@ import {
   Calendar03Icon,
   FlashIcon,
   PencilEdit02Icon,
-  PlugSocketIcon,
   PlusSignIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { IntegrationIcons } from "./components/IntegrationIcons";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
+  getExpertCover,
   getExpertRosterStatus,
   getWeeklySpend,
 } from "../../helpers";
@@ -60,6 +59,12 @@ export function ExpertTeamCard({
   const accent = getRaisedExpertAccent(expert.role, expert.color);
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
+  const cover = getExpertCover(expert);
+  const avatarConfig = expertNotionConfig({
+    name: expert.name,
+    avatarUrl: expert.avatar_url,
+    color: expert.color,
+  });
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
@@ -96,12 +101,24 @@ export function ExpertTeamCard({
         aria-label={`View ${expert.name}`}
         className="flex flex-1 flex-col items-center p-2 pb-4"
       >
-        <ExpertCover color={expert.color} status={rosterStatus} />
+        <ExpertCover
+          color={cover.color}
+          status={rosterStatus}
+          art={cover.art}
+        />
 
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">
-            {isUploadedAvatar(expert.avatar_url) ? (
-              <Avatar className="size-[5.5rem] rounded-full ring-4 ring-white">
+            {avatarConfig ? (
+              <span className="flex size-[5.5rem] items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-white ring-4 ring-white">
+                <NotionAvatarImage
+                  config={avatarConfig}
+                  size={88}
+                  title={expert.name}
+                />
+              </span>
+            ) : (
+              <Avatar className="size-[5.5rem] rounded-full border border-stone-500 ring-4 ring-white">
                 <AvatarImage
                   src={expert.avatar_url ?? undefined}
                   alt={expert.name}
@@ -113,20 +130,6 @@ export function ExpertTeamCard({
                   {expert.name}
                 </AvatarFallback>
               </Avatar>
-            ) : (
-              <span className="flex size-[5.5rem] items-center justify-center rounded-full bg-white ring-4 ring-white">
-                <BotAvatar
-                  config={expertAvatarConfig({
-                    name: expert.name,
-                    avatarUrl: expert.avatar_url,
-                    color: expert.color,
-                  })}
-                  status="idle"
-                  trackPointer
-                  size={80}
-                  title={expert.name}
-                />
-              </span>
             )}
           </span>
 
@@ -155,15 +158,22 @@ export function ExpertTeamCard({
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
-          {/* `truncate` clips at the padding box, so descenders in a name like
-              "Fiona Gray" need a little room below the line box. */}
-          <Text
-            variant="lead-medium"
-            tone="primary"
-            className="w-full truncate pb-1"
-          >
-            {expert.name}
-          </Text>
+          <div className="flex w-full items-center gap-2">
+            {/* `truncate` clips at the padding box, so descenders in a name like
+                "Fiona Gray" need a little room below the line box; the negative
+                margin hands that room back so the logos centre on the text. */}
+            <Text
+              variant="lead-medium"
+              tone="primary"
+              className="-mb-1 min-w-0 truncate pb-1"
+            >
+              {expert.name}
+            </Text>
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
+          </div>
           {/* Same pill as the expert page header and the marketplace card. */}
           <Text
             variant="small-medium"
@@ -174,15 +184,19 @@ export function ExpertTeamCard({
             )}
           >
             <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
-            <span className="truncate">{expert.role}</span>
+            <span className="truncate">{getExpertRoleLabel(expert.role)}</span>
           </Text>
-          <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
+          <Text
+            variant="body"
+            tone="muted"
+            className="mt-1 line-clamp-2 min-h-[2lh]"
+          >
             {blurb}
           </Text>
         </div>
 
-        <div className="w-full px-2 pl-5">
-          <CardStats className="mt-3 w-full">
+        <div className="mt-3 flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-5">
+          <CardStats>
             <CardStat
               icon={Calendar03Icon}
               label="Schedules"
@@ -200,12 +214,6 @@ export function ExpertTeamCard({
               label="Workflows"
               singular="workflow"
               count={expert.workflows.length}
-            />
-            <CardStat
-              icon={PlugSocketIcon}
-              label="Integrations"
-              singular="integration"
-              count={expert.credential_count ?? 0}
             />
           </CardStats>
         </div>

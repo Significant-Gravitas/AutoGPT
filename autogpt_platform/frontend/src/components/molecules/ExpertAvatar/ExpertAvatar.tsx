@@ -5,12 +5,9 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-  type AvatarStatus,
-} from "@/components/molecules/BotAvatar/helpers";
+import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -18,7 +15,6 @@ interface Props {
   avatarUrl: string | null;
   color?: string | null;
   status?: AvatarStatus;
-  animated?: boolean;
   size?: number;
   className?: string;
 }
@@ -26,14 +22,14 @@ interface Props {
 /**
  * Expert avatar shared by the copilot home surfaces (briefing card, team
  * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated shape/colour/accessory face.
+ * else gets the generated Notion-style face — as a flat image unless there
+ * is something to animate.
  */
 export function ExpertAvatar({
   name,
   avatarUrl,
   color,
   status = "idle",
-  animated = false,
   size = 40,
   className,
 }: Props) {
@@ -53,14 +49,13 @@ export function ExpertAvatar({
     );
   }
 
-  if (!isUploadedAvatar(avatarUrl)) {
+  const config = expertNotionConfig({ name, avatarUrl, color });
+  if (config) {
     return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
+      <NotionAvatarImage
+        config={config}
         status={status}
         size={size}
-        animated={animated}
-        showBadge={status !== "idle"}
         title={name}
         className={className}
       />
@@ -68,7 +63,10 @@ export function ExpertAvatar({
   }
 
   return (
-    <Avatar style={style} className={cn("shrink-0", className)}>
+    <Avatar
+      style={style}
+      className={cn("shrink-0 border border-stone-500", className)}
+    >
       <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback>{name}</AvatarFallback>
     </Avatar>

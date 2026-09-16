@@ -49,6 +49,12 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_TOGGLED = "schedule_toggled"
+    # Expert resources (installed workflows, credential grants)
+    EXPERT_WORKFLOW = "expert_workflow"
+    EXPERT_WORKFLOWS = "expert_workflows"
+    EXPERT_CREDENTIALS = "expert_credentials"
+    CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
@@ -92,6 +98,7 @@ class ResponseType(str, Enum):
 
     # Code execution
     BASH_EXEC = "bash_exec"
+    DESKTOP_STREAM = "desktop_stream"
 
     # Web
     WEB_FETCH = "web_fetch"
@@ -113,9 +120,10 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
-    # Chat-platform proactive output (post message / create thread)
+    # Chat-platform proactive output (post message / create thread / edit)
     CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
     CHAT_PLATFORM_POSTED = "chat_platform_posted"
+    CHAT_PLATFORM_EDITED = "chat_platform_edited"
 
     # Skills (self-distilled procedure registry)
     SKILL_STORED = "skill_stored"
@@ -130,6 +138,7 @@ class ResponseType(str, Enum):
     TEAM_ROSTER = "team_roster"
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
+    EXPERT_ONBOARDING = "expert_onboarding"
 
 
 # Base response model
@@ -347,7 +356,7 @@ class ErrorResponse(ToolResponseBase):
 
 
 class SubSessionProgressSnapshot(BaseModel):
-    """Mid-flight snapshot of a running sub-AutoPilot.
+    """Mid-flight snapshot of a running child session.
 
     Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
     caller passes ``include_progress=true`` while the sub is still running.
@@ -370,7 +379,7 @@ class WorkspaceFileInfoData(BaseModel):
 
     Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
     on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
-    sub-AutoPilot wrote, ``path`` is already session-qualified
+    child session wrote, ``path`` is already session-qualified
     (``/sessions/<sub_id>/...``) and can be passed straight to
     ``read_workspace_file(path=...)`` for cross-session retrieval.
     """
@@ -387,7 +396,7 @@ class DelegatedExpertInfo(BaseModel):
 
     Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
     both the model and the ToolChain card can name who is doing the work
-    instead of rendering a generic "Sub-AutoPilot".
+    instead of rendering a generic "Subtask".
     """
 
     id: str
@@ -398,7 +407,7 @@ class DelegatedExpertInfo(BaseModel):
 
 
 class SubSessionStatusResponse(ToolResponseBase):
-    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+    """Status / result of a child session started by ``run_sub_session``.
 
     Returned by both ``run_sub_session`` (synchronously when the sub finishes
     within ``wait_for_result``, else with ``status='running'``) and
@@ -410,7 +419,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         "running", "completed", "cancelled", "error", "queued", "transferred"
     ] = Field(
         description=(
-            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "Current state of the child session.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
             "existing turn on its next drain.  ``transferred`` is terminal "
@@ -432,7 +441,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-AutoPilot conversation. Use with "
+            "The session_id of the child session. Use with "
             "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
             "to continue it."
         ),
@@ -440,8 +449,8 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_link: str | None = Field(
         default=None,
         description=(
-            "Relative URL the user can click to open the sub-AutoPilot "
-            "conversation in the CoPilot UI. Always set when "
+            "Relative URL the user can click to open the child session "
+            "in the CoPilot UI. Always set when "
             "``sub_autopilot_session_id`` is set."
         ),
     )
@@ -449,7 +458,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description=(
             "Teammate the work was delegated to. Set only for "
-            "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
+            "``delegate_to_expert`` runs; None for same-scope child sessions."
         ),
     )
     sub_tool_call_count: int | None = Field(
@@ -476,7 +485,7 @@ class SubSessionStatusResponse(ToolResponseBase):
     )
     elapsed_seconds: float | None = Field(
         default=None,
-        description="How long the sub-AutoPilot has been running (or took).",
+        description="How long the child session has been running (or took).",
     )
     progress: SubSessionProgressSnapshot | None = Field(
         default=None,
@@ -612,6 +621,9 @@ class TeamExpertInfo(BaseModel):
     color: str = ""
     avatar_url: str | None = None
     is_paused: bool = False
+    workflow_count: int = 0
+    # None for an expert session: a teammate's grant count is the owner's view.
+    credential_count: int | None = None
 
 
 class TeamRosterResponse(ToolResponseBase):
@@ -732,6 +744,25 @@ class ClarificationNeededResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
+class ExpertOnboardingStep(BaseModel):
+    """One step of a freshly hired expert's intake card."""
+
+    question: str
+    keyword: str
+    # Tappable answers. The card always offers a free-text escape as well, so
+    # an empty list simply means "this one is open-ended".
+    options: list[str] = Field(default_factory=list)
+
+
+class ExpertOnboardingResponse(ToolResponseBase):
+    """The intake card a freshly hired expert opens its first turn with."""
+
+    type: ResponseType = ResponseType.EXPERT_ONBOARDING
+    expert_id: str
+    greeting: str
+    steps: list[ExpertOnboardingStep] = Field(default_factory=list)
 
 
 class SuggestedGoalResponse(ToolResponseBase):
@@ -934,6 +965,20 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+
+
+class DesktopStreamToolResponse(ToolResponseBase):
+    """Response for start_desktop: an embeddable live desktop stream.
+
+    ``desktop_stream`` carries the same shape the desktop blocks emit
+    (kind/url/provider/sandbox_id/requires_auth). The copilot chat renders it
+    through DesktopStreamRenderer via ToolResult's ``start_desktop`` card, and
+    every surface that consults the output-renderer registry (block outputs,
+    attachments) embeds it the same way.
+    """
+
+    type: ResponseType = ResponseType.DESKTOP_STREAM
+    desktop_stream: dict
 
 
 # Feature request models
@@ -1311,3 +1356,12 @@ class ChatPlatformPostedResponse(ToolResponseBase):
     channel_id: str
     ref_id: str | None = None
     url: str | None = None
+
+
+class ChatPlatformEditedResponse(ToolResponseBase):
+    """Response after the bot edits a message it previously posted."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_EDITED
+    platform: str
+    channel_id: str
+    ref_id: str

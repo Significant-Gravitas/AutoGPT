@@ -7,9 +7,11 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
-import { ReactNode, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExpertSidePanel } from "../ExpertSidePanel/ExpertSidePanel";
+import { LearnedNotes } from "./components/LearnedNotes/LearnedNotes";
+import { SoulSectionTitle } from "./SoulSectionTitle";
 import { useBottomScrollShadow } from "./useBottomScrollShadow";
 import { useSoulDrawer } from "./useSoulDrawer";
 
@@ -66,7 +68,7 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
             A living document that shapes every reply.
           </Text>
           <SoulFields soul={soul} updateField={updateField} />
-          <LearnedNotes />
+          <LearnedNotes expertId={expert.id} />
           <ProtectedRules rules={expert.protected_soul_rules} />
         </div>
         <div
@@ -155,17 +157,6 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
   );
 }
 
-function LearnedNotes() {
-  return (
-    <section className="mb-8">
-      <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      <Text variant="small" tone="muted">
-        Nothing recorded yet. What this expert learns will appear here.
-      </Text>
-    </section>
-  );
-}
-
 function ProtectedRules({ rules }: { rules: string[] }) {
   return (
     <section className="border-t border-zinc-200 pt-6">
@@ -191,13 +182,5 @@ function ProtectedRules({ rules }: { rules: string[] }) {
         These rules are part of every expert&apos;s soul and cannot be edited.
       </Text>
     </section>
-  );
-}
-
-function SoulSectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <Text variant="body-medium" as="h3" tone="primary">
-      {children}
-    </Text>
   );
 }
