@@ -31,9 +31,9 @@ export interface LDMultiContext {
 
 export type LDContext = LDUserContext | LDMultiContext;
 
-// Mirror the context built by the backend
-// (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
-// rules evaluate identically on both sides.
+// The `user` context mirrors the backend's
+// (feature_flag.py:_fetch_user_context_data), so rules on that kind evaluate
+// identically on both sides. The `device` context below is client-only.
 //
 // The auth session emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
 //

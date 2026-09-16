@@ -39,6 +39,26 @@ describe("CookieConsentBanner", () => {
     expect(screen.queryByText("We use cookies")).toBeNull();
   });
 
+  test("rejecting cookies clears the stored analytics identity", async () => {
+    pathname = "/marketplace";
+    // handleUpdateConsent reloads so the gates re-run; jsdom cannot navigate.
+    const reload = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, reload },
+      writable: true,
+      configurable: true,
+    });
+    localStorage.setItem("agpt_anonymous_id", "visitor-1");
+    localStorage.setItem("agpt_first_landing", '{"path":"/pricing"}');
+
+    render(<CookieConsentBanner />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reject All" }));
+
+    expect(localStorage.getItem("agpt_anonymous_id")).toBeNull();
+    expect(localStorage.getItem("agpt_first_landing")).toBeNull();
+    expect(reload).toHaveBeenCalled();
+  });
+
   test("lets the visitor decide on advertising cookies separately", async () => {
     pathname = "/marketplace";
     render(<CookieConsentBanner />);

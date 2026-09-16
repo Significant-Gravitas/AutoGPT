@@ -18,8 +18,22 @@
  * visitors keep their history.
  */
 
+import { consent } from "@/services/consent/cookies";
+
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
+
+// Routes that carry a one-time secret in the path itself. Landing on one
+// records the route and drops the rest, so an invite token never lands at rest.
+const REDACTED_PREFIXES = ["/link", "/share", "/auth", "/reset-password"];
+const SENSITIVE_PARAMS = [
+  "token",
+  "code",
+  "access_token",
+  "refresh_token",
+  "state",
+  "email",
+];
 
 export interface FirstLanding {
   path: string;
@@ -43,15 +57,20 @@ export function getAnonymousID(): string | null {
   return id;
 }
 
-/** Remember the first page this browser landed on, once. */
+/**
+ * Remember the first page this browser landed on, once. Where the visitor came
+ * from is analytics data, so it is not collected without that consent; the
+ * banner reloads the page on a grant, which is what re-runs this.
+ */
 export function captureFirstLanding(): void {
   if (typeof window === "undefined") return;
+  if (!consent.hasConsentFor("analytics")) return;
   if (readStorage(FIRST_LANDING_KEY)) return;
 
   const params = new URLSearchParams(window.location.search);
   const landing: FirstLanding = {
-    path: window.location.pathname + window.location.search,
-    referrer: document.referrer || null,
+    path: redactPath(window.location.pathname, window.location.search),
+    referrer: redactReferrer(document.referrer),
     utm_source: params.get("utm_source"),
     utm_medium: params.get("utm_medium"),
     utm_campaign: params.get("utm_campaign"),
@@ -89,6 +108,18 @@ export function resetAnonymousID(nextID?: string): void {
   writeStorage(ANONYMOUS_ID_KEY, memoryID);
 }
 
+/** Drop the analytics identity and its landing record: consent was withdrawn. */
+export function clearAnalyticsStorage(): void {
+  if (typeof window === "undefined") return;
+  memoryID = null;
+  try {
+    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
+    window.localStorage.removeItem(FIRST_LANDING_KEY);
+  } catch {
+    // Storage blocked: nothing persisted to clear.
+  }
+}
+
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
 }
@@ -108,6 +139,31 @@ function readPostHogDeviceID(): string | null {
   try {
     const parsed = JSON.parse(raw) as { $device_id?: unknown };
     return typeof parsed.$device_id === "string" ? parsed.$device_id : null;
+  } catch {
+    return null;
+  }
+}
+
+function redactPath(pathname: string, search: string): string {
+  const prefix = REDACTED_PREFIXES.find(
+    (candidate) =>
+      pathname === candidate || pathname.startsWith(`${candidate}/`),
+  );
+  if (prefix) return prefix;
+
+  const params = new URLSearchParams(search);
+  SENSITIVE_PARAMS.forEach((name) => params.delete(name));
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+/** Same-origin referrers reach the same secret-bearing routes, so redact both. */
+function redactReferrer(referrer: string): string | null {
+  if (!referrer) return null;
+  try {
+    const url = new URL(referrer);
+    if (url.origin !== window.location.origin) return url.origin + url.pathname;
+    return url.origin + redactPath(url.pathname, url.search);
   } catch {
     return null;
   }

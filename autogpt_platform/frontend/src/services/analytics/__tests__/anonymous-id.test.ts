@@ -1,6 +1,8 @@
+import { consent } from "@/services/consent/cookies";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureFirstLanding,
+  clearAnalyticsStorage,
   getAnonymousID,
   getPostHogDeviceID,
   readFirstLanding,
@@ -8,12 +10,32 @@ import {
   resetAnonymousIDForTests,
 } from "../anonymous-id";
 
+function setAnalyticsConsent(analytics: boolean): void {
+  consent.save({
+    hasConsented: true,
+    timestamp: Date.now(),
+    analytics,
+    monitoring: false,
+    advertising: false,
+  });
+}
+
+function landOn(path: string, referrer = ""): void {
+  window.history.pushState({}, "", path);
+  Object.defineProperty(document, "referrer", {
+    value: referrer,
+    configurable: true,
+  });
+}
+
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
 
 beforeEach(() => {
   window.localStorage.clear();
   resetAnonymousIDForTests();
+  setAnalyticsConsent(true);
+  landOn("/");
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
 });
 
@@ -123,5 +145,84 @@ describe("first landing", () => {
 
     window.localStorage.setItem(FIRST_LANDING_KEY, "{");
     expect(readFirstLanding()).toBeNull();
+  });
+});
+
+describe("first landing redaction", () => {
+  it("records the route but never a one-time token from the path", () => {
+    landOn("/link/super-secret-invite-token");
+
+    captureFirstLanding();
+
+    const landing = readFirstLanding();
+    expect(landing?.path).toBe("/link");
+    expect(JSON.stringify(landing)).not.toContain("super-secret-invite-token");
+  });
+
+  it("drops sensitive query params while keeping campaign tags", () => {
+    landOn("/marketplace?utm_source=newsletter&code=oauth-code&token=secret");
+
+    captureFirstLanding();
+
+    const landing = readFirstLanding();
+    expect(landing?.path).toBe("/marketplace?utm_source=newsletter");
+    expect(landing?.utm_source).toBe("newsletter");
+    expect(JSON.stringify(landing)).not.toContain("oauth-code");
+    expect(JSON.stringify(landing)).not.toContain("secret");
+  });
+
+  it("redacts a same-origin referrer that carries a token", () => {
+    landOn(
+      "/marketplace",
+      `${window.location.origin}/share/secret-share-token`,
+    );
+
+    captureFirstLanding();
+
+    const landing = readFirstLanding();
+    expect(landing?.referrer).toBe(`${window.location.origin}/share`);
+  });
+
+  it("keeps an external referrer's origin and path, without its query", () => {
+    landOn("/marketplace", "https://news.example.com/post?session=abc");
+
+    captureFirstLanding();
+
+    expect(readFirstLanding()?.referrer).toBe("https://news.example.com/post");
+  });
+});
+
+describe("analytics consent", () => {
+  it("captures no landing without analytics consent", () => {
+    setAnalyticsConsent(false);
+    landOn("/pricing?utm_source=newsletter");
+
+    captureFirstLanding();
+
+    expect(readFirstLanding()).toBeNull();
+  });
+
+  it("captures once consent is granted", () => {
+    setAnalyticsConsent(false);
+    landOn("/pricing");
+    captureFirstLanding();
+    expect(readFirstLanding()).toBeNull();
+
+    setAnalyticsConsent(true);
+    captureFirstLanding();
+
+    expect(readFirstLanding()?.path).toBe("/pricing");
+  });
+
+  it("clearAnalyticsStorage drops both the identity and the landing", () => {
+    const id = getAnonymousID();
+    captureFirstLanding();
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(id);
+    expect(readFirstLanding()).not.toBeNull();
+
+    clearAnalyticsStorage();
+
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBeNull();
   });
 });

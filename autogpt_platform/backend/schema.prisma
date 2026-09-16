@@ -246,8 +246,6 @@ model UserAttribution {
   @@index([datafastVisitorId])
 }
 
-
-
 enum ChatSessionStatus {
   idle
   queued

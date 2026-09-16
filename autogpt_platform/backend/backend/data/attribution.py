@@ -5,9 +5,15 @@ before they had an account (our anonymous id, PostHog's device id, the
 DataFast visitor) plus the first landing page. Each field is written at most
 once: later reports only fill fields that are still empty, so a returning
 user's second device never rewrites the channel that actually brought them.
+
+Where the user came FROM is only accepted while the account is new. An older
+account reporting for the first time still contributes its analytics ids, so
+the join key works for everyone, but its landing page and UTM tags describe
+the session it happened to report in rather than a signup, and write-once
+would make that permanent.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import cast
 
 import prisma.errors
@@ -64,6 +70,23 @@ _COLUMNS: dict[str, str] = {
     "signup_method": "signupMethod",
 }
 
+# Where the user came from, as opposed to who they are. Only written while the
+# account is inside SIGNUP_ATTRIBUTION_WINDOW.
+_ACQUISITION_COLUMNS = frozenset(
+    {
+        "landingPath",
+        "referrer",
+        "utmSource",
+        "utmMedium",
+        "utmCampaign",
+        "signupMethod",
+    }
+)
+
+# Generous enough for a slow email verification or a retried report, far short
+# of the age of any account that predates this feature.
+SIGNUP_ATTRIBUTION_WINDOW = timedelta(days=7)
+
 
 async def record_user_attribution(
     user_id: str, data: UserAttributionInput
@@ -74,6 +97,14 @@ async def record_user_attribution(
         for field, column in _COLUMNS.items()
         if (value := getattr(data, field))
     }
+    if any(column in _ACQUISITION_COLUMNS for column in provided) and not (
+        await _is_recent_signup(user_id)
+    ):
+        provided = {
+            column: value
+            for column, value in provided.items()
+            if column not in _ACQUISITION_COLUMNS
+        }
     existing = await prisma.models.UserAttribution.prisma().find_unique(
         where={"userId": user_id}
     )
@@ -110,8 +141,11 @@ async def record_user_attribution(
     return UserAttribution.from_db(row or existing)
 
 
-async def get_user_attribution(user_id: str) -> UserAttribution | None:
-    row = await prisma.models.UserAttribution.prisma().find_unique(
-        where={"userId": user_id}
-    )
-    return UserAttribution.from_db(row) if row else None
+async def _is_recent_signup(user_id: str) -> bool:
+    user = await prisma.models.User.prisma().find_unique(where={"id": user_id})
+    if user is None:
+        return False
+    created_at = user.createdAt
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - created_at <= SIGNUP_ATTRIBUTION_WINDOW

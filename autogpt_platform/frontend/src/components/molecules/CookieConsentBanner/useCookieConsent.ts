@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { clearAnalyticsStorage } from "@/services/analytics/anonymous-id";
 import {
   consent,
   ConsentPreferences,
@@ -28,6 +29,7 @@ export function useCookieConsent() {
       };
       setConsentState(newConsent);
       consent.save(newConsent);
+      if (!newConsent.analytics) clearAnalyticsStorage();
 
       if (typeof window !== "undefined") {
         window.location.reload();

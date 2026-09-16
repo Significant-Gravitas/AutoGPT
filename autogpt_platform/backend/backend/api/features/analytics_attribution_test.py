@@ -93,3 +93,14 @@ def test_attribution_body_wins_over_headers(
 def test_attribution_rejects_oversized_fields() -> None:
     response = client.post("/attribution", json={"utm_source": "x" * 300})
     assert response.status_code == 422
+
+
+def test_attribution_rejects_an_oversized_datafast_header() -> None:
+    """The body parses; only the handler's re-validation of the merged input
+    can reject a header this long."""
+    response = client.post(
+        "/attribution",
+        json={"anonymous_id": "anon-1"},
+        headers={"X-Datafast-Visitor-Id": "v" * 200},
+    )
+    assert response.status_code == 422

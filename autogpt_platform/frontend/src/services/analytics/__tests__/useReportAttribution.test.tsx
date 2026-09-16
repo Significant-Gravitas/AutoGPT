@@ -1,4 +1,5 @@
 import { server } from "@/mocks/mock-server";
+import { consent } from "@/services/consent/cookies";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -42,9 +43,20 @@ function captureReports(status = 200) {
   return bodies;
 }
 
+function setAnalyticsConsent(analytics: boolean): void {
+  consent.save({
+    hasConsented: true,
+    timestamp: Date.now(),
+    analytics,
+    monitoring: false,
+    advertising: false,
+  });
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   auth.user = { id: "user-1" };
+  setAnalyticsConsent(true);
   resetAttributionReportForTests();
 });
 
@@ -68,6 +80,17 @@ describe("useReportAttribution", () => {
     renderHook(() => useReportAttribution(), { wrapper });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(bodies).toHaveLength(1);
+  });
+
+  it("reports nothing without analytics consent", async () => {
+    const bodies = captureReports();
+    setAnalyticsConsent(false);
+
+    renderHook(() => useReportAttribution(), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(bodies).toHaveLength(0);
+    expect(window.localStorage.getItem(REPORTED_KEY)).toBeNull();
   });
 
   it("does nothing while signed out", async () => {
