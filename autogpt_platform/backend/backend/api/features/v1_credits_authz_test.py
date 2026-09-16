@@ -1,24 +1,28 @@
-"""Authorization tests for the org-scoped credits routes in v1.py.
+"""Authorization tests for the org-scoped credits routes.
 
 SECRT-2449: the credits balance/transaction/invoice/top-up routes resolve
 their credit model through the request's org context, so for a real (pooled)
 org they read/mutate the shared ``OrgBalance``. They must therefore require
 org-level ``MANAGE_BILLING`` (owner or billing_manager) — a plain org member
 must be rejected with 403. Personal-org owners always carry ``is_org_owner``,
-so the gate is a no-op for them. The ``/credits`` routes that serve the
-caller's own data rather than the org's are exempt, and say why in
-``UNGATED_CREDITS_ROUTES``.
+so the gate is a no-op for them.
 
 The gate is applied as an independent per-route dependency (there is no
 shared router-level enforcement), so every gated route is asserted here:
 dropping the dependency from any single route must fail this suite. Route
 coverage is not left to the hand-maintained ``GATED_ROUTES`` list either —
-two introspection tests walk the mounted app, so both a *newly added* ungated
-``/credits`` route and a route reaching ``get_credit_model`` under any other
-prefix fail.
+every test in this module drives the real mounted application, so a
+``/api/credits`` route served by any module is in view, and two introspection
+tests walk the routing table.
+
+Every ungated route is asserted by the property that makes it safe rather
+than listed by name (SECRT-2650): a name in an exemption list survives the
+removal of the thing that justified it.
 """
 
+import ast
 import inspect
+import textwrap
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, Mock
@@ -35,23 +39,14 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
-from backend.api.rest_api import app as real_app
+from backend.api.rest_api import app
+from backend.data.credit import UserCreditBase, get_credit_model
 from backend.data.model import AutoTopUpConfig, TransactionHistory
 from backend.data.org_credit import OrgCreditModel
 
-from .billing.credits import routes as credits_routes
-from .billing.subscriptions import routes as subscriptions_routes
-from .v1 import v1_router
-
-app = fastapi.FastAPI()
-# Both halves of /credits now live in their own modules. v1_router stays mounted
-# because this suite's role matrix still reaches routes left behind in it; every
-# further layer that moves a /credits route has to add its router here too, and
-# the durable fix is to give the request-level tests the real app as the two
-# introspection tests already use.
-app.include_router(v1_router)
-app.include_router(credits_routes.router)
-app.include_router(subscriptions_routes.router)
+# The real application, not a locally-mounted subset: a private app carries only
+# the routers someone remembered to include, so a /credits route that moves to
+# another module leaves the suite passing over nothing.
 client = fastapi.testclient.TestClient(app)
 
 ORG_ID = "test-org"
@@ -118,71 +113,55 @@ GATED_ROUTES: list[GatedRoute] = [
     GatedRoute(
         name="get_user_credits",
         method="GET",
-        path="/credits",
+        path="/api/credits",
         check_ok=lambda r: r.json() == {"credits": 1000},
     ),
     GatedRoute(
         name="request_top_up",
         method="POST",
-        path="/credits",
+        path="/api/credits",
         body={"credit_amount": 500},
         check_ok=lambda r: r.json()["checkout_url"].startswith("https://"),
     ),
     GatedRoute(
         name="refund_top_up",
         method="POST",
-        path="/credits/test-transaction-key/refund",
+        path="/api/credits/test-transaction-key/refund",
         body={"reason": "duplicate charge"},
         check_ok=lambda r: r.json() == 500,
     ),
     GatedRoute(
         name="fulfill_checkout",
         method="PATCH",
-        path="/credits",
+        path="/api/credits",
         check_ok=lambda r: r.content == b"",
     ),
     GatedRoute(
         name="configure_user_auto_top_up",
         method="POST",
-        path="/credits/auto-top-up",
+        path="/api/credits/auto-top-up",
         body={"amount": 500, "threshold": 100},
         check_ok=lambda r: r.json() == "Auto top-up settings updated",
     ),
     GatedRoute(
         name="get_credit_history",
         method="GET",
-        path="/credits/transactions",
+        path="/api/credits/transactions",
         check_ok=lambda r: r.json()["transactions"] == [],
     ),
     GatedRoute(
         name="get_refund_requests",
         method="GET",
-        path="/credits/refunds",
+        path="/api/credits/refunds",
         check_ok=lambda r: r.json() == [],
     ),
     GatedRoute(
         name="list_invoices",
         method="GET",
-        path="/credits/invoices",
+        path="/api/credits/invoices",
         check_ok=lambda r: r.json() == [],
     ),
 ]
-
-
-# ``/credits*`` routes that are deliberately NOT behind MANAGE_BILLING, keyed
-# by endpoint function name with the reason they are exempt. Adding an entry
-# here is an explicit product decision, not a way to silence the introspection
-# test below.
-UNGATED_CREDITS_ROUTES: dict[str, str] = {
-    "get_subscription_status": "subscriptions are user-level, not org-pooled",
-    "update_subscription_tier": "subscriptions are user-level, not org-pooled",
-    "stripe_webhook": "unauthenticated by design; verified by Stripe signature",
-    "get_user_auto_top_up": "reads the caller's own User.top_up_config, not org data",
-    "manage_payment_method": (
-        "opens the caller's own Stripe portal; OrgCreditModel does not override "
-        "create_billing_portal_session"
-    ),
-}
 
 
 class CreditStubs(pydantic.BaseModel):
@@ -198,9 +177,13 @@ class CreditStubs(pydantic.BaseModel):
 
 @pytest.fixture(autouse=True)
 def _auth(mock_jwt_user):
+    # Restored, not cleared: this is the real app, and the session-scoped
+    # SpinTestServer fixture keeps its own get_user_id override on it.
+    previous = dict(app.dependency_overrides)
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
+    app.dependency_overrides.update(previous)
 
 
 @pytest.fixture
@@ -285,8 +268,8 @@ def test_credits_route_requires_manage_billing(
 @pytest.mark.parametrize(
     "path, expected_json",
     [
-        ("/credits/auto-top-up", {"amount": 500, "threshold": 100}),
-        ("/credits/manage", {"url": "https://billing.example.com/portal"}),
+        ("/api/credits/auto-top-up", {"amount": 500, "threshold": 100}),
+        ("/api/credits/manage", {"url": "https://billing.example.com/portal"}),
     ],
     ids=["get_user_auto_top_up", "manage_payment_method"],
 )
@@ -350,11 +333,11 @@ def _enforced_org_actions(dependant: Dependant) -> set[OrgAction]:
     return enforced
 
 
-# The eight /api/credits* routes served by modules other than the credits
-# router. T250.2's audit (SECRT-2650) found none of them needs MANAGE_BILLING,
-# so they are asserted by WHAT makes them safe rather than listed by name: a
-# name survives the removal of the thing that justified it, which is the latent
-# defect in UNGATED_CREDITS_ROUTES above.
+# The ``/api/credits*`` routes deliberately NOT behind MANAGE_BILLING. T250.2's
+# audit (SECRT-2650) found that none of them needs it, so each is asserted by
+# WHAT makes it safe: a name in an exemption list survives the removal of the
+# thing that justified it, which is how eight of these went a release without
+# anyone checking them.
 ADMIN_CREDITS_ROUTES = {
     "add_user_credits",
     "admin_get_all_user_history",
@@ -366,6 +349,18 @@ TRIAL_CREDITS_ROUTES = {
     "confirm_trial",
     "get_trial_status",
     "start_trial_checkout",
+}
+# Routes that never resolve the org-pooled credit model at all. The reason is
+# prose; the exemption is checked by the transitive walk at the bottom of this
+# module.
+POOLED_MODEL_UNREACHABLE_ROUTES: dict[str, str] = {
+    "get_subscription_status": "subscriptions are user-level, not org-pooled",
+    "update_subscription_tier": "subscriptions are user-level, not org-pooled",
+    "get_user_auto_top_up": "reads the caller's own User.top_up_config, not org data",
+    "stripe_webhook": (
+        "unauthenticated by design, verified by Stripe signature; it fulfils "
+        "against UserCredit() directly and resolves no org"
+    ),
 }
 
 
@@ -381,33 +376,23 @@ def _dependency_names(dependant: Dependant) -> set[str]:
 
 
 def test_every_credits_route_is_gated_or_explicitly_exempt():
-    """Introspect the mounted app so a *new* ungated /credits route fails.
+    """Introspect the routing table so a *new* ungated /credits route fails.
 
     ``GATED_ROUTES`` above is hand-maintained, so on its own it can only prove
-    that the routes someone remembered to list are gated. This walks the routing
-    table instead: every ``/credits*`` route must either carry the MANAGE_BILLING
-    dependency or be an explicit, documented exemption.
-
-    It walks ``real_app``, not a locally-mounted router: this layer moves the
-    credits routes out of ``v1_router``, so a ``v1_router``-only mount would see
-    nothing at all here and pass vacuously. (#14475's docstring asked for a
-    ``PENDING_AUDIT`` set of names; T250.2's audit then found none of the eight
-    needs a gate, so they are asserted by what makes them safe instead — see
-    ADMIN_CREDITS_ROUTES and TRIAL_CREDITS_ROUTES above, SECRT-2650.)
-
-    A ninth unexpected ``/api/credits*`` route still fails this, which is the
-    property the widening exists to restore.
+    that the routes someone remembered to list are gated. This walks every
+    ``/api/credits*`` route the real application serves — whichever module
+    serves it — and makes each ungated one prove its exemption.
     """
     gated: set[str] = set()
-    ungated: set[str] = set()
-    for route in real_app.routes:
+    unexplained: set[str] = set()
+    for route in app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith("/api/credits"):
             continue
         if OrgAction.MANAGE_BILLING in _enforced_org_actions(route.dependant):
             gated.add(route.name)
         elif route.name in ADMIN_CREDITS_ROUTES:
             # Safe because an admin JWT role claim gates it, which no org role
-            # reaches — assert that, not the name.
+            # reaches — not even the org owner. Assert that, not the name.
             assert "requires_admin_user" in _dependency_names(route.dependant), (
                 f"{route.name} is treated as admin-gated but no longer resolves "
                 "requires_admin_user; it now needs MANAGE_BILLING or its own reason"
@@ -419,15 +404,32 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
                 f"{route.name} now resolves an org context; it can reach pooled "
                 "credit and needs gating or its own documented reason"
             )
+        elif route.name in POOLED_MODEL_UNREACHABLE_ROUTES:
+            assert not _reaches_credit_model(route.endpoint), (
+                f"{route.name} now reaches get_credit_model, so it can resolve a "
+                "pooled org balance; gate it or re-argue the exemption"
+            )
+        elif route.name == "manage_payment_method":
+            # Safe because OrgCreditModel inherits create_billing_portal_session
+            # rather than overriding it, so the route mints a portal for the
+            # caller's own Stripe customer even under a pooled org.
+            assert (
+                OrgCreditModel.create_billing_portal_session
+                is UserCreditBase.create_billing_portal_session
+            ), (
+                "OrgCreditModel now overrides create_billing_portal_session, so "
+                "manage_payment_method can act on the org's billing account and "
+                "needs MANAGE_BILLING"
+            )
         else:
-            ungated.add(route.name)
+            unexplained.add(route.name)
 
     assert gated, "no /api/credits routes found — did the router or prefix change?"
-    assert ungated == set(UNGATED_CREDITS_ROUTES), (
-        "A /credits route is not behind MANAGE_BILLING. Gate it with "
-        "`ctx: BillingManagerContext`, or — if it is genuinely not org-pooled "
-        "— add it to UNGATED_CREDITS_ROUTES with the reason. Unexpected: "
-        f"{sorted(ungated - set(UNGATED_CREDITS_ROUTES))}"
+    assert not unexplained, (
+        "A /api/credits route is neither behind MANAGE_BILLING nor covered by an "
+        "asserted exemption. Gate it with `ctx: BillingManagerContext`, or — if "
+        "it genuinely serves no org-pooled data — add it to the set above whose "
+        f"assertion says why it is safe. Unexpected: {sorted(unexplained)}"
     )
     assert gated == {route.name for route in GATED_ROUTES}, (
         "GATED_ROUTES is out of sync with the routes actually carrying the "
@@ -444,8 +446,23 @@ ORG_BALANCE_UNGATED: dict[str, str] = {
         "the executor spends the pooled balance; gating it would stop plain "
         "members running agents, and it reveals no balance (402 only)"
     ),
-    "manage_payment_method": UNGATED_CREDITS_ROUTES["manage_payment_method"],
+    "manage_payment_method": (
+        "opens the caller's own Stripe portal; OrgCreditModel does not override "
+        "create_billing_portal_session"
+    ),
+    "get_home_dashboard": (
+        "SECRT-2648: /home hands a plain org member the pooled balance that GET "
+        "/api/credits refuses them. Exempt only until that is gated — this entry "
+        "comes out with the fix"
+    ),
 }
+
+# How deep the walk below follows calls. ``/home`` reaches the credit model
+# three hops down (get_home_dashboard -> build_home_dashboard ->
+# _load_home_source_data -> _get_credits), so 4 leaves one hop of headroom;
+# raising it to 6 adds no further routes.
+_CREDIT_MODEL_MAX_HOPS = 4
+_WALKED_MODULES = ("backend.api.", "backend.data.")
 
 
 def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
@@ -454,12 +471,19 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
     The path-prefix test above cannot see ``execute_graph``, which already reads
     the pooled balance from ``/graphs/{id}/execute``, nor a future org-billing
     route under another prefix.
+
+    Coverage is every route reaching ``get_credit_model`` within
+    ``_CREDIT_MODEL_MAX_HOPS`` calls through module-level functions of
+    ``backend.api``/``backend.data`` — not every caller in the app: a longer
+    chain, a call through an instance attribute, or a dynamically resolved name
+    stays out of view. The one-hop source match this replaced could not see
+    ``/home`` at all, which is SECRT-2648.
     """
     ungated = {
         route.name
-        for route in real_app.routes
+        for route in app.routes
         if isinstance(route, APIRoute)
-        and "get_credit_model" in inspect.getsource(route.endpoint)
+        and _reaches_credit_model(route.endpoint)
         and OrgAction.MANAGE_BILLING not in _enforced_org_actions(route.dependant)
     }
 
@@ -469,6 +493,70 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
         "the caller's own data — add it to ORG_BALANCE_UNGATED with the reason. "
         f"Unexpected: {sorted(ungated - set(ORG_BALANCE_UNGATED))}"
     )
+
+
+def _reaches_credit_model(endpoint: Callable) -> bool:
+    """Whether ``endpoint`` reaches ``get_credit_model`` within the hop budget.
+
+    Breadth-first, so every function is explored at its shortest distance from
+    the endpoint and the budget means what it says. Names are resolved through
+    each function's own module globals and compared by identity, so an aliased
+    import is followed while a look-alike like ``get_user_credit_model`` — which
+    returns the user's own wallet, never the org's — is not a match.
+    """
+    frontier, seen = [endpoint], {id(endpoint)}
+    for _ in range(_CREDIT_MODEL_MAX_HOPS + 1):
+        next_frontier: list[Callable] = []
+        for func in frontier:
+            for obj in _globals_referenced_by(func):
+                if obj is get_credit_model:
+                    return True
+                if (
+                    callable(obj)
+                    and (getattr(obj, "__module__", "") or "").startswith(
+                        _WALKED_MODULES
+                    )
+                    and id(obj) not in seen
+                ):
+                    seen.add(id(obj))
+                    next_frontier.append(obj)
+        frontier = next_frontier
+    return False
+
+
+def _globals_referenced_by(func: Callable) -> list[Any]:
+    """Module-level objects named in ``func``'s source, resolved to objects."""
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    except (OSError, TypeError, SyntaxError):
+        return []
+    module_globals = getattr(func, "__globals__", {})
+    referenced: list[Any] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in module_globals:
+            referenced.append(module_globals[node.id])
+        elif isinstance(node, ast.Attribute):
+            obj = _resolve_dotted(node, module_globals)
+            if obj is not None:
+                referenced.append(obj)
+    return referenced
+
+
+def _resolve_dotted(node: ast.Attribute, module_globals: dict) -> Any:
+    """Resolve a dotted reference such as ``credit.get_credit_model``."""
+    attrs: list[str] = []
+    value: ast.expr = node
+    while isinstance(value, ast.Attribute):
+        attrs.append(value.attr)
+        value = value.value
+    if not isinstance(value, ast.Name) or value.id not in module_globals:
+        return None
+    obj = module_globals[value.id]
+    for attr in reversed(attrs):
+        obj = getattr(obj, attr, None)
+        if obj is None:
+            return None
+    return obj
 
 
 def _org_member(
@@ -507,7 +595,7 @@ def test_personal_org_owner_passes_real_context_resolution(
     mock_prisma.orgmember.find_first = AsyncMock(return_value=Mock(orgId="personal-1"))
     mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member(owner=True))
 
-    resp = client.get("/credits")
+    resp = client.get("/api/credits")
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"credits": 1000}
@@ -523,7 +611,7 @@ def test_plain_member_of_shared_org_rejected_real_context_resolution(
     """The same real resolution path rejects a plain member of a pooled org."""
     mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member())
 
-    resp = client.get("/credits", headers={"X-Org-Id": "shared-org"})
+    resp = client.get("/api/credits", headers={"X-Org-Id": "shared-org"})
 
     assert resp.status_code == 403, resp.text
     assert resp.json()["detail"] == "Missing org permission: MANAGE_BILLING"
