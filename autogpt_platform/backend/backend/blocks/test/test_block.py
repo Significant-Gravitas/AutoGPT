@@ -68,31 +68,30 @@ _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
     AirtableWebhookTriggerBlock AllQuietIncidentTriggerBlock AllQuietUpdateIncidentBlock
     AutoPilotBlock BaasBotJoinMeetingBlock BaasBotLeaveMeetingBlock
     BlockInstallationBlock ClaudeCodeBlock CodeGenerationBlock CompanyEnrichmentBlock
-    CompassAITriggerBlock CreateCampaignBlock CreateRedditPostBlock
-    DataForSeoKeywordSuggestionsBlock DataForSeoRelatedKeywordsBlock
-    DiscordGetCurrentUserBlock EditRedditPostBlock EditTelegramMessageBlock
-    ExaBulkWebsetItemsBlock ExaCancelEnrichmentBlock ExaCancelWebsetBlock
-    ExaCancelWebsetSearchBlock ExaCodeContextBlock ExaCreateEnrichmentBlock
-    ExaCreateImportBlock ExaCreateMonitorBlock ExaCreateOrFindWebsetBlock
-    ExaCreateResearchBlock ExaCreateWebsetBlock ExaCreateWebsetSearchBlock
-    ExaExportWebsetBlock ExaFindOrCreateSearchBlock ExaGetImportBlock
-    ExaUpdateEnrichmentBlock ExaUpdateMonitorBlock ExaUpdateWebsetBlock
-    ExaWaitForEnrichmentBlock ExaWaitForResearchBlock ExaWaitForWebsetBlock
-    ExaWebsetItemsSummaryBlock ExaWebsetSummaryBlock ExaWebsetWebhookBlock
-    ExecuteCodeBlock ExecuteCodeStepBlock FileStoreBlock GenericWebhookTriggerBlock
-    GetRedditCommentBlock GetRedditCommentRepliesBlock GetRedditInboxBlock
-    GetRedditPostBlock GetRedditPostCommentsBlock GetRedditPostsBlock
-    GetRedditUserInfoBlock GetStoreAgentDetailsBlock GetSubredditFlairsBlock
-    GetSubredditInfoBlock GetSubredditRulesBlock GetUserPostsBlock GithubAddLabelBlock
-    GithubAssignIssueBlock GithubAssignPRReviewerBlock GithubCreateCheckRunBlock
-    GithubCreateRepositoryBlock GithubCreateStatusBlock GithubDiscussionTriggerBlock
-    GithubForkRepositoryBlock GithubIssuesTriggerBlock GithubMakeBranchBlock
-    GithubMakeIssueBlock GithubMakePullRequestBlock
-    GithubMarkNotificationThreadAsDoneBlock GithubMarkNotificationThreadAsReadBlock
-    GithubMarkNotificationsAsReadBlock GithubMultiFileCommitBlock
-    GithubPullRequestTriggerBlock GithubReleaseTriggerBlock GithubRemoveLabelBlock
-    GithubResolveReviewDiscussionBlock GithubStarRepositoryBlock GithubStarTriggerBlock
-    GithubUnassignIssueBlock GithubUnassignPRReviewerBlock
+    CompassAITriggerBlock CreateCampaignBlock DataForSeoKeywordSuggestionsBlock
+    DataForSeoRelatedKeywordsBlock DiscordGetCurrentUserBlock EditRedditPostBlock
+    EditTelegramMessageBlock ExaBulkWebsetItemsBlock ExaCancelEnrichmentBlock
+    ExaCancelWebsetBlock ExaCancelWebsetSearchBlock ExaCodeContextBlock
+    ExaCreateEnrichmentBlock ExaCreateImportBlock ExaCreateMonitorBlock
+    ExaCreateOrFindWebsetBlock ExaCreateResearchBlock ExaCreateWebsetBlock
+    ExaCreateWebsetSearchBlock ExaExportWebsetBlock ExaFindOrCreateSearchBlock
+    ExaGetImportBlock ExaUpdateEnrichmentBlock ExaUpdateMonitorBlock
+    ExaUpdateWebsetBlock ExaWaitForEnrichmentBlock ExaWaitForResearchBlock
+    ExaWaitForWebsetBlock ExaWebsetItemsSummaryBlock ExaWebsetSummaryBlock
+    ExaWebsetWebhookBlock ExecuteCodeBlock ExecuteCodeStepBlock FileStoreBlock
+    GenericWebhookTriggerBlock GetRedditCommentBlock GetRedditCommentRepliesBlock
+    GetRedditInboxBlock GetRedditPostBlock GetRedditPostCommentsBlock
+    GetRedditPostsBlock GetRedditUserInfoBlock GetStoreAgentDetailsBlock
+    GetSubredditFlairsBlock GetSubredditInfoBlock GetSubredditRulesBlock
+    GetUserPostsBlock GithubAddLabelBlock GithubAssignIssueBlock
+    GithubAssignPRReviewerBlock GithubCreateCheckRunBlock GithubCreateRepositoryBlock
+    GithubCreateStatusBlock GithubDiscussionTriggerBlock GithubForkRepositoryBlock
+    GithubIssuesTriggerBlock GithubMakeBranchBlock GithubMakeIssueBlock
+    GithubMakePullRequestBlock GithubMarkNotificationThreadAsDoneBlock
+    GithubMarkNotificationThreadAsReadBlock GithubMarkNotificationsAsReadBlock
+    GithubMultiFileCommitBlock GithubPullRequestTriggerBlock GithubReleaseTriggerBlock
+    GithubRemoveLabelBlock GithubResolveReviewDiscussionBlock GithubStarRepositoryBlock
+    GithubStarTriggerBlock GithubUnassignIssueBlock GithubUnassignPRReviewerBlock
     GithubUnsubscribeNotificationThreadBlock GithubUpdateCheckRunBlock
     GithubUpdateCommentBlock GmailAddLabelBlock GmailCreateDraftBlock
     GmailDraftReplyBlock GmailForwardBlock GmailRemoveLabelBlock
@@ -117,33 +116,27 @@ _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
     LoopVideoBlock MCPToolBlock MediaDurationBlock ModQueueBlock NoteBlock
     NotionCreatePageBlock NotionReadDatabaseBlock NotionReadPageBlock
     NotionReadPageMarkdownBlock NotionSearchBlock OrchestratorBlock
-    PersistInformationBlock PineconeInitBlock PineconeInsertBlock PostRedditCommentBlock
-    PostToBlueskyBlock PostToFacebookBlock PostToGMBBlock PostToPinterestBlock
-    PostToRedditBlock PostToSnapchatBlock PostToTelegramBlock PostToThreadsBlock
-    ProfileEnrichmentBlock RMFGAnalyzeDesignBlock RMFGCreateCartBlock
-    RMFGCreateDFMReportBlock RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock
-    RMFGEventTriggerBlock RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock
-    ReplyToRedditCommentBlock RetrieveInformationBlock SQLQueryBlock
-    SaveCampaignSequencesBlock SearchRedditBlock SearchStoreAgentsBlock
-    SendAuthenticatedWebRequestBlock SendRedditMessageBlock SendWebRequestBlock
-    Slant3DEstimateOrderBlock Slant3DEstimateShippingBlock Slant3DFilamentBlock
-    Slant3DOrderWebhookBlock Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock
-    StagehandExtractBlock StagehandObserveBlock StripeLinkCreateCardSpendRequestBlock
+    PersistInformationBlock PineconeInitBlock PineconeInsertBlock ProfileEnrichmentBlock
+    RMFGAnalyzeDesignBlock RMFGCreateCartBlock RMFGCreateDFMReportBlock
+    RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock RMFGEventTriggerBlock
+    RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock RetrieveInformationBlock
+    SQLQueryBlock SaveCampaignSequencesBlock SearchRedditBlock SearchStoreAgentsBlock
+    SendAuthenticatedWebRequestBlock SendWebRequestBlock Slant3DEstimateOrderBlock
+    Slant3DEstimateShippingBlock Slant3DFilamentBlock Slant3DOrderWebhookBlock
+    Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock StagehandExtractBlock
+    StagehandObserveBlock StripeLinkCreateCardSpendRequestBlock
     StripeLinkCreateTokenSpendRequestBlock StripeLinkGetPaymentChallengeBlock
     StripeLinkRetrieveCardBlock StripeSubscriptionTriggerBlock
     TelegramMessageReactionTriggerBlock TelegramMessageTriggerBlock
     TodoistCloseTaskBlock TodoistCreateCommentBlock TodoistCreateLabelBlock
-    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistDeleteCommentBlock
-    TodoistDeleteLabelBlock TodoistDeleteProjectBlock TodoistDeleteSectionBlock
-    TodoistDeleteTaskBlock TodoistGetCommentBlock TodoistGetCommentsBlock
-    TodoistGetLabelBlock TodoistGetProjectBlock TodoistGetSectionBlock
-    TodoistGetSharedLabelsBlock TodoistGetTaskBlock TodoistGetTasksBlock
-    TodoistListCollaboratorsBlock TodoistListLabelsBlock TodoistListProjectsBlock
-    TodoistListSectionsBlock TodoistRemoveSharedLabelsBlock
-    TodoistRenameSharedLabelsBlock TodoistReopenTaskBlock TodoistUpdateCommentBlock
-    TodoistUpdateLabelBlock TodoistUpdateProjectBlock TodoistUpdateTaskBlock
-    TwitterAddListMemberBlock TwitterBookmarkTweetBlock TwitterCreateListBlock
-    TwitterDeleteListBlock TwitterDeleteTweetBlock TwitterFollowListBlock
+    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistGetCommentBlock
+    TodoistGetCommentsBlock TodoistGetLabelBlock TodoistGetProjectBlock
+    TodoistGetSectionBlock TodoistGetSharedLabelsBlock TodoistGetTaskBlock
+    TodoistGetTasksBlock TodoistListCollaboratorsBlock TodoistListLabelsBlock
+    TodoistListProjectsBlock TodoistListSectionsBlock TodoistRenameSharedLabelsBlock
+    TodoistReopenTaskBlock TodoistUpdateCommentBlock TodoistUpdateLabelBlock
+    TodoistUpdateProjectBlock TodoistUpdateTaskBlock TwitterAddListMemberBlock
+    TwitterBookmarkTweetBlock TwitterCreateListBlock TwitterFollowListBlock
     TwitterFollowUserBlock TwitterGetBlockedUsersBlock TwitterGetBookmarkedTweetsBlock
     TwitterGetFollowersBlock TwitterGetFollowingBlock TwitterGetHomeTimelineBlock
     TwitterGetLikedTweetsBlock TwitterGetLikingUsersBlock TwitterGetListBlock
@@ -154,7 +147,7 @@ _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
     TwitterGetTweetBlock TwitterGetTweetsBlock TwitterGetUserBlock
     TwitterGetUserMentionsBlock TwitterGetUserTweetsBlock TwitterGetUsersBlock
     TwitterHideReplyBlock TwitterLikeTweetBlock TwitterMuteUserBlock TwitterPinListBlock
-    TwitterPostTweetBlock TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
+    TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
     TwitterRemoveRetweetBlock TwitterRetweetBlock TwitterSearchRecentTweetsBlock
     TwitterSearchSpacesBlock TwitterUnfollowListBlock TwitterUnfollowUserBlock
     TwitterUnhideReplyBlock TwitterUnlikeTweetBlock TwitterUnmuteUserBlock
