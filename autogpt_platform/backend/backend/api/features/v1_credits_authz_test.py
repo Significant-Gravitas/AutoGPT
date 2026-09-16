@@ -528,6 +528,12 @@ def test_walk_resolves_function_local_imports(func: Callable, expected: bool):
     assert _reaches_credit_model(func) is expected
 
 
+def test_unloaded_watched_import_fails_closed():
+    """A watched module the walk cannot follow must break it, not shrink it."""
+    with pytest.raises(AssertionError, match="backend.data.not_a_real_module"):
+        _import_module("backend.data.not_a_real_module", "backend.api.features")
+
+
 def _reaches_credit_model(endpoint: Callable) -> bool:
     """Whether ``endpoint`` reaches ``get_credit_model`` within the hop budget.
 
@@ -607,17 +613,25 @@ def _local_import_bindings(tree: ast.AST, func: Callable) -> dict[str, Any]:
 
 
 def _import_module(name: str, package: str) -> Any:
-    """Resolve an import target to a module, without importing anything new.
+    """Resolve an import target to an already-loaded module.
 
-    Only already-loaded modules are returned: the real app is imported by the
-    time this runs, so a miss means the module is genuinely unreachable, and
-    importing it here would run a deferred import's side effects inside a test.
+    Nothing is imported here, because importing would run a deferred import's
+    side effects inside a test. A watched module that is not loaded is a hole in
+    the walk rather than a route that reaches nothing, so it raises instead of
+    resolving to ``None``: under-reporting is the one answer this invariant must
+    never give quietly.
     """
     try:
         absolute = importlib.util.resolve_name(name, package)
     except (ImportError, ValueError):
         return None
-    return sys.modules.get(absolute)
+    module = sys.modules.get(absolute)
+    assert module is not None or not absolute.startswith(_WALKED_MODULES), (
+        f"{absolute} is imported inside a walked function but is not loaded, so "
+        "the credit-model walk cannot follow it and would under-report. Import "
+        "it in this suite, or teach the walk to read its source."
+    )
+    return module
 
 
 def _resolve_dotted(node: ast.Attribute, module_globals: dict) -> Any:
