@@ -346,6 +346,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                             <ChainRowView
                               row={row}
                               isLast={i === visible.length - 1 && !showDone}
+                              readOnly={readOnly}
                             />
                           </ChainActionsContext.Provider>
                         </m.div>

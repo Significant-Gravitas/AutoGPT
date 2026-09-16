@@ -303,6 +303,27 @@ def test_deepseek_v4_1_flash_bills_at_authored_rates():
     assert flash_entry.context_window == 1048576
 
 
+def test_fugu_ultra_v2_bills_at_authored_rates():
+    """Sakana Fugu Ultra v2 (OpenRouter, Sakana list price $5.00/$30.00 per
+    1M, $0.50/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    fugu = LLMModel("sakana/fugu-ultra-v2")
+    assert MODEL_COST[fugu] == 1
+    assert TOKEN_COST[fugu].model_dump() == {
+        "input": 750.0,
+        "output": 4500.0,
+        "cache_read": 75.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[fugu].max_output_tokens == 1048576
+    fugu_entry = next(m for m in CATALOG.models if m.slug == "sakana/fugu-ultra-v2")
+    assert fugu_entry.price_tier == 3
+    assert fugu_entry.context_window == 1048576
+    assert fugu_entry.supports_tools is True
+    assert fugu_entry.supports_json_output is True
+    assert fugu_entry.supports_reasoning is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

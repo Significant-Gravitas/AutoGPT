@@ -99,9 +99,10 @@ class ExpertOnboardingTool(BaseTool):
                         "required": ["question", "options"],
                     },
                     "description": (
-                        "3-5 questions, shown one per step. Order them from "
-                        "what you most need to know to what is merely nice "
-                        "to know."
+                        "3-5 questions, shown one per step, all about your "
+                        "own role and the workflows installed on you. Order "
+                        "them from what you most need to know to what is "
+                        "merely nice to know."
                     ),
                 },
             },

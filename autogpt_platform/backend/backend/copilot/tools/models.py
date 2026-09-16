@@ -49,6 +49,12 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_TOGGLED = "schedule_toggled"
+    # Expert resources (installed workflows, credential grants)
+    EXPERT_WORKFLOW = "expert_workflow"
+    EXPERT_WORKFLOWS = "expert_workflows"
+    EXPERT_CREDENTIALS = "expert_credentials"
+    CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
@@ -92,6 +98,7 @@ class ResponseType(str, Enum):
 
     # Code execution
     BASH_EXEC = "bash_exec"
+    DESKTOP_STREAM = "desktop_stream"
 
     # Web
     WEB_FETCH = "web_fetch"
@@ -613,6 +620,9 @@ class TeamExpertInfo(BaseModel):
     color: str = ""
     avatar_url: str | None = None
     is_paused: bool = False
+    workflow_count: int = 0
+    # None for an expert session: a teammate's grant count is the owner's view.
+    credential_count: int | None = None
 
 
 class TeamRosterResponse(ToolResponseBase):
@@ -954,6 +964,20 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+
+
+class DesktopStreamToolResponse(ToolResponseBase):
+    """Response for start_desktop: an embeddable live desktop stream.
+
+    ``desktop_stream`` carries the same shape the desktop blocks emit
+    (kind/url/provider/sandbox_id/requires_auth). The copilot chat renders it
+    through DesktopStreamRenderer via ToolResult's ``start_desktop`` card, and
+    every surface that consults the output-renderer registry (block outputs,
+    attachments) embeds it the same way.
+    """
+
+    type: ResponseType = ResponseType.DESKTOP_STREAM
+    desktop_stream: dict
 
 
 # Feature request models

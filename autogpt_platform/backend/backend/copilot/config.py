@@ -471,13 +471,30 @@ class ChatConfig(BaseSettings):
         description="Absolute cap on a tree ceiling, in microdollars ($10.00), "
         "applied after the tier-scaled fraction and the floor. The effective "
         "ceiling is min(remaining budget, max(fraction x tier daily, floor), "
-        "this cap). Checked at turn start, so overshoot is at most one turn.",
+        "this cap). Admission reads settled spend, so a tree can overshoot by "
+        "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
+        "what bounds it.",
     )
     tree_max_nodes: int = Field(
         default=8,
         ge=1,
         description="Max turns (root included) one root turn may spawn, "
         "counted per tree rather than per node so it is enforceable atomically.",
+    )
+    tree_budget_signal_enabled: bool = Field(
+        default=True,
+        description="Prepend a one-line <budget_status> block to every turn's "
+        "message, and the wrap-up checkpoint once the tree crosses "
+        "``tree_wrapup_threshold``. Off, or on a turn with no tree envelope, "
+        "the prompt is byte-identical to what it was before.",
+    )
+    tree_wrapup_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Share of a tree's ceiling at which the wrap-up checkpoint "
+        "is injected, once per tree. Below 1.0 on purpose: the instruction is "
+        "only useful while there is still budget to act on it.",
     )
     claude_agent_context_window: int = Field(
         default=200_000,
@@ -695,6 +712,21 @@ class ChatConfig(BaseSettings):
     e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
+    )
+    e2b_desktop_template: str = Field(
+        default="desktop",
+        description="E2B template for the on-demand start_desktop sandbox. E2B's "
+        "public 'desktop' is 8 vCPU / 8 GiB (~$0.53/h running); build a smaller "
+        "one on the team with `poetry run build-desktop-template` "
+        "(agpt-desktop-1x1: 1 vCPU / 1 GiB, ~$0.07/h) and set this to its alias.",
+    )
+    e2b_desktop_timeout: int = Field(
+        default=900,
+        description="Running-time timeout (seconds) for the on-demand desktop "
+        "sandbox. Unlike the bash sandbox it is NOT paused at turn end — the "
+        "user may still be watching the stream — so this is the only thing "
+        "stopping the meter; it auto-pauses (free) when the timeout lapses "
+        "and resumes on the next start_desktop call.",
     )
 
     @property
