@@ -1,8 +1,7 @@
 """Tests for backend/copilot/local_context_probe.py.
 
-Covers the core compaction-target regression (no more 120k default for local
-models) plus all four probe strategies and the fallback/cache paths. All probes
-are mocked — no network.
+Covers the probed-window strategies, the SDK status/floor paths, and
+the fallback/cache paths. All probes are mocked — no network.
 """
 
 import logging
@@ -18,7 +17,6 @@ from backend.copilot.local_context_probe import (
     _last_window,
     _probe_cache,
     _server_root,
-    compaction_target_for_window,
     probe_local_context_window,
     probe_local_context_window_status,
     probe_local_window_for_sdk,
@@ -43,25 +41,6 @@ def _mock_client(responses) -> MagicMock:
     client.__aexit__ = AsyncMock(return_value=False)
     client.get = AsyncMock(side_effect=responses)
     return client
-
-
-class TestCompactionTargetForWindow:
-    def test_32k_window_is_not_the_broken_120k_default(self):
-        # The whole point: a 32k local window must yield ~9k, not 120_000.
-        assert compaction_target_for_window(32_768) == 8_768
-
-    def test_64k_window(self):
-        assert compaction_target_for_window(65_536) == 41_536
-
-    def test_ornith_262k_window(self):
-        assert compaction_target_for_window(262_144) == 238_144
-
-    def test_tiny_window_clamps_to_floor(self):
-        assert compaction_target_for_window(4_096) == 4_096
-        assert compaction_target_for_window(1_000) == 4_096
-
-    def test_fallback_constant_yields_sane_target(self):
-        assert compaction_target_for_window(LOCAL_CONTEXT_FALLBACK) == 8_768
 
 
 class TestServerRoot:
@@ -110,7 +89,6 @@ class TestProbeStrategies:
                 "http://localhost:11434/v1", "llama3.1:8b-instruct-q4_K_M"
             )
         assert window == 32_768
-        assert compaction_target_for_window(window) == 8_768
 
     @pytest.mark.asyncio
     async def test_ollama_falls_back_to_first_loaded_model_window(self):
@@ -197,7 +175,6 @@ class TestFallbackAndWarnings:
                 "http://localhost:11434/v1", "llama3.1:8b"
             )
         assert window == LOCAL_CONTEXT_FALLBACK
-        assert compaction_target_for_window(window) > 0
 
     @pytest.mark.asyncio
     async def test_window_below_minimum_logs_warning(self, caplog):

@@ -50,7 +50,7 @@ def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(
-        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=False)
+        offers, "resolve_engine_mode", new=AsyncMock(return_value="fast")
     )
     mocker.patch.object(
         provider_tiers,
@@ -222,7 +222,7 @@ async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
 ) -> None:
     """The engine is the server's decision, so it is knowable before a turn."""
     mocker.patch.object(
-        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=True)
+        offers, "resolve_engine_mode", new=AsyncMock(return_value="thinking")
     )
     _mock_transports(mocker, [_transport(default=True)])
 

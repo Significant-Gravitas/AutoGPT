@@ -48,7 +48,6 @@ class Flag(str, Enum):
     # feature that won't take.  Existing public viewer routes stay on
     # regardless so previously-shared URLs remain valid mid-flight.
     CHAT_SHARING = "chat-sharing"
-    COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>

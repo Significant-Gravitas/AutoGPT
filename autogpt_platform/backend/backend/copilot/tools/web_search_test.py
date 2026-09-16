@@ -195,8 +195,7 @@ class TestExtractResults:
 class TestExtractCostUsd:
     """Read real ``usage.cost`` via typed ``model_extra`` — no
     hard-coded rates, so a future provider price change is reflected
-    automatically.  Error handling mirrors the baseline service's
-    ``_extract_usage_cost``."""
+    automatically."""
 
     def test_returns_cost_value(self):
         assert _extract_cost_usd(_usage(cost=0.023456)) == pytest.approx(0.023456)

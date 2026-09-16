@@ -77,8 +77,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SIMULATOR_MODEL = LLMModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
-# the response usage object.  Same shape used by the baseline copilot service
-# and web_search tool — keep the three aligned.
+# the response usage object.  Same shape used by the web_search tool — keep
+# the two aligned.
 _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 
@@ -186,9 +186,8 @@ async def _call_llm_for_simulation(
     # ``_OPENROUTER_INCLUDE_USAGE_COST`` is OpenRouter-specific
     # (``{"usage": {"include": True}}``). Cloud OpenAI ignores unknown
     # body keys; stricter local OpenAI-compat backends (LiteLLM proxy
-    # with strict mode, some vLLM configs) reject them. Mirror the
-    # ``baseline/service.py`` policy: only send when actually routing
-    # through OpenRouter.
+    # with strict mode, some vLLM configs) reject them. Only send when
+    # actually routing through OpenRouter.
     #
     # Local backends govern their own context window at launch (e.g.
     # OLLAMA_CONTEXT_LENGTH), so we send no per-request num_ctx hint —
@@ -198,11 +197,9 @@ async def _call_llm_for_simulation(
     if chat_cfg.transport.name == "local":
         extra_body: dict[str, Any] = {}
     else:
-        # Shallow-copy the constant rather than sharing the reference — see
-        # the matching pattern in ``baseline/service.py`` and
-        # ``activity_status_generator.py``. Defends against intermediate
-        # layers ever mutating ``extra_body`` and corrupting the shared
-        # module-level dict for every future call.
+        # Shallow-copy the constant rather than sharing the reference —
+        # defends against intermediate layers ever mutating ``extra_body``
+        # and corrupting the shared module-level dict for every future call.
         extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
 
     model = _simulator_model()
@@ -319,9 +316,8 @@ def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
     when the request body includes ``usage: {"include": True}``.  The typed
     ``CompletionUsage`` does not declare it, so we read it off ``model_extra``
     (pydantic v2's container for extras) to keep access fully typed — no
-    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``
-    and ``backend.copilot.baseline.service._extract_usage_cost``; keep the
-    three in sync.
+    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``;
+    keep the two in sync.
     """
     if usage is None:
         return None

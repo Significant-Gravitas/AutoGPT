@@ -210,38 +210,11 @@ def test_enter_building_mode_available_on_baseline():
 
 
 @pytest.mark.asyncio
-async def test_enter_building_mode_baseline_switch_message(mocker):
-    """Baseline turn + SDK-capable deployment: tool registers the switch and
-    instructs the model to end its turn."""
-    from unittest.mock import MagicMock
-
+async def test_enter_building_mode_outside_sdk_turn_serves_guide_inline(mocker):
+    """Outside an SDK turn there is no in-turn restart — the tool serves
+    the full guide inline."""
     from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
 
-    mocker.patch(
-        "backend.copilot.tools.enter_building_mode.chat_config",
-        MagicMock(transport=MagicMock(supports_sdk=True)),
-    )
-    tool = EnterAgentBuildingModeTool()
-    session = _make_session()
-
-    result = await tool._execute(user_id="user-1", session=session)
-    assert isinstance(result, BuildingModeResponse)
-
-    assert session.building_mode_requested is False
-    assert "switches to the agent-building engine" in result.content
-
-
-@pytest.mark.asyncio
-async def test_enter_building_mode_local_degrades_to_guide(mocker):
-    """SDK-less deployment: tool serves the full guide inline."""
-    from unittest.mock import MagicMock
-
-    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
-
-    mocker.patch(
-        "backend.copilot.tools.enter_building_mode.chat_config",
-        MagicMock(transport=MagicMock(supports_sdk=False)),
-    )
     mocker.patch(
         "backend.copilot.tools.get_agent_building_guide.is_feature_enabled",
         new=mocker.AsyncMock(return_value=True),
@@ -268,30 +241,3 @@ async def test_enter_building_mode_sdk_turn_requests_restart():
 
     assert session.building_mode_requested is True
     assert "upgraded" in result.content
-
-
-@pytest.mark.asyncio
-async def test_enter_building_mode_baseline_registers_engine_switch(mocker):
-    from unittest.mock import MagicMock
-
-    from backend.copilot import engine_switch
-    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
-
-    mocker.patch(
-        "backend.copilot.tools.enter_building_mode.chat_config",
-        MagicMock(transport=MagicMock(supports_sdk=True)),
-    )
-    tool = EnterAgentBuildingModeTool()
-    session = _make_session()
-    session.organization_id = "org-9"
-    session.team_id = "team-9"
-
-    await tool._execute(user_id="user-1", session=session)
-
-    switch = engine_switch.pop_switch(session.session_id)
-    assert switch is not None and switch.user_id == "user-1"
-    # Full tenancy tuple must be captured — a dropped org/team would break
-    # continuations for org users and only surface as a dispatch refusal.
-    assert switch.organization_id == "org-9"
-    assert switch.team_id == "team-9"
-    assert engine_switch.pop_switch(session.session_id) is None  # pop-once

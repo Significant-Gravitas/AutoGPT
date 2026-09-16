@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 
+from backend.copilot.config import ChatConfig
 from backend.util import json
 
 # ---------------------------------------------------------------------------
@@ -39,14 +40,25 @@ _CONFIG_ENV_VARS = (
     "CHAT_TITLE_MODEL",
     "CHAT_DIRECT_ANTHROPIC_API_KEY",
     "ANTHROPIC_API_KEY",
+    "CHAT_USE_LOCAL",
+    "CHAT_FAST_STANDARD_MODEL",
+    "CHAT_FAST_MODEL",
+    "CHAT_FAST_ADVANCED_MODEL",
+    "CHAT_THINKING_STANDARD_MODEL",
+    "CHAT_THINKING_ADVANCED_MODEL",
+    "CHAT_MODEL",
+    "CHAT_ADVANCED_MODEL",
+    "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
+    "CHAT_SIMULATION_MODEL",
 )
 
 
 @pytest.fixture()
 def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
+    """Clear env-backed CHAT_* settings (process env + .env file) so ChatConfig uses constructor values."""
     for var in _CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")

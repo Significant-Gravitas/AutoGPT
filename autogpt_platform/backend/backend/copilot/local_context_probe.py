@@ -32,15 +32,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# ``compaction_target_for_window`` reserves this much of the window for the
-# static per-turn floor (system prompt + ~43 tool schemas ≈ 19k measured) plus
-# ~5k headroom for content a turn appends *after* the turn-start compaction
-# check (tool results, the new user message) — without it a chunky tool result
-# can push one turn past a small window before the next compaction fires.
-# ``compress_context`` applies its own ~2k response reserve on top. The
-# conversation-history budget is therefore ``window - _FLOOR_RESERVE``.
+# Static per-turn floor (system prompt + ~43 tool schemas ≈ 19k measured)
+# plus ~5k headroom for content a turn appends after the turn-start
+# compaction check. Used only to size the below-minimum warning below.
 _FLOOR_RESERVE = 24_000
-_TARGET_FLOOR = 4_096
 
 # Used when no backend reports a window. Deliberately remains 32k even though
 # the default Ornith installer uses 262k: assuming a huge window for a backend
@@ -71,15 +66,6 @@ _CACHE_TTL_S = 300.0
 _CacheKey = tuple[str, str]
 _probe_cache: dict[_CacheKey, tuple[int, float]] = {}
 _last_window: dict[_CacheKey, int] = {}
-
-
-def compaction_target_for_window(window: int) -> int:
-    """Token budget for conversation history given the backend's ``window``.
-
-    Floored at ``_TARGET_FLOOR`` so the value is never zero/negative on a
-    pathologically small window (a separate WARNING is logged by the probe).
-    """
-    return max(_TARGET_FLOOR, window - _FLOOR_RESERVE)
 
 
 def _cache_get(key: _CacheKey) -> int | None:

@@ -337,25 +337,11 @@ def _enter_call_message() -> ChatMessage:
     )
 
 
-def test_pending_switch_tells_model_to_end_turn(mocker):
-    """Baseline turn on an SDK-capable deployment: the enter call registers
-    an engine switch; further build tools must wait for the continuation."""
-    mocker.patch(
-        "backend.copilot.tools.helpers.chat_config",
-        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=True)),
-    )
+def test_enter_call_without_guide_falls_through_to_enter_first_error():
+    """No engine switch exists any more: an enter call whose guide
+    never landed (e.g. a failed restart) falls through to the
+    enter-first error rather than a pending-switch message."""
     session = _session_with_messages([_enter_call_message()])
     result = require_guide_read(session, "create_agent")
     assert isinstance(result, ErrorResponse)
-    assert "engine switch is pending" in result.message
-
-
-def test_enter_call_satisfies_gate_on_sdk_less_deployment(mocker):
-    """Without SDK support the enter tool served the guide inline — the
-    gate must pass instead of stranding the model."""
-    mocker.patch(
-        "backend.copilot.tools.helpers.chat_config",
-        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=False)),
-    )
-    session = _session_with_messages([_enter_call_message()])
-    assert require_guide_read(session, "create_agent") is None
+    assert "Call enter_agent_building_mode first" in result.message

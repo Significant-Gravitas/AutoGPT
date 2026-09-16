@@ -20,8 +20,8 @@ $1 / MTok base pricing lands ~$0.01 / call at our default shape.
 ``persist_and_record_usage(provider='open_router')`` into the daily /
 weekly microdollar rate-limit counter on the same rails as every other
 OpenRouter turn — no separate provider ledger line, no estimation
-drift.  ``_extract_cost_usd`` mirrors the baseline service's
-``_extract_usage_cost`` logic; keep the two in sync if one changes.
+drift.  ``_extract_cost_usd`` mirrors the simulator's
+``_extract_cost_usd`` logic; keep the two in sync if one changes.
 """
 
 import logging
@@ -58,8 +58,8 @@ _HARD_MAX_RESULTS = 20
 _SNIPPET_MAX_CHARS = 500
 
 # OpenRouter-specific extra_body flag that embeds the real generation
-# cost into the response usage object.  Same dict shape the baseline
-# service uses — keep the two aligned.
+# cost into the response usage object.  Same dict shape the simulator
+# uses — keep the two aligned.
 _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 
@@ -267,8 +267,8 @@ def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
     ``usage: {"include": True}``.  The OpenAI SDK's typed
     ``CompletionUsage`` does not declare it, so we read it off
     ``model_extra`` (the pydantic v2 container for extras) to keep
-    access fully typed — no ``getattr``.  Mirrors the baseline service
-    ``_extract_usage_cost``; keep the two in sync.
+    access fully typed — no ``getattr``.  Mirrors the simulator's
+    ``_extract_cost_usd``; keep the two in sync.
 
     Returns ``None`` when the field is absent, null, non-numeric,
     non-finite, or negative.  Invalid values log at error level because

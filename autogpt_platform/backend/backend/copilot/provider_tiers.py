@@ -20,7 +20,6 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel
-from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
     ModelMode,
@@ -88,18 +87,12 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
 
 
 async def resolve_engine_mode(user_id: str, config: ChatConfig) -> ModelMode:
-    """One engine decision per response.
+    """One engine decision per response: always ``"thinking"``.
 
-    It is a property of the deployment and the user, not of which connection
-    they pick, so it is resolved once rather than per provider.
+    Every turn runs the SDK engine now; the mode key survives
+    only until the routing matrix collapses to tiers.
     """
-    use_sdk = await resolve_use_sdk(
-        user_id,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    return "thinking" if use_sdk else "fast"
+    return "thinking"
 
 
 async def platform_tier_models(

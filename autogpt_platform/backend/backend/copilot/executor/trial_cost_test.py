@@ -18,8 +18,7 @@ from backend.copilot.trial_cost_context import get_trial_cost_context
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_sdk", [True, False])
-async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
+async def test_delayed_trial_cost_and_later_paid_turn_are_separate():
     trial = SimpleNamespace(id="trial-1", active=True, consumed_at=True)
     store = MagicMock()
     store.get_subscription_trial = AsyncMock(return_value=trial)
@@ -61,19 +60,8 @@ async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
             return_value=MagicMock(test_mode=False),
         ),
         patch(
-            "backend.copilot.executor.processor.resolve_use_sdk",
-            AsyncMock(return_value=use_sdk),
-        ),
-        patch(
-            "backend.copilot.executor.processor._building_mode_forces_sdk",
-            AsyncMock(return_value=False),
-        ),
-        patch(
             "backend.copilot.executor.processor.sdk_service.stream_chat_completion_sdk",
             stream,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline", stream
         ),
         patch(
             "backend.copilot.executor.processor.stream_registry.stream_and_publish",

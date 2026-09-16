@@ -38,9 +38,9 @@ def _host_matches(base_url: str | None, suffix: str) -> bool:
     return host == suffix or host.endswith("." + suffix)
 
 
-# Anthropic's OpenAI-compatible endpoint. Used by the baseline path when
-# ``use_openrouter=False`` so the OpenAI SDK stays in place but talks
-# directly to api.anthropic.com instead of going through OpenRouter.
+# Anthropic's OpenAI-compatible endpoint. Used by the main OpenAI-compat
+# credentials when ``use_openrouter=False`` so the OpenAI SDK stays in
+# place but talks directly to api.anthropic.com, not through OpenRouter.
 ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 
 # Default values for the cloud-routed auxiliary models. The local transport
@@ -99,11 +99,6 @@ class TransportProfile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: TransportName
-    # Whether the Claude Agent SDK CLI can be invoked under this transport.
-    # The CLI speaks Anthropic's wire protocol, so only Anthropic-compatible
-    # transports qualify — including ``local``, whose backends serve an
-    # Anthropic-compatible Messages endpoint.
-    supports_sdk: bool
     # If set, the SDK model slug must come from this provider — otherwise
     # ``_validate_sdk_model_vendor_compatibility`` raises at config load.
     # ``None`` means "no vendor constraint" (OpenRouter accepts any slug;
@@ -121,7 +116,7 @@ class TransportProfile(BaseModel):
     inherit_fast_model_for_aux: bool
     # Free-form provider string persisted to ``PlatformCostLog.provider`` for
     # rows attributable to this transport. Kept on the profile so the
-    # baseline path, the simulator, the activity-status generator, and any
+    # SDK turn, the simulator, the activity-status generator, and any
     # future cost-emitting call site share a single source of truth — a
     # ``provider="open_router"`` row from a local Ollama turn would
     # falsely show up as OR spend on the admin dashboard.
@@ -156,7 +151,6 @@ class TransportProfile(BaseModel):
 _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     "subscription": TransportProfile(
         name="subscription",
-        supports_sdk=True,
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=False,
@@ -167,7 +161,6 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
     "openrouter": TransportProfile(
         name="openrouter",
-        supports_sdk=True,
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
@@ -178,7 +171,6 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
     "direct_anthropic": TransportProfile(
         name="direct_anthropic",
-        supports_sdk=True,
         sdk_model_vendor_constraint="anthropic",
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
@@ -189,7 +181,6 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
     "local": TransportProfile(
         name="local",
-        supports_sdk=True,
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=True,
@@ -200,13 +191,6 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
 }
 
-# Per-request routing mode for a single chat turn.
-# - 'fast': route to the baseline OpenAI-compatible path with the cheaper model.
-# - 'extended_thinking': route to the Claude Agent SDK path with the default
-#   (opus) model.
-# ``None`` means "no override"; the server falls back to the Claude Code
-# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
-CopilotMode = Literal["fast", "extended_thinking"]
 
 # Per-request model tier set by the frontend model toggle.
 # 'standard' picks the cheaper everyday model for the active path —
@@ -223,13 +207,10 @@ CopilotLLMModel = Literal["standard", "advanced"]
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
-    # Chat model tiers — a 2×2 of (path, tier).  ``path`` = ``CopilotMode``
-    # (``"fast"`` → baseline OpenAI-compat / any OpenRouter model;
-    # ``"extended_thinking"`` → Claude Agent SDK, Anthropic-only CLI).
-    # ``tier`` = ``CopilotLLMModel`` (``"standard"`` / ``"advanced"``).
-    # Each cell has its own config so the two paths can evolve
-    # independently (cheap provider on baseline, Anthropic on SDK) at each
-    # tier without conflating one path's needs with the other's constraint.
+    # Chat model tiers — ``CopilotLLMModel`` (``"standard"`` / ``"advanced"``).
+    # Every turn runs the SDK path (``thinking_*`` cells); the ``fast_*``
+    # fields below survive only as local-derivation/aux sources and
+    # legacy routing cells until they are retired as deprecated aliases.
     #
     # Historical env var names (``CHAT_MODEL`` / ``CHAT_ADVANCED_MODEL`` /
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
@@ -422,12 +403,6 @@ class ChatConfig(BaseSettings):
         default=5,
         ge=0,
         description="Maximum number of credit-based rate limit resets per user per day. 0 = unlimited.",
-    )
-
-    # Claude Agent SDK Configuration
-    use_claude_agent_sdk: bool = Field(
-        default=True,
-        description="Use Claude Agent SDK (True) or OpenAI-compatible LLM baseline (False)",
     )
     claude_agent_model: str | None = Field(
         default=None,
@@ -817,16 +792,6 @@ class ChatConfig(BaseSettings):
         return _TRANSPORT_PROFILES[self.effective_transport]
 
     @property
-    def thinking_available(self) -> bool:
-        """Backwards-compatible alias for ``self.transport.supports_sdk``.
-
-        Existing call sites in ``executor.processor`` consume this as a
-        named kwarg; keeping the property avoids a churning rename across
-        the request path.
-        """
-        return self.transport.supports_sdk
-
-    @property
     def baseline_provider(self) -> Literal["local", "openrouter", "anthropic"]:
         """Endpoint + wire dialect the baseline OpenAI-compat client speaks.
 
@@ -1094,6 +1059,22 @@ class ChatConfig(BaseSettings):
                     "Check file permissions."
                 )
         return v
+
+    @model_validator(mode="after")
+    def _warn_on_removed_sdk_toggle(self) -> "ChatConfig":
+        """Warn when the removed ``CHAT_USE_CLAUDE_AGENT_SDK`` toggle is set.
+
+        The baseline engine is gone — every turn runs the SDK path, so
+        the toggle no longer does anything. Pydantic would swallow the
+        stale env var silently; surface it once at boot instead.
+        """
+        if os.getenv("CHAT_USE_CLAUDE_AGENT_SDK") is not None:
+            logger.warning(
+                "CHAT_USE_CLAUDE_AGENT_SDK is set but no longer has any "
+                "effect: the baseline engine was removed and every turn "
+                "runs the SDK path. Remove it from your environment."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_local_transport_requirements(self) -> "ChatConfig":

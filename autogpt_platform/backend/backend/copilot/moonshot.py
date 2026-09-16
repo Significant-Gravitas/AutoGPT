@@ -2,8 +2,8 @@
 
 Moonshot's Kimi K2.x family is routed through OpenRouter's Anthropic-compat
 shim — it speaks Anthropic's API shape but its pricing and cache behaviour
-diverge from Anthropic in ways the Claude Agent SDK CLI and our baseline
-cache-control gating don't handle on their own:
+diverge from Anthropic in ways the Claude Agent SDK CLI and prompt-cache
+marker gating don't handle on their own:
 
 * **Rate card** — NOT the canonical cost source.  The authoritative number
   for every OpenRouter-routed turn is the reconcile task
@@ -17,18 +17,13 @@ cache-control gating don't handle on their own:
   Signal authority: reconcile >> this module's rate card >> CLI.
 
 * **Cache-control** — Anthropic and Moonshot both accept the
-  ``cache_control: {type: ephemeral}`` breakpoint on message blocks, but
-  our baseline path currently gates cache markers on an
-  ``anthropic/`` / ``claude`` name match because non-Anthropic providers
-  (OpenAI, Grok, Gemini) 400 on the unknown field.  Moonshot's
-  Anthropic-compat endpoint silently accepts and honours the marker —
-  empirically boosts cache hit rate on continuation turns — but was
-  caught in the non-Anthropic branch of the original gate.
-  :func:`moonshot_supports_cache_control` lets callers widen the gate
-  to include Moonshot without weakening the ``false`` answer for
-  OpenAI et al.  (The predicate is intentionally narrow — Moonshot-only
-  — so callers combine it with an explicit Anthropic check at the call
-  site; see ``baseline/service.py::_supports_prompt_cache_markers``.)
+  ``cache_control: {type: ephemeral}`` breakpoint on message blocks;
+  the cache-marker gate
+  (``cache_markers._supports_prompt_cache_markers``) admits
+  ``moonshotai/*`` alongside Anthropic routes because Moonshot's
+  Anthropic-compat endpoint silently accepts and honours the marker
+  — empirically boosts cache hit rate on continuation turns —
+  while OpenAI / Grok / Gemini 400 on the unknown field.
 
 Detection is prefix-based (``moonshotai/``).  Moonshot routes every Kimi
 SKU through the same Anthropic-compat surface, so a new slug transparently
@@ -148,27 +143,6 @@ def override_cost_usd(
     input_rate, output_rate = rates
     total_prompt = prompt_tokens + cache_read_tokens + cache_creation_tokens
     return (total_prompt * input_rate + completion_tokens * output_rate) / 1_000_000
-
-
-def moonshot_supports_cache_control(model: str | None) -> bool:
-    """True when a Moonshot *model* accepts Anthropic-style ``cache_control``.
-
-    Narrow, Moonshot-specific predicate — callers that need the full
-    "does this route accept cache markers" answer combine this with an
-    Anthropic check (see ``baseline/service.py::_supports_prompt_cache_markers``).
-    Named ``moonshot_*`` deliberately so the call site can't mistake it
-    for a universal predicate that answers correctly for Anthropic
-    (which also supports cache_control — this function would return
-    False for Anthropic slugs).
-
-    Moonshot's Anthropic-compat endpoint honours the marker.  Without
-    it Moonshot falls back to its own automatic prefix caching, which
-    drifts more readily between turns (internal testing saw 0/4 cache
-    hits across two continuation sessions).  With explicit
-    ``cache_control`` the upstream cache hit rate rises to the same
-    ballpark as Anthropic's ~60-95% on continuations.
-    """
-    return is_moonshot_model(model)
 
 
 def moonshot_context_window(model: str | None) -> int | None:

@@ -432,7 +432,6 @@ class TestTransportProfile:
         cfg = ChatConfig(use_local=True, api_key="ollama", base_url="http://h:11434/v1")
         p = cfg.transport
         assert p.name == "local"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is True
@@ -449,7 +448,6 @@ class TestTransportProfile:
         )
         p = cfg.transport
         assert p.name == "openrouter"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert "OPEN_ROUTER_API_KEY" in p.api_key_fallback_envs
         assert "OPENAI_API_KEY" in p.api_key_fallback_envs
@@ -463,7 +461,6 @@ class TestTransportProfile:
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
         p = cfg.transport
         assert p.name == "subscription"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is False
@@ -478,28 +475,11 @@ class TestTransportProfile:
         )
         p = cfg.transport
         assert p.name == "direct_anthropic"
-        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint == "anthropic"
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
         assert p.sdk_context_window == 1_000_000
-
-    def test_thinking_available_alias_matches_profile(self):
-        """``thinking_available`` is a backwards-compat alias used by
-        ``executor.processor.resolve_use_sdk`` — must stay in
-        sync with ``transport.supports_sdk``."""
-        for kwargs in (
-            dict(use_local=True, api_key="ollama", base_url="http://h:11434/v1"),
-            dict(use_claude_code_subscription=True),
-            dict(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
-        ):
-            cfg = _make_direct_safe_config(**kwargs)
-            assert cfg.thinking_available == cfg.transport.supports_sdk
 
 
 class TestApiKeyFallback:
@@ -662,8 +642,7 @@ class TestLocalTransport:
     (``'local'``) for self-hosted LLM endpoints (Ollama et al.).
 
     Local runs the SDK path: the CLI is pointed at the backend's
-    Anthropic-compatible Messages endpoint, so ``thinking_available``
-    is True and no request-layer downgrade fires (see
+    Anthropic-compatible Messages endpoint (see
     ``sdk/env.build_sdk_env`` mode 2)."""
 
     def test_local_transport_overrides_subscription(self):
@@ -693,32 +672,6 @@ class TestLocalTransport:
         )
         assert cfg.effective_transport == "local"
 
-    def test_thinking_available_true_under_local(self):
-        """Local backends serve the Messages endpoint the CLI needs, so
-        local serves SDK turns like every other transport."""
-        cfg = ChatConfig(
-            use_local=True,
-            api_key="ollama",
-            base_url="http://localhost:11434/v1",
-        )
-        assert cfg.thinking_available is True
-
-    def test_thinking_available_true_otherwise(self):
-        """Every non-local transport can serve SDK turns — the Claude
-        Agent CLI works against subscription, OpenRouter, or direct
-        Anthropic auth."""
-        for kwargs in (
-            dict(use_claude_code_subscription=True),
-            dict(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
-            dict(use_openrouter=False, api_key=None, base_url=None),
-        ):
-            cfg = _make_direct_safe_config(**kwargs)
-            assert cfg.thinking_available is True
-
     def test_local_skips_sdk_vendor_validator(self):
         """Bare local tags (``llama3.2:3b``) aren't vendor-validatable —
         any tag the backend serves is legitimate there, so the cloud
@@ -739,7 +692,6 @@ class TestLocalTransport:
         cfg = ChatConfig()
         assert cfg.use_local is False
         assert cfg.effective_transport != "local"
-        assert cfg.thinking_available is True
 
     def test_env_var_picked_up(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHAT_USE_LOCAL", "true")
@@ -748,6 +700,28 @@ class TestLocalTransport:
         cfg = ChatConfig()
         assert cfg.use_local is True
         assert cfg.effective_transport == "local"
+
+
+class TestRemovedSdkToggleWarning:
+    """The ``CHAT_USE_CLAUDE_AGENT_SDK`` toggle died with the baseline
+    engine — a stale setting must warn at boot, not fail or vanish."""
+
+    def test_stale_toggle_warns(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("CHAT_USE_CLAUDE_AGENT_SDK", "false")
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            _make_direct_safe_config()
+        assert any("CHAT_USE_CLAUDE_AGENT_SDK" in r.message for r in caplog.records)
+
+    def test_unset_toggle_is_quiet(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.config"):
+            _make_direct_safe_config()
+        assert not [
+            r for r in caplog.records if "CHAT_USE_CLAUDE_AGENT_SDK" in r.message
+        ]
 
 
 class TestRenderReasoningInUi:

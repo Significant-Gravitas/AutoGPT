@@ -1,4 +1,4 @@
-"""CoPilot service — shared helpers used by both SDK and baseline paths.
+"""CoPilot service — shared helpers used by the SDK path.
 
 This module contains:
 - System prompt building (Langfuse + static fallback, cache-optimised)
@@ -30,7 +30,7 @@ from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
-from .config import ChatConfig, CopilotLLMModel
+from .config import ChatConfig
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
 from .model import (
@@ -56,58 +56,18 @@ _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 _TITLE_TIMEOUT_SECONDS = 30
 
 
-def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
-    """Return the configured SDK model for the given tier.
-
-    The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
-    SDK CLI refuses non-Anthropic endpoints — so both SDK tiers resolve
-    to the ``thinking_*_model`` cells.  Baseline has its own resolver
-    (``_resolve_baseline_model``) that reads the ``fast_*_model`` cells;
-    the two paths diverge deliberately at the config layer so a cheaper
-    baseline provider can't break SDK, or vice versa.
-    """
-    if tier == "advanced":
-        return config.thinking_advanced_model
-    return config.thinking_standard_model
-
-
-_main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
-
-
-def _get_main_client() -> LangfuseAsyncOpenAI:
-    """Main OpenAI-compat client used by the baseline path.
-
-    Driven by ``config.main_client_credentials`` so a deployment can flip
-    ``CHAT_USE_OPENROUTER=false`` (+ ``ANTHROPIC_API_KEY``) to route the
-    main path straight to api.anthropic.com without disturbing aux
-    callers (title generation, builder helpers) that still need
-    OpenRouter for non-Anthropic models.
-    """
-    global _main_client
-    if _main_client is None:
-        api_key, base_url = config.main_client_credentials
-        kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against Otto's heavy system
-        # prompt. The OpenAI client default (600 s) is too short for that
-        # case — extend it under the local transport. Cloud transports
-        # keep the SDK default so genuine hangs still surface promptly.
-        if config.transport.name == "local":
-            kwargs["timeout"] = config.local_request_timeout_s
-        _main_client = LangfuseAsyncOpenAI(**kwargs)
-    return _main_client
 
 
 def _get_aux_client() -> LangfuseAsyncOpenAI:
     """Auxiliary OpenAI-compat client.
 
     Used for non-Anthropic helpers (title generation, builder helpers)
-    that need to keep talking to OpenRouter even when the main client is
-    pointed at Anthropic directly.  Defaults to OpenRouter; falls back
-    to the main client's creds when ``CHAT_AUX_API_KEY`` /
-    ``CHAT_AUX_BASE_URL`` are unset (preserves single-key deployments).
+    that need to keep talking to OpenRouter even on direct-Anthropic
+    deployments.  Defaults to OpenRouter; falls back to the main
+    credentials when ``CHAT_AUX_API_KEY`` / ``CHAT_AUX_BASE_URL`` are
+    unset (preserves single-key deployments).
     """
     global _aux_client
     if _aux_client is None:
@@ -115,23 +75,17 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
         # Local transport routes aux through the same self-hosted backend
         # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
-        # client timeout to match ``_get_main_client`` so title generation
-        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
+        # client timeout so title generation on a CPU-only host doesn't
+        # surface as an opaque 600 s timeout.
         if config.transport.name == "local":
             kwargs["timeout"] = config.local_request_timeout_s
         _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
 
 
-# Back-compat alias.  Existing callers and tests import this name; new
-# code should pick the explicit ``_get_main_client`` / ``_get_aux_client``.
-_get_openai_client = _get_main_client
-
-
 def reset_clients() -> None:
-    """Test-only: drop the cached OpenAI clients so the next call re-reads config."""
-    global _main_client, _aux_client
-    _main_client = None
+    """Test-only: drop the cached aux client so the next call re-reads config."""
+    global _aux_client
     _aux_client = None
 
 
@@ -158,10 +112,9 @@ MEMORY_CONTEXT_TAG = "memory_context"
 # without polluting the cacheable system prompt.  Server-injected only.
 ENV_CONTEXT_TAG = "env_context"
 
-# Tag name for the per-turn budget hint block (baseline-only — the SDK CLI
-# has its own running-cost reminder via ``max_budget_usd``).  Kept as a
-# distinct tag so it does not nest inside ``<env_context>`` and so users
-# cannot spoof a fake budget figure to the model.  Server-injected only.
+# Tag name for the per-turn budget hint block.  Kept as a distinct tag so
+# it does not nest inside ``<env_context>`` and so users cannot spoof a
+# fake budget figure to the model.  Server-injected only.
 BUDGET_CONTEXT_TAG = "budget_context"
 
 # Tag name for the per-session follow-up awareness block injected into the
@@ -193,9 +146,9 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # so the system prompt never changes and can be cached across all sessions.
 #
 # NOTE: This constant is part of the module's public API — it is imported by
-# sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
-# prompt_cache_test.py. The leading underscore is retained for backwards
-# compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
+# sdk/service.py, dry_run_loop_test.py, and prompt_cache_test.py. The leading
+# underscore is retained for backwards compatibility; CACHEABLE_SYSTEM_PROMPT
+# is exported as the public alias.
 _CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
@@ -504,13 +457,13 @@ def strip_injected_context_for_display(message: str) -> str:
     return result
 
 
-# Public alias used by the SDK and baseline services to strip user-supplied
+# Public alias used by the SDK service to strip user-supplied
 # <user_context> tags on every turn (not just the first).
 strip_user_context_tags = sanitize_user_supplied_context
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (used by SDK service and baseline)
+# Shared helpers (used by the SDK service)
 # ---------------------------------------------------------------------------
 
 
@@ -668,7 +621,7 @@ async def inject_user_context(
         ``None`` -- only when ``session_messages`` contains **no** user-role
         message at all.
     """
-    # The SDK and baseline services call strip_user_context_tags (an alias for
+    # The SDK service calls strip_user_context_tags (an alias for
     # sanitize_user_supplied_context) at their entry points on every turn, so
     # `message` is already clean when inject_user_context is reached on turn 1.
     # The call below is therefore technically redundant for those callers, but
@@ -850,11 +803,11 @@ async def _generate_session_title(
     try:
         # Build extra_body for OpenRouter tracing and PostHog analytics.
         # ``usage: {"include": True}`` asks OR to embed the real billed
-        # cost into the final usage chunk — matches the baseline path's
+        # cost into the final usage chunk — matches the shared
         # ``_OPENROUTER_INCLUDE_USAGE_COST`` pattern, same read path.
         # Gated on the aux transport because Anthropic's OpenAI-compat
         # endpoint (and any non-OR endpoint) rejects unknown extra_body
-        # fields with a 400 — the same gate the baseline path applies.
+        # fields with a 400 — only OpenRouter routes accept the extra keys.
         extra_body: dict[str, Any] = {}
         if config.aux_uses_openrouter:
             extra_body["usage"] = {"include": True}
@@ -997,8 +950,8 @@ async def _record_title_generation_cost(
     (~$0.0001 per title) but 100% of sessions pay it.  Without this the
     admin dashboard under-reports total provider spend by the aggregate
     of those calls.  Separate ``block_name="copilot:title"`` so the row
-    is clearly distinguishable from the turn's main ``copilot:SDK`` /
-    ``copilot:baseline`` attributions.
+    is clearly distinguishable from the turn's main ``copilot:SDK``
+    attribution.
 
     Invariants enforced by the caller:
       * ``response`` is a completed ``ChatCompletion`` (the create call
@@ -1094,7 +1047,7 @@ async def _update_title_async(
 ) -> None:
     """Generate and persist a session title in the background.
 
-    Shared by both the SDK and baseline execution paths.  Title
+    Runs on the SDK execution path.  Title
     persistence and cost recording are run as independent best-effort
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.

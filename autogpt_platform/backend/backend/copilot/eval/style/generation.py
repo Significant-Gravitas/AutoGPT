@@ -19,7 +19,7 @@ from openai.types.chat import (
 from pydantic import BaseModel, Field
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.baseline.service import (
+from backend.copilot.cache_markers import (
     _build_cached_system_message,
     _fresh_anthropic_caching_headers,
     _mark_tools_with_cache_control,
