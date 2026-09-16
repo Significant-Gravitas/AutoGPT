@@ -213,6 +213,9 @@ def test_executions_cost_summary_returns_payload(
     assert len(payload["top_runs"]) == 1
     assert payload["top_runs"][0]["execution_id"] == "exec-1"
     assert payload["top_runs"][0]["cost_cents"] == 2500
+    assert payload["top_runs"][0]["status"] == "COMPLETED"
+    assert payload["top_runs"][0]["started_at"] == "2026-05-10T12:00:00Z"
+    assert payload["top_runs"][0]["duration_seconds"] == 45.5
     assert len(payload["daily"]) == 2
     assert payload["daily"][0]["date"] == "2026-05-10"
     mock_fn.assert_awaited_once()
@@ -510,6 +513,6 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
 
     response = client.delete("/graphs/graph-1/executions/exec-1/share")
 
-    assert response.status_code in (200, 204)
+    assert response.status_code == 204
     delete_files.assert_awaited_once()
     assert update.await_args.kwargs["is_shared"] is False

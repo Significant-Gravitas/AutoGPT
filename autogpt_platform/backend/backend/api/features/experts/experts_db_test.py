@@ -168,8 +168,9 @@ async def absorb_a_stale_event_loop(server: SpinTestServer):
     re-establishes itself. Spend that failure here rather than in a fixture."""
     try:
         await db_client.execute_raw("SELECT 1")
-    except Exception:
-        pass
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
 
 
 @pytest.fixture
