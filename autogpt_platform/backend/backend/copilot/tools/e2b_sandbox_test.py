@@ -1423,6 +1423,26 @@ class TestLegacyDesktopSweep:
         mock_cls.kill.assert_awaited_once_with("sb-old-desktop", api_key=_API_KEY)
         mock_cls.connect.assert_not_awaited()
 
+    def test_a_swept_old_desktop_does_not_hide_a_failed_shell_kill(self):
+        """The current box is what the caller asked about; reporting it
+        killed because an old desktop went would end its retries."""
+        redis = _keyed_redis({f"copilot:e2b:sandbox:{_SESSION_ID}": "sb-box"})
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.list = _mock_list(
+                [_info("sb-old-desktop", SandboxState.PAUSED, kind="desktop")]
+            )
+            mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
+            ok = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+        assert ok is False
+        mock_cls.kill.assert_awaited_once_with("sb-old-desktop", api_key=_API_KEY)
+
+    def test_an_expert_lookup_failure_is_not_done_whatever_was_swept(self):
+        redis = _keyed_redis({})
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
+            killed = asyncio.run(kill_expert_sandbox(_EXPERT_ID, _API_KEY))
+        assert killed is False
+
     def test_a_failed_sweep_does_not_stop_the_shell_kill(self):
         box = _mock_sandbox("sb-box")
         redis = _keyed_redis({f"copilot:e2b:sandbox:{_SESSION_ID}": "sb-box"})

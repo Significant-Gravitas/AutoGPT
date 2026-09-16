@@ -870,13 +870,23 @@ async def kill_sandbox(session_id: str, api_key: str) -> bool:
     Safe to call even when no sandbox exists for the session.
     """
     owner = SandboxOwner(kind="session", id=session_id)
+    sandbox_id = await _get_stored_sandbox_id(owner)
+    if not sandbox_id:
+        return await _kill_legacy_desktops(owner, api_key) > 0
     killed = await _act_on_sandbox(
-        owner, api_key, "kill", lambda sb: sb.kill(), clear_stored_id=True
+        owner,
+        api_key,
+        "kill",
+        lambda sb: sb.kill(),
+        sandbox_id=sandbox_id,
+        clear_stored_id=True,
     )
     if killed:
         await _forget_owner_state(owner)
-    swept = await _kill_legacy_desktops(owner, api_key)
-    return killed or swept > 0
+    await _kill_legacy_desktops(owner, api_key)
+    # The current box is the verdict: a swept old desktop must not report a
+    # failed kill of it as done.
+    return killed
 
 
 async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
@@ -894,8 +904,9 @@ async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
         try:
             sandbox_id = await find_owned_sandbox_id(owner, api_key)
         except SandboxLookupError as exc:
+            # Unknown whether a box exists: not done, whatever was swept.
             logger.warning("[E2B] Archive of %s: %s", owner, exc)
-            return swept > 0
+            return False
     if not sandbox_id:
         return swept > 0
     killed = await _act_on_sandbox(
@@ -908,7 +919,9 @@ async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
     )
     if killed:
         await _forget_owner_state(owner)
-    return killed or swept > 0
+    # The current box is the verdict: a swept old desktop must not report a
+    # failed kill of it as done.
+    return killed
 
 
 async def _kill_legacy_desktops(owner: SandboxOwner, api_key: str) -> int:
