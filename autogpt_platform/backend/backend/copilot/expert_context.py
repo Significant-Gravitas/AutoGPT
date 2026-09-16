@@ -25,6 +25,8 @@ import asyncio
 import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -246,7 +248,7 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
-    return render_expert_workflows_block(expert) + teammates
+    return render_expert_workflows_block(expert) + _expert_computer_block() + teammates
 
 
 def render_expert_workflows_block(expert: Expert) -> str:
@@ -262,9 +264,11 @@ def render_expert_workflows_block(expert: Expert) -> str:
 
     return (
         f"<expert_workflows>\n"
-        f"Workflows installed on this expert. For requests that match a "
-        f"workflow's purpose, prefer running it with `run_agent` using the "
-        f"IDs below over building something new:\n"
+        f"Workflows installed on this expert — the only ones you can run, edit, "
+        f"or schedule (`run_agent` with the IDs below). To use another agent, "
+        f"install it first with `install_expert_workflow` from the marketplace "
+        f"or the owner's library — `find_library_agent` lists what the library "
+        f"holds; agents you build here are installed for you:\n"
         f"{workflow_lines}\n"
         # The skip comes after the kickoff message's ask, so the rule lives in
         # session context, which every later turn sees, not in that message.
@@ -275,6 +279,38 @@ def render_expert_workflows_block(expert: Expert) -> str:
         f"useful work, say so. Never report a workflow as run, or a step as "
         f"completed, when it was blocked or failed.\n"
         f"</expert_workflows>\n\n"
+    )
+
+
+def _expert_computer_block() -> str:
+    """Tell an expert about its own machine — only when E2B actually backs it.
+
+    Lives in the first user message with the other expert blocks so the
+    cacheable system-prompt prefix stays byte-identical.
+    """
+    try:
+        if not ChatConfig().e2b_active:
+            return ""
+    except Exception as e:
+        logger.warning(f"Failed to resolve E2B config for expert context: {e}")
+        return ""
+    return (
+        "<expert_computer>\n"
+        "You have your own persistent cloud computer. It is suspended, not "
+        "destroyed, when idle, so what you install stays.\n"
+        f"- {WORKSPACE_PATH}: your durable home. Keep your notes, configs, "
+        "scripts and tools here and customise it freely.\n"
+        f"- {SHARED_PATH}: the user's shared workspace, when mounted. Put "
+        "deliverables there so they show up on the user's desktop and in "
+        "their other sessions. Trust the tool output on whether it is "
+        "mounted: without the mount, say where the file really is instead "
+        "of calling it shared.\n"
+        "- Use start_desktop when a task needs a browser or GUI app. The "
+        "desktop is shared with the user, not private from either of you: "
+        "you can see everything on it, and so can they.\n"
+        "- Never ask the user to sign into personal accounts on this "
+        "desktop; use their connected integrations instead.\n"
+        "</expert_computer>\n\n"
     )
 
 

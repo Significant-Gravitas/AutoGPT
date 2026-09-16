@@ -6,12 +6,12 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
-from backend.api.features.executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-)
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+)
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent

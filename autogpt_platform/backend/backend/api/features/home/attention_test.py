@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 from prisma.enums import ReviewStatus
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
