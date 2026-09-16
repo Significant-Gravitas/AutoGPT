@@ -23,7 +23,12 @@ export function CancelTrialDialog({ isCanceling, onCancel }: Props) {
       controlled={{ isOpen, set: setIsOpen }}
     >
       <Dialog.Trigger>
-        <Button variant="outline" loading={isCanceling} disabled={isCanceling}>
+        <Button
+          variant="outline"
+          size="small"
+          loading={isCanceling}
+          disabled={isCanceling}
+        >
           Cancel trial
         </Button>
       </Dialog.Trigger>
