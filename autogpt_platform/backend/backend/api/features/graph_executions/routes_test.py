@@ -113,9 +113,8 @@ def test_execution_path_is_served_by_this_module(path: str):
     assert handlers == {"backend.api.features.graph_executions.routes"}
 
 
-# The three /graphs/{graph_id}/executions* routes now register from this module
-# while the other /graphs/{graph_id}/X routes stay in v1; a wildcard fourth
-# segment on either side would silently swallow the other.
+# Three modules serve /graphs/{graph_id}/*: four executions paths here, six in v1,
+# one in schedules. A wildcard fourth segment on any side would swallow the others.
 @pytest.mark.parametrize(
     "path,module",
     [
