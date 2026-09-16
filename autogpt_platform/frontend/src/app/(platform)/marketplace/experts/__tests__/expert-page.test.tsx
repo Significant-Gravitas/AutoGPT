@@ -239,7 +239,7 @@ describe("Marketplace expert page", () => {
             {
               id: "listing-1",
               slug: "brand-voice-guide",
-              name: "brand-voice-guide",
+              title: "Brand voice guide",
               description: "Keeps every draft on-brand.",
             },
           ],
@@ -257,6 +257,32 @@ describe("Marketplace expert page", () => {
     expect(screen.queryByText("brand-voice-guide")).toBeNull();
     expect(screen.queryByText("Content strategy")).toBeNull();
     expect(screen.queryByText("Positioning")).toBeNull();
+  });
+
+  test("shows a bundled skill's title as its author cased it, acronyms intact", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          bundled_skills: [
+            {
+              id: "listing-1",
+              slug: "seo-content-brief",
+              title: "SEO content brief",
+              description: "Turn a keyword into a brief a writer can use.",
+            },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("link", { name: "SEO content brief" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Seo content brief")).toBeNull();
   });
 
   test("shows no Skills section when a hire comes with no Hub skills", async () => {
@@ -337,7 +363,7 @@ describe("Marketplace expert page", () => {
             {
               id: "listing-1",
               slug: "brand-voice-guide",
-              name: "brand-voice-guide",
+              title: "Brand voice guide",
               description: "Keeps every draft on-brand.",
             },
           ],

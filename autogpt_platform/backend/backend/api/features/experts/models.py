@@ -246,7 +246,7 @@ class ExpertBundledSkill(BaseModel):
 
     id: str
     slug: str
-    name: str
+    title: str
     description: str
 
 

@@ -21532,11 +21532,11 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" }
         },
         "type": "object",
-        "required": ["id", "slug", "name", "description"],
+        "required": ["id", "slug", "title", "description"],
         "title": "ExpertBundledSkill",
         "description": "A live Skills Hub listing a roster template comes with."
       },
@@ -25061,6 +25061,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25086,6 +25087,7 @@
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
@@ -25097,6 +25099,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25143,6 +25146,7 @@
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
