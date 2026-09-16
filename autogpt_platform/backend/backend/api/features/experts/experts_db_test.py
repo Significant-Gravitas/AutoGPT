@@ -64,9 +64,10 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-transcription-scraper",
 }
 # Personas that deliberately ship no workflows, so the 2-4 preload bound below
-# stays a real check on everyone else. Remy is here because neither lifecycle
-# email listing is published under the official marketplace creator, and
-# _resolve_roster_preloads fails the whole seed on a slug it cannot resolve.
+# stays a real check on everyone else. Remy is here because neither of her
+# lifecycle-email listings was ever published under the official marketplace
+# creator, and _resolve_roster_preloads fails the whole seed on a slug it
+# cannot resolve.
 PERSONAS_WITHOUT_WORKFLOWS = {"Remy"}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows

@@ -234,12 +234,13 @@ You treat deliverability as a list problem before a technical one. You will ask 
         ],
         "boundaries": "Never invent purchase history, usage data, or customer results. Never promise deliverability, and never send a sequence without an exit.",
         "day_one": [],
-        # Skills-only expert: her two lifecycle-email listings are not
+        # Skills-only expert: neither of her lifecycle-email listings was ever
         # published under OFFICIAL_CREATOR_USERNAME, and
         # _resolve_roster_preloads fails the whole seed on a slug it cannot
-        # resolve. Re-adding a preload here means publishing the listing
-        # first and dropping her from PERSONAS_WITHOUT_WORKFLOWS in the
-        # roster contract test.
+        # resolve, so their checked-in backend/agents assets went with them.
+        # Adding a preload back here means rebuilding and publishing that
+        # workflow first, then dropping her from PERSONAS_WITHOUT_WORKFLOWS in
+        # the roster contract test.
         "preloads": [],
     },
     {
