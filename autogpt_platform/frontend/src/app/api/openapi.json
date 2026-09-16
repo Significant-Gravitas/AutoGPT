@@ -4232,7 +4232,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session Computer",
-        "description": "The computer behind this chat.\n\nA plain chat has its own boxes; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
+        "description": "The computer behind this chat.\n\nA plain chat has its own box; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
         "operationId": "getV2GetSessionComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6965,7 +6965,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
-        "description": "The expert's own computer: its box and screen state as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "description": "The expert's own computer: its box as E2B lists it, and whether its\nscreen is on. E2B knows nothing about the screen; that flag is ours,\nkept beside the box id, because asking the box would wake it.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
         "operationId": "getV2GetExpertComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

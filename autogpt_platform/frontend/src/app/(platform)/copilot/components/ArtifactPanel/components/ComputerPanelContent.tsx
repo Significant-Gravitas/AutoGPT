@@ -18,7 +18,12 @@ interface Props {
   sessionId: string;
 }
 
-function Pill({ tone, label }: { tone: "on" | "off" | "none"; label: string }) {
+interface PillProps {
+  tone: "on" | "off" | "none";
+  label: string;
+}
+
+function Pill({ tone, label }: PillProps) {
   return (
     <span
       className={cn(

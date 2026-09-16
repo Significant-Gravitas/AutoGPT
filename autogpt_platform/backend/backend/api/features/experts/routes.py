@@ -379,7 +379,9 @@ async def get_expert_computer(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ComputerInfo:
-    """The expert's own computer: its box and screen state as E2B lists them.
+    """The expert's own computer: its box as E2B lists it, and whether its
+    screen is on. E2B knows nothing about the screen; that flag is ours,
+    kept beside the box id, because asking the box would wake it.
 
     Listing never wakes a paused box, so the Computer tab can refresh freely.
     """

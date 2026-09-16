@@ -140,6 +140,9 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 68_997 -> 69_063 for #14382 (one box per owner): start_desktop's
 # description now says it is the same machine bash_exec runs in, +66.
 # Merged registry measures 69,062.
+# Lowered 69_063 -> 69_056 on the same PR: bash_exec's description no longer
+# tells the model that only ~/workspace shows on the desktop, -7.  Merged
+# registry measures 69,055.
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
 # make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
@@ -162,7 +165,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
 # 68,237 — dev widened raise_expert by two characters after this line was first
 # set, which reddened three interpreters on a branch that had added nothing.
-_CHAR_BUDGET = 69_063
+_CHAR_BUDGET = 69_056
 
 
 @pytest.fixture(scope="module")
