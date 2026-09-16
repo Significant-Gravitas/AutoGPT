@@ -246,7 +246,7 @@ class ExpertBundledSkill(BaseModel):
 
     id: str
     slug: str
-    name: str
+    title: str
     description: str
 
 
@@ -330,10 +330,10 @@ WEEKLY_BUDGET_MAX_CREDITS = 1_000_000
 class RaiseAttachment(BaseModel):
     """One workflow or skill to attach while raising an expert.
 
-    ``id`` is a store listing version UUID (marketplace), a library agent
-    UUID (library workflow), or a copilot skill slug (library skill).
-    Marketplace skills use a store listing version UUID; the listing's
-    public name is stored on ``Expert.skills``.
+    ``id`` is a store listing version UUID (marketplace workflow), a library
+    agent UUID (library workflow), or a skill slug — the caller's own skill
+    for ``library``, a Hub :class:`SkillListing` slug for ``marketplace``.
+    Either skill slug ends up on ``Expert.skills``.
     """
 
     kind: RaiseAttachmentKind

@@ -30,6 +30,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants, require_installed_workflow
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -187,6 +188,15 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if error:
             return error
         assert graph is not None
+        scope_error = await require_installed_workflow(
+            user_id,
+            session,
+            graph_id=graph.id,
+            library_agent_id=(kwargs.get("library_agent_id") or "").strip() or None,
+            name=graph.name,
+        )
+        if scope_error is not None:
+            return scope_error
 
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
@@ -364,7 +374,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             for key, cred in effective.items()
             if not (key == trigger_cred_key and trigger_cred_key not in selection)
         }
-        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        card_missing = await annotate_expert_grants(
+            user_id,
+            expert_id,
+            build_missing_credentials_from_graph(graph, matched_for_card),
+        )
         if card_missing:
             return {}, self._build_card(graph, card_missing, session_id)
 

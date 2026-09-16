@@ -25,6 +25,7 @@ from backend.copilot.tools.utils import (
     build_missing_credentials_from_field_info,
     sanitize_provider_message,
 )
+from backend.data.db_accessors import experts_db
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
@@ -35,6 +36,7 @@ from backend.util.request import (
 )
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants
 from .models import (
     CredentialRejection,
     ErrorResponse,
@@ -223,7 +225,38 @@ class RunMCPToolTool(BaseTool):
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
-        creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
+        normalized_url = normalize_mcp_url(server_url)
+        # Narrow before ranking, not after: an ungranted manual token outranks a
+        # granted OAuth row, so checking the single best match would refuse an
+        # expert that does have usable access to this server.
+        allowed_ids: set[str] | None = None
+        if session.expert_id is not None:
+            allowed_ids = set(
+                await experts_db().expert_allowed_credential_ids(
+                    user_id, session.expert_id
+                )
+            )
+        creds = await auto_lookup_mcp_credential(
+            user_id, normalized_url, allowed_ids=allowed_ids
+        )
+        if creds is None and allowed_ids is not None:
+            ungranted = await auto_lookup_mcp_credential(user_id, normalized_url)
+            if ungranted is not None:
+                # The card rather than a bare error: the expert can ask for the
+                # credential from it, which is what this PR adds.
+                return await self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                    message=(
+                        f"The account's credential for {server_host(server_url)} "
+                        f"(credential_id={ungranted.id}) is not granted to this "
+                        "expert. Ask the user to grant it from the card, on the "
+                        "expert's Integrations page, or from personal AutoPilot with "
+                        "grant_expert_credential."
+                    ),
+                )
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
             if creds is not None
@@ -293,8 +326,13 @@ class RunMCPToolTool(BaseTool):
                     # ``close`` is best-effort and swallows its own
                     # errors.
                     await probe_client.close()
-            return self._build_setup_requirements(
-                server_url, session_id, connected=connected, rejection=rejection
+            return await self._build_setup_requirements(
+                server_url,
+                session_id,
+                connected=connected,
+                rejection=rejection,
+                user_id=user_id,
+                expert_id=session.expert_id,
             )
 
         if client is None:
@@ -354,11 +392,13 @@ class RunMCPToolTool(BaseTool):
                         session_id=session_id,
                         error=f"HTTP {e.status_code}: {str(e)[:300]}",
                     )
-                return self._build_setup_requirements(
+                return await self._build_setup_requirements(
                     server_url,
                     session_id,
                     connected=kept_credential,
                     rejection=rejected,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
                 )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
@@ -566,12 +606,16 @@ class RunMCPToolTool(BaseTool):
             None,
         )
 
-    def _build_setup_requirements(
+    async def _build_setup_requirements(
         self,
         server_url: str,
         session_id: str,
         connected: bool = False,
         rejection: CredentialRejection | None = None,
+        *,
+        user_id: str | None = None,
+        expert_id: str | None = None,
+        message: str | None = None,
     ) -> SetupRequirementsResponse | ErrorResponse:
         """Build a SetupRequirementsResponse for an MCP server credential.
 
@@ -580,6 +624,10 @@ class RunMCPToolTool(BaseTool):
         instead of the bare Connect button.  Used by the
         ``surface_connect_card`` path so the user always gets visible
         feedback even when stored creds are still valid.
+
+        In an expert session the missing credential carries ``expert_grant``
+        so the card can grant an existing account credential to the expert or
+        grant a freshly connected one, the same as every other connect card.
         """
         mcp_block = MCPToolBlock()
         credentials_fields_info = mcp_block.input_schema.get_credentials_fields_info()
@@ -588,7 +636,7 @@ class RunMCPToolTool(BaseTool):
         # can match the credential to the correct OAuth provider/server.
         for field_info in credentials_fields_info.values():
             if field_info.discriminator == "server_url":
-                field_info.discriminator_values.add(server_url)
+                field_info.discriminator_values.add(normalize_mcp_url(server_url))
 
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, matched_keys=set()
@@ -608,29 +656,38 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
+        if user_id is not None and not connected:
+            missing_creds_dict = await annotate_expert_grants(
+                user_id, expert_id, missing_creds_dict
+            )
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
         service = _service_name(host)
-        if rejection:
-            status = f" (HTTP {rejection.status_code})" if rejection.status_code else ""
-            # The provider usually says why, and it is often something no
-            # amount of signing in again will fix — Brevo answers "API Key is
-            # not enabled" for a key created without the MCP option, and names
-            # its IP allow-list for a call from an unrecognised address.
-            # Dropping that left the card telling the user to retry the one
-            # thing that cannot work.
-            reason = (rejection.detail or "").strip()
-            message = (
-                f"{service} rejected the saved credential{status}."
-                + (f" {reason[:400]}" if reason else "")
-                + " Sign in again if the credential is simply stale; otherwise "
-                "fix what the service reported first."
-            )
-        elif connected:
-            message = f"You're connected to {service}. Use Reconnect to swap accounts."
-        else:
-            message = f"To continue, sign in to {service} and approve access."
+        if message is None:
+            if rejection:
+                status = (
+                    f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+                )
+                # The provider usually says why, and it is often something no
+                # amount of signing in again will fix — Brevo answers "API Key
+                # is not enabled" for a key created without the MCP option, and
+                # names its IP allow-list for a call from an unrecognised
+                # address. Dropping that left the card telling the user to retry
+                # the one thing that cannot work.
+                reason = (rejection.detail or "").strip()
+                message = (
+                    f"{service} rejected the saved credential{status}."
+                    + (f" {reason[:400]}" if reason else "")
+                    + " Sign in again if the credential is simply stale; "
+                    "otherwise fix what the service reported first."
+                )
+            elif connected:
+                message = (
+                    f"You're connected to {service}. Use Reconnect to swap accounts."
+                )
+            else:
+                message = f"To continue, sign in to {service} and approve access."
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,

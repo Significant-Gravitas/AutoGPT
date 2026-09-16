@@ -191,6 +191,7 @@ model User {
   PlatformUserLinks PlatformUserLink[]
 
   ExperimentAssignments ExperimentAssignment[]
+  Attribution          UserAttribution?
 }
 
 // One row per (user, experiment): the arm a user was bucketed into the first
@@ -214,6 +215,36 @@ model ExperimentAssignment {
   @@index([experimentKey, variant])
 }
 
+// Where a user came from, captured once around signup. Holds the identities
+// the analytics tools know the user by before they had a user id, so the
+// database can join marketing attribution (DataFast), product analytics
+// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
+// anonymous id) to activation and revenue. Fields are filled at most once.
+model UserAttribution {
+  userId    String   @id
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  anonymousId       String?
+  // PostHog $device_id at the time of reporting, when it differs.
+  posthogDistinctId String?
+  datafastVisitorId String?
+  datafastSessionId String?
+
+  // First landing on the site, as seen by the browser that later signed up.
+  landingPath String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  // "email" | "google" when the account was created in this browser session.
+  signupMethod String?
+
+  @@index([anonymousId])
+  @@index([datafastVisitorId])
+}
 
 enum ChatSessionStatus {
   idle
@@ -2166,11 +2197,37 @@ model SkillListingVersion {
   // Tenancy
   organizationId String?
 
+  Files     SkillListingFile[]
+
   @@unique([skillListingId, version])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+/// One file beside a published version's SKILL.md, snapshotted at submit time
+/// like the body is. Bytes live in the row: a version is immutable once
+/// approved, capped at 20 MiB in the application layer, and cascade-deleted
+/// with its version, so a blob store would only add orphan cleanup.
+model SkillListingFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  skillListingVersionId String
+  SkillListingVersion   SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  /// Posix path relative to the skill folder, e.g. `scripts/with_server.py`.
+  relativePath String
+  sizeBytes    Int
+  sha256       String
+  mimeType     String?
+  /// Restored on install: `python scripts/x.py` works without it, `./x.py` does not.
+  isExecutable Boolean @default(false)
+
+  content Bytes
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs

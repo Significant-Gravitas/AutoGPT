@@ -889,10 +889,14 @@ def create_copilot_mcp_server(
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
         # Deferred tools are reached through run_capability, not by name.
+        # ``is_available`` is the env check the baseline path applies in
+        # ``get_available_tools``; without it this engine offers browser
+        # tools on a box with no agent-browser binary.
         if (
             tool_name in hidden
             or tool_name in BASELINE_ONLY_MCP_TOOLS
             or tool_name in DEFERRED_TOOL_NAMES
+            or not base_tool.is_available
         ):
             continue
         handler = create_tool_handler(base_tool)
@@ -1056,6 +1060,13 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   prod without issues.
 # ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
 #   {"scheduledFor": 0} and nothing is scheduled.
+# CronCreate/CronList/CronDelete: same failure mode as ScheduleWakeup, but
+#   worse because CronCreate *confirms* success ("Persisted to
+#   .claude/scheduled_tasks.json").  Those jobs belong to the CLI process,
+#   which exits with the turn; nothing here ever reads or runs that file, and
+#   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
+#   exposed lets the model promise unattended monitoring that silently never
+#   fires — `schedule_followup` is the primitive that actually persists.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1065,6 +1076,9 @@ SDK_DISALLOWED_TOOLS = [
     "Edit",
     "Read",
     "ScheduleWakeup",
+    "CronCreate",
+    "CronList",
+    "CronDelete",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1183,3 +1197,13 @@ def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
     if not use_e2b:
         return list(SDK_DISALLOWED_TOOLS)
     return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+
+
+def get_sdk_builtin_tools() -> list[str]:
+    """Every Claude Code built-in this module knows about, blocked or kept.
+
+    For callers that want *no* built-ins at all — the orchestrator block hands
+    its model graph MCP tools only — so a built-in that is new here (a CLI
+    scheduler, say) is blocked there without a second, hand-synced edit.
+    """
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS]))

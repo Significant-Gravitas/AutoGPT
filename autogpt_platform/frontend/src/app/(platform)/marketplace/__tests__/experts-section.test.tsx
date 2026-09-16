@@ -196,7 +196,7 @@ describe("Marketplace ExpertsSection", () => {
             {
               id: "listing-1",
               slug: "brand-voice-guide",
-              name: "brand-voice-guide",
+              title: "Brand voice guide",
               description: "Keeps every draft on-brand.",
             },
           ],
