@@ -16,6 +16,7 @@ export function useArtifactPanel() {
   const setArtifactPanelWidth = useCopilotUIStore(
     (s) => s.setArtifactPanelWidth,
   );
+  const setArtifactPanelMode = useCopilotUIStore((s) => s.setArtifactPanelMode);
 
   const [isSourceView, setIsSourceView] = useState(false);
 
@@ -92,5 +93,8 @@ export function useArtifactPanel() {
     handleDownload,
     artifactPanelWidth,
     setArtifactPanelWidth,
+    mode: artifactPanel.mode,
+    isComputerOpen: artifactPanel.isComputerOpen,
+    setArtifactPanelMode,
   };
 }
