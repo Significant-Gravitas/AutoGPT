@@ -1,3 +1,4 @@
+import { resolvePackagePath } from "@/components/contextual/SkillPackage/helpers";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { prepareSkillBody } from "./helpers";
@@ -5,17 +6,67 @@ import { prepareSkillBody } from "./helpers";
 interface Props {
   body: string;
   title: string;
+  packagePaths: string[];
+  onOpenFile: (path: string) => void;
 }
 
-export function SkillBody({ body, title }: Props) {
+export function SkillBody({ body, title, packagePaths, onOpenFile }: Props) {
+  const withFileLinks: Components = {
+    ...components,
+    a: ({ children, href }) => (
+      <BodyLink href={href} packagePaths={packagePaths} onOpenFile={onOpenFile}>
+        {children}
+      </BodyLink>
+    ),
+  };
+
   return (
     <div className="text-[15px] leading-6 text-zinc-700 [overflow-wrap:anywhere]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={withFileLinks}>
         {prepareSkillBody(body, title)}
       </ReactMarkdown>
     </div>
   );
 }
+
+interface BodyLinkProps {
+  href: string | undefined;
+  packagePaths: string[];
+  onOpenFile: (path: string) => void;
+  children: React.ReactNode;
+}
+
+/** A link to a file the package ships opens the viewer; the marketplace never
+ *  served those paths, so following one used to 404. */
+function BodyLink({ href, packagePaths, onOpenFile, children }: BodyLinkProps) {
+  const path = resolvePackagePath(href, packagePaths);
+  if (path !== null) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenFile(path)}
+        className={`${LINK_CLASS} font-mono text-[13px]`}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  const isExternal = /^https?:\/\//i.test(href ?? "");
+  return (
+    <a
+      href={href}
+      rel="noreferrer"
+      {...(isExternal ? { target: "_blank" } : {})}
+      className={LINK_CLASS}
+    >
+      {children}
+    </a>
+  );
+}
+
+const LINK_CLASS =
+  "rounded-sm text-zinc-900 underline underline-offset-2 transition-colors hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2";
 
 const components: Components = {
   h1: ({ children }) => <Heading level={3}>{children}</Heading>,
@@ -34,19 +85,6 @@ const components: Components = {
   strong: ({ children }) => (
     <strong className="font-semibold text-zinc-900">{children}</strong>
   ),
-  a: ({ children, href }) => {
-    const isExternal = /^https?:\/\//i.test(href ?? "");
-    return (
-      <a
-        href={href}
-        rel="noreferrer"
-        {...(isExternal ? { target: "_blank" } : {})}
-        className="text-zinc-900 underline underline-offset-2 transition-colors hover:text-violet-600"
-      >
-        {children}
-      </a>
-    );
-  },
   // Creator markdown carries no dimensions, so the shift is contained by the
   // radius and max-width rather than eliminated.
   img: ({ src, alt }) => (

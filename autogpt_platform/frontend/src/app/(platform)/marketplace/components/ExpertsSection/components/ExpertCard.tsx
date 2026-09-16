@@ -5,6 +5,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
 import { formatSkillTitle } from "../../SkillsSection/helpers";
@@ -47,12 +48,12 @@ export function ExpertCard({ expert, isHired }: Props) {
           </Avatar>
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+              "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm font-medium",
               accent.pill,
             )}
           >
-            <Icon icon={accent.roleIcon} size={14} />
-            {expert.role}
+            <Icon icon={accent.roleIcon} size={14} className="shrink-0" />
+            {getExpertRoleLabel(expert.role)}
           </span>
         </div>
 
@@ -91,18 +92,20 @@ export function ExpertCard({ expert, isHired }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-zinc-500">
-            <Icon icon={FlashIcon} size={18} className={accent.icon} />
-            {expert.workflows.length}{" "}
-            {expert.workflows.length === 1 ? "workflow" : "workflows"}
-          </span>
+          {expert.workflows.length > 0 ? (
+            <span className="flex items-center gap-2 text-base text-zinc-500">
+              <Icon icon={FlashIcon} size={18} className={accent.icon} />
+              {expert.workflows.length}{" "}
+              {expert.workflows.length === 1 ? "workflow" : "workflows"}
+            </span>
+          ) : null}
           {isHired ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
               Hired
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               View
               <Icon
                 icon={ArrowRight02Icon}

@@ -23,6 +23,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 
+from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
@@ -40,13 +41,23 @@ from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
-from . import commands, config
+from . import choice_ui, commands, config
 from .api_client import TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
+
+# A resolved mention, held behind private-use markers while the text is
+# HTML-escaped.
+_MENTION_OPEN = "\ue000"
+_MENTION_CLOSE = "\ue001"
+_MENTION_STASH_RE = re.compile("\ue000([^\ue000\ue001]+)\ue001")
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
@@ -140,6 +151,10 @@ class TelegramAdapter(WebhookAdapter):
         if membership:
             self._track_membership_change(membership)
             return
+        callback_query = update.get("callback_query")
+        if callback_query:
+            await self._dispatch_callback_query(callback_query)
+            return
         message = update.get("message")
         if not message:
             return  # Edits, reactions, other member updates — not conversation input.
@@ -179,6 +194,60 @@ class TelegramAdapter(WebhookAdapter):
             )
         except Exception:
             logger.debug("Telegram reaction ack failed", exc_info=True)
+
+    async def _dispatch_callback_query(self, callback_query: dict[str, Any]) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply."""
+        query_id = callback_query.get("id")
+        parsed = choice_ui.parse_callback_data(callback_query.get("data") or "")
+        if parsed is None:
+            if query_id:
+                await self._answer_callback_query(query_id)
+            return
+        token, index = parsed
+        clicker_id = str((callback_query.get("from") or {}).get("id", ""))
+        resolved = await choices.resolve_choice("telegram", token, index, clicker_id)
+        if resolved.text is None:
+            if query_id:
+                await self._answer_callback_query(
+                    query_id,
+                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
+                    show_alert=True,
+                )
+            return
+        option = resolved.text
+        if query_id:
+            await self._answer_callback_query(query_id)
+        message = callback_query.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        message_id = message.get("message_id")
+        if chat_id and message_id is not None:
+            try:
+                await self._client.call(
+                    "editMessageText",
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"✅ You answered: {option}",
+                )
+            except Exception:
+                logger.debug(
+                    "Telegram editMessageText after choice click failed",
+                    exc_info=True,
+                )
+        if self._on_message_callback is None:
+            return
+        ctx = _context_from_callback_query(callback_query, option)
+        if ctx is not None:
+            await self._on_message_callback(ctx, self)
+
+    async def _answer_callback_query(self, query_id: str, **kwargs: Any) -> None:
+        try:
+            await self._client.call(
+                "answerCallbackQuery", callback_query_id=query_id, **kwargs
+            )
+        except Exception:
+            logger.debug("Telegram answerCallbackQuery failed", exc_info=True)
 
     def _track_membership_change(self, membership: dict[str, Any]) -> None:
         """Keep the admin server roster current: the bot being added to /
@@ -290,15 +359,25 @@ class TelegramAdapter(WebhookAdapter):
     # -- Outbound --
 
     def _render(self, text: str, mentionable_users: tuple[tuple[str, str], ...]) -> str:
-        # Localize (which HTML-escapes) FIRST, then inject mention anchors —
-        # the anchors are HTML and must survive escaping. The allowlist IS the
-        # ping safety: non-allowlisted names stay plain text.
-        rendered, _pinged = resolve_mentions(
-            self.localize_markup(text),
+        # Resolve on the raw text, where names and "<@id>" look as the model
+        # wrote them, and hold each hit behind private-use markers that survive
+        # the HTML escaping (to_html strips NUL, so NUL can't be the marker).
+        # Then localize, then swap in the mention anchors, which are HTML and
+        # must not be escaped. The allowlist IS the ping safety: anything not
+        # on it stays plain, escaped text.
+        names = {uid: name for name, uid in mentionable_users}
+        resolved, _pinged = resolve_mentions(
+            text.replace(_MENTION_OPEN, "").replace(_MENTION_CLOSE, ""),
             mentionable_users,
-            lambda name, uid: f'<a href="tg://user?id={uid}">@{html.escape(name)}</a>',
+            lambda _name, uid: f"{_MENTION_OPEN}{uid}{_MENTION_CLOSE}",
         )
-        return rendered
+        return _MENTION_STASH_RE.sub(
+            lambda m: (
+                f'<a href="tg://user?id={m.group(1)}">'
+                f"@{html.escape(names.get(m.group(1), m.group(1)))}</a>"
+            ),
+            self.localize_markup(resolved),
+        )
 
     async def send_message(
         self,
@@ -381,6 +460,33 @@ class TelegramAdapter(WebhookAdapter):
             # would read as a malformed entity and kill the fallback too.
             params["text"] += html.escape(f"\n\n{link_label}: {link_url}")
             await self._client.call("sendMessage", **params)
+
+    @property
+    def max_choice_label_length(self) -> int:
+        return 64
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        chat_id, thread_id = _decode_target(channel_id)
+        await self._client.call(
+            "sendMessage",
+            chat_id=chat_id,
+            text=self.localize_markup(text),
+            parse_mode="HTML",
+            message_thread_id=thread_id,
+            reply_markup=choice_ui.choice_keyboard(token, options),
+        )
+        return True
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         chat_id, thread_id = _decode_target(channel_id)
@@ -554,11 +660,42 @@ def _verify_secret(request: Request, _body: bytes) -> bool:
     return bool(expected) and hmac.compare_digest(provided, expected)
 
 
+def _context_from_callback_query(
+    callback_query: dict[str, Any], option: str
+) -> Optional[MessageContext]:
+    message = callback_query.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+    sender = callback_query.get("from") or {}
+    user_id = sender.get("id")
+    if not chat_id or user_id is None:
+        return None
+    is_private = chat.get("type") == "private"
+    target_id = _encode_target(chat_id, message.get("message_thread_id"))
+    return MessageContext(
+        platform="telegram",
+        channel_type="dm" if is_private else "channel",
+        server_id=None if is_private else chat_id,
+        channel_id=target_id,
+        message_id=str(message.get("message_id", "")),
+        user_id=str(user_id),
+        username=sender.get("username") or sender.get("first_name") or "unknown",
+        text=option,
+        bot_mentioned=True,
+    )
+
+
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    # text_mention entities carry full user objects (users without a public
-    # @username); those are the only inbound mentions with a numeric id we
-    # can ping safely on the way back out.
+    # The author, under their @username and first name, since either is what
+    # a reply to them would write. Then text_mention entities: they carry full
+    # user objects (users without a public @username), the only other inbound
+    # mentions with a numeric id we can ping safely on the way back out.
     pairs: list[tuple[str, str]] = []
+    sender = message.get("from") or {}
+    if sender.get("id") and not sender.get("is_bot"):
+        for name in (sender.get("username"), sender.get("first_name")):
+            if name and (name, str(sender["id"])) not in pairs:
+                pairs.append((name, str(sender["id"])))
     for entity in message.get("entities") or []:
         user = entity.get("user")
         if entity.get("type") == "text_mention" and user and not user.get("is_bot"):

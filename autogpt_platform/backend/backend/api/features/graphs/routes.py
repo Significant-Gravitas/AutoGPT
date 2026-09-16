@@ -28,9 +28,8 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 from backend.monitoring.instrumentation import record_graph_operation
 from backend.util.exceptions import GraphValidationError
 
-# All ten routes carry tags=["graphs"], so the tag lives at the mount; nine of
-# them carry only Security(requires_user), so that lives here. execute_graph
-# keeps its extra Depends(enforce_payment_paywall).
+# Every route here is authenticated by the router and tagged "graphs" at the
+# mount; execute_graph adds Depends(enforce_payment_paywall) on top.
 router = APIRouter(dependencies=[Security(requires_user)])
 
 
