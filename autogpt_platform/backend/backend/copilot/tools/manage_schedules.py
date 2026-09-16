@@ -6,7 +6,10 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
-from backend.api.features.schedule_visibility import hidden_expert_ids
+from backend.api.features.schedule_visibility import (
+    hidden_expert_ids,
+    is_visible_schedule,
+)
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -207,9 +210,7 @@ class ListSchedulesTool(BaseTool):
         in_scope = [job for job in jobs if _is_in_session_scope(job, session)]
         hidden = await hidden_expert_ids(in_scope, user_id)
         schedules = [
-            _to_summary(job)
-            for job in in_scope
-            if job.next_run_time or job.expert_id not in hidden
+            _to_summary(job) for job in in_scope if is_visible_schedule(job, hidden)
         ]
 
         message = (
