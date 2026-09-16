@@ -2,7 +2,6 @@ import { consent } from "@/services/consent/cookies";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureFirstLanding,
-  clearAnalyticsStorage,
   getAnonymousID,
   getPostHogDeviceID,
   readFirstLanding,
@@ -193,36 +192,25 @@ describe("first landing redaction", () => {
 });
 
 describe("analytics consent", () => {
-  it("captures no landing without analytics consent", () => {
+  // Attribution is collected under legitimate interest, not the analytics
+  // consent category. Pinned so re-gating it is a deliberate change, not a
+  // drive-by one; see the follow-up issue on revisiting this after GTM.
+  it("still records the landing when analytics consent is refused", () => {
     setAnalyticsConsent(false);
     landOn("/pricing?utm_source=newsletter");
 
     captureFirstLanding();
 
-    expect(readFirstLanding()).toBeNull();
+    expect(readFirstLanding()?.path).toBe("/pricing?utm_source=newsletter");
+    expect(readFirstLanding()?.utm_source).toBe("newsletter");
   });
 
-  it("captures once consent is granted", () => {
-    setAnalyticsConsent(false);
-    landOn("/pricing");
-    captureFirstLanding();
-    expect(readFirstLanding()).toBeNull();
-
-    setAnalyticsConsent(true);
-    captureFirstLanding();
-
-    expect(readFirstLanding()?.path).toBe("/pricing");
-  });
-
-  it("clearAnalyticsStorage drops both the identity and the landing", () => {
+  it("keeps the visitor identity when analytics consent is refused", () => {
     const id = getAnonymousID();
-    captureFirstLanding();
+
+    setAnalyticsConsent(false);
+
     expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(id);
-    expect(readFirstLanding()).not.toBeNull();
-
-    clearAnalyticsStorage();
-
-    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
-    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBeNull();
+    expect(getAnonymousID()).toBe(id);
   });
 });

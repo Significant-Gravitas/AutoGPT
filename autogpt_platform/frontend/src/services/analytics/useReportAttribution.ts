@@ -2,7 +2,6 @@
 
 import { usePostAnalyticsReportUserAttribution } from "@/app/api/__generated__/endpoints/analytics/analytics";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { consent } from "@/services/consent/cookies";
 import { buildAttributionPayload } from "@/services/analytics/attribution-payload";
 import { useEffect } from "react";
 
@@ -20,9 +19,7 @@ export function useReportAttribution() {
   const userID = user?.id ?? null;
 
   useEffect(() => {
-    // Checked before claiming, so a later grant (which reloads) still reports.
-    if (!userID || !consent.hasConsentFor("analytics")) return;
-    if (!claimReport(userID)) return;
+    if (!userID || !claimReport(userID)) return;
     reportAttribution(
       { data: buildAttributionPayload() },
       {

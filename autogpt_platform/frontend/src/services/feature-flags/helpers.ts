@@ -42,7 +42,7 @@ export type LDContext = LDUserContext | LDMultiContext;
 // percentage rollouts are stable per visitor instead of identical for every
 // visitor. Logged in, it rides along as a `device` context so a rule that
 // buckets by device keeps the same arm across signup. Rules on the `user`
-// kind are unchanged.
+// kind never see it.
 export function buildLDContext(
   user: User | null,
   anonymousID?: string | null,

@@ -18,8 +18,6 @@
  * visitors keep their history.
  */
 
-import { consent } from "@/services/consent/cookies";
-
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
 
@@ -58,13 +56,11 @@ export function getAnonymousID(): string | null {
 }
 
 /**
- * Remember the first page this browser landed on, once. Where the visitor came
- * from is analytics data, so it is not collected without that consent; the
- * banner reloads the page on a grant, which is what re-runs this.
+ * Remember the first page this browser landed on, once. Captured under
+ * legitimate interest rather than analytics consent — to be revisited after GTM.
  */
 export function captureFirstLanding(): void {
   if (typeof window === "undefined") return;
-  if (!consent.hasConsentFor("analytics")) return;
   if (readStorage(FIRST_LANDING_KEY)) return;
 
   const params = new URLSearchParams(window.location.search);
@@ -106,18 +102,6 @@ export function resetAnonymousID(nextID?: string): void {
     // Storage blocked: nothing persisted to clear.
   }
   writeStorage(ANONYMOUS_ID_KEY, memoryID);
-}
-
-/** Drop the analytics identity and its landing record: consent was withdrawn. */
-export function clearAnalyticsStorage(): void {
-  if (typeof window === "undefined") return;
-  memoryID = null;
-  try {
-    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
-    window.localStorage.removeItem(FIRST_LANDING_KEY);
-  } catch {
-    // Storage blocked: nothing persisted to clear.
-  }
 }
 
 export function resetAnonymousIDForTests(): void {

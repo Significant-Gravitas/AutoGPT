@@ -82,15 +82,14 @@ describe("useReportAttribution", () => {
     expect(bodies).toHaveLength(1);
   });
 
-  it("reports nothing without analytics consent", async () => {
+  it("reports under legitimate interest even when consent is refused", async () => {
     const bodies = captureReports();
     setAnalyticsConsent(false);
 
     renderHook(() => useReportAttribution(), { wrapper });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => expect(bodies).toHaveLength(1));
 
-    expect(bodies).toHaveLength(0);
-    expect(window.localStorage.getItem(REPORTED_KEY)).toBeNull();
+    expect(bodies[0]).toEqual({ anonymous_id: "anon-1" });
   });
 
   it("does nothing while signed out", async () => {

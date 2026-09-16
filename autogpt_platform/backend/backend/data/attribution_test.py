@@ -199,3 +199,28 @@ async def test_identity_only_reports_never_read_the_account(
     await record_user_attribution("user-1", UserAttributionInput(anonymous_id="anon-1"))
 
     user_client.find_unique.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_update_path_also_withholds_the_signup_channel(
+    client: MagicMock, account: MagicMock
+) -> None:
+    """The filter runs before the create/update branch; pin it on both, so moving
+    it into the create branch alone cannot pass."""
+    account.createdAt = (
+        datetime.now(timezone.utc) - SIGNUP_ATTRIBUTION_WINDOW - timedelta(minutes=1)
+    )
+    client.find_unique.return_value = _row()
+    client.update.return_value = _row(anonymousId="anon-1")
+
+    await record_user_attribution(
+        "user-1",
+        UserAttributionInput(
+            anonymous_id="anon-1", landing_path="/pricing", utm_source="newsletter"
+        ),
+    )
+
+    client.create.assert_not_awaited()
+    client.update.assert_awaited_once_with(
+        where={"userId": "user-1"}, data={"anonymousId": "anon-1"}
+    )
