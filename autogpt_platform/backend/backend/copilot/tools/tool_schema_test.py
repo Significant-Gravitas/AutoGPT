@@ -316,3 +316,41 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         get_copilot_tool_names(use_e2b=True, disabled_groups=["graphiti"])
     )
     assert not (memory_mcp_names & filtered_e2b)
+
+
+class TestPromptSupplementsNameRealTools:
+    """A supplement that names a tool the turn was never given spends tokens
+    telling the model to call something that does not exist. The role split
+    is where this bites: the charters were written against task tools that
+    ship in a later slice, so the names have to be checked against the
+    registry, not against the text they were copied from."""
+
+    @staticmethod
+    def _tool_names_mentioned(text: str) -> set[str]:
+        import re
+
+        # `name(` or `name` in backticks — how every supplement writes one.
+        return {
+            m
+            for m in re.findall(r"`([a-z_][a-z0-9_]*)\(?[^`]*`", text)
+            if m.endswith("_expert")
+            or m.endswith("_task")
+            or m.startswith("memory_")
+            or m in {"run_sub_session", "get_sub_session_result", "ask_question"}
+        }
+
+    @pytest.mark.parametrize("role", ["autopilot", "expert"])
+    def test_every_tool_named_in_a_role_section_is_registered(self, role: str) -> None:
+        from backend.copilot import prompting
+
+        sections = (
+            prompting.get_role_charter(role)
+            + prompting.get_delegation_supplement(role)
+            + prompting.get_graphiti_supplement(role)
+        )
+        named = self._tool_names_mentioned(sections)
+        assert named, "matcher found no tool names — it has stopped working"
+        assert named <= set(TOOL_REGISTRY), (
+            f"{role} sections name unregistered tools: "
+            f"{sorted(named - set(TOOL_REGISTRY))}"
+        )
