@@ -5,6 +5,8 @@ Service tokens ride the same JWKS trust as user tokens but with a distinct
 audience and subject; these tests pin the separation between the two planes.
 """
 
+import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -121,6 +123,29 @@ def test_symmetric_service_token_is_rejected(jwks_config):
     response = _post(token)
     assert response.status_code == 401
     assert "symmetric" in response.json()["detail"]
+
+
+def _service_token_with_header(header: dict) -> str:
+    """Build a JWT with an arbitrary header; jwt.encode() always writes a
+    string `alg`, so malformed headers are assembled by hand. The signature is
+    garbage: these tokens must be rejected before verification."""
+    segments = [
+        json.dumps(header).encode(),
+        json.dumps(SERVICE_PAYLOAD).encode(),
+        b"not-a-signature",
+    ]
+    return ".".join(base64.urlsafe_b64encode(s).rstrip(b"=").decode() for s in segments)
+
+
+@pytest.mark.parametrize("alg", [None, 256], ids=["null-alg", "numeric-alg"])
+def test_non_string_algorithm_is_401_not_500(jwks_config, alg):
+    """A malformed `alg` header is an auth failure, not a server error.
+    TestClient re-raises server exceptions, so an AttributeError here would
+    fail the test rather than hide behind a 500."""
+    token = _service_token_with_header({"alg": alg, "kid": "test-key-1"})
+    response = _post(token)
+    assert response.status_code == 401
+    assert "signing algorithm" in response.json()["detail"]
 
 
 def test_expired_service_token_is_401(jwks_config):
