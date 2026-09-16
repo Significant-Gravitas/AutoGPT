@@ -5,6 +5,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
 import { formatSkillTitle } from "../../SkillsSection/helpers";
@@ -47,12 +48,12 @@ export function ExpertCard({ expert, isHired }: Props) {
           </Avatar>
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+              "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm font-medium",
               accent.pill,
             )}
           >
-            <Icon icon={accent.roleIcon} size={14} />
-            {expert.role}
+            <Icon icon={accent.roleIcon} size={14} className="shrink-0" />
+            {getExpertRoleLabel(expert.role)}
           </span>
         </div>
 

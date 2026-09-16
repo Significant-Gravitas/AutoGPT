@@ -147,7 +147,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_651
+# Bumped 67_651 -> 68_238 for pause_schedule and resume_schedule, the two tools
+# this PR adds. MEASURE ON THE PR'S MERGE REF, never on the branch tip: a stacked
+# PR's CI builds this branch merged through its base into dev, so dev's own growth
+# counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
+# 68,237 — dev widened raise_expert by two characters after this line was first
+# set, which reddened three interpreters on a branch that had added nothing.
+_CHAR_BUDGET = 68_238
 
 
 @pytest.fixture(scope="module")

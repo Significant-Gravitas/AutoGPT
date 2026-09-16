@@ -86,7 +86,7 @@ describe("/raise?role= — the greeting page's raise door", () => {
       hasStarted: true,
       role: "marketer",
       name: "Nova",
-      step: "color" as const,
+      step: "avatar" as const,
     };
     saveDraft(inProgress);
 

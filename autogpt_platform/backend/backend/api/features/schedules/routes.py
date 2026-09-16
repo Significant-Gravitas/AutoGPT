@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Path, Security
 from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.api.features.experts import experts_db
+from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import ScheduleCreationRequest
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -103,12 +104,14 @@ async def list_graph_execution_schedules(
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
         organization_id=ctx.org_id,
         team_ids=team_ids,
+        include_paused=True,
     )
+    return await visible_graph_schedules(schedules, user_id)
 
 
 @router.get(
@@ -120,11 +123,13 @@ async def list_all_graphs_execution_schedules(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         organization_id=ctx.org_id,
         team_ids=team_ids,
+        include_paused=True,
     )
+    return await visible_graph_schedules(schedules, user_id)
 
 
 # Keep above /schedules/{schedule_id}: a GET added there would otherwise match

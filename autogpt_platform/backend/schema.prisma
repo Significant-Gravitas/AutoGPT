@@ -2166,11 +2166,37 @@ model SkillListingVersion {
   // Tenancy
   organizationId String?
 
+  Files     SkillListingFile[]
+
   @@unique([skillListingId, version])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+/// One file beside a published version's SKILL.md, snapshotted at submit time
+/// like the body is. Bytes live in the row: a version is immutable once
+/// approved, capped at 20 MiB in the application layer, and cascade-deleted
+/// with its version, so a blob store would only add orphan cleanup.
+model SkillListingFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  skillListingVersionId String
+  SkillListingVersion   SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  /// Posix path relative to the skill folder, e.g. `scripts/with_server.py`.
+  relativePath String
+  sizeBytes    Int
+  sha256       String
+  mimeType     String?
+  /// Restored on install: `python scripts/x.py` works without it, `./x.py` does not.
+  isExecutable Boolean @default(false)
+
+  content Bytes
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs

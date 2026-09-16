@@ -21,6 +21,18 @@ from backend.api.features.experts.credential_counts import expert_credential_pro
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
+from backend.api.features.experts.credentials import (
+    grant_expert_credentials as grant_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    list_expert_credentials as list_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    revoke_expert_credential as revoke_expert_credential,
+)
+from backend.api.features.experts.credentials import (
+    settle_credential_seed as settle_credential_seed,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,
@@ -466,6 +478,26 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
         )
         > 0
     )
+
+
+async def active_expert_ids(user_id: str, expert_ids: set[str]) -> set[str]:
+    """Which of *expert_ids* are live hires of *user_id*, in one query.
+
+    The batched form of :func:`owns_active_expert`, for callers holding a set:
+    a per-id loop is unbounded in the number of experts on a request that
+    previously did no expert work at all.
+    """
+    if not expert_ids:
+        return set()
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={
+            "id": {"in": sorted(expert_ids)},
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    return {row.id for row in rows}
 
 
 async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
@@ -1046,8 +1078,8 @@ async def create_raised_expert(
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
     NULL. Capacity checks and creation share a per-user advisory lock.
-    Attachments are validated before creation. Workflow install failure
-    remains non-fatal and is reported in the result.
+    Attachments are validated before creation. A workflow or marketplace-skill
+    install failure remains non-fatal and is reported in the result.
     """
     resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
     expert = await _create_raised_expert_row(
@@ -1063,24 +1095,38 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
-    failed_skills = await _copy_library_skills(user_id, expert.id, resolved.skill_names)
-    if failed_skills:
+    failed_skill_installs = await raise_attachments.install_marketplace_skills(
+        user_id, expert.id, resolved.skills
+    )
+    # Keyed on the whole attachment, not the bare id: the same slug can be
+    # attached from both the Hub and the user's own library, and a failed Hub
+    # install must not drop the library copy that succeeded.
+    uninstalled = {(f.kind, f.source, f.id) for f in failed_skill_installs}
+    dropped_skills = set(
+        await _copy_library_skills(user_id, expert.id, resolved.library_skill_names)
+    ) | {
+        s.name
+        for s in resolved.skills
+        if (s.attachment.kind, s.attachment.source, s.attachment.id) in uninstalled
+    }
+    if dropped_skills:
         expert = (
             await prisma.models.Expert.prisma().update(
                 where={"id": expert.id},
                 data={
                     "skills": [
-                        s for s in (expert.skills or []) if s not in failed_skills
+                        s for s in (expert.skills or []) if s not in dropped_skills
                     ]
                 },
                 include=_WORKFLOW_INCLUDE,
             )
             or expert
         )
-    failed_attachments = await raise_attachments.install_workflows(
+    failed_workflows = await raise_attachments.install_workflows(
         user_id, expert.id, resolved.workflows
     )
-    if resolved.workflows and len(failed_attachments) < len(resolved.workflows):
+    failed_attachments = failed_skill_installs + failed_workflows
+    if resolved.workflows and len(failed_workflows) < len(resolved.workflows):
         hydrated = await get_expert(user_id, expert.id)
         if hydrated is None:
             raise ExpertNotFoundError(expert.id)
@@ -1092,8 +1138,9 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the Otto skills it
-    was raised with. Defaults and marketplace names have nothing to copy.
+    """Give a freshly raised expert its own copies of the library skills it
+    was raised with. Defaults have nothing to copy; marketplace skills are
+    installed from their listing instead and never reach here.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
     candidates = [
@@ -1106,8 +1153,8 @@ async def _copy_library_skills(
     for name in candidates:
         folder = folders.get(name.strip().lower())
         if folder is None:
-            # A marketplace attachment: no library folder to copy, and the
-            # name is legitimate, so it stays on the row.
+            # A default listed under a name that differs from its slug: no
+            # folder to copy, and the name is legitimate, so it stays.
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder) is None:
@@ -1769,10 +1816,12 @@ async def _install_marketplace_workflow(
     return _to_workflow_ref(row)
 
 
-async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> None:
-    """Detach a workflow from a hired expert, dropping its install-time
-    schedule. The library agent itself is left alone — it is still the
-    user's, and another expert may share it."""
+async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> list[str]:
+    """Detach a workflow from a hired expert and stop its triggers.
+
+    Returns the names of the triggers that were paused or deactivated, so the
+    caller can say what it stopped. The library agent itself is left alone — it
+    is still the user's, and another expert may share it."""
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1786,14 +1835,24 @@ async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> Non
         raise ExpertNotFoundError(expert_id)
 
     row = await prisma.models.ExpertWorkflow.prisma().find_first(
-        where={"id": workflow_id, "expertId": expert_id}
+        where={"id": workflow_id, "expertId": expert_id},
+        include={"LibraryAgent": True},
     )
     if row is None:
         raise NotFoundError(f"Workflow #{workflow_id} not found on expert")
 
     if row.scheduleId:
         await scheduling.delete_workflow_schedule(row.scheduleId, user_id, expert_id)
+    stopped: list[str] = []
+    if row.LibraryAgent is not None:
+        stopped = await scheduling.suspend_workflow_triggers(
+            user_id,
+            expert_id,
+            row.LibraryAgent.agentGraphId,
+            except_schedule_id=row.scheduleId,
+        )
     await prisma.models.ExpertWorkflow.prisma().delete(where={"id": row.id})
+    return stopped
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:

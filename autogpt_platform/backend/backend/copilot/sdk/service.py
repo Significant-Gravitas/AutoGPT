@@ -117,6 +117,7 @@ from ..permissions import (
     apply_tool_permissions,
 )
 from ..prompting import (
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -175,7 +176,7 @@ from ..tools import (
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
-from ..tools.skills import build_skills_context
+from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -1745,6 +1746,7 @@ async def _apply_building_mode_restart(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + get_chat_platform_supplement(session.metadata.source_platform)
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -4461,6 +4463,38 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _maybe_prepend_skills_update(
+    session: ChatSession,
+    user_id: str | None,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<skills_update>`` drift notice, if any.
+
+    Compares the live skill registry against the ``<available_skills>``
+    index baked into the session history at session start. No-op for
+    non-user turns, anonymous turns, and steady-state sessions — and for
+    the first turn, where ``inject_user_context`` just wrote a fresh index
+    into history so the diff is empty by construction. Query-only: the
+    notice is never persisted, so a later turn re-diffs from the same
+    baseline and the reminder clears itself once the session restarts.
+    """
+    if not is_user_message or not user_id:
+        return query_message
+    try:
+        notice = await build_skills_update_notice(
+            user_id,
+            expert_id=session.expert_id,
+            prior_contents=[
+                m.content or "" for m in session.messages if m.role == "user"
+            ],
+        )
+    except Exception:
+        logger.exception("[skills] failed to build skills update notice")
+        return query_message
+    return notice + query_message if notice else query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -4812,6 +4846,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         team_building_supplement = get_team_building_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        chat_platform_supplement = get_chat_platform_supplement(
+            session.metadata.source_platform
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4829,6 +4866,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
+            + chat_platform_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -5354,6 +5392,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        # Skill-drift notice — same query-only contract as builder
+        # context: never persisted, re-diffed every turn.
+        query_message = await _maybe_prepend_skills_update(
+            session, user_id, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5547,6 +5590,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
+                    session, user_id, is_user_message, state.query_message
+                )
+                state.query_message = await _maybe_prepend_skills_update(
                     session, user_id, is_user_message, state.query_message
                 )
                 prior_adapter = state.adapter
