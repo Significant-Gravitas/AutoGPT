@@ -40,13 +40,18 @@ from backend.data.model import AutoTopUpConfig, TransactionHistory
 from backend.data.org_credit import OrgCreditModel
 
 from .billing.credits import routes as credits_routes
+from .billing.subscriptions import routes as subscriptions_routes
 from .v1 import v1_router
 
 app = fastapi.FastAPI()
-# The credits routes now live in their own module; the subscription routes
-# this suite also covers are still on v1_router until #14477 moves them.
+# Both halves of /credits now live in their own modules. v1_router stays mounted
+# because this suite's role matrix still reaches routes left behind in it; every
+# further layer that moves a /credits route has to add its router here too, and
+# the durable fix is to give the request-level tests the real app as the two
+# introspection tests already use.
 app.include_router(v1_router)
 app.include_router(credits_routes.router)
+app.include_router(subscriptions_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 ORG_ID = "test-org"
@@ -220,10 +225,13 @@ def credit_stubs(mocker: pytest_mock.MockFixture) -> CreditStubs:
         return_value="https://billing.example.com/portal"
     )
     model.get_refund_requests = AsyncMock(return_value=[])
-    # manage_payment_method is still on v1_router until #14477 moves the
-    # subscription section, and it resolves v1's own get_credit_model — so the
-    # suite spans two modules and both bindings need stubbing.
-    mocker.patch("backend.api.features.v1.get_credit_model", return_value=model)
+    # manage_payment_method moved to the subscriptions module with #14477 and
+    # resolves that module's own get_credit_model — so the suite spans two
+    # modules and both bindings need stubbing.
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_credit_model",
+        return_value=model,
+    )
     return CreditStubs(
         get_credit_model=mocker.patch(
             "backend.api.features.billing.credits.routes.get_credit_model",
