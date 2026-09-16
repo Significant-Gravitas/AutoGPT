@@ -74,36 +74,6 @@
     }
   },
   {
-    "name": "mcp_airwallex_agentos",
-    "display_name": "Airwallex AgentOS",
-    "description": "Work with production billing, issuing, treasury, and supported payment workflows.",
-    "mcp_server": {
-      "server_url": "https://mcp.airwallex.com/mcp",
-      "documentation_url": "https://www.airwallex.com/docs/developer-tools/ai/agentos",
-      "setup_instructions": "Sign in with a production Airwallex account. Available actions depend on account permissions; money-out tools require explicit enablement.",
-      "connection_mode": "hosted",
-      "auth_methods": [
-        "oauth"
-      ],
-      "icon_id": "airwallex"
-    }
-  },
-  {
-    "name": "mcp_airwallex_developer",
-    "display_name": "Airwallex Developer",
-    "description": "Use the separate Developer MCP to explore APIs and test sandbox integrations.",
-    "mcp_server": {
-      "server_url": "https://mcp.sandbox.airwallex.com/developer",
-      "documentation_url": "https://www.airwallex.com/docs/developer-tools/ai/developer-connector",
-      "setup_instructions": "Sign in with an Airwallex sandbox account. This server provides documentation and sandbox testing tools; production account operations use the separate AgentOS server.",
-      "connection_mode": "hosted",
-      "auth_methods": [
-        "oauth"
-      ],
-      "icon_id": "airwallex"
-    }
-  },
-  {
     "name": "mcp_algolia_productivity",
     "display_name": "Algolia Productivity",
     "description": "Read search indexes, results, facets, recommendations, and analytics.",
@@ -258,21 +228,6 @@
         "none"
       ],
       "icon_id": "arize"
-    }
-  },
-  {
-    "name": "mcp_astronomer",
-    "display_name": "Astronomer",
-    "description": "Read Astro Deployments, Workspaces, environment objects, and organization settings.",
-    "mcp_server": {
-      "server_url": "https://api.astronomer.io/v1alpha1/astro/mcp",
-      "documentation_url": "https://www.astronomer.io/docs/astro/astro-mcp-server",
-      "setup_instructions": "Ask your Astronomer account team to enable Astro MCP in Labs, then sign in with your Astro credentials to access the account control plane.",
-      "connection_mode": "hosted",
-      "auth_methods": [
-        "oauth"
-      ],
-      "icon_id": "astronomer"
     }
   },
   {
