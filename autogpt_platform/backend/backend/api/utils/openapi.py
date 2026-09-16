@@ -35,7 +35,32 @@ def sort_openapi(app: FastAPI) -> None:
                 sorted(openapi_schema["components"][k].items())
             )
 
+        _restore_binary_format(openapi_schema)
+
         app.openapi_schema = openapi_schema
         return openapi_schema
 
     app.openapi = custom_openapi
+
+
+def _restore_binary_format(node: object) -> None:
+    # fastapi>=0.129.1 renders file fields as contentMediaType; orval and other
+    # client generators only map `format: binary` to a Blob/File type.
+    if isinstance(node, list):
+        for item in node:
+            _restore_binary_format(item)
+        return
+    if not isinstance(node, dict):
+        return
+    if (
+        node.get("type") == "string"
+        and node.get("contentMediaType") == "application/octet-stream"
+    ):
+        entries = list(node.items())
+        node.clear()
+        node.update(
+            ("format", "binary") if key == "contentMediaType" else (key, value)
+            for key, value in entries
+        )
+    for value in node.values():
+        _restore_binary_format(value)

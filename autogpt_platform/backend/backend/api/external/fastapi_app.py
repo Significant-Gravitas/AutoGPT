@@ -14,6 +14,8 @@ external_api = FastAPI(
     description="External API for AutoGPT integrations",
     docs_url="/docs",
     version="1.0",
+    # fastapi>=0.132 rejects JSON bodies sent without a Content-Type; keep accepting them.
+    strict_content_type=False,
 )
 
 external_api.add_middleware(SecurityHeadersMiddleware)

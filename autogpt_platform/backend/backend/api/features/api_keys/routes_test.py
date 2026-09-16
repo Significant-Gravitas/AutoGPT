@@ -39,11 +39,23 @@ def test_api_key_surface_has_no_other_operations():
     assert published == set(EXPECTED_OPERATIONS)
 
 
+def _iter_api_routes(routes):
+    # fastapi>=0.141 registers included routers lazily as _IncludedRouter
+    # entries; expand them to reach the underlying route contexts.
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif hasattr(route, "effective_candidates"):
+            yield from _iter_api_routes(route.effective_candidates())
+        elif hasattr(route, "endpoint") and hasattr(route, "path"):
+            yield route
+
+
 @pytest.mark.parametrize("path", sorted({p for _, p in EXPECTED_OPERATIONS}))
 def test_api_key_path_is_served_by_this_module(path: str):
     handlers = {
         route.endpoint.__module__
-        for route in app.routes
-        if isinstance(route, APIRoute) and route.path == path
+        for route in _iter_api_routes(app.routes)
+        if route.path == path
     }
     assert handlers == {"backend.api.features.api_keys.routes"}
