@@ -19,7 +19,7 @@ from prisma.models import (
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
-from backend.api.features.executions.review.model import (
+from backend.api.features.graph_executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )

@@ -120,9 +120,11 @@ describe("Library low-credit banner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /top up/i }));
 
-    // The dialog body copy mentions Otto, which the banner copy does not —
+    // The dialog body copy mentions experts, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
-    expect(await screen.findByText(/keep your agents and Otto/i)).toBeDefined();
+    expect(
+      await screen.findByText(/keep your agents and experts/i),
+    ).toBeDefined();
   });
 
   test("hides the banner when the user still has credits", async () => {

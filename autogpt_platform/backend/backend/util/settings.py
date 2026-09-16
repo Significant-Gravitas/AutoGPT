@@ -144,13 +144,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=21600,
         ge=60,
         le=21600,
-        description="Hard timeout for one native Codex Otto turn.",
+        description="Hard timeout for one native Codex expert turn.",
     )
     codex_copilot_tool_timeout_seconds: int = Field(
         default=900,
         ge=10,
         le=3600,
-        description="Maximum wait for one Otto dynamic tool callback.",
+        description="Maximum wait for one dynamic tool callback during an expert turn.",
     )
     codex_login_timeout_seconds: int = Field(
         default=900,
@@ -189,7 +189,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Wall-clock cap on a single LLM provider request, covering the whole "
             "generation (the block path is non-streaming). Raising it lengthens how "
             "long a stalled provider holds one of `num_graph_workers` slots. "
-            "AgentExecutor and Otto opt out of the per-node cap, so for those "
+            "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
             "this is the only per-call wall-clock bound."
         ),
     )
@@ -277,7 +277,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Hard cap on in-flight (running + queued) Otto/CoPilot "
+            "Hard cap on in-flight (running + queued) expert "
             "chat turns per user. Once running >= "
             "``max_running_copilot_turns_per_user`` and the queue brings the "
             "total to this number, ``POST /chat/stream`` returns 429. "
@@ -291,7 +291,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "Soft cap on concurrently *running* Otto/CoPilot chat "
+            "Soft cap on concurrently *running* expert chat "
             "turns per user. Tasks submitted while the user is at this cap "
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
@@ -753,7 +753,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     external_oauth_callback_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed callback URL origins for external OAuth flows. "
-        "External apps (like Otto) must have their callback URLs start with one of these origins.",
+        "External apps must have their callback URLs start with one of these origins.",
     )
 
     @field_validator("trusted_frontend_origins")

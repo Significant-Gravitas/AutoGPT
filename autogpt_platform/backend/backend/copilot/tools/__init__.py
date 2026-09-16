@@ -27,6 +27,15 @@ from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
 from .expert_onboarding import ExpertOnboardingTool
+from .expert_resources import (
+    GrantExpertCredentialTool,
+    InstallExpertWorkflowTool,
+    ListExpertCredentialsTool,
+    ListExpertWorkflowsTool,
+    RemoveExpertWorkflowTool,
+    RequestCredentialGrantTool,
+    RevokeExpertCredentialTool,
+)
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -184,6 +193,15 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # own data, read with the query the chat API uses.
     "list_expert_chats": ListExpertChatsTool(),
     "read_expert_chat": ReadExpertChatTool(),
+    # Expert resources: an expert installs onto itself, Otto names the
+    # expert. Credential grants are the owner's call, so Otto only.
+    "install_expert_workflow": InstallExpertWorkflowTool(),
+    "remove_expert_workflow": RemoveExpertWorkflowTool(),
+    "list_expert_workflows": ListExpertWorkflowsTool(),
+    "list_expert_credentials": ListExpertCredentialsTool(),
+    "grant_expert_credential": GrantExpertCredentialTool(),
+    "revoke_expert_credential": RevokeExpertCredentialTool(),
+    "request_credential_grant": RequestCredentialGrantTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -197,7 +215,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "delegation", "expert_resources"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -227,6 +247,16 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # Workflow installs work from either side; credential grants are
+    # owner-only, so they ride the staffing gate.
+    "install_expert_workflow": "expert_resources",
+    "remove_expert_workflow": "expert_resources",
+    "list_expert_workflows": "expert_resources",
+    "list_expert_credentials": "expert_resources",
+    "grant_expert_credential": "expert_admin",
+    "revoke_expert_credential": "expert_admin",
+    # Only an expert has someone to ask.
+    "request_credential_grant": "experts",
     # Read-only, but it shares the same gate: with the flag off there is no
     # team to list.
     "list_team": "delegation",
@@ -244,7 +274,7 @@ def expert_tool_disabled_groups(
     expert-session tools (``experts``).
     """
     if not experts_enabled:
-        return ["experts", "expert_admin", "delegation"]
+        return ["experts", "expert_admin", "delegation", "expert_resources"]
     return ["expert_admin"] if expert_id else ["experts"]
 
 

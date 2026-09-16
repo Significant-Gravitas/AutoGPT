@@ -361,7 +361,7 @@ describe("ToolResult", () => {
         />,
       );
 
-      expect(screen.getByText("Sub-Otto")).toBeDefined();
+      expect(screen.getByText("Expert")).toBeDefined();
       expect(screen.getByText("1m 15s")).toBeDefined();
       expect(screen.getByText("Everything worked")).toBeDefined();
       expect(
