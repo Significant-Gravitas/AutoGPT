@@ -336,8 +336,8 @@ def _enforced_org_actions(dependant: Dependant) -> set[OrgAction]:
 # The ``/api/credits*`` routes deliberately NOT behind MANAGE_BILLING. T250.2's
 # audit (SECRT-2650) found that none of them needs it, so each is asserted by
 # WHAT makes it safe: a name in an exemption list survives the removal of the
-# thing that justified it, which is how eight of these went a release without
-# anyone checking them.
+# thing that justified it, and eight of these sat outside this suite's view from
+# the day it shipped, because it mounted one router rather than the app.
 ADMIN_CREDITS_ROUTES = {
     "add_user_credits",
     "admin_get_all_user_history",
