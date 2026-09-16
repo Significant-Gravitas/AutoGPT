@@ -1,6 +1,7 @@
 """Unit tests for ChatConfig."""
 
 import pytest
+from pydantic import ValidationError
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
@@ -1210,3 +1211,9 @@ class TestLangfusePromptCacheTTL:
         # Read the field default, not an instance: backend/.env can set
         # CHAT_LANGFUSE_PROMPT_CACHE_TTL and mask it.
         assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 300
+
+    def test_a_negative_ttl_is_rejected(self):
+        # A negative TTL would skip our revalidation and expire the SDK entry
+        # at once, which is the unbounded staleness this field exists to avoid.
+        with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
+            ChatConfig(langfuse_prompt_cache_ttl=-1)
