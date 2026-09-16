@@ -1441,9 +1441,9 @@ def _compaction_target_tokens(model: str) -> int:
     Floors at 10K to preserve at least some history budget.
 
     Deliberately a *different* window from the one the CLI subprocess is
-    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
-    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
-    this path feeds our own estimate-based compressor, which needs that
+    pinned to (the per-route pin in ``sdk/context_window.py``): the catalog
+    caps every Anthropic model at 200K pending the Claude-5 tokenizer soak,
+    and this path feeds our own estimate-based compressor, which needs that
     margin.  The 20K headroom absorbs the max-output reserve the CLI also
     subtracts and this formula does not.
     """
