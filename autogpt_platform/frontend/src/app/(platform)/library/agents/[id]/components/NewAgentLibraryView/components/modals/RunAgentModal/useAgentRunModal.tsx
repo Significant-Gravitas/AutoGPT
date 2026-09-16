@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
+import { getVisibleFields } from "../AgentInputsReadOnly/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
@@ -226,7 +227,7 @@ export function useAgentRunModal(
   );
 
   const agentInputFields = useMemo(
-    () => getVisibleInputFields(agentInputSchema),
+    () => getVisibleFields(agentInputSchema),
     [agentInputSchema],
   );
 
@@ -238,7 +239,7 @@ export function useAgentRunModal(
   );
 
   const triggerConfigFields = useMemo(
-    () => getVisibleInputFields(triggerConfigSchema),
+    () => getVisibleFields(triggerConfigSchema),
     [triggerConfigSchema],
   );
 
@@ -431,23 +432,4 @@ export function isFilled(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "object") return Object.keys(value).length > 0;
   return true;
-}
-
-// Pull the non-hidden field schemas out of a JSON schema object, tolerating a
-// missing/malformed schema (returns an empty map).
-function getVisibleInputFields(schema: unknown): Record<string, any> {
-  if (
-    !schema ||
-    typeof schema !== "object" ||
-    !("properties" in schema) ||
-    !schema.properties
-  ) {
-    return {};
-  }
-  const properties = (schema as { properties: Record<string, any> }).properties;
-  return Object.fromEntries(
-    Object.entries(properties).filter(
-      ([_, subSchema]: [string, any]) => !subSchema.hidden,
-    ),
-  );
 }

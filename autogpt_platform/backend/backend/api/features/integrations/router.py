@@ -1349,7 +1349,10 @@ async def _execute_webhook_preset_trigger(
     # Separate the trigger node's input mask from the regular graph inputs. The
     # trigger config is nested under a per-node key (see setup_triggered_preset).
     graph_inputs = preset.inputs.copy()
-    trigger_inputs = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
+    # dict(): the copy above is shallow, so writing `payload` below would land in
+    # the nested dict `preset.inputs` still holds.
+    mask = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
+    trigger_inputs = dict(mask) if mask is not None else None
     if trigger_inputs is None:
         # We can't run this, so log a warning and skip
         logger.warning(

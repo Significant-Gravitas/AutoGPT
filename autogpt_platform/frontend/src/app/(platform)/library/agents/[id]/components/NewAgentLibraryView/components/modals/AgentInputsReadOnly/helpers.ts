@@ -25,7 +25,7 @@ export function getTriggerConfigFields(
   return getVisibleFields(agent.trigger_setup_info?.config_schema);
 }
 
-function getVisibleFields(schema: unknown): Record<string, any> {
+export function getVisibleFields(schema: unknown): Record<string, any> {
   const properties = (schema as { properties?: Record<string, any> } | null)
     ?.properties;
   if (!properties) return {};

@@ -23,6 +23,7 @@ import { SelectedScheduleView } from "./components/selected-views/SelectedSchedu
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTriggerAgentView/SelectedTriggerAgentView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
+import { splitPresetInputs } from "./components/selected-views/SelectedTriggerView/helpers";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
@@ -69,6 +70,10 @@ export function NewAgentLibraryView() {
 
   const [changelogOpen, setChangelogOpen] = useState(false);
   const { isNewLayoutActive } = usePlatformChrome();
+
+  // A triggered preset whose webhook was detached is filed under Templates, so
+  // its stored inputs can still carry the trigger node's mask.
+  const activeTemplateInputs = splitPresetInputs(activeTemplate?.inputs);
 
   useEffect(() => {
     if (agent) {
@@ -266,7 +271,8 @@ export function NewAgentLibraryView() {
               onRunCreated={onRunInitiated}
               onScheduleCreated={onScheduleCreated}
               onTriggerSetup={onTriggerSetup}
-              initialInputValues={activeTemplate?.inputs}
+              initialInputValues={activeTemplateInputs.inputs}
+              initialTriggerConfigValues={activeTemplateInputs.triggerConfig}
               initialInputCredentials={activeTemplate?.credentials}
             />
           </div>
