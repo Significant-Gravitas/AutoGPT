@@ -910,3 +910,52 @@ class TestCodexRouteContext:
 
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
         assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+
+class TestDescribeSdkContext:
+    def test_codex_route_summary(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="codex",
+            model="gpt-6-astra",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "272000",
+                "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "90",
+            },
+        )
+        assert line == (
+            "route=codex model=gpt-6-astra window=272000 "
+            "trigger_pct=90 disable_1m_context=false"
+        )
+
+    def test_platform_route_with_kill_switch_and_default_trigger(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="openrouter",
+            model="anthropic/claude-sonnet-4-6",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+                "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+            },
+        )
+        assert line == (
+            "route=openrouter model=anthropic/claude-sonnet-4-6 window=200000 "
+            "trigger_pct=<cli-default> disable_1m_context=true"
+        )
+
+    def test_never_leaks_secrets(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="openrouter",
+            model="m",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+                "ANTHROPIC_AUTH_TOKEN": "sk-or-very-secret",
+                "ANTHROPIC_CUSTOM_HEADERS": "x-user-id: u-secret",
+            },
+        )
+        assert "sk-or-very-secret" not in line
+        assert "u-secret" not in line

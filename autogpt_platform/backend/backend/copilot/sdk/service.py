@@ -55,6 +55,8 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.env import describe_sdk_context
+from backend.copilot.sdk.langfuse_events import emit_turn_usage_event
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
@@ -4951,6 +4953,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
         )
+        # What this turn's subprocess was pinned to (window/trigger/flags —
+        # never secrets). Without this the pin is unobservable anywhere:
+        # Langfuse sees tokens, never the env vars that shaped them.
+        context_summary = describe_sdk_context(
+            route="codex" if codex_gateway else config.transport.name,
+            model=sdk_model,
+            sdk_env=sdk_env,
+        )
+        logger.info(f"{log_prefix} SDK context: {context_summary}")
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -6045,6 +6056,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 extra_metadata={"billing_mode": "user_subscription"},
                 execution_path="codex_claude_sdk",
             )
+            # The reconcile event below covers OpenRouter turns only; Codex
+            # turns would otherwise leave no usage on their Langfuse trace.
+            # Re-derived (not reused from above): on early exits the gateway
+            # was never built and that local is unbound.
+            gateway_usage = (
+                _codex_gateway_usage(codex_gateway)
+                if codex_gateway is not None
+                else None
+            )
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                codex_input_tokens=(
+                    gateway_usage.input_tokens if gateway_usage else None
+                ),
+                codex_cached_input_tokens=(
+                    gateway_usage.cached_input_tokens if gateway_usage else None
+                ),
+                log_prefix=log_prefix,
+            )
         elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
@@ -6116,6 +6153,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # OpenRouter when ``openrouter_active``, Anthropic
                 # otherwise.
                 provider=("open_router" if config.openrouter_active else "anthropic"),
+            )
+            # Sync path only — when the reconcile fires it emits the
+            # authoritative usage event itself (with the real OpenRouter
+            # bill), so emitting here too would double-report the turn.
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+                cost_usd=turn_cost_usd,
+                model=effective_model,
+                provider=("open_router" if config.openrouter_active else "anthropic"),
+                log_prefix=log_prefix,
             )
 
         # --- Persist session messages ---

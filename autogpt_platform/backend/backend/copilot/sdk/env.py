@@ -219,3 +219,21 @@ def build_sdk_env(
     )
 
     return env
+
+
+def describe_sdk_context(
+    *, route: str, model: str | None, sdk_env: dict[str, str]
+) -> str:
+    """One-line summary of the context the SDK subprocess was pinned to.
+
+    Read back off the built env (rather than recomputed) so the line
+    always states what the subprocess actually received. Never includes
+    secret values — window, trigger, and flags only.
+    """
+    window = sdk_env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "<unset>")
+    pct = sdk_env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "<cli-default>")
+    kill = "true" if "CLAUDE_CODE_DISABLE_1M_CONTEXT" in sdk_env else "false"
+    return (
+        f"route={route} model={model} window={window} "
+        f"trigger_pct={pct} disable_1m_context={kill}"
+    )
