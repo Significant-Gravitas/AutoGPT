@@ -1,32 +1,20 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { bubbleClassFor } from "../ColorStep/helpers";
-import { ACCEPTED_AVATAR_TYPES } from "./helpers";
-import { useAvatarStep } from "./useAvatarStep";
+import { NotionAvatarPicker } from "./components/NotionAvatarPicker/NotionAvatarPicker";
 
 interface Props {
   name: string;
   color: string | null;
   avatarUrl: string | null;
-  isSkipped: boolean;
-  onPick: (avatarUrl: string) => void;
-  onSkip: () => void;
+  onPick: (avatarUrl: string, colorId: string) => void;
 }
 
-export function AvatarStep({
-  name,
-  color,
-  avatarUrl,
-  isSkipped,
-  onPick,
-  onSkip,
-}: Props) {
-  const { fileInputRef, isUploading, openFilePicker, handleFileChange } =
-    useAvatarStep({ onPick });
-
+// The face and the colour are one answer, and the step opens straight onto the
+// picker: there is no version of an expert without a face.
+export function AvatarStep({ name, color, avatarUrl, onPick }: Props) {
   if (avatarUrl) {
     return (
       <div
@@ -50,48 +38,5 @@ export function AvatarStep({
     );
   }
 
-  if (isSkipped) {
-    return (
-      <div
-        className={cn(
-          "ml-auto w-fit rounded-full border px-5 py-2.5 text-sm font-medium text-foreground",
-          bubbleClassFor(color) ?? "border-accent bg-accent/5",
-        )}
-      >
-        No picture for now
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap justify-end gap-2.5">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={ACCEPTED_AVATAR_TYPES}
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden
-        onChange={(event) => handleFileChange(event.target.files?.[0])}
-      />
-      <Button
-        variant="secondary"
-        size="small"
-        className="rounded-full"
-        onClick={openFilePicker}
-        loading={isUploading}
-      >
-        Upload a picture
-      </Button>
-      <Button
-        variant="ghost"
-        size="small"
-        className="rounded-full"
-        onClick={onSkip}
-        disabled={isUploading}
-      >
-        Skip
-      </Button>
-    </div>
-  );
+  return <NotionAvatarPicker name={name} color={color} onPick={onPick} />;
 }

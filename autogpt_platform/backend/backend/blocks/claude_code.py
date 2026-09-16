@@ -25,6 +25,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -324,7 +325,19 @@ class ClaudeCodeBlock(Block):
         try:
             # Either reconnect to existing sandbox or create a new one
             if existing_sandbox_id:
-                # Reconnect to existing sandbox for conversation continuation
+                # Reconnect to existing sandbox for conversation continuation.
+                # The id is caller-supplied and any id connects under our key,
+                # so the box must be stamped with this user before it is used.
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await BaseAsyncSandbox.get_info(
+                    existing_sandbox_id, api_key=e2b_api_key
+                )
+                if not owned_by_user(info.metadata, execution_context.user_id):
+                    raise PermissionError(
+                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                    )
                 sandbox = await BaseAsyncSandbox.connect(
                     sandbox_id=existing_sandbox_id,
                     api_key=e2b_api_key,
@@ -336,6 +349,9 @@ class ClaudeCodeBlock(Block):
                     api_key=e2b_api_key,
                     timeout=timeout,
                     envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    metadata=SandboxMetadata.for_block(
+                        execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
+                    ).as_e2b(),
                 )
 
                 # Install Claude Code from npm (ensures we get the latest version)

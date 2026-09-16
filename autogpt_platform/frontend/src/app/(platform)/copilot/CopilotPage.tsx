@@ -179,7 +179,7 @@ function MainArea({
         <ContextPanel sessionId={sessionId} />
       )}
       {!isMobile && isArtifactsEnabled && sessionId && (
-        <ArtifactPanel hasExternalClose />
+        <ArtifactPanel hasExternalClose sessionId={sessionId} />
       )}
     </div>
   );

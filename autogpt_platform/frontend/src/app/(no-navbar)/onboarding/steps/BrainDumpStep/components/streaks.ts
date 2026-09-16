@@ -3,27 +3,14 @@
 // tilted circle around the body's centre; the comet passes behind the
 // avatar on the far side and in front on the near side.
 
-import {
-  type AvatarConfig,
-  findColor,
-  findShape,
-  VIEWBOX,
-} from "@/components/molecules/BotAvatar/helpers";
-
 export const MAX_STREAKS = 10;
 
-// Gap between the body's outline and the orbit, in viewBox units.
-const CLEARANCE_MIN = 9;
-const CLEARANCE_MAX = 13;
-// Directions sampled around the body when measuring its outline.
+// Gap between the avatar's edge and the orbit, as a fraction of its radius.
+const CLEARANCE_MIN = 0.15;
+const CLEARANCE_MAX = 0.22;
+// Directions sampled around the body. The avatar is a disc, so every sample
+// is the same radius — the array is kept so the orbit maths stays general.
 const PROFILE_STEPS = 72;
-// Furthest a ray from the centre can travel and still be inside any shape.
-const PROFILE_REACH = 80;
-// Smoothing of the measured outline, in samples either side (5° each): the
-// orbit must clear a corner without copying its kink.
-const PROFILE_DILATE = 2;
-const PROFILE_BLUR = 3;
-const PROFILE_BLUR_PASSES = 2;
 // Projected ellipse is about 40% as wide as it is long.
 const ORBIT_TILT = 0.42;
 // How strongly depth changes apparent size: the near side reads about 25%
@@ -32,16 +19,14 @@ const PERSPECTIVE = 0.25;
 // Orbit angle at which the comet is furthest behind the head.
 const BEHIND = (3 * Math.PI) / 2;
 
-// Everything about the space the comets fly in, derived from the avatar they
-// orbit: centred on the body itself (not the box — the dome sits low in its
-// viewBox), following the body's actual outline, scaled to the rendered
-// size, wearing the avatar's own lighter tones.
+// Everything about the space the comets fly in: centred on the avatar, just
+// outside its disc, wearing whatever two tones it was given.
 export interface StreakField {
   size: number;
   pad: number;
   box: number;
   centre: { x: number; y: number };
-  // Distance from the centre to the body's edge, in px, for PROFILE_STEPS
+  // Distance from the centre to the avatar's edge, in px, for PROFILE_STEPS
   // evenly spaced directions starting at 3 o'clock and going clockwise.
   profile: number[];
   clearanceMin: number;
@@ -50,101 +35,23 @@ export interface StreakField {
 }
 
 export function createStreakField(
-  config: AvatarConfig,
+  colors: [string, string],
   size: number,
 ): StreakField {
-  const shape = findShape(config.shape);
-  const color = findColor(config.color);
-  const scale = size / VIEWBOX;
-  const centre = {
-    x: shape.anchors.cx,
-    y: (shape.anchors.top + shape.anchors.bottom) / 2,
-  };
+  const radius = size / 2;
   const pad = size / 4;
   return {
     size,
     pad,
     box: size + pad * 2,
-    centre: { x: centre.x * scale, y: centre.y * scale },
-    profile: smoothProfile(
-      measureBodyProfile(shape.path, centre, shape.anchors),
-    ).map((radius) => radius * scale),
-    clearanceMin: CLEARANCE_MIN * scale,
-    clearanceMax: CLEARANCE_MAX * scale,
-    colors: [color.light, color.body],
+    centre: { x: radius, y: radius },
+    profile: Array.from({ length: PROFILE_STEPS }, () => radius),
+    clearanceMin: CLEARANCE_MIN * radius,
+    clearanceMax: CLEARANCE_MAX * radius,
+    colors,
   };
 }
 
-// Casts a ray from the centre in each direction and finds where it leaves
-// the body, using the shape's own path. Without a canvas (server, tests) it
-// falls back to the ellipse the anchors describe.
-export function measureBodyProfile(
-  path: string,
-  centre: { x: number; y: number },
-  anchors: { width: number; top: number; bottom: number },
-): number[] {
-  const halfWidth = anchors.width / 2;
-  const halfHeight = (anchors.bottom - anchors.top) / 2;
-  const context =
-    typeof document === "undefined"
-      ? null
-      : document.createElement("canvas").getContext("2d");
-  const outline =
-    context && typeof Path2D !== "undefined" ? new Path2D(path) : null;
-
-  return Array.from({ length: PROFILE_STEPS }, (_, step) => {
-    const angle = (step / PROFILE_STEPS) * Math.PI * 2;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    if (!context || !outline) {
-      return (
-        (halfWidth * halfHeight) / Math.hypot(halfHeight * cos, halfWidth * sin)
-      );
-    }
-    let inside = 0;
-    let outside = PROFILE_REACH;
-    for (let iteration = 0; iteration < 20; iteration++) {
-      const middle = (inside + outside) / 2;
-      const hit = context.isPointInPath(
-        outline,
-        centre.x + cos * middle,
-        centre.y + sin * middle,
-      );
-      if (hit) inside = middle;
-      else outside = middle;
-    }
-    return inside;
-  });
-}
-
-// Pushes the outline out to cover nearby corners, then rounds it off, so the
-// orbit is one smooth loop that still stays outside every part of the body.
-export function smoothProfile(profile: number[]): number[] {
-  const steps = profile.length;
-  const at = (values: number[], index: number) =>
-    values[((index % steps) + steps) % steps];
-  const dilated = profile.map((_, index) => {
-    let widest = 0;
-    for (let offset = -PROFILE_DILATE; offset <= PROFILE_DILATE; offset++) {
-      widest = Math.max(widest, at(profile, index + offset));
-    }
-    return widest;
-  });
-  let smoothed = dilated;
-  for (let pass = 0; pass < PROFILE_BLUR_PASSES; pass++) {
-    const source = smoothed;
-    smoothed = source.map((_, index) => {
-      let sum = 0;
-      for (let offset = -PROFILE_BLUR; offset <= PROFILE_BLUR; offset++) {
-        sum += at(source, index + offset);
-      }
-      return sum / (PROFILE_BLUR * 2 + 1);
-    });
-  }
-  return smoothed;
-}
-
-// Body edge distance in a direction, interpolated between measured samples.
 export function bodyRadiusAt(field: StreakField, angle: number) {
   const steps = field.profile.length;
   const turns = (((angle / (Math.PI * 2)) % 1) + 1) % 1;
