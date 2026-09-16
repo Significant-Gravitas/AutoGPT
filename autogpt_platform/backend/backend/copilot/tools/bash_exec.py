@@ -74,7 +74,11 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after `timeout` seconds."
+            "Killed after `timeout` seconds. Anything that should persist across "
+            "sessions or show on the user's desktop belongs in ~/workspace (a "
+            "durable volume shared live with start_desktop); other paths are "
+            "scratch. Expert sessions: ~/workspace is the expert's own machine, "
+            "~/shared is the user's workspace."
         )
 
     @property
