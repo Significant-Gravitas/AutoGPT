@@ -148,6 +148,15 @@ _EXPERT_ID_TTL = 30 * 24 * 3600
 # refreshes it.
 _ACTIVE_TURN_TTL = 6 * 3600 + 15 * 60
 
+# Count one turn and (re)arm the key's expiry in one script: an INCR that
+# lands without its EXPIRE would leave a count nothing ever releases, and the
+# box would never pause at turn end.
+_ACQUIRE_TURN_SCRIPT = (
+    'local n = redis.call("incr", KEYS[1]) '
+    'redis.call("expire", KEYS[1], ARGV[1]) '
+    "return n"
+)
+
 # Release one turn and report how many are left; the last one out deletes
 # the key.  One script, so a turn that starts between the DECR and the DEL
 # can never have its count wiped.
@@ -426,8 +435,7 @@ async def _acquire_turn(owner: SandboxOwner) -> None:
         return
     redis = await get_redis_async()
     key = _active_turns_key(owner)
-    await redis.incr(key)
-    await redis.expire(key, _ACTIVE_TURN_TTL)
+    await redis.eval(_ACQUIRE_TURN_SCRIPT, 1, key, _ACTIVE_TURN_TTL)
 
 
 async def count_expert_turn(session_id: str, expert_id: str | None) -> None:

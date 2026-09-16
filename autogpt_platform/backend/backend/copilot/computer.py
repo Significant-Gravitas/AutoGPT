@@ -206,11 +206,21 @@ async def _open_desktop_locked(
         desktop = await _reconnect_desktop(sandbox_id, owner, api_key, redis, key)
         if desktop is not None:
             # From here on a failure is a real error on a live box, not a
-            # reason to abandon it and create another.
-            await desktop.ensure_display(*_DESKTOP_RESOLUTION)
-            await redis.set(key, sandbox_id, ex=owner.ttl)
-            stream = _owner_bound(await desktop.start_stream(), user_id)
-            return stream, False, await desktop.is_workspace_mounted()
+            # reason to abandon it and create another.  The reconnect woke
+            # the box, so a failed setup pauses it again rather than leaving
+            # it on the meter until the lifecycle timeout.
+            try:
+                await desktop.ensure_display(*_DESKTOP_RESOLUTION)
+                await redis.set(key, sandbox_id, ex=owner.ttl)
+                stream = _owner_bound(await desktop.start_stream(), user_id)
+                mounted = await desktop.is_workspace_mounted()
+            except Exception:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(
+                        desktop.pause(), timeout=_KILL_TIMEOUT_SECONDS
+                    )
+                raise
+            return stream, False, mounted
 
     desktop, persistence = await DesktopSession.create(
         api_key=api_key,

@@ -799,11 +799,19 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     r.get = AsyncMock(side_effect=lambda key: (values.get(key) or "").encode() or None)
     r.set = AsyncMock(return_value=True)
     r.delete = AsyncMock()
-    r.incr = AsyncMock(return_value=1)
-    r.expire = AsyncMock()
-    # ``_release_turn`` runs one script: DECR, and DEL when nothing is left.
-    r.eval = AsyncMock(return_value=max(decr_result, 0))
+    # Two scripts: ``_acquire_turn`` (INCR + EXPIRE) and ``_release_turn``
+    # (DECR, and DEL when nothing is left).
+    r.eval = AsyncMock(
+        side_effect=lambda script, *_: 1 if "incr" in script else max(decr_result, 0)
+    )
     return r
+
+
+def _turn_acquires(redis: AsyncMock) -> list[str]:
+    """Keys the acquire script ran against, in order."""
+    return [
+        call.args[2] for call in redis.eval.await_args_list if "incr" in call.args[0]
+    ]
 
 
 class TestConnectOwned:
@@ -971,7 +979,7 @@ class TestExpertShellBox:
         assert _EXPERT_SHELL_KEY in keys
         assert f"copilot:e2b:sandbox:{_SESSION_ID}" not in keys
         # This turn is counted so a concurrent turn's end cannot pause the box.
-        redis.incr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
+        assert _turn_acquires(redis) == [_EXPERT_ACTIVE_KEY]
 
     def test_lookup_failure_never_creates_a_second_expert_box(self):
         redis = _keyed_redis({})
@@ -1032,9 +1040,18 @@ class TestExpertShellBox:
                     count_turn=False,
                 )
             )
-            redis.incr.assert_not_awaited()
+            assert _turn_acquires(redis) == []
             asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
-        redis.incr.assert_awaited_once_with(_EXPERT_ACTIVE_KEY)
+        assert _turn_acquires(redis) == [_EXPERT_ACTIVE_KEY]
+
+    def test_counting_a_turn_arms_the_expiry_in_the_same_script(self):
+        """An INCR without its EXPIRE would be a count nothing releases."""
+        redis = _keyed_redis({})
+        with _patch_redis(redis):
+            asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
+        script, nkeys, key, ttl = redis.eval.await_args.args
+        assert nkeys == 1 and key == _EXPERT_ACTIVE_KEY
+        assert "incr" in script and "expire" in script and ttl > 0
 
     def test_a_turn_that_cannot_be_counted_does_not_get_the_box(self):
         """An uncounted turn's release would decrement someone else's count
@@ -1043,7 +1060,7 @@ class TestExpertShellBox:
             "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
         )
         redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
-        redis.incr = AsyncMock(side_effect=ConnectionError("redis down"))
+        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
         with (
             _patch_sdk() as mock_cls,
             _patch_redis(redis),
@@ -1055,7 +1072,10 @@ class TestExpertShellBox:
                         _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
                     )
                 )
-        redis.eval.assert_not_awaited()
+        # The failed acquire was the only script; no release ran for it.
+        assert [
+            c.args[0] for c in redis.eval.await_args_list if "decr" in c.args[0]
+        ] == []
 
     def test_creates_expert_box_with_home_and_shared_volumes(self):
         sb = _mock_sandbox("sb-expert-new")
@@ -1133,7 +1153,7 @@ class TestExpertShellBox:
         }
         assert kwargs["volume_mounts"] is None
         mock_cls.list.assert_not_called()
-        redis.incr.assert_not_awaited()
+        assert _turn_acquires(redis) == []
 
 
 class TestExpertPause:

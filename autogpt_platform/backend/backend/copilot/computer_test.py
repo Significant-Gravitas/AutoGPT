@@ -269,6 +269,7 @@ class TestOpenDesktop:
         redis = _redis("sb-live")
         desktop = _desktop("sb-live")
         desktop.ensure_display = AsyncMock(side_effect=RuntimeError("no display"))
+        desktop.pause = AsyncMock()
         with (
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_C}.DesktopSession") as desktop_cls,
@@ -282,6 +283,8 @@ class TestOpenDesktop:
                 await open_desktop(owner, {}, "k", user_id=_USER)
         desktop_cls.create.assert_not_awaited()
         redis.delete.assert_not_awaited()
+        # The reconnect woke the box; a failed setup does not leave it running.
+        desktop.pause.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_a_session_desktop_whose_id_cannot_be_saved_is_killed(self):
