@@ -284,7 +284,10 @@ describe("handleStreamError — structured detail from a pre-stream 429/etc.", (
 
     expect(onRateLimit).toHaveBeenCalledTimes(1);
     expect(onRateLimit.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ kind: "usage_limit", authProvider: "platform" }),
+      expect.objectContaining({
+        kind: "usage_limit",
+        authProvider: "platform",
+      }),
     );
     expect(mockToast).not.toHaveBeenCalled();
   });
