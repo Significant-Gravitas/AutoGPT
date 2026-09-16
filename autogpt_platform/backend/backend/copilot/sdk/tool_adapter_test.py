@@ -3,7 +3,7 @@
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import ListToolsRequest, ToolAnnotations
@@ -1308,6 +1308,62 @@ class TestCreateCopilotMcpServerHidden:
         # All real tools still register.
         for short in self._expected_registry_names():
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_automation_origin_tools_not_registered(self):
+        """The origin gate reaches the MCP server, not just the schema list.
+
+        ``origin_disabled_tools`` is what both engines feed in; on this one
+        hiding IS the enforcement, since an unregistered tool does not exist
+        for the CLI. A legacy ``origin=None`` counts as automation.
+        """
+        from backend.copilot.tools import (
+            INTERACTIVE_ORIGIN_TOOLS,
+            origin_disabled_tools,
+        )
+
+        for origin in ("automation", None):
+            server = create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools(origin)
+            )
+            registered = await self._registered_tool_names(server)
+            assert not (INTERACTIVE_ORIGIN_TOOLS & registered), (
+                f"origin={origin!r} registered "
+                f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
+            )
+            # Narrow by design: the work an automation exists to do stays.
+            assert {"run_agent", "run_block", "run_sub_session"} <= registered
+
+        interactive = await self._registered_tool_names(
+            create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools("interactive")
+            )
+        )
+        assert INTERACTIVE_ORIGIN_TOOLS <= interactive, (
+            "an interactive session lost "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS - interactive)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_env_unavailable_tools_not_registered(self):
+        """``is_available`` is honoured here as it is on the baseline path.
+
+        Without it the model is offered browser tools on a box with no
+        ``agent-browser`` binary, and they fail on first use.
+        """
+        browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value="/x"
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert browser_tools <= registered
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value=None
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert not (browser_tools & registered)
 
     @staticmethod
     def _expected_registry_names() -> set[str]:

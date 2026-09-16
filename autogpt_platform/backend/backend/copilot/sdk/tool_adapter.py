@@ -872,8 +872,21 @@ def create_copilot_mcp_server(
     hidden = frozenset(hidden_tool_names)
     sdk_tools = []
 
-    for tool_name in registered_copilot_tool_names(hidden=hidden):
-        base_tool = TOOL_REGISTRY[tool_name]
+    for tool_name, base_tool in TOOL_REGISTRY.items():
+        # Baseline-only wrappers (TodoWrite) must not be registered here:
+        # SDK mode uses the CLI-native built-ins, and these names are
+        # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
+        # can never approve makes the model call it, receive a permission
+        # denial, and silently abandon the feature (e.g. the task checklist).
+        # ``is_available`` is the env check the baseline path applies in
+        # ``get_available_tools``; without it this engine offers browser
+        # tools on a box with no agent-browser binary.
+        if (
+            tool_name in hidden
+            or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or not base_tool.is_available
+        ):
+            continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
@@ -995,26 +1008,6 @@ def create_copilot_mcp_server(
         version="1.0.0",
         tools=sdk_tools,
     )
-
-
-def registered_copilot_tool_names(*, hidden: frozenset[str] = frozenset()) -> list[str]:
-    """Registry tools :func:`create_copilot_mcp_server` registers this request.
-
-    ``is_available`` is the environment check ``get_available_tools`` applies
-    on the baseline path — read here too, per request, so a deployment without
-    the ``agent-browser`` binary or an E2B key is not offered tools that fail
-    on first use.  Baseline-only wrappers (``TodoWrite``) stay out because SDK
-    mode uses the CLI-native built-in: advertising an MCP copy the CLI can
-    never approve makes the model call it, take a permission denial, and
-    silently abandon the feature.
-    """
-    return [
-        name
-        for name, base_tool in TOOL_REGISTRY.items()
-        if name not in hidden
-        and name not in BASELINE_ONLY_MCP_TOOLS
-        and base_tool.is_available
-    ]
 
 
 # SDK built-in tools allowed within the workspace directory.

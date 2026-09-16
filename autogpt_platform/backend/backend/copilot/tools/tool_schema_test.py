@@ -421,12 +421,11 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
 def test_automation_origin_declares_no_interactive_origin_tools() -> None:
     """A machine-authored session is not offered what its guard would refuse.
 
-    Both engines compose the same set: the baseline path passes it as
-    ``disabled_tools``, the SDK path unions it into the names it never
-    registers. A legacy ``origin=None`` is treated as automation, as
-    ``autopilot_session_guard`` treats it.
+    The baseline path passes the set as ``disabled_tools``; the SDK path
+    unions it into the names it never registers, covered against the real
+    MCP server in ``sdk/tool_adapter_test.py``.  A legacy ``origin=None``
+    is treated as automation, as ``autopilot_session_guard`` treats it.
     """
-    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
         get_available_tools,
@@ -437,18 +436,12 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
         hidden = origin_disabled_tools(origin)
         assert hidden == INTERACTIVE_ORIGIN_TOOLS
 
-        baseline = {
+        declared = {
             t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
         }
-        assert not (INTERACTIVE_ORIGIN_TOOLS & baseline), (
+        assert not (INTERACTIVE_ORIGIN_TOOLS & declared), (
             f"origin={origin!r} still declares "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & baseline)} on the baseline path"
-        )
-
-        sdk = set(registered_copilot_tool_names(hidden=hidden))
-        assert not (INTERACTIVE_ORIGIN_TOOLS & sdk), (
-            f"origin={origin!r} still registers "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & sdk)} on the SDK path"
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & declared)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
         # still reports through a chat platform, still wakes itself up.
@@ -458,7 +451,7 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
             "run_sub_session",
             "schedule_followup",
             "ask_question",
-        } <= sdk
+        } <= declared
 
 
 def test_interactive_origin_declares_every_tool_it_did_before() -> None:
@@ -467,7 +460,6 @@ def test_interactive_origin_declares_every_tool_it_did_before() -> None:
     The counterpart to the test above, and what fails if the gate ever widens
     past ``origin`` into the sessions a person really is driving.
     """
-    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
         get_available_tools,
@@ -477,19 +469,12 @@ def test_interactive_origin_declares_every_tool_it_did_before() -> None:
     hidden = origin_disabled_tools("interactive")
     assert hidden == frozenset()
 
-    baseline = {
+    declared = {
         t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
     }
-    assert INTERACTIVE_ORIGIN_TOOLS <= baseline, (
-        "interactive session lost "
-        f"{sorted(INTERACTIVE_ORIGIN_TOOLS - baseline)} on the baseline path"
-    )
-
-    sdk = set(registered_copilot_tool_names(hidden=hidden))
-    assert INTERACTIVE_ORIGIN_TOOLS <= sdk, (
-        f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - sdk)} "
-        "on the SDK path"
-    )
+    assert (
+        INTERACTIVE_ORIGIN_TOOLS <= declared
+    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - declared)}"
 
 
 def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
@@ -514,22 +499,3 @@ def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
         f"guarded but declared {sorted(guarded - INTERACTIVE_ORIGIN_TOOLS)}, "
         f"hidden but unguarded {sorted(INTERACTIVE_ORIGIN_TOOLS - guarded)}"
     )
-
-
-def test_sdk_path_honours_is_available() -> None:
-    """The SDK engine drops env-unavailable tools, as the baseline one does.
-
-    Without this the model is offered browser tools on a box with no
-    ``agent-browser`` binary, and they fail on first use.
-    """
-    from unittest.mock import patch
-
-    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
-
-    browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
-
-    with patch("backend.copilot.tools.agent_browser.shutil.which", return_value="/x"):
-        assert browser_tools <= set(registered_copilot_tool_names())
-
-    with patch("backend.copilot.tools.agent_browser.shutil.which", return_value=None):
-        assert not (browser_tools & set(registered_copilot_tool_names()))
