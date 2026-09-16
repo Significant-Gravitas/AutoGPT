@@ -10,6 +10,7 @@ from backend.integrations.mcp_catalog import get_mcp_catalog
 from .index import CapabilityIndex
 from .registry import MERGED_IMPLEMENTATIONS, build_entries
 from .resolve import resolve_entry
+from .sources.mcp_catalog import setup_hint
 from .sources import RETIRED_TOOLS
 
 EXPLICIT_PRIMITIVES = {
@@ -91,6 +92,33 @@ def test_every_catalog_preset_survives_as_an_entry(index):
     v2 = resolve_entry(index, "https://mcp.atlassian.com/v2/mcp")
     forge = resolve_entry(index, "https://mcp.atlassian.com/v1/forge/mcp")
     assert v2 is not None and forge is not None and v2.id != forge.id
+
+
+def test_custom_presets_carry_no_url_in_ref(index):
+    """A ``custom`` preset has no shared endpoint. Putting its catalog name
+    in the implementation ref sent it downstream as a hostname, where it
+    failed validation as "Hostname 'mcp_amplitude' has unsupported
+    characters" instead of telling the user to supply their own URL."""
+    custom = [
+        entry
+        for entry in index.entries
+        if entry.kind == "mcp_server" and not entry.implementations[0].ref
+    ]
+    assert custom, "expected catalog presets with no server_url"
+    assert all(not entry.connection.key for entry in custom)
+    assert "mcp:amplitude" in {entry.id for entry in custom}
+    for entry in custom:
+        hint = setup_hint(entry.schema_ref or entry.id)
+        assert "Settings" in hint and entry.name in hint
+
+
+def test_hosted_presets_keep_their_url(index):
+    hosted = [
+        entry
+        for entry in index.entries
+        if entry.kind == "mcp_server" and entry.implementations[0].ref
+    ]
+    assert all(entry.implementations[0].ref.startswith("https://") for entry in hosted)
 
 
 def test_listing_stays_compact(index):

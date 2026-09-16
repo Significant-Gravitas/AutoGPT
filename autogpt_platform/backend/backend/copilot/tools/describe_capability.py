@@ -8,6 +8,7 @@ from backend.copilot.capabilities.models import CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
+from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -149,6 +150,11 @@ async def _describe_mcp(
     entry: CapabilityEntry, user_id: str, session: ChatSession
 ) -> ToolResponseBase:
     server_url = entry.implementations[0].ref
+    if not server_url:
+        return ErrorResponse(
+            message=setup_hint(entry.schema_ref or entry.id),
+            session_id=session.session_id,
+        )
     result = await RunMCPToolTool()._execute(user_id, session, server_url=server_url)
     if isinstance(result, MCPToolsDiscoveredResponse):
         result.message = (

@@ -18,6 +18,7 @@ from backend.copilot.capabilities.mcp_review import (
 from backend.copilot.capabilities.models import CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
+from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.context import (
     get_current_envelope,
@@ -135,6 +136,11 @@ class RunCapabilityTool(BaseTool):
             return await _run_tool(entry, user_id, session, payload, validate_only)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
+            if not server_url:
+                return ErrorResponse(
+                    message=setup_hint(entry.schema_ref or entry.id),
+                    session_id=session_id,
+                )
             return await _run_mcp(
                 entry, server_url, user_id, session, payload, validate_only
             )

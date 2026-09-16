@@ -43,7 +43,8 @@
       "icon_id": "agent_mail",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "provider": "agent_mail"
     }
   },
   {
@@ -70,7 +71,8 @@
         "data.records:write",
         "schema.bases:write",
         "data.recordComments:write"
-      ]
+      ],
+      "provider": "airtable"
     }
   },
   {
@@ -197,7 +199,8 @@
       "oauth_write_scopes": [
         "contact_write",
         "contact_update"
-      ]
+      ],
+      "provider": "apollo"
     }
   },
   {
@@ -596,7 +599,8 @@
       "auth_methods": [
         "bearer"
       ],
-      "icon_id": "github"
+      "icon_id": "github",
+      "provider": "github"
     }
   },
   {
@@ -754,7 +758,8 @@
       "oauth_write_scopes": [
         "write"
       ],
-      "icon_id": "linear"
+      "icon_id": "linear",
+      "provider": "linear"
     }
   },
   {
@@ -825,7 +830,8 @@
       ],
       "oauth_scopes": [
         "default"
-      ]
+      ],
+      "provider": "notion"
     }
   },
   {
@@ -942,7 +948,8 @@
         "oauth",
         "bearer"
       ],
-      "icon_id": "stripe"
+      "icon_id": "stripe",
+      "provider": "stripe"
     }
   },
   {
@@ -1010,7 +1017,8 @@
       "auth_methods": [
         "oauth"
       ],
-      "icon_id": "tavily"
+      "icon_id": "tavily",
+      "provider": "tavily"
     }
   },
   {
@@ -1028,7 +1036,8 @@
       "oauth_scopes": [
         "data:read_write"
       ],
-      "icon_id": "todoist"
+      "icon_id": "todoist",
+      "provider": "todoist"
     }
   },
   {

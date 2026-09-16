@@ -336,10 +336,28 @@ class RunMCPToolTool(BaseTool):
                 # not a rejection, so it stores, returns 2xx and greens the
                 # pill — and the next call 403s again. Reporting it as
                 # connected breaks that loop.
+                kept_credential = creds is not None and not credential_rejected
+                if kept_credential and tool_name:
+                    # ...but on a *named tool call* the connected card reads as
+                    # success and says nothing about the refusal, so the caller
+                    # retries the same tool forever. Report the refusal.
+                    host = server_host(server_url)
+                    return ErrorResponse(
+                        message=(
+                            f"{_service_name(host)} refused '{tool_name}' with HTTP "
+                            f"{e.status_code}. The sign-in is still valid, so this is "
+                            "a permission or scope limit on that tool, not a missing "
+                            "credential. Call run_capability without a tool to list "
+                            "what this server actually exposes, or tell the user which "
+                            "permission the account is missing."
+                        ),
+                        session_id=session_id,
+                        error=f"HTTP {e.status_code}: {str(e)[:300]}",
+                    )
                 return self._build_setup_requirements(
                     server_url,
                     session_id,
-                    connected=creds is not None and not credential_rejected,
+                    connected=kept_credential,
                     rejection=rejected,
                 )
             host = server_host(server_url)
