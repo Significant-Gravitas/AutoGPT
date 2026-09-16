@@ -570,24 +570,6 @@
     }
   },
   {
-    "name": "mcp_finances_plaid",
-    "display_name": "Plaid Dashboard",
-    "description": "Investigate Plaid integrations, API usage and diagnostics from your team's Dashboard.",
-    "mcp_server": {
-      "server_url": "https://api.dashboard.plaid.com/mcp/",
-      "documentation_url": "https://plaid.com/docs/resources/mcp/",
-      "setup_instructions": "Sign in to Plaid Dashboard for developer diagnostics. Your team must have Production approval for at least one Plaid product.",
-      "connection_mode": "hosted",
-      "auth_methods": [
-        "oauth"
-      ],
-      "oauth_scopes": [
-        "mcp:dashboard"
-      ],
-      "icon_id": "plaid"
-    }
-  },
-  {
     "name": "mcp_github",
     "display_name": "GitHub",
     "description": "Search repositories and read code, issues, and pull requests with GitHub's read-only MCP tools.",
