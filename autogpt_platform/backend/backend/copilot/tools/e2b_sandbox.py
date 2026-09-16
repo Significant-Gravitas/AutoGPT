@@ -84,6 +84,7 @@ from e2b import (
     SandboxQuery,
     SandboxState,
 )
+from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
@@ -167,9 +168,18 @@ _RELEASE_TURN_SCRIPT = (
     "return n"
 )
 
-# One more reconnect attempt before a listed expert box is given up on: a
-# durable box that fails once on a transient error must not be forked.
+# One more reconnect attempt before a transient error surfaces: a box that
+# fails once on a blip must not be replaced, whoever owns it.
 _RECONNECT_RETRY_DELAY_SECONDS = 1.0
+
+# Boxes from before one box per owner: a separate desktop, stamped
+# ``autogpt_kind=desktop`` and cached under its own key, that this code no
+# longer opens.  Left alone it would sit paused on E2B, browser profile and
+# all, for as long as E2B keeps paused boxes.  The kill paths sweep them so a
+# deleted chat or an archived expert takes its old desktop with it; once no
+# box from before the switch can exist any more this can go.
+_LEGACY_DESKTOP_KIND = "desktop"
+_LEGACY_DESKTOP_KEY_PREFIX = "copilot:e2b:desktop:"
 
 
 class SandboxOwner(BaseModel):
@@ -208,6 +218,22 @@ class SandboxOwner(BaseModel):
     def display_key(self) -> str:
         """Redis key remembering which box ``open_desktop`` turned the screen on in."""
         return f"{self.key()}:display"
+
+    def stream_key(self) -> str:
+        """Redis key holding the screen's current stream password.
+
+        The password never rests on the box (see ``DesktopSession.start_stream``);
+        this is what lets a re-open hand back the URL the user already holds.
+        It is dropped whenever the box pauses, so a URL that may have leaked
+        is good for one running stretch only.
+        """
+        return f"{self.key()}:stream"
+
+    def legacy_desktop_key(self) -> str:
+        """Where the pre-one-box desktop's id was cached; swept on kill."""
+        if self.is_expert:
+            return f"{_EXPERT_KEY_PREFIX}{self.id}:desktop"
+        return f"{_LEGACY_DESKTOP_KEY_PREFIX}{self.id}"
 
     @property
     def ttl(self) -> int:
@@ -365,20 +391,34 @@ async def find_owned_sandbox_id(owner: SandboxOwner, api_key: str) -> str | None
 
 
 async def _try_reconnect(
-    sandbox_id: str, owner: "SandboxOwner | str", api_key: str
+    sandbox_id: str,
+    owner: "SandboxOwner | str",
+    api_key: str,
+    *,
+    timeout: int | None = None,
 ) -> "AsyncSandbox | None":
-    """Try to reconnect to an existing sandbox. Returns None on failure."""
+    """Reconnect to the owner's box, or ``None`` if it is gone.
+
+    Gone means E2B no longer has it, it is stamped for someone else, or it
+    came back not running: the cached id is dropped so a replacement can be
+    created.  Anything else (a 5xx, a network blip) is raised, not swallowed.
+    The box may be perfectly fine, and replacing it on a guess would fork
+    everything on it that is not in a volume: the screen, running processes,
+    installed tools.  *timeout* re-arms the box's running-time limit.
+    """
     owner = _as_owner(owner)
     try:
-        sandbox = await connect_owned(sandbox_id, owner, api_key)
+        sandbox = await connect_owned(sandbox_id, owner, api_key, timeout=timeout)
+    except SandboxNotOwnedError as exc:
+        logger.warning("[E2B] Refusing reconnect: %s", exc)
+    except NotFoundException as exc:
+        logger.warning("[E2B] Box %.12s is gone: %s", sandbox_id, exc)
+    else:
         if await sandbox.is_running():
             # Refresh TTL so an active owner cannot lose its sandbox_id at expiry.
             await _set_stored_sandbox_id(owner, sandbox_id)
             return sandbox
-    except SandboxNotOwnedError as exc:
-        logger.warning("[E2B] Refusing reconnect: %s", exc)
-    except Exception as exc:
-        logger.warning("[E2B] Reconnect to %.12s failed: %s", sandbox_id, exc)
+        logger.warning("[E2B] Box %.12s came back not running", sandbox_id)
 
     # Stale — clear the sandbox_id from Redis so a new one can be created.
     await _clear_stored_sandbox_id(owner)
@@ -503,10 +543,11 @@ async def get_or_create_owner_sandbox(
     """
     redis = await get_redis_async()
     key = owner.key()
-    # Boxes E2B still lists but we could not reconnect to twice (mid-teardown,
-    # an unresumable snapshot). Without this an expert owner would re-find the
+    # Boxes E2B still lists but that are gone by the time we connect (a
+    # teardown in progress).  Without this an expert owner would re-find the
     # same id on every iteration and never fall through to creating a fresh one.
     failed_ids: set[str] = set()
+    # Boxes that already had their one retry after a transient error.
     retried_ids: set[str] = set()
 
     for _ in range(_MAX_WAIT_ATTEMPTS):
@@ -523,19 +564,27 @@ async def get_or_create_owner_sandbox(
 
         if value and value != _CREATING_SENTINEL:
             # Existing sandbox ID — try to reconnect (auto-resumes if paused).
-            sandbox = await _try_reconnect(value, owner, api_key)
-            if sandbox is None and owner.is_expert and value not in retried_ids:
-                # A durable box gets one more chance before it is given up
-                # on; a single transient failure must not fork it.
+            try:
+                sandbox = await _try_reconnect(value, owner, api_key, timeout=timeout)
+            except Exception as exc:
+                if value in retried_ids:
+                    raise
+                # One more chance before the error surfaces: a single blip
+                # must not replace a box, and asking the caller to try
+                # again is better than forking what is on it.
                 retried_ids.add(value)
+                logger.warning(
+                    "[E2B] Reconnect to %.12s failed (%s); retrying once", value, exc
+                )
                 await asyncio.sleep(_RECONNECT_RETRY_DELAY_SECONDS)
-                sandbox = await _try_reconnect(value, owner, api_key)
+                continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
-            # _try_reconnect cleared the key — loop to create a new sandbox.
+            # The box is gone and _try_reconnect cleared the key — loop to
+            # create a new sandbox.
             failed_ids.add(value)
             continue
 
@@ -773,7 +822,10 @@ async def pause_sandbox(
     owner = SandboxOwner.for_session(session_id, expert_id)
     if not await _release_turn(owner):
         return False
-    return await _act_on_sandbox(owner, api_key, "pause", lambda sb: sb.pause())
+    paused = await _act_on_sandbox(owner, api_key, "pause", lambda sb: sb.pause())
+    if paused:
+        await _forget_stream(owner)
+    return paused
 
 
 async def pause_sandbox_direct(
@@ -795,6 +847,7 @@ async def pause_sandbox_direct(
     try:
         await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
         logger.info("[E2B] Paused sandbox %.12s for %s", sandbox.sandbox_id, owner)
+        await _forget_stream(owner)
         return True
     except Exception as exc:
         logger.warning(
@@ -822,7 +875,8 @@ async def kill_sandbox(session_id: str, api_key: str) -> bool:
     )
     if killed:
         await _forget_owner_state(owner)
-    return killed
+    swept = await _kill_legacy_desktops(owner, api_key)
+    return killed or swept > 0
 
 
 async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
@@ -834,15 +888,16 @@ async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
     a paused machine behind.  Returns ``True`` if a box was killed.
     """
     owner = SandboxOwner(kind="expert", id=expert_id)
+    swept = await _kill_legacy_desktops(owner, api_key)
     sandbox_id = await _get_stored_sandbox_id(owner)
     if not sandbox_id:
         try:
             sandbox_id = await find_owned_sandbox_id(owner, api_key)
         except SandboxLookupError as exc:
             logger.warning("[E2B] Archive of %s: %s", owner, exc)
-            return False
+            return swept > 0
     if not sandbox_id:
-        return False
+        return swept > 0
     killed = await _act_on_sandbox(
         owner,
         api_key,
@@ -853,11 +908,70 @@ async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
     )
     if killed:
         await _forget_owner_state(owner)
+    return killed or swept > 0
+
+
+async def _kill_legacy_desktops(owner: SandboxOwner, api_key: str) -> int:
+    """Kill the owner's pre-one-box desktop boxes, if any are still around.
+
+    Found by stamp, not by cache, so a desktop whose key expired is swept
+    too.  Killed by id without connecting: a paused desktop must not be
+    resumed (and billed) just to be destroyed.  Returns how many were killed.
+    """
+    try:
+        paginator = AsyncSandbox.list(
+            query=SandboxQuery(
+                metadata={**owner.metadata(), METADATA_KIND: _LEGACY_DESKTOP_KIND},
+                state=[SandboxState.RUNNING, SandboxState.PAUSED],
+            ),
+            limit=10,
+            api_key=api_key,
+        )
+        infos = await asyncio.wait_for(
+            paginator.next_items(), timeout=_E2B_API_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning("[E2B] Could not list %s's old desktop boxes: %s", owner, exc)
+        return 0
+    killed = 0
+    for info in infos:
+        try:
+            await asyncio.wait_for(
+                AsyncSandbox.kill(info.sandbox_id, api_key=api_key),
+                timeout=_E2B_API_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[E2B] Failed to kill old desktop %.12s for %s: %s",
+                info.sandbox_id,
+                owner,
+                exc,
+            )
+            continue
+        killed += 1
+        logger.info("[E2B] Killed old desktop %.12s for %s", info.sandbox_id, owner)
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.delete(owner.legacy_desktop_key())
     return killed
 
 
 async def _forget_owner_state(owner: SandboxOwner) -> None:
-    """Drop the screen flag and turn counter once their box is really gone."""
+    """Drop the screen flag, stream password and turn counter once their box
+    is really gone."""
     with contextlib.suppress(Exception):
         redis = await get_redis_async()
-        await redis.delete(owner.display_key(), _active_turns_key(owner))
+        await redis.delete(
+            owner.display_key(), owner.stream_key(), _active_turns_key(owner)
+        )
+
+
+async def _forget_stream(owner: SandboxOwner) -> None:
+    """Drop the stream password: the screen's next open issues a fresh one.
+
+    Called whenever the box pauses, so the window in which a stream URL
+    works is one running stretch of the box (``SandboxOwner.stream_key``).
+    """
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.delete(owner.stream_key())

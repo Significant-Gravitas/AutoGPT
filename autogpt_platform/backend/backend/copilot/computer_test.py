@@ -36,9 +36,11 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
     )
 
 
-def _redis(display: str | None, lock_free: bool = True):
+def _redis(display: str | None, lock_free: bool = True, stream: str | None = None):
     r = MagicMock()
-    r.get = AsyncMock(return_value=display)
+    r.get = AsyncMock(
+        side_effect=lambda key: stream if key.endswith(":stream") else display
+    )
     r.set = AsyncMock(return_value=lock_free)
     r.delete = AsyncMock()
     r.eval = AsyncMock(return_value=1)
@@ -56,21 +58,23 @@ def _desktop(sandbox_id: str = "sb-1", mounted: bool = True):
     d.ensure_display = AsyncMock()
     d.ensure_persistent_home = AsyncMock()
     d.is_workspace_mounted = AsyncMock(return_value=mounted)
-    d.start_stream = AsyncMock(
-        return_value=DesktopStream(
-            url="https://6080-x.e2b.app/vnc.html?password=secret", sandbox_id=sandbox_id
-        )
-    )
+    d.start_stream = AsyncMock(return_value=(_LIVE_STREAM(sandbox_id), "secret"))
     return d
+
+
+def _LIVE_STREAM(sandbox_id: str) -> DesktopStream:
+    return DesktopStream(
+        url="https://6080-x.e2b.app/vnc.html?password=secret", sandbox_id=sandbox_id
+    )
 
 
 @pytest.fixture(autouse=True)
 def _owner_bound_links():
     with patch(
         f"{_C}.create_preview_link",
-        side_effect=lambda user_id, url: f"preview://{user_id}/{url}",
-    ):
-        yield
+        side_effect=lambda user_id, url: f"preview://{user_id}/token",
+    ) as link:
+        yield link
 
 
 class TestComputerOwner:
@@ -217,15 +221,58 @@ class TestOpenDesktop:
         )
 
     @pytest.mark.asyncio
-    async def test_hands_out_an_owner_bound_link_never_the_password_url(self):
+    async def test_hands_out_an_owner_bound_link_never_the_password_url(
+        self, _owner_bound_links
+    ):
         owner = SandboxOwner(kind="session", id=_SESSION)
         redis, sandbox, desktop = _redis(None), _sandbox("sb-1"), _desktop("sb-1")
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with redis_p, get_p, cls_p, cfg_p:
             stream, _, _ = await open_desktop(owner, {}, "k", user_id=_USER)
-        assert stream.url.startswith(f"preview://{_USER}/")
+        # The live URL went into the link for this user, and only the link
+        # comes out.
+        _owner_bound_links.assert_called_once_with(_USER, _LIVE_STREAM("sb-1").url)
+        assert stream.url == f"preview://{_USER}/token"
         assert stream.requires_auth is True
-        assert "password" not in stream.url.split("/", 3)[2]
+        assert "secret" not in stream.model_dump_json()
+
+    @pytest.mark.asyncio
+    async def test_first_open_starts_a_stream_under_a_new_password(self):
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis, sandbox, desktop = _redis(None), _sandbox("sb-1"), _desktop("sb-1")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p as cfg:
+            cfg.e2b_sandbox_timeout = 420
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with(None)
+        # Remembered off the box, for as long as the box could keep running.
+        redis.set.assert_any_await(
+            f"copilot:e2b:sandbox:{_SESSION}:stream", "secret", ex=420
+        )
+
+    @pytest.mark.asyncio
+    async def test_reopen_hands_back_the_same_stream_while_the_box_kept_running(
+        self,
+    ):
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis("sb-1", stream="issued-before")
+        sandbox, desktop = _sandbox("sb-1"), _desktop("sb-1")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p:
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with("issued-before")
+
+    @pytest.mark.asyncio
+    async def test_a_password_left_over_from_a_replaced_box_is_not_reused(self):
+        """The screen flag names another box: whatever password Redis still
+        holds belonged to that one."""
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis("sb-old", stream="issued-before")
+        sandbox, desktop = _sandbox("sb-new"), _desktop("sb-new")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p:
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with(None)
 
     @pytest.mark.asyncio
     async def test_second_open_only_refreshes_the_stream(self):
@@ -262,8 +309,9 @@ class TestOpenDesktop:
         may start the display stack, the other waits and reuses the stream."""
         owner = SandboxOwner(kind="expert", id=_EXPERT)
         redis, sandbox, desktop = _redis("sb-1"), _sandbox("sb-1"), _desktop("sb-1")
-        # Lock taken on the first attempt; free on the second.
-        redis.set = AsyncMock(side_effect=[False, True, True])
+        # Lock taken on the first attempt; free on the second; then the
+        # screen flag and the stream password.
+        redis.set = AsyncMock(side_effect=[False, True, True, True])
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with (
             redis_p,

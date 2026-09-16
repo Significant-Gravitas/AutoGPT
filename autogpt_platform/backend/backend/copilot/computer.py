@@ -6,7 +6,9 @@ asks for the screen.  ``open_desktop`` starts X, XFCE and the VNC stream *in
 that box* and hands back the live stream, whether the ask comes from the
 ``start_desktop`` tool inside a turn or from the Computer tab and side
 panel.  The box pauses at turn end like any other and comes back with the
-screen exactly as it was.
+screen exactly as it was, but under a fresh stream password: the password
+is kept here, off the box, and forgotten whenever the box pauses, so a
+stream URL that may have leaked is good for one running stretch only.
 
 ``describe_computer`` only lists: it never connects, so a paused box stays
 paused (connecting is what E2B's auto-resume reacts to).  Whether the screen
@@ -194,9 +196,13 @@ async def _open_desktop_locked(
     if shared and not was_on:
         # Browser downloads and saved files land in the durable home.
         await desktop.ensure_persistent_home()
-    stream = _owner_bound(await desktop.start_stream(), user_id)
-    await _remember_screen(owner, sandbox.sandbox_id)
-    return stream, not was_on, shared
+    # The password issued last time, if the box has run without a pause
+    # since; otherwise the stack restarts under a new one.
+    stream, password = await desktop.start_stream(
+        await _stream_password(owner) if was_on else None
+    )
+    await _remember_screen(owner, sandbox.sandbox_id, password)
+    return _owner_bound(stream, user_id), not was_on, shared
 
 
 async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:
@@ -207,9 +213,23 @@ async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:
     return value == sandbox_id
 
 
-async def _remember_screen(owner: SandboxOwner, sandbox_id: str) -> None:
+async def _stream_password(owner: SandboxOwner) -> Optional[str]:
+    redis = await get_redis_async()
+    raw = await redis.get(owner.stream_key())
+    value = raw.decode() if isinstance(raw, bytes) else raw
+    return value or None
+
+
+async def _remember_screen(owner: SandboxOwner, sandbox_id: str, password: str) -> None:
+    """Record the screen as on in this box, and the password its stream uses.
+
+    The password outlives a pause only as long as the box could have kept
+    running: its expiry is the box's running-time limit, and the turn-end
+    pause drops it outright (``e2b_sandbox._forget_stream``).
+    """
     redis = await get_redis_async()
     await redis.set(owner.display_key(), sandbox_id, ex=owner.ttl)
+    await redis.set(owner.stream_key(), password, ex=chat_config.e2b_sandbox_timeout)
 
 
 def _owner_bound(stream: DesktopStream, user_id: str) -> DesktopStream:

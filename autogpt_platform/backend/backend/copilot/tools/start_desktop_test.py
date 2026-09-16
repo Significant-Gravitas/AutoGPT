@@ -45,7 +45,7 @@ def _make_desktop(mounted: bool = True) -> MagicMock:
     desktop.ensure_display = AsyncMock()
     desktop.ensure_persistent_home = AsyncMock()
     desktop.is_workspace_mounted = AsyncMock(return_value=mounted)
-    desktop.start_stream = AsyncMock(return_value=_STREAM)
+    desktop.start_stream = AsyncMock(return_value=(_STREAM, "pw"))
     return desktop
 
 
