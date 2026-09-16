@@ -8,6 +8,7 @@ These tests verify that _build_system_prompt:
 - Handles DB errors and Langfuse errors gracefully
 """
 
+import inspect
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1141,9 +1142,11 @@ class _StuckRefreshLangfuse:
         self._live = live
         self.server_fetches = 0
         self.fetch_error: Exception | None = None
+        self.calls: list[dict] = []
 
-    def get_prompt(self, name, *, label=None, cache_ttl_seconds=None, **kwargs):
-        if cache_ttl_seconds == 0:
+    def get_prompt(self, name, **kwargs):
+        self.calls.append(kwargs)
+        if kwargs.get("cache_ttl_seconds") == 0:
             self.server_fetches += 1
             if self.fetch_error is not None:
                 raise self.fetch_error
@@ -1231,3 +1234,23 @@ class TestPromptRevalidation:
 
         await _fetch_langfuse_prompt()
         assert stuck_langfuse.server_fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_every_call_binds_to_the_sdk_signature(
+        self, stuck_langfuse, open_window
+    ):
+        """A renamed SDK parameter would disable the revalidation silently.
+
+        The fake accepts anything, so without this the fix could stop reaching
+        the server on a Langfuse bump and every test here would still pass.
+        """
+        from langfuse._client.client import Langfuse
+
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        await _fetch_langfuse_prompt()
+        await _fetch_langfuse_prompt()
+
+        assert any(c.get("cache_ttl_seconds") == 0 for c in stuck_langfuse.calls)
+        for call in stuck_langfuse.calls:
+            inspect.signature(Langfuse.get_prompt).bind(None, "CoPilot Prompt", **call)
