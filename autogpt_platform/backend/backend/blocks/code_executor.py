@@ -23,6 +23,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -144,6 +145,10 @@ class BaseE2BExecutorMixin:
         """  # noqa
         sandbox = None
         files: list[SandboxFileOutput] = []
+        owner_user_id = execution_context.user_id if execution_context else None
+        egress_owner = EgressOwner(
+            kind="block", id=owner_user_id or "anonymous", user_id=owner_user_id
+        )
         try:
             if sandbox_id:
                 # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
@@ -158,12 +163,14 @@ class BaseE2BExecutorMixin:
                     raise PermissionError(
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
-                sandbox = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
+                sandbox = await connect_sandbox(
+                    AsyncSandbox, sandbox_id, egress_owner, api_key=api_key
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
-                sandbox = await AsyncSandbox.create(
+                sandbox = await create_sandbox(
+                    AsyncSandbox,
+                    egress_owner,
                     api_key=api_key,
                     template=template_id,
                     timeout=timeout,

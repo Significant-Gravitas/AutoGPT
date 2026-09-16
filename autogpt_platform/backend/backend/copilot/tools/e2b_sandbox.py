@@ -89,6 +89,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
 from backend.data.redis_client import get_redis_async
+from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata
 
@@ -229,6 +230,10 @@ class SandboxOwner(BaseModel):
         """
         return f"{self.key()}:stream"
 
+    def egress_owner(self, user_id: str | None) -> EgressOwner:
+        """Who the egress proxy sees this box as (``backend.util.e2b_network``)."""
+        return EgressOwner(kind=self.kind, id=self.id, user_id=user_id)
+
     def legacy_desktop_key(self) -> str:
         """Where the pre-one-box desktop's id was cached; swept on kill."""
         if self.is_expert:
@@ -276,6 +281,8 @@ async def connect_owned(
     api_key: str,
     *,
     timeout: int | None = None,
+    user_id: str | None = None,
+    pin_egress: bool = True,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id* only if E2B says it belongs to *owner*.
 
@@ -288,14 +295,23 @@ async def connect_owned(
     resumes a paused box and re-arms its running-time limit, so a foreign
     id must be refused without ever waking someone else's box.  *timeout*
     is that limit for the owner's box (a resumed box would otherwise get the
-    SDK's default).
+    SDK's default).  A connect that will run work re-pins the box's egress
+    (``backend.util.e2b_network``) for *user_id*; one that only pauses or
+    kills passes ``pin_egress=False``.
     """
     info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
     expected = owner.metadata()
     stamped = info.metadata or {}
     if any(stamped.get(key) != value for key, value in expected.items()):
         raise SandboxNotOwnedError(f"Sandbox {sandbox_id[:12]} is not {owner}'s box")
-    return await AsyncSandbox.connect(sandbox_id, api_key=api_key, timeout=timeout)
+    return await connect_sandbox(
+        AsyncSandbox,
+        sandbox_id,
+        owner.egress_owner(user_id),
+        apply_network=pin_egress,
+        api_key=api_key,
+        timeout=timeout,
+    )
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
@@ -396,6 +412,7 @@ async def _try_reconnect(
     api_key: str,
     *,
     timeout: int | None = None,
+    user_id: str | None = None,
 ) -> "AsyncSandbox | None":
     """Reconnect to the owner's box, or ``None`` if it is gone.
 
@@ -408,7 +425,9 @@ async def _try_reconnect(
     """
     owner = _as_owner(owner)
     try:
-        sandbox = await connect_owned(sandbox_id, owner, api_key, timeout=timeout)
+        sandbox = await connect_owned(
+            sandbox_id, owner, api_key, timeout=timeout, user_id=user_id
+        )
     except SandboxNotOwnedError as exc:
         logger.warning("[E2B] Refusing reconnect: %s", exc)
     except NotFoundException as exc:
@@ -565,7 +584,9 @@ async def get_or_create_owner_sandbox(
         if value and value != _CREATING_SENTINEL:
             # Existing sandbox ID — try to reconnect (auto-resumes if paused).
             try:
-                sandbox = await _try_reconnect(value, owner, api_key, timeout=timeout)
+                sandbox = await _try_reconnect(
+                    value, owner, api_key, timeout=timeout, user_id=user_id
+                )
             except Exception as exc:
                 if value in retried_ids:
                     raise
@@ -631,7 +652,9 @@ async def get_or_create_owner_sandbox(
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
                     sandbox = await asyncio.wait_for(
-                        AsyncSandbox.create(
+                        create_sandbox(
+                            AsyncSandbox,
+                            owner.egress_owner(user_id),
                             template=template,
                             api_key=api_key,
                             timeout=timeout,
@@ -776,7 +799,8 @@ async def _act_on_sandbox(
         return False
 
     async def _run() -> None:
-        await fn(await connect_owned(sandbox_id, owner, api_key))
+        # Nothing egresses before a pause or kill: no re-pin.
+        await fn(await connect_owned(sandbox_id, owner, api_key, pin_egress=False))
 
     try:
         await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)

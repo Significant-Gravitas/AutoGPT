@@ -1,0 +1,216 @@
+"""One door for every E2B box: where its egress is pinned.
+
+Every ``AsyncSandbox.create`` and ``.connect`` in the backend goes through
+``create_sandbox`` / ``connect_sandbox`` here; ``e2b_network_test`` fails on
+any that does not.  That is the chokepoint at which a box's network is set:
+the credential swap proxy (SECRT-2651) that every box will egress through,
+so that the model never holds a real credential and nothing dials out
+around the proxy.
+
+Off by default.  With ``E2B_EGRESS_PROXY_ADDRESS`` empty, boxes are created
+and reconnected exactly as before, egress direct.  With an address set,
+every create pins the box's outbound TCP to that SOCKS5 proxy and every
+reconnect re-applies it: ``update_network`` replaces the whole
+configuration, so a box created before the address was set is pinned on
+its first reconnect, and one created while it was set stays pinned only
+because every reconnect says so again.  Do not set the address before the
+proxy exists: E2B's proxy option fails closed, so a box pointed at nothing
+has no egress at all, pip, npm and gh included.
+
+The per-box proxy credential is how the proxy knows whose connection it is
+serving, and that mapping is the tenant boundary on the proxy's side.  A
+credential is minted for one running stretch of a box: fresh at create,
+fresh again at every reconnect, the previous one forgotten.  The proxy
+looks the username up (``e2b:egress:cred:<username>``) and checks the
+password against the stored hash; the record names the owner and the user
+whose credentials may be swapped in.  A box cannot claim another owner:
+usernames are random, and the password is handed to E2B's host, which dials
+the proxy, never to anything running inside the box.
+
+Known gap, to be settled by the spike on SECRT-2615: E2B tunnels TCP only.
+DNS and QUIC leave the box directly.  QUIC is turned off in the browsers by
+policy in the image; DNS stays an accepted side channel.
+"""
+
+import hashlib
+import json
+import logging
+import secrets
+from typing import Any, Literal, Optional, TypeVar, cast
+
+from e2b import AsyncSandbox
+from e2b.sandbox.sandbox_api import (
+    SandboxEgressProxyOpts,
+    SandboxNetworkOpts,
+    SandboxNetworkUpdate,
+)
+from pydantic import BaseModel, ConfigDict
+
+from backend.data.redis_client import get_redis_async
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+_CREDENTIAL_KEY_PREFIX = "e2b:egress:cred:"
+_BOX_KEY_PREFIX = "e2b:egress:box:"
+# A credential lives as long as a paused box can (E2B's paused-sandbox
+# lifetime); every reconnect replaces it anyway.
+_CREDENTIAL_TTL = 48 * 3600
+
+S = TypeVar("S", bound=AsyncSandbox)
+
+
+class EgressOwner(BaseModel):
+    """Whose box a connection comes from: what the proxy audits and swaps for.
+
+    ``session`` and ``expert`` are CoPilot boxes (``SandboxOwner``); ``block``
+    is a graph execution's, keyed by the user.  *user_id* is whose stored
+    credentials the proxy may swap into this box's requests; ``None`` means
+    none at all.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["session", "expert", "block"]
+    id: str
+    user_id: Optional[str] = None
+
+    @property
+    def label(self) -> str:
+        return f"{self.kind}:{self.id}"
+
+
+class ProxyCredential(BaseModel):
+    """What E2B's host presents to the proxy for one running stretch of a box."""
+
+    model_config = ConfigDict(frozen=True)
+
+    username: str
+    password: str
+
+
+def proxy_address() -> Optional[str]:
+    """The swap proxy's ``host:port``, or ``None`` when egress is left direct."""
+    return Settings().config.e2b_egress_proxy_address.strip() or None
+
+
+def password_digest(password: str) -> str:
+    """What the record stores instead of the password; the proxy compares to it."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any) -> S:
+    """Create a box the way the caller asked, pinned to the proxy if one is set.
+
+    *sandbox_cls* is the SDK class the caller uses (``e2b.AsyncSandbox`` or
+    ``e2b_code_interpreter``'s); every other keyword goes to its ``create``.
+    The credential is recorded before the box exists so that its very first
+    connection already resolves at the proxy.
+    """
+    if "network" in kwargs:
+        raise ValueError("A box's network is decided here, not by the caller")
+    address = proxy_address()
+    if address is None:
+        return await sandbox_cls.create(**kwargs)
+    credential = _mint()
+    await _remember(credential, owner, sandbox_id=None)
+    sandbox = await sandbox_cls.create(network=_network(address, credential), **kwargs)
+    await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
+    await _bind(sandbox.sandbox_id, credential.username)
+    logger.info(
+        "[E2B] Created %.12s for %s pinned to the egress proxy",
+        sandbox.sandbox_id,
+        owner.label,
+    )
+    return sandbox
+
+
+async def connect_sandbox(
+    sandbox_cls: type[S],
+    sandbox_id: str,
+    owner: EgressOwner,
+    *,
+    apply_network: bool = True,
+    **kwargs: Any,
+) -> S:
+    """Reconnect to a box, re-pinning its egress under a fresh credential.
+
+    *apply_network* is ``False`` for a connect that only pauses or kills the
+    box: nothing will egress before it is gone, so there is nothing to pin.
+    The new credential is recorded before the update and the old one is
+    forgotten after it, so a failed update leaves the box on a credential
+    that still resolves.
+    """
+    # The SDK types ``connect`` as the base class; it returns *sandbox_cls*.
+    sandbox = cast(S, await sandbox_cls.connect(sandbox_id, **kwargs))
+    address = proxy_address()
+    if address is None or not apply_network:
+        return sandbox
+    credential = _mint()
+    await _remember(credential, owner, sandbox_id=sandbox_id)
+    await sandbox.update_network(_network_update(address, credential))
+    await _bind(sandbox_id, credential.username)
+    logger.info(
+        "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
+    )
+    return sandbox
+
+
+async def credential_record(username: str) -> Optional[dict[str, Any]]:
+    """What the proxy sees for a username: owner, user, box, password digest."""
+    redis = await get_redis_async()
+    raw = await redis.get(_CREDENTIAL_KEY_PREFIX + username)
+    if not raw:
+        return None
+    return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+
+
+def _mint() -> ProxyCredential:
+    return ProxyCredential(
+        username=f"box-{secrets.token_hex(8)}", password=secrets.token_urlsafe(32)
+    )
+
+
+def _network(address: str, credential: ProxyCredential) -> SandboxNetworkOpts:
+    return {"egress_proxy": _proxy(address, credential)}
+
+
+def _network_update(address: str, credential: ProxyCredential) -> SandboxNetworkUpdate:
+    # The update replaces the whole configuration: this is the complete set.
+    return {"egress_proxy": _proxy(address, credential)}
+
+
+def _proxy(address: str, credential: ProxyCredential) -> SandboxEgressProxyOpts:
+    return {
+        "address": address,
+        "username": credential.username,
+        "password": credential.password,
+    }
+
+
+async def _remember(
+    credential: ProxyCredential, owner: EgressOwner, *, sandbox_id: Optional[str]
+) -> None:
+    redis = await get_redis_async()
+    record = {
+        "owner": owner.label,
+        "user_id": owner.user_id,
+        "sandbox_id": sandbox_id,
+        "password_sha256": password_digest(credential.password),
+    }
+    await redis.set(
+        _CREDENTIAL_KEY_PREFIX + credential.username,
+        json.dumps(record),
+        ex=_CREDENTIAL_TTL,
+    )
+
+
+async def _bind(sandbox_id: str, username: str) -> None:
+    """Make *username* the box's current credential and forget its previous one."""
+    redis = await get_redis_async()
+    key = _BOX_KEY_PREFIX + sandbox_id
+    raw = await redis.get(key)
+    previous = raw.decode() if isinstance(raw, bytes) else raw
+    await redis.set(key, username, ex=_CREDENTIAL_TTL)
+    if previous and previous != username:
+        await redis.delete(_CREDENTIAL_KEY_PREFIX + previous)
