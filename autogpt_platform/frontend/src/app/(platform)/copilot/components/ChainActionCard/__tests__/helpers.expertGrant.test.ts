@@ -27,6 +27,53 @@ function request(
   };
 }
 
+describe("a merged row reports whether every card it answers is answered", () => {
+  const picked = {
+    id: "cred-1",
+    provider: "github",
+    type: "oauth2" as const,
+    title: "GH",
+  };
+
+  function withSelection(
+    id: string,
+    selected: ConnectorRequest["selected"],
+  ): ConnectorRequest {
+    return { ...request(id, []), selected };
+  }
+
+  it("is unanswered while a second card's own field is still empty", () => {
+    // The row reports the FIRST target's value, so without this it reads as
+    // answered and the second card sits blocked on a credential it has.
+    const rows = toConnectorRows(
+      [withSelection("a", { credentials: picked }), withSelection("b", {})],
+      [],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].selected?.id).toBe("cred-1");
+    expect(rows[0].hasUnansweredTarget).toBe(true);
+  });
+
+  it("is answered once both cards hold the same credential", () => {
+    const rows = toConnectorRows(
+      [
+        withSelection("a", { credentials: picked }),
+        withSelection("b", { credentials: picked }),
+      ],
+      [],
+    );
+    expect(rows[0].hasUnansweredTarget).toBe(false);
+  });
+
+  it("is answered when nothing is picked yet", () => {
+    const rows = toConnectorRows(
+      [withSelection("a", {}), withSelection("b", {})],
+      [],
+    );
+    expect(rows[0].hasUnansweredTarget).toBe(false);
+  });
+});
+
 describe("expert grant candidates on merged connector rows", () => {
   it("offers only accounts eligible for every merged requirement", () => {
     const shared = { id: "both", title: "Both", type: "oauth2" };
