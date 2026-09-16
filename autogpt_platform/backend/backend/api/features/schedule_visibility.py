@@ -22,9 +22,9 @@ async def visible_graph_schedules(
     schedules: list[GraphExecutionJobInfo], user_id: str
 ) -> list[GraphExecutionJobInfo]:
     hidden = await hidden_expert_ids(list(schedules), user_id)
-    return [
-        schedule
-        for schedule in schedules
-        if schedule.next_run_time
-        or (schedule.cron and schedule.expert_id not in hidden)
-    ]
+    return [s for s in schedules if is_visible_schedule(s, hidden)]
+
+
+def is_visible_schedule(job: Job, hidden: set[str]) -> bool:
+    """The one rule both readers apply, so neither can list what the other hides."""
+    return bool(job.next_run_time) or job.expert_id not in hidden
