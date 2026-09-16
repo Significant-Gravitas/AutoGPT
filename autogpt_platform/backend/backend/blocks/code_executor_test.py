@@ -18,6 +18,7 @@ from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
@@ -310,6 +311,27 @@ class TestConnectToExistingSandbox:
         theirs.run_code.assert_not_awaited()
         # Not ours to kill either, even with dispose_sandbox set.
         theirs.kill.assert_not_awaited()
+
+    async def test_step_block_hands_the_caller_to_the_ownership_check(self):
+        """The step block always reconnects by id, so without the caller's
+        context every run would be refused as not the user's box."""
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                ExecuteCodeStepBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT,
+                    sandbox_id="sb-mine",
+                    step_code="print(1)",
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
+        assert execute.await_args.kwargs["sandbox_id"] == "sb-mine"
 
     async def test_without_a_user_no_existing_sandbox_can_be_used(self):
         block = ExecuteCodeBlock()

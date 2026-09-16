@@ -612,7 +612,12 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             results, text_output, stdout, stderr, _, _ = await self.execute_code(
@@ -621,6 +626,8 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
+                # The ownership check on the supplied id needs the caller.
+                execution_context=execution_context,
             )
 
             # Determine result object shape & filter out empty formats
