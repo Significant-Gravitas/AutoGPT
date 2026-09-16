@@ -143,6 +143,21 @@ class TestPinned:
         assert seen == [1]
 
     @pytest.mark.asyncio
+    async def test_a_failed_create_takes_its_credential_with_it(self):
+        redis = _redis()
+        cls = _sdk(_box())
+        cls.create = AsyncMock(side_effect=RuntimeError("502"))
+        minted = ProxyCredential(username="box-a1", secret="s")
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._mint", return_value=minted),
+        ):
+            with pytest.raises(RuntimeError):
+                await create_sandbox(cls, _OWNER, template="t")
+        assert redis.store == {}
+
+    @pytest.mark.asyncio
     async def test_a_box_whose_bookkeeping_fails_is_killed_not_leaked(self):
         """After create the box is on the meter; if its record cannot be
         written the caller never gets the handle, so nobody else could."""

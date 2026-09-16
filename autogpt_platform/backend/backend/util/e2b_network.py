@@ -122,7 +122,16 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         return await sandbox_cls.create(**kwargs)
     credential = _mint()
     await _remember(credential, owner, sandbox_id=None)
-    sandbox = await sandbox_cls.create(network=_network(address, credential), **kwargs)
+    try:
+        sandbox = await sandbox_cls.create(
+            network=_network(address, credential), **kwargs
+        )
+    except BaseException:
+        # No box will ever present this credential: do not leave it
+        # resolving at the proxy for its TTL.
+        with contextlib.suppress(BaseException):
+            await _forget(credential.username)
+        raise
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
         await _bind(sandbox.sandbox_id, credential.username)
