@@ -10,7 +10,7 @@ injection -- analogous to parameterized SQL queries.
 import base64
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -274,6 +274,12 @@ class TestConnectToExistingSandbox:
         sandbox.get_info = AsyncMock(return_value=AsyncMock(metadata=stamped))
         return sandbox
 
+    @staticmethod
+    def _sdk(cls: MagicMock, box: AsyncMock) -> None:
+        """The stamp is read through the static ``get_info`` before any connect."""
+        cls.get_info = AsyncMock(return_value=box.get_info.return_value)
+        cls.connect = AsyncMock(return_value=box)
+
     async def test_another_users_sandbox_is_refused_and_left_alone(self):
         block = ExecuteCodeBlock()
         context = ExecutionContext(user_id="user-b", graph_exec_id="gexec-1")
@@ -288,7 +294,7 @@ class TestConnectToExistingSandbox:
             }
         )
         with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
-            cls.connect = AsyncMock(return_value=theirs)
+            self._sdk(cls, theirs)
             with pytest.raises(PermissionError, match="does not belong"):
                 await block.execute_code(
                     api_key="k",
@@ -298,6 +304,9 @@ class TestConnectToExistingSandbox:
                     dispose_sandbox=True,
                     execution_context=context,
                 )
+        cls.get_info.assert_awaited_once_with("sb-theirs", api_key="k")
+        # Connecting would resume the other user's box on their bill.
+        cls.connect.assert_not_awaited()
         theirs.run_code.assert_not_awaited()
         # Not ours to kill either, even with dispose_sandbox set.
         theirs.kill.assert_not_awaited()
@@ -315,7 +324,7 @@ class TestConnectToExistingSandbox:
             }
         )
         with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
-            cls.connect = AsyncMock(return_value=box)
+            self._sdk(cls, box)
             with pytest.raises(PermissionError):
                 await block.execute_code(
                     api_key="k",
@@ -324,3 +333,4 @@ class TestConnectToExistingSandbox:
                     sandbox_id="sb-theirs",
                     execution_context=None,
                 )
+        cls.connect.assert_not_awaited()

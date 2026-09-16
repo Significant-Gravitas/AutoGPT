@@ -24,6 +24,8 @@ async def test_resuming_another_users_sandbox_is_refused():
         )
     )
     with patch("backend.blocks.claude_code.BaseAsyncSandbox") as cls:
+        # The stamp is read through the static ``get_info`` before any connect.
+        cls.get_info = AsyncMock(return_value=theirs.get_info.return_value)
         cls.connect = AsyncMock(return_value=theirs)
         # The block wraps every failure in its own error; the reason survives.
         with pytest.raises(ClaudeCodeExecutionError, match="does not belong"):
@@ -40,5 +42,8 @@ async def test_resuming_another_users_sandbox_is_refused():
                 dispose_sandbox=True,
                 execution_context=ExecutionContext(user_id="user-b"),
             )
+    cls.get_info.assert_awaited_once_with("sb-theirs", api_key="k")
+    # Connecting would resume the other user's box on their bill.
+    cls.connect.assert_not_awaited()
     theirs.commands.run.assert_not_awaited()
     theirs.kill.assert_not_awaited()

@@ -149,15 +149,18 @@ class BaseE2BExecutorMixin:
                 # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
                 # id is caller-supplied and any id connects under our key, so
                 # the box must be stamped with this user before it is used.
-                candidate = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
-                )
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
                 user_id = execution_context.user_id if execution_context else None
-                if not owned_by_user((await candidate.get_info()).metadata, user_id):
+                if not owned_by_user(info.metadata, user_id):
                     raise PermissionError(
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
-                sandbox = candidate
+                sandbox = await AsyncSandbox.connect(
+                    sandbox_id=sandbox_id, api_key=api_key
+                )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(

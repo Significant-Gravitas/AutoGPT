@@ -327,17 +327,20 @@ class ClaudeCodeBlock(Block):
                 # Reconnect to existing sandbox for conversation continuation.
                 # The id is caller-supplied and any id connects under our key,
                 # so the box must be stamped with this user before it is used.
-                candidate = await BaseAsyncSandbox.connect(
-                    sandbox_id=existing_sandbox_id,
-                    api_key=e2b_api_key,
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await BaseAsyncSandbox.get_info(
+                    existing_sandbox_id, api_key=e2b_api_key
                 )
-                if not owned_by_user(
-                    (await candidate.get_info()).metadata, execution_context.user_id
-                ):
+                if not owned_by_user(info.metadata, execution_context.user_id):
                     raise PermissionError(
                         f"Sandbox {existing_sandbox_id} does not belong to this user"
                     )
-                sandbox = candidate
+                sandbox = await BaseAsyncSandbox.connect(
+                    sandbox_id=existing_sandbox_id,
+                    api_key=e2b_api_key,
+                )
             else:
                 # Create new sandbox
                 sandbox = await BaseAsyncSandbox.create(
