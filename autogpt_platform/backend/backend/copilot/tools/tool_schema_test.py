@@ -193,7 +193,19 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     + #14207 multi-expert-teams  +981          70,036 (85 tools)
 # Keep the HIGHER of two conflicting values and then re-measure, per the rule
 # above: this branch held 69,219 and dev 69,056, and neither is the answer.
-_CHAR_BUDGET = 70_037
+# Bumped 69_056 -> 70_771 for SECRT-2605: edit_chat_platform_message (mirroring
+# post_to_chat_platform's platform/target enums plus channel_id/ref_id/content)
+# measures 1,460, and the line in post_to_chat_platform's description pointing
+# at it 255. Measured on the branch merged with dev: 70,770, plus one.
+# Bumped 70_771 -> 71_752 on 2026-09-16, merging dev into #14207 a fourth time.
+# #14436 added edit_chat_platform_message and set 70,771 against dev's own
+# 70,770 — one character, as every one of these bumps has left. Re-measured on
+# the MERGED tree, against the ref merged rather than origin/dev afterwards:
+#     dev 28d332fb36                             70,770 (85 tools)
+#     + #14207 multi-expert-teams  +981          71,751 (86 tools)
+# consult_teammate has measured +981 at every dev tip since 2026-09-09; what
+# moves this line is dev, not this branch.
+_CHAR_BUDGET = 71_752
 
 
 @pytest.fixture(scope="module")
