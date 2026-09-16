@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot import outbound
 from backend.copilot.bot.adapters.base import ChannelInfo, EditOutcome, PostedRef
+from backend.copilot.bot.sent_messages import _key
 
 
 class _FakeRedis:
@@ -47,7 +48,7 @@ def _seed_sent(
     editable: bool = True,
 ) -> None:
     """Pretend ``user_id`` already had the bot post ``ref_id`` there."""
-    store.store[f"copilot-bot:sent:{platform}:{channel_id}:{ref_id}"] = json.dumps(
+    store.store[_key(platform, channel_id, ref_id)] = json.dumps(
         {"user_id": user_id, "chunks": chunks, "editable": editable}
     )
 

@@ -17,6 +17,7 @@ model could have made (it gets ``not_sender`` and can post afresh); it can
 never grant one.
 """
 
+import hashlib
 import json
 import logging
 
@@ -28,7 +29,10 @@ SENT_MESSAGE_TTL = 30 * 86400  # 30 days
 
 
 def _key(platform: str, channel_id: str, ref_id: str) -> str:
-    return f"copilot-bot:sent:{platform}:{channel_id}:{ref_id}"
+    # Hash the pair rather than joining it: Teams ids contain ':', so a joined
+    # key could let two different (channel, message) pairs share one record.
+    pair = json.dumps([channel_id, ref_id]).encode()
+    return f"copilot-bot:sent:{platform}:{hashlib.sha256(pair).hexdigest()}"
 
 
 async def record_sent(
