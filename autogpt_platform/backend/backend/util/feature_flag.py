@@ -178,15 +178,14 @@ class Flag(str, Enum):
     # the per-Checkout amount stays dynamic via price_data.unit_amount.
     STRIPE_PRODUCT_ID_TOPUP = "stripe-product-id-topup"
 
-    # Copilot model routing — JSON-valued, returns the per-(mode, tier)
+    # Copilot model routing — JSON-valued, returns the per-tier
     # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
     # ``"moonshotai/kimi-k2.6"``).  Shape:
-    # ``{"fast": {"standard": "...", "advanced": "..."},
-    #   "thinking": {"standard": "...", "advanced": "..."}}``.
-    # Missing mode, missing tier-within-mode, non-string value, non-dict
-    # payload, or LD failure all fall back to the corresponding
-    # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
-    # targeted.
+    # ``{"standard": "...", "advanced": "..."}`` (the pre-collapse
+    # ``{"thinking": {...}}`` nesting is still honored).  Missing tier,
+    # non-string value, non-dict payload, or LD failure all fall back
+    # to the corresponding ``ChatConfig`` default.  Evaluated per
+    # user_id so cohorts can be targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
     # Shows a connection the user's plan does not include as a locked entry

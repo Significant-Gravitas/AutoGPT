@@ -25,7 +25,7 @@ from backend.copilot.expert_context import (
     render_team_context,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import ModelMode, resolve_model_route
+from backend.copilot.model_router import resolve_model_route
 from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -53,7 +53,6 @@ DELEGATION_ENABLED = True
 
 
 class RoutedModel(BaseModel):
-    mode: ModelMode
     slug: str
     transport_slug: str
     source: str
@@ -147,15 +146,12 @@ def chat_system_prompt(expert: Expert | None) -> str:
 
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
-    """The model an expert turn runs on: the router's ``(thinking,
-    standard)`` cell — every turn runs the SDK engine now. No user
-    id, so LaunchDarkly is skipped and this is the catalog/env
+    """The model an expert turn runs on: the router's ``standard`` tier.
+    No user id, so LaunchDarkly is skipped and this is the catalog/env
     layer; a proposed LD value is checked by hand with ``--model``.
     """
-    mode: ModelMode = "thinking"
-    route = await resolve_model_route(mode, "standard", None, config=config)
+    route = await resolve_model_route("standard", None, config=config)
     return RoutedModel(
-        mode=mode,
         slug=route.model,
         transport_slug=normalize_model_for_transport(route.model, config),
         source=route.source,

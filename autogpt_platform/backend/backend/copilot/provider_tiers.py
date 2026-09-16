@@ -22,7 +22,6 @@ from pydantic import BaseModel
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
-    ModelMode,
     catalog_lookup,
     resolve_model_route,
 )
@@ -62,16 +61,14 @@ class ProviderTiersResponse(BaseModel):
 
 
 async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
-    """What every provider's tiers resolve to for this user's engine.
+    """What every provider's tiers resolve to for this user.
 
-    User-scoped only because the engine is: which models a tier maps to
-    depends on whether the turn will run on the SDK path. It says nothing
-    about whether the user may use either provider.
+    User-scoped only because LaunchDarkly routing is per-user. It says
+    nothing about whether the user may use either provider.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
-    platform = await platform_tier_models(mode, user_id, config)
-    codex = codex_tier_models(mode)
+    platform = await platform_tier_models(user_id, config)
+    codex = codex_tier_models()
     return [
         ProviderTiers(
             provider_family="autogpt",
@@ -86,28 +83,18 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     ]
 
 
-async def resolve_engine_mode(user_id: str, config: ChatConfig) -> ModelMode:
-    """One engine decision per response: always ``"thinking"``.
-
-    Every turn runs the SDK engine now; the mode key survives
-    only until the routing matrix collapses to tiers.
-    """
-    return "thinking"
-
-
 async def platform_tier_models(
-    mode: ModelMode, user_id: str, config: ChatConfig
+    user_id: str, config: ChatConfig
 ) -> dict[CopilotLLMModel, str | None]:
-    """Resolve each tier against the engine this user's turns will run on.
+    """Resolve each tier the way a turn for this user would.
 
-    Answerable at all only because nothing can name an engine per request
-    any more — the decision is the server's, so it can be made before a turn
-    exists rather than during one.
+    Answerable before a turn exists because routing no longer takes a
+    per-request engine — the tier alone decides.
     """
     resolved: dict[CopilotLLMModel, str | None] = {}
     for tier in TIER_LABELS:
         try:
-            route = await resolve_model_route(mode, tier, user_id, config=config)
+            route = await resolve_model_route(tier, user_id, config=config)
             resolved[tier] = display_name(route.model)
         except Exception:
             # A tier that cannot be resolved is described without a name
@@ -121,8 +108,8 @@ async def platform_tier_models(
     return resolved
 
 
-def codex_tier_models(mode: ModelMode) -> dict[CopilotLLMModel, str | None]:
-    """The models the catalog pins for the Codex cells of this engine.
+def codex_tier_models() -> dict[CopilotLLMModel, str | None]:
+    """The models the catalog pins for each Codex tier.
 
     A registry read, so it costs nothing and needs no credential. The router
     validates the pinned slug against what the account actually advertises
@@ -130,7 +117,7 @@ def codex_tier_models(mode: ModelMode) -> dict[CopilotLLMModel, str | None]:
     routed model, not a promise about the account.
     """
     return {
-        tier: display_name(llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier))
+        tier: display_name(llm_registry.get_route(ROUTE_SURFACE_CODEX, tier))
         for tier in TIER_LABELS
     }
 

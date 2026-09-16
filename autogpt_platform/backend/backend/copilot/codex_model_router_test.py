@@ -72,18 +72,15 @@ def _transport(monkeypatch, models: list[CodexModelInfo]):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode,tier,expected_model,expected_effort",
+    "tier,expected_model,expected_effort",
     [
-        ("fast", "standard", "gpt-5.6-luna", "low"),
-        ("fast", "advanced", "gpt-6-astra", "medium"),
-        ("thinking", "standard", "gpt-5.6-terra", "high"),
-        ("thinking", "advanced", "gpt-6-astra", "xhigh"),
+        ("standard", "gpt-5.6-terra", "high"),
+        ("advanced", "gpt-6-astra", "xhigh"),
     ],
 )
 async def test_catalog_cells_select_latest_advertised_model(
     monkeypatch,
     catalog_state,
-    mode,
     tier,
     expected_model,
     expected_effort,
@@ -98,7 +95,6 @@ async def test_catalog_cells_select_latest_advertised_model(
     lease = _lease()
 
     resolved = await resolve_codex_model_route(
-        mode,
         tier,
         lease,
     )
@@ -126,7 +122,6 @@ async def test_unavailable_catalog_model_uses_visible_account_default(
     )
 
     resolved = await resolve_codex_model_route(
-        "thinking",
         "advanced",
         _lease(),
     )
@@ -145,7 +140,6 @@ async def test_no_default_uses_first_visible_account_model(monkeypatch, catalog_
     )
 
     resolved = await resolve_codex_model_route(
-        "fast",
         "standard",
         _lease(),
     )
@@ -159,7 +153,6 @@ async def test_empty_visible_catalog_fails_closed(monkeypatch, catalog_state):
 
     with pytest.raises(RuntimeError, match="codex_model_unavailable"):
         await resolve_codex_model_route(
-            "fast",
             "standard",
             _lease(),
         )
@@ -181,7 +174,6 @@ async def test_disabled_account_default_is_not_used(monkeypatch, catalog_state):
     )
 
     resolved = await resolve_codex_model_route(
-        "fast",
         "standard",
         _lease(),
     )

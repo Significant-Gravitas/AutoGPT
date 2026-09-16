@@ -34,16 +34,13 @@ def real_catalog():
 
 
 @pytest.fixture(autouse=True)
-def engine(mocker: pytest_mock.MockerFixture):
-    mocker.patch.object(
-        provider_tiers, "resolve_engine_mode", new=AsyncMock(return_value="fast")
-    )
+def router(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(
         provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
-            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
-                model=f"{mode}-{tier}-model", source="config"
+            side_effect=lambda tier, user_id, *, config: SimpleNamespace(
+                model=f"{tier}-model", source="config"
             )
         ),
     )
@@ -60,7 +57,7 @@ async def test_describes_chatgpt_without_the_user_having_it(
     mocker.patch.object(
         provider_tiers.llm_registry,
         "get_route",
-        side_effect=lambda surface, mode, tier: {
+        side_effect=lambda surface, tier: {
             "standard": "gpt-5.6-terra",
             "advanced": "gpt-5.6-sol",
         }[tier],

@@ -33,7 +33,7 @@ async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
         aux_api_key="test-key",
     )
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
-    route = await router.resolve_model_route("thinking", "advanced", "user", config=cfg)
+    route = await router.resolve_model_route("advanced", "user", config=cfg)
 
     assert route.model == "anthropic/claude-opus-5"
     assert route.source == "env"

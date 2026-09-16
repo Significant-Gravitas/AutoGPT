@@ -50,14 +50,11 @@ def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(
-        offers, "resolve_engine_mode", new=AsyncMock(return_value="fast")
-    )
-    mocker.patch.object(
         provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
-            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
-                model=f"{mode}-{tier}-model", source="config"
+            side_effect=lambda tier, user_id, *, config: SimpleNamespace(
+                model=f"{tier}-model", source="config"
             )
         ),
     )
@@ -165,7 +162,7 @@ async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
     mocker.patch.object(
         provider_tiers.llm_registry,
         "get_route",
-        side_effect=lambda surface, mode, tier: f"{surface}:{mode}:{tier}",
+        side_effect=lambda surface, tier: f"{surface}:{tier}",
     )
     _mock_transports(
         mocker, [_transport("platform", None), _transport("codex", "cred-1")]
@@ -178,8 +175,8 @@ async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
     ][0]
 
     assert [t.display_model for t in codex.tiers] == [
-        "copilot_codex:fast:standard",
-        "copilot_codex:fast:advanced",
+        "copilot_codex:standard",
+        "copilot_codex:advanced",
     ]
 
 
@@ -211,27 +208,31 @@ async def test_tiers_name_the_model_they_resolve_to(
 
     assert [tier.label for tier in offer.tiers] == ["Balanced", "Advanced"]
     assert [tier.display_model for tier in offer.tiers] == [
-        "fast-standard-model",
-        "fast-advanced-model",
+        "standard-model",
+        "advanced-model",
     ]
 
 
 @pytest.mark.asyncio
-async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
+async def test_tiers_resolve_for_the_requesting_user(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """The engine is the server's decision, so it is knowable before a turn."""
-    mocker.patch.object(
-        offers, "resolve_engine_mode", new=AsyncMock(return_value="thinking")
-    )
+    """Tier models are user-scoped (LD cohorts), resolved before any turn."""
     _mock_transports(mocker, [_transport(default=True)])
+    spy = AsyncMock(
+        side_effect=lambda tier, user_id, *, config: SimpleNamespace(
+            model=f"{tier}-model", source="config"
+        )
+    )
+    mocker.patch.object(provider_tiers, "resolve_model_route", new=spy)
 
     (offer,) = await get_connection_offers(USER_ID)
 
     assert [tier.display_model for tier in offer.tiers] == [
-        "thinking-standard-model",
-        "thinking-advanced-model",
+        "standard-model",
+        "advanced-model",
     ]
+    assert {c.args[1] for c in spy.await_args_list} == {USER_ID}
 
 
 @pytest.mark.asyncio
@@ -470,7 +471,7 @@ async def test_a_locked_chatgpt_offer_still_names_the_models(
     # "What you get" is the argument for connecting; a locked row that
     # cannot name the models asks the user to take it on faith.
     mocker.patch.object(
-        provider_tiers.llm_registry, "get_route", side_effect=lambda s, m, t: f"{m}-{t}"
+        provider_tiers.llm_registry, "get_route", side_effect=lambda s, t: t
     )
     mocker.patch.object(provider_tiers.llm_registry, "get_model", return_value=None)
     _mock_transports(mocker, [_transport("platform", None)])
@@ -478,10 +479,9 @@ async def test_a_locked_chatgpt_offer_still_names_the_models(
 
     locked = _locked(await get_connection_offers("user"))[0]
 
-    # The fixture pins the engine to the baseline, so the cells are "fast".
     assert [t.display_model for t in locked.tiers] == [
-        "fast-standard",
-        "fast-advanced",
+        "standard",
+        "advanced",
     ]
     # Naming them must not read as offering them.
     assert all(t.selectable is False for t in locked.tiers)
@@ -523,7 +523,7 @@ async def test_a_platform_tier_names_a_model_configured_in_transport_spelling(
         provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
-            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
+            side_effect=lambda tier, user_id, *, config: SimpleNamespace(
                 model="anthropic/claude-sonnet-5", source="config"
             )
         ),
@@ -550,7 +550,7 @@ async def test_a_model_the_catalog_does_not_know_is_named_by_its_slug(
         provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
-            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
+            side_effect=lambda tier, user_id, *, config: SimpleNamespace(
                 model="acme/a-model-nobody-has-heard-of", source="config"
             )
         ),

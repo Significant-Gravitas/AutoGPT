@@ -151,7 +151,6 @@ async def test_chat_model_comes_from_the_router_without_launchdarkly():
         use_claude_code_subscription=False,
     )
     routed = await resolve_chat_model(config)
-    assert routed.mode == "thinking"
     assert routed.slug == "anthropic/claude-style-test"
     assert routed.source == "env"
 

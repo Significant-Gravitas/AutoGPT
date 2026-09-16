@@ -761,7 +761,7 @@ class TestResolveSdkModelForRequestLdFallback:
         self, monkeypatch, _clean_config_env
     ):
         """Bug reported in local test: subscription mode + LD serving Kimi
-        on ``copilot-model-routing[thinking][standard]`` returned
+        on ``copilot-model-routing[standard]`` returned
         ``None`` (CLI picked subscription default Opus), silently
         ignoring the LD override.  An LD value different from the
         config default is an explicit admin decision and must win.

@@ -69,16 +69,16 @@ def test_negative_costs_rejected(field):
         CatalogModelCost(**{field: -1})
 
 
-def test_routing_shape_accepts_nested_cells():
+def test_routing_shape_accepts_tier_cells():
     payload = CatalogPayload(
         schema_version=CATALOG_SCHEMA_VERSION,
         generated_at=datetime.now(timezone.utc),
         providers=[],
         creators=[],
         models=[],
-        routing={"copilot": {"fast": {"standard": "openai/gpt-4o"}}},
+        routing={"copilot": {"standard": "openai/gpt-4o"}},
     )
-    assert payload.routing["copilot"]["fast"]["standard"] == "openai/gpt-4o"
+    assert payload.routing["copilot"]["standard"] == "openai/gpt-4o"
 
 
 def test_payload_model_count_cap():

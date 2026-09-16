@@ -2157,12 +2157,12 @@ async def _resolve_thinking_model_for_user(
 ) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
-    Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
+    Consults ``copilot-model-routing[{tier}]`` and falls back
     to the ``ChatConfig`` default on missing user / missing flag. Returns
     the model together with which routing layer picked it, so persisted
     assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model_route("thinking", tier, user_id, config=config)
+    return await resolve_model_route(tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -2196,7 +2196,7 @@ async def _resolve_sdk_model_for_request(
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
+    2. LaunchDarkly ``copilot-model-routing[{tier}]`` if it
        serves a value different from the config default for *user_id*.
        An LD-served override wins over subscription mode so admins can
        route specific users to a specific model without flipping
@@ -2230,7 +2230,7 @@ async def _resolve_sdk_model_for_request(
     # user somewhere).  Any LD override — even to the same value with
     # stripped whitespace normalised — is an explicit admin choice that
     # must be honoured.  Without this, a subscription-mode deployment
-    # silently ignores the ``copilot-model-routing[thinking][standard]``
+    # silently ignores the ``copilot-model-routing[standard]``
     # flag entirely, which defeats the point of cohort-based routing.
     ld_overrides_default = resolved.model != tier_default
     if (
@@ -4920,8 +4920,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "advanced" if model == "advanced" else "standard"
             )
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
-                # This turn is on the SDK engine by definition.
-                "thinking",
                 tier_name,
                 credential_lease,
             )

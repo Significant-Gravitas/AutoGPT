@@ -62,15 +62,15 @@ def test_load_catalog_builds_l1_from_payload():
     load_catalog(
         _payload(
             [_model("openai/gpt-a"), _model("openai/gpt-b", is_enabled=False)],
-            routing={"copilot": {"thinking": {"standard": "openai/gpt-a"}}},
+            routing={"copilot": {"standard": "openai/gpt-a"}},
         )
     )
 
     assert {m.slug for m in get_all_models()} == {"openai/gpt-a", "openai/gpt-b"}
     enabled = [m.slug for m in get_all_models() if m.is_enabled]
     assert enabled == ["openai/gpt-a"]
-    assert get_route("copilot", "thinking", "standard") == "openai/gpt-a"
-    assert get_route("copilot", "fast", "standard") is None
+    assert get_route("copilot", "standard") == "openai/gpt-a"
+    assert get_route("copilot", "advanced") is None
 
 
 def test_registry_model_carries_joined_display_data():
@@ -125,7 +125,7 @@ def test_real_catalog_loads():
     assert any(m.is_recommended and m.is_enabled for m in get_all_models())
     # Cells ship empty (env stays authoritative until a cell is claimed) —
     # populated-cell behavior is covered by the seeded-payload tests above.
-    assert get_route("copilot", "thinking", "standard") is None
+    assert get_route("copilot", "standard") is None
 
 
 def test_registry_metadata_stays_field_compatible_with_block_shape():

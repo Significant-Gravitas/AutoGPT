@@ -19,7 +19,6 @@ from backend.copilot.provider_tiers import (
     TIER_LABELS,
     codex_tier_models,
     platform_tier_models,
-    resolve_engine_mode,
 )
 from backend.copilot.transports import (
     ChatTransportResponse,
@@ -85,14 +84,13 @@ class AIConnectionOffersResponse(BaseModel):
 async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     """Describe every connection, naming the models where they are knowable.
 
-    The engine is resolved once for the user rather than per offer: it is a
-    property of the deployment and the user, not of which connection they
+    Tier models resolve once for the user rather than per offer: routing is
+    a property of the deployment and the user, not of which connection they
     pick.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
-    models = await platform_tier_models(mode, user_id, config)
-    codex_models = codex_tier_models(mode)
+    models = await platform_tier_models(user_id, config)
+    codex_models = codex_tier_models()
     advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)

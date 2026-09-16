@@ -1617,14 +1617,8 @@ def _build_catalog() -> CatalogPayload:
         # advertised by each connected account with safe account fallbacks.
         routing={
             "copilot_codex": {
-                "fast": {
-                    "standard": "gpt-5.6-luna",
-                    "advanced": "gpt-6-astra",
-                },
-                "thinking": {
-                    "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-6-astra",
-                },
+                "standard": "gpt-5.6-terra",
+                "advanced": "gpt-6-astra",
             }
         },
     )
