@@ -1206,7 +1206,7 @@ class TestHostMatches:
 
 
 class TestLangfusePromptCacheTTL:
-    def test_default_is_sixty_seconds(self):
+    def test_default_is_five_minutes(self):
         # Read the field default, not an instance: backend/.env can set
         # CHAT_LANGFUSE_PROMPT_CACHE_TTL and mask it.
-        assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 60
+        assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 300

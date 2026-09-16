@@ -338,7 +338,7 @@ class ChatConfig(BaseSettings):
         description="Name of the prompt in Langfuse to fetch",
     )
     langfuse_prompt_cache_ttl: int = Field(
-        default=60,
+        default=300,
         description="How long a process may serve a cached Langfuse prompt before "
         "re-fetching it (0 to disable caching)",
     )
