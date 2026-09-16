@@ -11,6 +11,8 @@ This module contains:
 import asyncio
 import logging
 import re
+import threading
+import time
 from typing import Any
 
 from langfuse import get_client
@@ -74,6 +76,14 @@ def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
 _main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
+
+# Monotonic timestamp of the last prompt fetch this process made itself, and the
+# lock that hands the window to one caller. See _get_prompt_bounded_stale().
+_last_prompt_revalidation = 0.0
+_prompt_revalidation_lock = threading.Lock()
+
+# One short attempt, because a cached copy already covers the failure.
+_PROMPT_REVALIDATION_TIMEOUT_SECONDS = 2
 
 
 def _get_main_client() -> LangfuseAsyncOpenAI:
@@ -561,12 +571,7 @@ async def _fetch_langfuse_prompt() -> str | None:
         label = (
             None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
         )
-        prompt = await asyncio.to_thread(
-            _get_langfuse().get_prompt,
-            config.langfuse_prompt_name,
-            label=label,
-            cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
-        )
+        prompt = await _get_prompt_bounded_stale(label)
         compiled = prompt.compile(users_information="")
         # Guard the caching contract: if the Langfuse template is ever updated
         # to re-embed the {users_information} placeholder, the compiled text
@@ -586,6 +591,71 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:
         logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
         return None
+
+
+async def _get_prompt_bounded_stale(label: str | None) -> Any:
+    """Read the Langfuse prompt, never serving a copy older than the cache TTL.
+
+    The SDK answers an expired entry with the stale value and queues a refresh
+    on a background thread (``langfuse/_client/client.py:3650-3674``), and that
+    refresh can stop for the life of the process: a queued key is cleared only
+    by its task actually running, so a consumer that is not running wedges the
+    key and no refresh is ever queued again
+    (``langfuse/_utils/prompt_cache.py:92-115``), while a refresh that fails
+    every time leaves the entry expired forever. Both are silent to us — the
+    call returns a value, so our fallback never fires — and both made Dev pods
+    serve one prompt version for as long as they lived (2026-09-11).
+
+    So the freshness clock is ours: once per TTL, one caller goes past the SDK
+    cache. A revalidation that fails keeps the window, because a cached copy is
+    the freshest thing available while Langfuse is unreachable.
+    """
+    if not _claim_prompt_revalidation():
+        return await _call_langfuse_get_prompt(label, revalidate=False)
+    try:
+        return await _call_langfuse_get_prompt(label, revalidate=True)
+    except Exception as e:
+        logger.warning(f"Langfuse prompt revalidation failed, serving cached: {e}")
+        return await _call_langfuse_get_prompt(label, revalidate=False)
+
+
+def _claim_prompt_revalidation() -> bool:
+    """Whether this caller owns the current revalidation window.
+
+    The window is marked used before the fetch, so concurrent turns take the
+    cached path instead of stampeding Langfuse.
+    """
+    global _last_prompt_revalidation
+    ttl = config.langfuse_prompt_cache_ttl
+    if ttl <= 0:
+        return False
+    with _prompt_revalidation_lock:
+        now = time.monotonic()
+        if now - _last_prompt_revalidation < ttl:
+            return False
+        _last_prompt_revalidation = now
+        return True
+
+
+async def _call_langfuse_get_prompt(label: str | None, *, revalidate: bool) -> Any:
+    """Fetch the prompt from the SDK's cache, or from the server past it."""
+    if revalidate:
+        # cache_ttl_seconds=0 skips the cache and fetches inline
+        # (langfuse/_client/client.py:3607).
+        return await asyncio.to_thread(
+            _get_langfuse().get_prompt,
+            config.langfuse_prompt_name,
+            label=label,
+            cache_ttl_seconds=0,
+            max_retries=0,
+            fetch_timeout_seconds=_PROMPT_REVALIDATION_TIMEOUT_SECONDS,
+        )
+    return await asyncio.to_thread(
+        _get_langfuse().get_prompt,
+        config.langfuse_prompt_name,
+        label=label,
+        cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
+    )
 
 
 async def _build_system_prompt(

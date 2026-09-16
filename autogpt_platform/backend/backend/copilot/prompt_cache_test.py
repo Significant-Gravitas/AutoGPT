@@ -8,6 +8,7 @@ These tests verify that _build_system_prompt:
 - Handles DB errors and Langfuse errors gracefully
 """
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1122,3 +1123,111 @@ class TestInjectUserContextSessionCtx:
         assert "session_context" not in stripped
         assert "pending_followups" not in stripped
         assert "user query" in stripped
+
+
+class _StuckRefreshLangfuse:
+    """A Langfuse client whose background prompt refresh never runs.
+
+    langfuse 3.14.1 answers an expired cache entry with the stale value and
+    queues a refresh on a background thread (``_client/client.py:3650-3674``).
+    When that thread is not running the queued key is never cleared
+    (``_utils/prompt_cache.py:92-115``), so the cached path keeps returning the
+    same version for the life of the process. Only ``cache_ttl_seconds=0``
+    reaches the server (``_client/client.py:3607``).
+    """
+
+    def __init__(self, cached: str, live: str):
+        self._cached = cached
+        self._live = live
+        self.server_fetches = 0
+        self.fetch_error: Exception | None = None
+
+    def get_prompt(self, name, *, label=None, cache_ttl_seconds=None, **kwargs):
+        if cache_ttl_seconds == 0:
+            self.server_fetches += 1
+            if self.fetch_error is not None:
+                raise self.fetch_error
+            self._cached = self._live
+        prompt = MagicMock()
+        prompt.compile.return_value = self._cached
+        return prompt
+
+
+_TTL = 60
+
+
+@pytest.fixture
+def stuck_langfuse(monkeypatch):
+    from backend.copilot import service
+
+    client = _StuckRefreshLangfuse(cached="v35 prompt", live="v36 prompt")
+    monkeypatch.setattr(service.config, "langfuse_prompt_cache_ttl", _TTL)
+    monkeypatch.setattr(service, "_is_langfuse_configured", lambda: True)
+    monkeypatch.setattr(service, "_get_langfuse", lambda: client)
+    monkeypatch.setattr(service, "_last_prompt_revalidation", time.monotonic())
+    return client
+
+
+@pytest.fixture
+def open_window(monkeypatch):
+    """Put the last revalidation far enough back that the next call owns it."""
+    from backend.copilot import service
+
+    monkeypatch.setattr(
+        service, "_last_prompt_revalidation", time.monotonic() - _TTL - 1
+    )
+
+
+class TestPromptRevalidation:
+    """No pod may serve one prompt version for longer than the TTL."""
+
+    @pytest.mark.asyncio
+    async def test_serves_the_cached_copy_inside_the_window(self, stuck_langfuse):
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        assert await _fetch_langfuse_prompt() == "v35 prompt"
+        assert stuck_langfuse.server_fetches == 0
+
+    @pytest.mark.asyncio
+    async def test_revalidates_past_the_ttl_although_the_refresh_is_stuck(
+        self, stuck_langfuse, open_window
+    ):
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        assert await _fetch_langfuse_prompt() == "v36 prompt"
+        assert stuck_langfuse.server_fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_the_turn_after_a_revalidation_is_served_from_cache(
+        self, stuck_langfuse, open_window
+    ):
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        await _fetch_langfuse_prompt()
+
+        assert await _fetch_langfuse_prompt() == "v36 prompt"
+        assert stuck_langfuse.server_fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_revalidation_serves_the_cached_copy(
+        self, stuck_langfuse, open_window
+    ):
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        stuck_langfuse.fetch_error = RuntimeError("langfuse unreachable")
+
+        # Not the bundled prompt: a stale copy beats no copy.
+        assert await _fetch_langfuse_prompt() == "v35 prompt"
+        assert stuck_langfuse.server_fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_revalidation_waits_for_the_next_window(
+        self, stuck_langfuse, open_window
+    ):
+        from backend.copilot.service import _fetch_langfuse_prompt
+
+        stuck_langfuse.fetch_error = RuntimeError("langfuse unreachable")
+        await _fetch_langfuse_prompt()
+
+        await _fetch_langfuse_prompt()
+        assert stuck_langfuse.server_fetches == 1
