@@ -23,9 +23,9 @@ from typing import Any
 
 from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.context import get_current_envelope, take_session_message_slot
-from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
+from backend.copilot.db import get_chat_session_metadata
 from backend.copilot.expert_context import escape_prompt_xml_tags
-from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
+from backend.copilot.model import ChatSession
 from backend.copilot.pending_message_helpers import queue_user_message
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
@@ -152,7 +152,7 @@ class MessageSessionTool(BaseTool):
     ) -> ToolResponseBase:
         """Start a turn on an idle session so the message is actually read."""
         try:
-            row = await try_enqueue_turn(
+            await try_enqueue_turn(
                 user_id=user_id,
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=target_id,
@@ -164,18 +164,6 @@ class MessageSessionTool(BaseTool):
                 "That session is not running and you are at your limit of "
                 "turns in flight. Try again once one finishes.",
                 session,
-            )
-        if row is None:
-            # Another writer won the same enqueue; the message is on its way.
-            status = await get_chat_session_status(target_id)
-            if status == CHAT_STATUS_RUNNING:
-                return SessionMessageResponse(
-                    message=f"Delivered to session {target_id}.",
-                    delivery="injected",
-                    target_session_id=target_id,
-                )
-            return self._error(
-                f"Could not reach session {target_id}. Try again.", session
             )
         return SessionMessageResponse(
             message=f"Woke session {target_id}; it will read this on its next turn.",

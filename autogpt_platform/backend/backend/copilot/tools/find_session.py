@@ -80,7 +80,15 @@ class FindSessionTool(BaseTool):
                 message="Authentication required", session_id=session.session_id
             )
 
-        rows = await list_recent_chat_sessions(user_id=user_id, limit=_SCAN_LIMIT)
+        # expert and status filter in the query, so the scan limit bounds the
+        # matches rather than the rows looked at; ``task`` reads ``purpose``
+        # out of the metadata JSON and stays here.
+        rows = await list_recent_chat_sessions(
+            user_id=user_id,
+            expert_id=expert_id.strip() or None,
+            status=status.strip() or None,
+            limit=_SCAN_LIMIT,
+        )
         matched = [
             row
             for row in rows
@@ -88,10 +96,11 @@ class FindSessionTool(BaseTool):
             # the invariant with the tool rather than with one call site.
             if row.user_id == user_id
             and row.session_id != session.session_id
-            and _matches(row, expert_id.strip(), task.strip(), status.strip())
+            and _matches_task(row, task.strip())
         ]
+        shown = matched[:MAX_RESULTS]
         return SessionListResponse(
-            message=_summary(len(matched)),
+            message=_summary(len(shown), truncated=len(matched) > MAX_RESULTS),
             sessions=[
                 SessionSummary(
                     session_id=row.session_id,
@@ -101,24 +110,23 @@ class FindSessionTool(BaseTool):
                     status=row.chat_status,
                     updated_at=row.updated_at,
                 )
-                for row in matched[:MAX_RESULTS]
+                for row in shown
             ],
         )
 
 
-def _matches(row: ChatSessionInfo, expert_id: str, task: str, status: str) -> bool:
-    if expert_id and row.expert_id != expert_id:
-        return False
-    if status and row.chat_status != status:
-        return False
-    if task:
-        haystack = f"{row.metadata.purpose or ''} {row.title or ''}".lower()
-        if task.lower() not in haystack:
-            return False
-    return True
+def _matches_task(row: ChatSessionInfo, task: str) -> bool:
+    if not task:
+        return True
+    haystack = f"{row.metadata.purpose or ''} {row.title or ''}".lower()
+    return task.lower() in haystack
 
 
-def _summary(count: int) -> str:
-    if not count:
+def _summary(shown: int, *, truncated: bool) -> str:
+    """Count what was returned, not what matched: a number larger than the
+    list reads as authoritative and is not."""
+    if not shown:
         return "No other sessions of yours match."
-    return f"{count} session{'s' if count != 1 else ''} of yours match."
+    plural = "s" if shown != 1 else ""
+    more = " Narrow it with expert_id, task or status." if truncated else ""
+    return f"{shown} session{plural} of yours{' (first ' + str(MAX_RESULTS) + ')' if truncated else ''}.{more}"

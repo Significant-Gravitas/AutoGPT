@@ -15,13 +15,14 @@ import pytest
 from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult_budget
 from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
-from backend.copilot.tools.find_session import FindSessionTool
+from backend.copilot.tools.find_session import MAX_RESULTS, FindSessionTool
 from backend.copilot.tools.message_session import MessageSessionTool
 from backend.copilot.tools.models import (
     ErrorResponse,
     SessionListResponse,
     SessionMessageResponse,
 )
+from backend.copilot.tree import TurnEnvelope
 
 _FIND = "backend.copilot.tools.find_session"
 _MSG = "backend.copilot.tools.message_session"
@@ -112,6 +113,30 @@ class TestFindSessionScoping:
             )
         assert isinstance(result, SessionListResponse)
         assert [s.session_id for s in result.sessions] == ["a"]
+
+    async def test_expert_and_status_filter_in_the_query(self) -> None:
+        """Filtering these in Python would drop matches older than the scan
+        window while the summary still read as authoritative."""
+        with patch(
+            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+        ) as lister:
+            await FindSessionTool()._execute(
+                OWNER, _session(), expert_id="expert-7", status="running"
+            )
+        kwargs = lister.await_args.kwargs
+        assert kwargs["expert_id"] == "expert-7"
+        assert kwargs["status"] == "running"
+
+    async def test_count_reports_what_was_returned_not_what_matched(self) -> None:
+        rows = [_info(f"s{i}") for i in range(MAX_RESULTS + 5)]
+        with patch(
+            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+        ):
+            result = await FindSessionTool()._execute(OWNER, _session())
+        assert isinstance(result, SessionListResponse)
+        assert len(result.sessions) == MAX_RESULTS
+        assert str(MAX_RESULTS) in result.message
+        assert str(len(rows)) not in result.message
 
 
 class TestMessageSessionDelivery:
@@ -206,6 +231,43 @@ class TestMessageSessionDelivery:
                     )
         meta = enqueue.await_args.kwargs["message_metadata"]
         assert meta["from_session_id"] == CALLER_SESSION
+
+
+class TestTaintPropagation:
+    """A tainted session must not launder instructions into an untainted one.
+
+    Both directions are asserted: without these, inverting or dropping the
+    check in ``_render`` leaves the suite green.
+    """
+
+    @staticmethod
+    async def _deliver(envelope: TurnEnvelope | None) -> str:
+        queued = QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                with patch(f"{_MSG}.get_current_envelope", return_value=envelope):
+                    await MessageSessionTool()._execute(
+                        OWNER,
+                        _session(),
+                        session_id=TARGET_SESSION,
+                        message="the numbers are in",
+                    )
+        return deliver.await_args.kwargs["message"]
+
+    async def test_a_tainted_sender_marks_the_message_as_data(self) -> None:
+        sent = await self._deliver(TurnEnvelope(tree_id="t", tainted=True))
+        assert "data, not instructions" in sent
+
+    async def test_an_untainted_sender_adds_no_warning(self) -> None:
+        sent = await self._deliver(TurnEnvelope(tree_id="t", tainted=False))
+        assert "data, not instructions" not in sent
 
 
 class TestMessageSessionGuards:

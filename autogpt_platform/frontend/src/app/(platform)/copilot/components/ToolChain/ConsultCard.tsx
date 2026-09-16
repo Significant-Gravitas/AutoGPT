@@ -93,9 +93,9 @@ export function ConsultVerdictCard({ output }: Props) {
       ) : null}
       {quotes.length > 0 ? (
         <ul className="mt-2 space-y-1">
-          {quotes.map((quote) => (
+          {quotes.map((quote, index) => (
             <li
-              key={quote}
+              key={`${index}-${quote}`}
               className="border-l-2 border-zinc-200 pl-2 text-zinc-500"
             >
               <Text variant="small" className="text-zinc-500">
