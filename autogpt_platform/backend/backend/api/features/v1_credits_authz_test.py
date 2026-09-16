@@ -293,6 +293,26 @@ def test_user_scoped_credits_route_allows_plain_member(
     assert resp.json() == expected_json
 
 
+def test_manage_payment_method_opens_the_callers_own_portal(
+    test_user_id: str, credit_stubs: CreditStubs
+):
+    """Pin WHOSE portal the route opens, which the response cannot show.
+
+    The exemption above rests on the portal being the caller's own. The stub
+    returns the same URL whatever it is handed, so swapping the caller for the
+    org id leaves the response identical and the assertion above green while
+    changing which billing account is opened.
+    """
+    _use_role("plain_member", test_user_id)
+
+    resp = client.get("/api/credits/manage")
+
+    assert resp.status_code == 200, resp.text
+    credit_stubs.model.create_billing_portal_session.assert_awaited_once_with(
+        test_user_id
+    )
+
+
 @pytest.mark.parametrize(
     "route_name, call",
     [
