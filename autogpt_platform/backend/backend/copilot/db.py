@@ -1370,6 +1370,22 @@ async def list_chat_sessions_by_status(
     return [ChatSessionInfo.from_db(r) for r in rows]
 
 
+async def list_recent_chat_sessions(
+    *, user_id: str, limit: int = 50
+) -> list[ChatSessionInfo]:
+    """The user's most recently active sessions, newest first.
+
+    Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
+    another user's session is invisible rather than merely unlisted.
+    """
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id},
+        order={"updatedAt": "desc"},
+        take=limit,
+    )
+    return [ChatSessionInfo.from_db(r) for r in rows]
+
+
 async def get_latest_user_message_in_session(
     session_id: str,
 ) -> ChatMessage | None:

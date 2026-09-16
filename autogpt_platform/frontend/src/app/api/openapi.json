@@ -18841,6 +18841,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
           },
+          "purpose": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Purpose"
+          },
           "pending_question": {
             "anyOf": [
               { "$ref": "#/components/schemas/PendingQuestion" },
@@ -27825,7 +27829,9 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
-          "team_consult"
+          "team_consult",
+          "session_list",
+          "session_message"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

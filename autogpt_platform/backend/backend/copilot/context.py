@@ -56,9 +56,32 @@ MAX_CONSULTS_PER_TURN = 3
 _consults_used: ContextVar[int] = ContextVar("_consults_used", default=0)
 
 
+# How many teammates one turn may message. Sending does not block the turn,
+# so without a cap a single turn can wake every session the user owns.
+MAX_SESSION_MESSAGES_PER_TURN = 3
+_session_messages_used: ContextVar[int] = ContextVar(
+    "_session_messages_used", default=0
+)
+
+
 def reset_consult_budget() -> None:
-    """Give the turn a fresh consult allowance. Called by both engines' setters."""
+    """Give the turn a fresh consult and message allowance. Called by both
+    engines' setters."""
     _consults_used.set(0)
+    _session_messages_used.set(0)
+
+
+def take_session_message_slot() -> str | None:
+    """Claim one outbound session message, or return the refusal to hand the
+    model. Per turn, for the same reason the consult budget is."""
+    used = _session_messages_used.get()
+    if used >= MAX_SESSION_MESSAGES_PER_TURN:
+        return (
+            f"You have already messaged {used} sessions this turn. Wait for a "
+            "reply before sending more — a message costs the receiver a turn."
+        )
+    _session_messages_used.set(used + 1)
+    return None
 
 
 def take_consult_slot() -> str | None:
