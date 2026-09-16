@@ -130,6 +130,7 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
     kickoff_turn_disabled_tools,
+    origin_disabled_tools,
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
@@ -2273,10 +2274,11 @@ async def stream_chat_completion_baseline(
     )
     # A hire's kickoff turn is a server-sent control message, so nothing on
     # it was asked for: narrow it to the onboarding card and nothing else.
+    # Otherwise hide what the origin gate would refuse anyway.
     disabled_tools = (
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
-        else frozenset()
+        else origin_disabled_tools(session.metadata.origin)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
