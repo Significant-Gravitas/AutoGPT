@@ -734,7 +734,8 @@ describe("ExpertDetailPage", () => {
         skills: [
           {
             slug: "seo-audit",
-            name: "SEO audit",
+            name: "seo-audit",
+            title: "SEO audit",
             description: "Audit any page for SEO gaps",
             categories: ["marketing"],
             required_providers: [],

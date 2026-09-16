@@ -106,7 +106,7 @@ class GatedRoute(pydantic.BaseModel):
     body: dict | None = None
 
 
-# Every route in v1.py carrying
+# Every route carrying
 # ``Security(requires_org_permission(OrgAction.MANAGE_BILLING))`` (via the
 # ``BillingManagerContext`` alias). Kept in sync with the app by
 # ``test_every_credits_route_is_gated_or_explicitly_exempt``; ``name`` is the
@@ -453,9 +453,12 @@ ORG_BALANCE_UNGATED: dict[str, str] = {
         "create_billing_portal_session"
     ),
     "get_home_dashboard": (
-        "SECRT-2648: /home hands a plain org member the pooled balance that GET "
-        "/api/credits refuses them. Exempt only until that is gated — this entry "
-        "comes out with the fix"
+        "SECRT-2648 withholds /home's pooled balance from a member without "
+        "MANAGE_BILLING, but it gates the read inside the service, where "
+        "_get_credits calls check_org_permission, and this walk reads the "
+        "route's DEPENDENCY tree — so the route still resolves the credit model "
+        "with no route-level gate and this entry stays; removing it turns this "
+        "test red"
     ),
 }
 

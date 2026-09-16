@@ -405,7 +405,8 @@ test("keeps the skills beat when only the Hub has something to offer", async () 
     hubSkills([
       {
         slug: "cold-outreach",
-        name: "Cold Outreach",
+        name: "cold-outreach",
+        title: "Cold Outreach",
         description: "Write cold emails",
         categories: ["sales"],
         required_providers: [],
