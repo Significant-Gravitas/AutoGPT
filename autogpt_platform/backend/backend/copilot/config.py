@@ -701,7 +701,10 @@ class ChatConfig(BaseSettings):
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "
         "it is needed; see backend.util.e2b_template. Any other value is used "
-        "as-is and must already exist on the team.",
+        "as-is and must already exist on the team, and it must carry what the "
+        "desktop needs (Xvfb, XFCE, x11vnc and noVNC, as E2B's desktop image "
+        "does): the screen is turned on inside this same box, so a plain "
+        "image such as 'base' makes every start_desktop fail.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries

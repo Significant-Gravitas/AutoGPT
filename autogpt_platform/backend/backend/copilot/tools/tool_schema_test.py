@@ -131,6 +131,18 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     #14244 agent-collab-architecture              +0
 #     #14209 autopilot-auto-mode-v2                 +0
 #     #14432 secrt-2593-publish                     +0
+#     #14365 sandbox-e2b-desktop (start_desktop)  +670  (branch measures 63,417)
+# Bumped 68_238 -> 68_997 on 2026-09-16 when #14365 merged dev (twice in one
+# morning: #14416's pause/resume_schedule landed between the two). Dev's
+# registry measures 68,503 with start_desktop removed, so start_desktop's
+# delta is +493 once merged (the +670 above was against an older dev).
+# Merged registry measures 68,996; the ceiling is that plus one.
+# Bumped 68_997 -> 69_063 for #14382 (one box per owner): start_desktop's
+# description now says it is the same machine bash_exec runs in, +66.
+# Merged registry measures 69,062.
+# Lowered 69_063 -> 69_056 on the same PR: bash_exec's description no longer
+# tells the model that only ~/workspace shows on the desktop, -7.  Merged
+# registry measures 69,055.
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
 # make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
@@ -172,7 +184,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Higher of the two conflicting values wins and is then re-measured, which is
 # what makes it 69,219 rather than this branch's earlier 68,604. #14476 landed
 # mid-merge and is in here too; it moves API routes and no tools, so 69,218 holds.
-_CHAR_BUDGET = 69_219
+# Bumped 69_056 -> 70_037 on 2026-09-16, merging dev into #14207 again. dev's
+# ceiling of 69,056 sat one character above its own 69,055 — the third merge
+# running where dev is on its limit — so consult_teammate's +981 does not fit.
+# Measured on the MERGED tree, never on either tip, never reused from a prior
+# merge:
+#     dev 648c5ce6d5                             69,055 (84 tools)
+#     + #14207 multi-expert-teams  +981          70,036 (85 tools)
+# Keep the HIGHER of two conflicting values and then re-measure, per the rule
+# above: this branch held 69,219 and dev 69,056, and neither is the answer.
+_CHAR_BUDGET = 70_037
 
 
 @pytest.fixture(scope="module")

@@ -147,9 +147,14 @@ export function ConnectorRow({ row }: Props) {
     ...(connected ? [connected] : []),
     ...(expertGrant?.credentials ?? []).filter((c) => c.id !== connected?.id),
   ];
-  const isSatisfied = expertGrant
-    ? grantedCredentials.isSelectionGranted
-    : Boolean(row.selected);
+  // A merged card whose own field is still empty leaves the row unanswered,
+  // whatever the first target holds — saying "Granted" there claims a run can
+  // proceed that cannot.
+  const isSatisfied =
+    !row.hasUnansweredTarget &&
+    (expertGrant
+      ? grantedCredentials.isSelectionGranted
+      : Boolean(row.selected));
 
   function openDialog() {
     knownIds.current = allProviders

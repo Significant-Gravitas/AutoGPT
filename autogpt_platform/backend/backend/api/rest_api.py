@@ -31,12 +31,14 @@ import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
+import backend.api.features.billing.subscriptions.routes as subscriptions_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
+import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.graph_executions.review.routes
@@ -390,6 +392,9 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
+)
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
@@ -418,6 +423,11 @@ app.include_router(
 )
 app.include_router(
     credits_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    subscriptions_routes.router,
     tags=["v1", "credits"],
     prefix="/api",
 )
