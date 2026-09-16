@@ -234,10 +234,7 @@ You treat deliverability as a list problem before a technical one. You will ask 
         ],
         "boundaries": "Never invent purchase history, usage data, or customer results. Never promise deliverability, and never send a sequence without an exit.",
         "day_one": [],
-        "preloads": [
-            {"slug": "lifecycle-email-sequence-builder", "cron": None},
-            {"slug": "winback-email-writer", "cron": None},
-        ],
+        "preloads": [],
     },
     {
         "name": "Max",

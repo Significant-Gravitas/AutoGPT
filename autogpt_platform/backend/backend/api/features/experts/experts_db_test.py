@@ -56,11 +56,9 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "business-ownerceo-finder",
     "email-address-finder",
     "lead-finder-local-businesses",
-    "lifecycle-email-sequence-builder",
     "linkedin-post-generator",
     "personalized-morning-coffee-newsletter",
     "smart-meeting-brief",
-    "winback-email-writer",
     "youtube-to-linkedin-post-converter",
     "youtube-transcription-scraper",
 }
@@ -3142,13 +3140,16 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_assigns_two_to_four_workflows_with_scheduled_cadences():
-    """Launch invariant, checked without a DB: every persona ships 2-4
+def test_roster_preloads_and_scheduled_cadences():
+    """Launch invariant, checked without a DB: every persona has at most four
     preloads, and every scheduled cadence on the roster is one we declared —
     so a cron added to a persona that acts outside the platform fails here
     rather than firing unattended on someone's account."""
     for entry in seed.ROSTER:
-        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+        assert len(entry["preloads"]) <= 4, entry["name"]
+
+    remy = next(entry for entry in seed.ROSTER if entry["name"] == "Remy")
+    assert remy["preloads"] == []
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
