@@ -623,7 +623,7 @@ class RunMCPToolTool(BaseTool):
             reason = (rejection.detail or "").strip()
             message = (
                 f"{service} rejected the saved credential{status}."
-                + (f" {reason[:300]}" if reason else "")
+                + (f" {reason[:400]}" if reason else "")
                 + " Sign in again if the credential is simply stale; otherwise "
                 "fix what the service reported first."
             )
@@ -660,7 +660,10 @@ class RunMCPToolTool(BaseTool):
 def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
     return CredentialRejection(
         provider=ProviderName.MCP.value,
-        detail=sanitize_provider_message(str(error)),
+        # Providers put the fix at the end of the sentence — Brevo's 401 names
+        # its IP allow-list page, and the default 200-character cap truncated
+        # that link away, leaving the user the complaint without the remedy.
+        detail=sanitize_provider_message(str(error), max_chars=400),
         status_code=error.status_code,
         credential_id=creds.id,
         credential_title=creds.title,
