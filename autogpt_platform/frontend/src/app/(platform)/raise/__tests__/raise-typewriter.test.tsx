@@ -63,7 +63,7 @@ afterEach(() => {
 
 test("renders restored conversation messages instantly after reload", async () => {
   saveDraft({
-    step: "color",
+    step: "avatar",
     hasStarted: true,
     role: "marketer",
     name: "Nova",
@@ -104,6 +104,6 @@ test("renders restored conversation messages instantly after reload", async () =
     ),
   ).toBe(true);
   expect(
-    visible.some((text) => text.includes("Nice. Now choose a color for them.")),
+    visible.some((text) => text.includes("Now give Nova a face and a color.")),
   ).toBe(true);
 });
