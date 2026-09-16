@@ -73,8 +73,9 @@ async def test_resolver_collects_own_and_delegated_conversations(
     assert not scope.allows_path(f"/sessions/{delegated.session_id}/x.txt", write=True)
     assert not scope.allows_path(f"/sessions/{foreign.session_id}/x.txt")
     assert not scope.allows_path(f"/sessions/{personal.session_id}/x.txt")
-    assert scope.allows_path("/skills/autopilot/SKILL.md")
-    assert not scope.allows_path("/skills/autopilot/SKILL.md", write=True)
+    assert not scope.allows_path("/skills/autopilot/SKILL.md")
+    assert scope.allows_path(f"/experts/{expert_a}/skills/mine/SKILL.md", write=True)
+    assert not scope.allows_path(f"/experts/{expert_b}/skills/theirs/SKILL.md")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -97,6 +98,9 @@ async def test_resolver_fails_closed_for_foreign_or_archived_expert(
     archived_scope = await resolve_expert_workspace_scope(stranger, expert)
     assert archived_scope.session_ids == []
     assert not archived_scope.allows_path(f"/sessions/{session.session_id}/x.txt")
+    # A revoked expert keeps no claim on the skills folder named after it.
+    for revoked in (foreign_scope, archived_scope):
+        assert not revoked.allows_path(f"/experts/{expert}/skills/x/SKILL.md")
 
 
 @pytest.mark.asyncio(loop_scope="session")

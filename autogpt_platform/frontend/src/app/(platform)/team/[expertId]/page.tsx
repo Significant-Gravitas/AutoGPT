@@ -17,6 +17,7 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   Briefcase01Icon,
   Calendar03Icon,
+  ComputerIcon,
   PlugSocketIcon,
   Settings01Icon,
   SparklesIcon,
@@ -32,6 +33,7 @@ import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import { getLastRunLabel } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
+import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
@@ -51,6 +53,7 @@ const TABS = [
   { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
+  { value: "computer", label: "Computer", icon: ComputerIcon },
   { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
   { value: "settings", label: "Settings", icon: Settings01Icon },
@@ -138,7 +141,7 @@ export default function ExpertDetailPage() {
             </Text>
             <Button
               variant="secondary"
-              size="xs"
+              size="small"
               loading={isResuming}
               onClick={resumeSchedules}
             >
@@ -147,16 +150,19 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        <ExpertBudgetSection expert={expert} />
-
-        {expert.tagline ? (
-          <Text variant="body" tone="muted">
-            {expert.tagline}
-          </Text>
-        ) : null}
+        {/* items-start keeps the tagline level with the Budget label rather
+            than floating between the label and the bar. */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
+          {expert.tagline ? (
+            <Text variant="large" className="min-w-0 flex-1 text-zinc-800">
+              {expert.tagline}
+            </Text>
+          ) : null}
+          <ExpertBudgetSection expert={expert} />
+        </div>
 
         <ExpertNeedsYouSection
-          expertId={expert.id}
+          expert={expert}
           enabled={Boolean(enabled) && ready}
         />
 
@@ -223,6 +229,14 @@ export default function ExpertDetailPage() {
               coverColor={expert.color}
               onInstallWorkflow={openPicker}
               onAskWorkflow={openChatWithPrompt}
+            />
+          </TabsLineContent>
+
+          <TabsLineContent value="computer">
+            <ExpertComputerSection
+              expertId={expert.id}
+              expertName={expert.name}
+              enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
 

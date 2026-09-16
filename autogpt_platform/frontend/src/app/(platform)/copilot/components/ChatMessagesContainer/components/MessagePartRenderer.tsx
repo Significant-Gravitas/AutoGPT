@@ -24,6 +24,7 @@ import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
+import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -232,6 +233,8 @@ export function MessagePartRenderer({
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
+    case "tool-expert_onboarding":
+      return <ExpertOnboardingCard key={key} part={part as ToolUIPart} />;
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":

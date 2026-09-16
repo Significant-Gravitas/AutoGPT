@@ -73,6 +73,7 @@ ToolName = Literal[
     "add_understanding",
     "ask_question",
     "bash_exec",
+    "start_desktop",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
@@ -93,6 +94,7 @@ ToolName = Literal[
     "delete_workspace_file",
     "edit_agent",
     "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
     "find_block",
     "find_library_agent",
@@ -102,10 +104,15 @@ ToolName = Literal[
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "grant_expert_credential",
     "handoff_to_expert",
     "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_expert_chats",
+    "list_expert_credentials",
+    "list_expert_workflows",
     "list_folders",
     "list_presets",
     "list_schedules",
@@ -118,10 +125,16 @@ ToolName = Literal[
     "memory_store",
     "move_agents_to_folder",
     "move_folder",
+    "pause_schedule",
     "post_to_chat_platform",
     "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "remove_expert_workflow",
+    "request_credential_grant",
+    "resume_schedule",
+    "revoke_expert_credential",
     "run_agent",
     "run_block",
     "run_mcp_tool",
@@ -487,8 +500,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names

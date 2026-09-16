@@ -75,6 +75,7 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatarUrl}
+          color={expert.color}
           size={48}
         />
         <div className="min-w-0">

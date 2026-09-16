@@ -109,7 +109,7 @@ interface Props {
 
 function HomeTileSkeleton({ cardClassName }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+    <div className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
       <div className="flex h-10 items-center border-b border-zinc-100 px-4">
         <Skeleton className="h-3.5 w-28" />
       </div>

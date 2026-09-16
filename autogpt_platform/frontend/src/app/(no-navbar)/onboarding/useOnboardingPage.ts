@@ -14,14 +14,8 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { normalizeOnboardingProfile } from "./helpers";
-import {
-  NO_PAYWALL_STEPS,
-  PAYWALL_FIRST_STEPS,
-  SELF_HOST_STEPS,
-  Step,
-  useOnboardingWizardStore,
-} from "./store";
+import { accountDisplayName, normalizeOnboardingProfile } from "./helpers";
+import { buildStepLayout, Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
@@ -59,10 +53,11 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading, refreshSession, user } = useAuth();
+  const { isLoggedIn, isUserLoading, user } = useAuth();
   const trialConfirmation = useTrialCheckoutReturn();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
+  const setSteps = useOnboardingWizardStore((s) => s.setSteps);
 
   // Wait for LaunchDarkly before initialising the wizard from the URL.
   // Without this, the init effect runs against the default flag value
@@ -108,6 +103,19 @@ export function useOnboardingPage() {
   }
   const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
 
+  // Child of HIRE_EXPERTS: adds the two intro steps up front and makes the
+  // preparing screen wait on the team job. Snapshotted like the others so the
+  // numbering can't shift under a user mid-wizard.
+  const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
+  const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
+  const expertTeamSnapshot = useRef<boolean | null>(null);
+  if (expertTeamSnapshot.current === null && areFlagsReady) {
+    expertTeamSnapshot.current = Boolean(
+      isExpertTeamFlagOn && isHireExpertsFlagOn,
+    );
+  }
+  const isExpertTeamEnabled = expertTeamSnapshot.current ?? false;
+
   // Skip the paywall for users already on a paid tier (admin grants or
   // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
   const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
@@ -129,13 +137,18 @@ export function useOnboardingPage() {
   // mutually exclusive in practice; the check is ordered anyway so a
   // deployment that somehow had both still only inserts one first step.
   const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
-  const steps = isPaymentEnabled
-    ? PAYWALL_FIRST_STEPS
-    : isSelfHostConnectEnabled
-      ? SELF_HOST_STEPS
-      : NO_PAYWALL_STEPS;
-  const preparingStep: Step = steps.preparing;
-  const totalSteps = isPaymentEnabled || isSelfHostConnectEnabled ? 4 : 3;
+  // The recommendations are read off the brain dump, and the endpoint that
+  // serves them lives behind the same flag — no dump, no hire step.
+  const isHireStepEnabled = isExpertTeamEnabled && isBrainDumpEnabled;
+  const steps = buildStepLayout({
+    hasIntro: isExpertTeamEnabled,
+    hasHire: isHireStepEnabled,
+    hasPaywall: isPaymentEnabled,
+    hasConnect: isSelfHostConnectEnabled,
+  });
+  const preparingStep = steps.preparing as Step;
+  // Every step before Preparing is one the user acts on and gets a dot for.
+  const totalSteps = steps.preparing - 1;
 
   // Wait for auth too — without !isUserLoading, LD can resolve while
   // isLoggedIn is transiently false, the tier query stays disabled
@@ -166,17 +179,18 @@ export function useOnboardingPage() {
     if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    // The paywall is the first step, so a successful Stripe checkout return is
-    // a trusted intent to advance past it onto Welcome and start the actual
-    // onboarding — without this, the highestStep ceiling (capped at the
-    // subscription step before redirect) would clamp the user back onto the
-    // paywall they just paid through.
+    // The paywall is the first step, so a successful Stripe checkout return
+    // is a trusted intent to advance past it onto the step after it and start
+    // the actual onboarding — without this, the highestStep ceiling (capped
+    // at the subscription step before redirect) would clamp the user back
+    // onto the paywall they just paid through.
     const isSubscriptionSuccess =
       searchParams.get("subscription") === "success" ||
       trialConfirmation.active;
-    const ceiling = isSubscriptionSuccess
-      ? steps.welcome
-      : (Math.min(readHighestStep(), preparingStep) as Step);
+    const ceiling =
+      isSubscriptionSuccess && steps.subscription !== undefined
+        ? (Math.min(steps.subscription + 1, preparingStep) as Step)
+        : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
@@ -187,8 +201,29 @@ export function useOnboardingPage() {
     searchParams,
     goToStep,
     preparingStep,
-    steps,
+    steps.subscription,
     trialConfirmation.active,
+  ]);
+
+  // Publish the numbering so steps that must name another step (the
+  // paywall's Stripe return URLs) agree with the page.
+  useEffect(() => {
+    if (!isReady) return;
+    setSteps(
+      buildStepLayout({
+        hasIntro: isExpertTeamEnabled,
+        hasHire: isHireStepEnabled,
+        hasPaywall: isPaymentEnabled,
+        hasConnect: isSelfHostConnectEnabled,
+      }),
+    );
+  }, [
+    isReady,
+    setSteps,
+    isExpertTeamEnabled,
+    isHireStepEnabled,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
   ]);
 
   // Report the step the wizard is actually showing. `isOnboardingStateLoading`
@@ -198,11 +233,11 @@ export function useOnboardingPage() {
   // at Preparing never reports the store's default of Welcome on the way past.
   // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
   // going back and forward reports nothing new.
+  const stepKey = onboardingStepKey(steps, currentStep);
   useEffect(() => {
     if (isOnboardingStateLoading || !isStepSettled) return;
-    const key = onboardingStepKey(steps, currentStep);
-    if (key) trackOnboardingStep(key);
-  }, [isOnboardingStateLoading, isStepSettled, currentStep, steps]);
+    if (stepKey) trackOnboardingStep(stepKey);
+  }, [isOnboardingStateLoading, isStepSettled, stepKey]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
@@ -246,42 +281,25 @@ export function useOnboardingPage() {
   // Submit profile when entering the Preparing step
   useEffect(() => {
     if (currentStep !== preparingStep || hasSubmitted.current) return;
-    hasSubmitted.current = true;
-
-    const { name, role, painPoints } = normalizeOnboardingProfile(
+    const { role, painPoints } = normalizeOnboardingProfile(
       useOnboardingWizardStore.getState(),
     );
+    const userName = accountDisplayName(user);
 
-    // The paywall now runs first (before any profile data is collected), so
-    // the profile is only ever submitted here, once, on reaching Preparing.
-    // Guard against an empty name so a stray Preparing visit can't blank a
+    // The profile is only ever submitted here, once, on reaching Preparing.
+    // Guard against an empty role so a stray Preparing visit can't blank a
     // previously-saved profile.
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
+    if (!role.trim() || !userName) return;
+    hasSubmitted.current = true;
 
     postV1SubmitOnboardingProfile({
-      user_name: trimmedName,
+      user_name: userName,
       user_role: role,
       pain_points: painPoints,
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-
-    // Also store the chosen name in auth user_metadata so the copilot
-    // greeting (getGreetingName) uses it; refresh the cached session user
-    // so the new name shows up right after onboarding without a reload.
-    // Goes through the server route because the browser Supabase client has
-    // no session (persistSession: false) and can't call auth.updateUser.
-    fetch("/api/auth/user", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ preferred_name: trimmedName }),
-    })
-      .then((res) => (res.ok ? refreshSession() : undefined))
-      .catch(() => {
-        // Best effort — the greeting falls back to existing metadata
-      });
-  }, [currentStep, preparingStep, refreshSession]);
+  }, [currentStep, preparingStep, user]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -314,6 +332,7 @@ export function useOnboardingPage() {
     isPaymentEnabled,
     isSelfHostConnectEnabled,
     isBrainDumpEnabled,
+    isExpertTeamEnabled,
     steps,
     preparingStep,
     totalSteps,

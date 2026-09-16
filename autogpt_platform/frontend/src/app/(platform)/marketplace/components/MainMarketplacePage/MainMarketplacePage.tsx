@@ -1,7 +1,11 @@
 "use client";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import {
+  Flag,
+  useFlagStatus,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
 import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
@@ -9,6 +13,7 @@ import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
+import { SkillsSection } from "../SkillsSection/SkillsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
@@ -27,6 +32,9 @@ export const MainMarkeplacePage = () => {
   } = useMainMarketplacePage();
   const { isLoggedIn, isUserLoading } = useAuth();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  // Branch on `ready` so the shelf does not pop in after LaunchDarkly
+  // answers and push the whole workflow catalogue down.
+  const skillsHub = useFlagStatus(Flag.SKILLS_HUB);
   // Hiring is still behind the flag, but the expert pages are public: a
   // visitor browsing the marketplace needs a way to reach them. Signed-in
   // users keep the flag gate so the beta stays invisible to them.
@@ -59,7 +67,13 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {showExperts ? <ExpertsSection /> : null}
+        {/* Above all three shelves because it narrows all three: a filter
+            below its content changes what the reader has scrolled past. */}
+        <CategoryFilter selected={category} onSelect={setCategory} />
+        {showExperts ? <ExpertsSection category={category} /> : null}
+        {skillsHub.ready && skillsHub.enabled ? (
+          <SkillsSection category={category} />
+        ) : null}
         {topAgents && (
           <div className="mb-20" id={AGENTS_SECTION_ID}>
             <AgentsSection
@@ -72,7 +86,6 @@ export const MainMarkeplacePage = () => {
               }
               agents={topAgents.agents}
             >
-              <CategoryFilter selected={category} onSelect={setCategory} />
               {/* Featured is a whole-marketplace shelf; under a category filter
                   it would show workflows the filter excludes. */}
               {!category &&

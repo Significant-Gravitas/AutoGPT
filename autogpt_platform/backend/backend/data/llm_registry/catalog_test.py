@@ -216,6 +216,114 @@ def test_gemini_3_8_flash_bills_at_authored_rates():
     assert flash_entry.context_window == 1048576
 
 
+def test_muse_spark_1_3_bills_at_authored_rates():
+    """Muse Spark 1.3 (OpenRouter, Meta list price $1.25/$4.25 per 1M) —
+    flat tier and per-1M projections must match the authored catalog
+    entry."""
+    muse_spark = LLMModel("meta/muse-spark-1.3")
+    assert MODEL_COST[muse_spark] == 3
+    assert TOKEN_COST[muse_spark].model_dump() == {
+        "input": 187.5,
+        "output": 637.5,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[muse_spark].max_output_tokens == 1000000
+    muse_spark_entry = next(
+        m for m in CATALOG.models if m.slug == "meta/muse-spark-1.3"
+    )
+    assert muse_spark_entry.price_tier == 1
+    assert muse_spark_entry.context_window == 1048576
+    assert muse_spark_entry.supports_tools is True
+    assert muse_spark_entry.supports_json_output is True
+    assert muse_spark_entry.supports_reasoning is True
+
+
+def test_muse_spark_1_3_contributor_bills_at_authored_rates():
+    """Muse Spark 1.3 Contributor (OpenRouter, Meta list price
+    $0.10/$0.20 per 1M, $0.002/1M cached input) — the discounted
+    data-sharing tier — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    contributor = LLMModel("meta/muse-spark-1.3-contributor")
+    assert MODEL_COST[contributor] == 1
+    assert TOKEN_COST[contributor].model_dump() == {
+        "input": 15.0,
+        "output": 30.0,
+        "cache_read": 0.3,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[contributor].max_output_tokens == 1000000
+    contributor_entry = next(
+        m for m in CATALOG.models if m.slug == "meta/muse-spark-1.3-contributor"
+    )
+    assert contributor_entry.price_tier == 1
+    assert contributor_entry.context_window == 1048576
+    assert contributor_entry.supports_tools is True
+    assert contributor_entry.supports_json_output is True
+    assert contributor_entry.supports_reasoning is True
+
+
+def test_qwen3_8_max_0902_bills_at_authored_rates():
+    """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
+    1M) — flat tier and per-1M projections must match the authored catalog
+    entry."""
+    qwen_max = LLMModel("qwen/qwen3.8-max-0902")
+    assert MODEL_COST[qwen_max] == 5
+    assert TOKEN_COST[qwen_max].model_dump() == {
+        "input": 300.0,
+        "output": 900.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[qwen_max].max_output_tokens == 131072
+    qwen_max_entry = next(
+        m for m in CATALOG.models if m.slug == "qwen/qwen3.8-max-0902"
+    )
+    assert qwen_max_entry.price_tier == 2
+    assert qwen_max_entry.context_window == 262144
+
+
+def test_deepseek_v4_1_flash_bills_at_authored_rates():
+    """DeepSeek V4.1 Flash (OpenRouter, DeepSeek list price $0.15/$0.60 per
+    1M, $0.003/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    flash = LLMModel("deepseek/deepseek-v4.1-flash")
+    assert MODEL_COST[flash] == 1
+    assert TOKEN_COST[flash].model_dump() == {
+        "input": 22.5,
+        "output": 90.0,
+        "cache_read": 0.45,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[flash].max_output_tokens == 384000
+    flash_entry = next(
+        m for m in CATALOG.models if m.slug == "deepseek/deepseek-v4.1-flash"
+    )
+    assert flash_entry.price_tier == 1
+    assert flash_entry.context_window == 1048576
+
+
+def test_fugu_ultra_v2_bills_at_authored_rates():
+    """Sakana Fugu Ultra v2 (OpenRouter, Sakana list price $5.00/$30.00 per
+    1M, $0.50/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    fugu = LLMModel("sakana/fugu-ultra-v2")
+    assert MODEL_COST[fugu] == 1
+    assert TOKEN_COST[fugu].model_dump() == {
+        "input": 750.0,
+        "output": 4500.0,
+        "cache_read": 75.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[fugu].max_output_tokens == 1048576
+    fugu_entry = next(m for m in CATALOG.models if m.slug == "sakana/fugu-ultra-v2")
+    assert fugu_entry.price_tier == 3
+    assert fugu_entry.context_window == 1048576
+    assert fugu_entry.supports_tools is True
+    assert fugu_entry.supports_json_output is True
+    assert fugu_entry.supports_reasoning is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

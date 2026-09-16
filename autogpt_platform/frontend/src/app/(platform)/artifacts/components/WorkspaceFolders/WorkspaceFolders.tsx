@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function WorkspaceFolders({ onSelectFolder }: Props) {
-  const { folders, isLoading, isError, error, moveFileToFolder } =
+  const { folders, isLoading, isError, error, moveFilesToFolder } =
     useArtifactsFolders();
 
   const [editing, setEditing] = useState<WorkspaceFolderModel | null>(null);
@@ -58,8 +58,8 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
             onClick={() => onSelectFolder(folder.id)}
             onEdit={() => setEditing(folder)}
             onDelete={() => setDeleting(folder)}
-            onFileDrop={(fileId, folderId) => {
-              moveFileToFolder({ fileId, folderId }).catch(() => {});
+            onFileDrop={(fileIds, folderId) => {
+              moveFilesToFolder({ fileIds, folderId }).catch(() => {});
             }}
           />
         ))}

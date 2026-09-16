@@ -15,8 +15,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import { getPendingQuestions } from "../QuestionDock/helpers";
-import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
@@ -171,6 +170,7 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -283,7 +283,7 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
+      <PendingAnswerContexts messages={messages}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
@@ -317,6 +317,7 @@ export const ChatContainer = ({
                   queuedMessages={queuedMessages}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
                   canOpenActivity={isArtifactsEnabled}
                   areFilesOpen={areFilesOpen}
@@ -363,7 +364,10 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
-                    <Tooltip open={isLimitReached ? undefined : false}>
+                    <Tooltip
+                      open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                      onOpenChange={setIsUsageTooltipOpen}
+                    >
                       <TooltipTrigger asChild>
                         <div>
                           <ChatInput
@@ -447,7 +451,7 @@ export const ChatContainer = ({
             )}
           </div>
         </LayoutGroup>
-      </PendingQuestionsContext.Provider>
+      </PendingAnswerContexts>
     </CopilotChatActionsProvider>
   );
 };

@@ -10,6 +10,7 @@ import React, {
 import BoringAvatar from "boring-avatars";
 
 import Image, { ImageProps } from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { cn } from "@/lib/utils";
 
 type AvatarContextValue = {
@@ -156,7 +157,7 @@ export function AvatarImage({
       fill={Boolean(fill)}
       sizes={sizes}
       priority={priority}
-      unoptimized={unoptimized}
+      unoptimized={unoptimized || isLocalStoreMediaUrl(normalizedSrc)}
       onLoad={handleLoadingComplete}
       onError={handleErrorNext as ImageProps["onError"]}
     />
@@ -182,6 +183,21 @@ export function AvatarFallback({
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
+  // An image on its way: a quiet grey placeholder, not a stand-in identity
+  // that gets swapped out a moment later.
+  if (hasImage) {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-0 rounded-full bg-zinc-100",
+          square && "rounded-none",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
   const hasCustomFallback = typeof children !== "string" && children != null;
   // Trim the seed so call sites with padded names render the same gradient

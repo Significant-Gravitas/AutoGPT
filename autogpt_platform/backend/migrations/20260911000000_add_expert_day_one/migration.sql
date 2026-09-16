@@ -1,0 +1,1 @@
+ALTER TABLE "Expert" ADD COLUMN "dayOne" JSONB;

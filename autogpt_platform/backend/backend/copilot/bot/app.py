@@ -34,7 +34,7 @@ _NO_ADAPTER_SLEEP_SECONDS = 3600
 
 
 class CoPilotChatBridge(AppService):
-    """Bridges AutoPilot to external chat platforms via per-platform adapters."""
+    """Bridges Otto to external chat platforms via per-platform adapters."""
 
     def __init__(self):
         super().__init__()

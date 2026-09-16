@@ -93,6 +93,8 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.triggerSource = None
+    m.triggerRef = None
     m.scheduleId = None
     m.webhookId = None
     return m
@@ -1372,6 +1374,13 @@ class TestRegressionSchedules:
         other_job.name = "other-job"
 
         scheduler.scheduler.get_jobs = MagicMock(return_value=[owned_job, other_job])
+        # get_graph_execution_schedules (include_paused=False) reads the
+        # active-jobs path, which queries the jobstore directly rather than
+        # going through scheduler.get_jobs — see Scheduler._get_active_jobs_cached.
+        scheduler._execution_jobstore = MagicMock()
+        scheduler._execution_jobstore._get_jobs = MagicMock(
+            return_value=[owned_job, other_job]
+        )
 
         results = scheduler.get_graph_execution_schedules(user_id=USER_ID)
 
@@ -3047,9 +3056,9 @@ class TestPR18Cutover:
         # After cutover, the route should ALWAYS set org (not conditionally)
         import inspect
 
-        from backend.api.features import v1 as api_v1
+        from backend.api.features.api_keys import routes as api_key_routes
 
-        route_src = inspect.getsource(api_v1.create_api_key)
+        route_src = inspect.getsource(api_key_routes.create_api_key)
         assert (
             "if ctx.org_id" not in route_src
         ), "Route should always set organizationId, not conditionally"

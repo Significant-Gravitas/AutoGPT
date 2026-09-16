@@ -50,8 +50,8 @@ afterEach(() => {
 beforeEach(() => {
   postHog.variant = undefined;
   useOnboardingWizardStore.getState().reset();
-  // The paywall is the first step.
-  useOnboardingWizardStore.getState().goToStep(1);
+  // The paywall is the last interactive step (step 3), before Preparing.
+  useOnboardingWizardStore.getState().goToStep(3);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
@@ -198,7 +198,7 @@ describe("SubscriptionStep", () => {
     expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Welcome on success, paywall on cancel)", async () => {
+  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Role on success, paywall on cancel)", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
@@ -228,8 +228,8 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
-    // Success returns to Welcome (step 2) to begin onboarding; cancel returns
-    // to the paywall (step 1).
+    // Success moves on to the step after the paywall (step 2) to begin
+    // onboarding; cancel returns to the paywall (step 1).
     expect(capturedTierBody!.success_url).toContain(
       "/onboarding?step=2&subscription=success",
     );
@@ -241,8 +241,8 @@ describe("SubscriptionStep", () => {
     expect(capturedTierBody!.success_url).toContain(
       "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
     );
-    // Paywall-first: no profile data exists yet, so nothing is POSTed here —
-    // the Preparing step submits the profile at the end of onboarding.
+    // Nothing is POSTed here — the profile is collected after payment and
+    // the Preparing step submits it.
     expect(profileCalled).toBe(false);
   });
 
@@ -286,9 +286,7 @@ describe("SubscriptionStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
-      expect(useOnboardingWizardStore.getState().currentStep).toBeGreaterThan(
-        1,
-      );
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
     });
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
@@ -378,7 +376,7 @@ describe("SubscriptionStep", () => {
       );
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedPlan).toBeNull();
-      expect(state.currentStep).toBe(1);
+      expect(state.currentStep).toBe(3);
     } finally {
       openSpy.mockRestore();
     }
@@ -408,14 +406,13 @@ describe("SubscriptionStep", () => {
     });
     // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
     // step handles submission via useOnboardingPage). Advances from the
-    // paywall (step 1) to Welcome (step 2).
+    // paywall (step 3) to Preparing (step 4).
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {
-    useOnboardingWizardStore.getState().setName("Ada");
     useOnboardingWizardStore.getState().setRole("Engineer");
 
     let resolveTier: (value: unknown) => void = () => undefined;
