@@ -12,6 +12,7 @@ from backend.api.features.skill_zip import package_from_zip, zip_from_package
 from backend.api.features.skills.routes import router
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import app as real_app
+from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_FILES,
     BuiltInSkillError,
@@ -24,15 +25,20 @@ from backend.copilot.tools.skills import (
     render_skill_markdown,
 )
 
-# The skills layer's own test owns the in-memory workspace these round-trip
-# tests need; a second copy here would drift from the real manager's surface.
+# _FakeWorkspaceManager/_patch_skills_path: the skills layer's own test owns the
+# in-memory workspace these round-trip tests need; a second copy here would
+# drift from the real manager's surface.
 from backend.copilot.tools.skills_test import (  # noqa: E402
     _FakeWorkspaceManager,
     _patch_skills_path,
 )
+from backend.util.exceptions import ConflictError
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/skills")
+# ConflictError is mapped app-wide, never on the route, so without this a
+# conflict reads here as an unhandled error rather than the 409 a client gets.
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 client = fastapi.testclient.TestClient(app)
 
 
@@ -378,6 +384,8 @@ def test_expert_skill_routes_refuse_an_expert_the_caller_does_not_own(
         ("upload", "store_user_skill"),
         ("read", "read_user_skill_with_body"),
         ("delete", "delete_user_skill"),
+        ("upload_package", "store_user_skill"),
+        ("download_package", "read_user_skill_package"),
     ],
 )
 def test_expert_skill_routes_forward_an_owned_expert(
@@ -658,6 +666,22 @@ def test_download_refuses_a_stored_package_over_the_files_cap() -> None:
 
     assert response.status_code == 413
     assert str(MAX_PACKAGE_FILES) in response.json()["detail"]
+
+
+def test_download_of_a_package_being_rewritten_is_409_not_a_bad_request(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A tree that will not hold still is a conflict the caller can retry, not
+    a malformed package: 400 or 413 would blame the user for their own
+    concurrent edit."""
+    mocker.patch(
+        "backend.api.features.skills.routes.read_user_skill_package",
+        AsyncMock(side_effect=ConflictError("changed while it was read")),
+    )
+
+    response = client.get("/skills/oauth_flow/package")
+
+    assert response.status_code == 409, response.text
 
 
 def test_download_package_returns_404_for_a_missing_skill(

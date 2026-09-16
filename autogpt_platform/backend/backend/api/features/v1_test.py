@@ -14,7 +14,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import handle_internal_http_error
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import ConflictError, InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
@@ -38,6 +38,10 @@ app.include_router(v1_router)
 # Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
 # tests below verify the same behaviour the real app exposes.
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same reason: ConflictError is mapped app-wide, never on the route, so without
+# this a conflict reads here as an unhandled error rather than the 409 a client
+# actually gets.
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 
 client = fastapi.testclient.TestClient(app)
 
