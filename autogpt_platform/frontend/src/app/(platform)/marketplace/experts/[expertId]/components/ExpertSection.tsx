@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useId } from "react";
 
 interface Props {
   title: string;
@@ -8,9 +8,14 @@ interface Props {
 }
 
 export function ExpertSection({ title, count, description, children }: Props) {
+  const headingId = useId();
+
   return (
-    <section>
-      <h2 className="flex items-baseline gap-2 text-base font-medium text-zinc-900">
+    <section aria-labelledby={headingId}>
+      <h2
+        id={headingId}
+        className="flex items-baseline gap-2 text-base font-medium text-zinc-900"
+      >
         {title}
         {count !== undefined ? (
           <span className="text-sm font-normal tabular-nums text-zinc-400">

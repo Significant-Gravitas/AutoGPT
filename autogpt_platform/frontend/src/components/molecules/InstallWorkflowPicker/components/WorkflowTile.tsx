@@ -2,6 +2,7 @@
 
 import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useState } from "react";
 
 interface Props {
@@ -24,6 +25,7 @@ export function WorkflowTile({ imageUrl }: Props) {
   return (
     <Image
       src={imageUrl}
+      unoptimized={isLocalStoreMediaUrl(imageUrl)}
       alt=""
       width={36}
       height={36}

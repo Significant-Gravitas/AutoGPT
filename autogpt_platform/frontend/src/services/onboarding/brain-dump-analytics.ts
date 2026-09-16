@@ -44,7 +44,7 @@ type BrainDumpEvent =
   // this covers both a suggestion click and a typed reply.
   | "intro_followup_sent"
   | "later_dump_completed"
-  // The team AutoPilot proposed on the greeting page: one event per card
+  // The team Otto proposed on the greeting page: one event per card
   // shown, then the doors out of it — hire, raise your own, talk it
   // through, or skip straight to the builder.
   | "expert_recommended"

@@ -1,4 +1,8 @@
 import {
+  getGetExpertQueryKey,
+  useListExperts,
+} from "@/app/api/__generated__/endpoints/experts/experts";
+import {
   getGetV1ListCredentialsQueryKey,
   useGetV1ListCredentials,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
@@ -11,6 +15,7 @@ import {
   useGetV2ListMarketplaceSkills,
   usePostV2InstallMarketplaceSkill,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -28,6 +33,9 @@ export function useSkillPage(slug: string) {
   const { toast } = useToast();
   const flag = useFlagStatus(Flag.SKILLS_HUB);
   const [isConnectOpen, setIsConnectOpen] = useState(false);
+  // Page state rather than the list's: a relative link in the body opens the
+  // same viewer the package list does.
+  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
 
   const query = useGetV2GetMarketplaceSkill(slug, {
     query: { select: (response) => okData(response) ?? null },
@@ -36,11 +44,18 @@ export function useSkillPage(slug: string) {
   // The install lands under the listing slug, so the user's own skill names
   // are the truth about whether this one is already added — a reload no
   // longer offers to install it again.
-  const installedSkills = useListCopilotSkills({
+  const installedSkills = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled: isLoggedIn },
   });
   const isAdded = (installedSkills.data ?? []).some(
     (skill) => skill.name === slug,
+  );
+
+  const expertsQuery = useListExperts({
+    query: { select: (res) => res.data as Expert[], enabled: isLoggedIn },
+  });
+  const experts = (expertsQuery.data ?? []).filter(
+    (expert) => !expert.is_template && !expert.is_archived,
   );
 
   const credentials = useGetV1ListCredentials({
@@ -61,16 +76,27 @@ export function useSkillPage(slug: string) {
   const { mutate: install, isPending: isAdding } =
     usePostV2InstallMarketplaceSkill({
       mutation: {
-        onSuccess: (response) => {
+        onSuccess: (response, variables) => {
           if (response.status !== 200) return;
+          const expert = findExpert(variables.params?.expert_id);
           queryClient.invalidateQueries({
-            queryKey: getListCopilotSkillsQueryKey(),
+            queryKey: getListCopilotSkillsQueryKey(
+              expert ? { expert_id: expert.id } : undefined,
+            ),
           });
+          if (!expert) return;
+          queryClient.invalidateQueries({
+            queryKey: getGetExpertQueryKey(expert.id),
+          });
+          toast({ title: `Installed on ${expert.name}`, variant: "success" });
         },
-        onError: (error) => {
+        onError: (error, variables) => {
           const status = (error as { status?: number }).status;
+          const expert = findExpert(variables.params?.expert_id);
           toast({
-            title: "Couldn't add this skill",
+            title: expert
+              ? `Couldn't add this skill to ${expert.name}`
+              : "Couldn't add this skill",
             description:
               status === 401
                 ? "Sign in and try again."
@@ -83,6 +109,10 @@ export function useSkillPage(slug: string) {
       },
     });
 
+  function findExpert(expertId: string | null | undefined) {
+    return experts.find((expert) => expert.id === expertId) ?? null;
+  }
+
   const requiredProviders = query.data?.required_providers ?? [];
 
   return {
@@ -92,23 +122,31 @@ export function useSkillPage(slug: string) {
     isError: query.isError,
     isNotFound: (query.error as { status?: number } | null)?.status === 404,
     refetch: query.refetch,
-    // Nothing renders "Add" before auth, the flag and the user's own skills
-    // have all answered, so it never flashes into "Added".
+    // Nothing renders before auth, the flag, the user's own skills and the
+    // roster have all answered, so the button never flashes into "Added" nor
+    // grows its dropdown half under the pointer.
     isReady:
       !isUserLoading &&
       flag.ready &&
-      (!isLoggedIn || !installedSkills.isLoading),
+      (!isLoggedIn || (!installedSkills.isLoading && !expertsQuery.isLoading)),
     flagEnabled: flag.enabled,
     flagReady: flag.ready,
     isAdded,
     isAdding,
+    experts,
     addToAutoPilot: () => install({ slug }),
+    addToExpert: (expert: Expert) =>
+      install({ slug, params: { expert_id: expert.id } }),
     // Connecting is a next step, never a precondition: the list only offers
     // what is still worth setting up, after the install landed.
     pendingConnections: requiredProviders
       .filter((provider) => !connected.has(provider))
       .map(formatProviderName),
     moreSkills: (more.data ?? []).filter((skill) => skill.slug !== slug),
+    files: query.data?.files ?? [],
+    openFilePath,
+    openFile: (path: string) => setOpenFilePath(path),
+    closeFile: () => setOpenFilePath(null),
     isConnectOpen,
     openConnect: () => setIsConnectOpen(true),
     setIsConnectOpen,

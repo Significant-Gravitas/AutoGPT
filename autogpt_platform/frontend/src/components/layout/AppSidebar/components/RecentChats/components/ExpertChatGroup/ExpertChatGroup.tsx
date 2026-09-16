@@ -14,12 +14,9 @@ import {
   TooltipPortal,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  AUTOPILOT_AVATAR,
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 import {
   Collapsible,
   CollapsibleContent,
@@ -63,6 +60,7 @@ export function ExpertChatGroup({
   const [isOpen, setIsOpen] = useState(true);
   const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
   const visibleSessions = sessions.slice(0, visibleCount);
+  const avatarConfig = expertNotionConfig({ name: label, avatarUrl, color });
   const hasHiddenSessions = sessions.length > visibleSessions.length;
   const runningSessions = sessions.filter((session) => session.is_processing);
 
@@ -80,8 +78,12 @@ export function ExpertChatGroup({
           aria-label={`${label} chats`}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900"
         >
-          {isUploadedAvatar(avatarUrl) ? (
-            <Avatar className="h-6 w-6">
+          {isAutopilot ? (
+            <AutopilotAvatar size={24} />
+          ) : avatarConfig ? (
+            <NotionAvatarImage config={avatarConfig} size={24} title={label} />
+          ) : (
+            <Avatar className="h-6 w-6 border border-stone-500">
               <AvatarImage
                 src={avatarUrl ?? undefined}
                 alt={label}
@@ -90,18 +92,6 @@ export function ExpertChatGroup({
               />
               <AvatarFallback>{label}</AvatarFallback>
             </Avatar>
-          ) : (
-            <BotAvatar
-              config={
-                isAutopilot
-                  ? AUTOPILOT_AVATAR
-                  : expertAvatarConfig({ name: label, avatarUrl, color })
-              }
-              size={24}
-              animated={false}
-              showBadge={false}
-              title={label}
-            />
           )}
           <span className="truncate">{label}</span>
           {newChatHref && (

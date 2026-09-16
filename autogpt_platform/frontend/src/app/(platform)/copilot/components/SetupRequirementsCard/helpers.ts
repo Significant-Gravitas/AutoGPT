@@ -1,13 +1,12 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 
-const VALID_CREDENTIAL_TYPES = new Set([
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-]);
+// Used as a filter below, so it has to be total: a type missing here is
+// silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
+// `CredentialsType` at build time, so a new type cannot go missing quietly.
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(CREDENTIALS_TYPES);
 
 export function coerceCredentialFields(rawMissingCredentials: unknown): {
   credentialFields: CredentialField[];
@@ -64,12 +63,47 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
     if (discriminatorValues && discriminatorValues.length > 0) {
       schema.discriminator_values = discriminatorValues;
     }
+    const expertGrant = coerceExpertGrant(cred.expert_grant);
+    if (expertGrant) {
+      schema.expert_grant = expertGrant;
+    }
 
     credentialFields.push([key, schema]);
     requiredCredentials.add(key);
   });
 
   return { credentialFields, requiredCredentials };
+}
+
+/** Which expert a missing credential is for, and which of the account's
+ *  credentials could be granted to it instead of connecting a new one. Only
+ *  present on cards raised from an expert chat. */
+export interface ExpertGrant {
+  expertId: string;
+  credentials: { id: string; title: string; type: string }[];
+}
+
+/** Reads the wire `expert_grant` block. A candidate needs an id; an untitled
+ *  one is labelled by its id, and a missing type falls back to `api_key`. */
+export function coerceExpertGrant(raw: unknown): ExpertGrant | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const grant = raw as Record<string, unknown>;
+  if (typeof grant.expert_id !== "string" || !grant.expert_id) return undefined;
+  const credentials = Array.isArray(grant.credentials)
+    ? grant.credentials.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const cred = entry as Record<string, unknown>;
+        if (typeof cred.id !== "string" || !cred.id) return [];
+        return [
+          {
+            id: cred.id,
+            title: typeof cred.title === "string" ? cred.title : cred.id,
+            type: typeof cred.type === "string" ? cred.type : "api_key",
+          },
+        ];
+      })
+    : [];
+  return { expertId: grant.expert_id, credentials };
 }
 
 /**

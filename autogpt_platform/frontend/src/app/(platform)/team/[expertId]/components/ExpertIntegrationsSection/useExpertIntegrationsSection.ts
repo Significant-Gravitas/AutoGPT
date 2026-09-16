@@ -1,5 +1,4 @@
 import {
-  getListExpertCredentialsQueryKey,
   useGrantExpertCredentials,
   useListExpertCredentials,
   useRevokeExpertCredential,
@@ -9,6 +8,7 @@ import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/cre
 import { okData } from "@/app/api/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -39,17 +39,14 @@ export function useExpertIntegrationsSection(expertId: string) {
     (credential) => !grantedIds.has(credential.id),
   );
 
+  // The expert and the roster carry the provider logos, so they go stale too.
   function invalidate() {
-    queryClient.invalidateQueries({
-      queryKey: getListExpertCredentialsQueryKey(expertId),
-    });
+    invalidateExpertGrantQueries(queryClient, expertId);
   }
 
   const { mutate: grant, isPending: isGranting } = useGrantExpertCredentials({
     mutation: {
-      onSuccess: () => {
-        invalidate();
-      },
+      onSuccess: invalidate,
       onError: () =>
         toast({ title: "Could not add integration", variant: "destructive" }),
     },

@@ -317,10 +317,10 @@ export function ChatInput({
       <InputGroup
         className={cn(
           "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-          // Card composer: a hairline ring and a shallow drop instead of the
-          // pill's deep shadow, so it reads as a surface the text sits on.
+          // Card composer: a hairline border and a shallow drop instead of
+          // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            "gap-3 !rounded-3xl border-transparent px-3.5 pb-3.5 pt-3 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-transparent",
+            "gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
           isCompact &&
             "!rounded-xl border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&

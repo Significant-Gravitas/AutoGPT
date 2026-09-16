@@ -27,10 +27,10 @@ export const SILENCE_NUDGE_COPY =
 
 const ENCOURAGEMENT_COPY = [
   "Keep going, this is gold",
-  "The more you share, the sharper AutoPilot gets",
-  "You're building AutoPilot's memory right now",
+  "The more you share, the sharper Otto gets",
+  "You're building Otto's memory right now",
   "You're doing great — keep going",
-  "Every detail makes AutoPilot more useful",
+  "Every detail makes Otto more useful",
   "Share whatever comes to mind next",
 ] as const;
 

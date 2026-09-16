@@ -33,6 +33,7 @@ import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -216,16 +217,18 @@ class DelegateToExpertTool(BaseTool):
             if outcome == "completed"
             else None
         )
+        delegated = response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            actor=target.name,
+        )
+        delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=target.name,
-            ),
+            delegated,
             DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,
@@ -317,9 +320,9 @@ class DelegateToExpertTool(BaseTool):
         return delegated_session_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
-        """Who to introduce the hand-off as. Plain sessions are AutoPilot."""
+        """Who to introduce the hand-off as. Plain sessions are Otto."""
         if caller_expert_id is None:
-            return "AutoPilot"
+            return "Otto"
         try:
             caller = await experts_db().get_expert(
                 user_id, caller_expert_id, include_workflows=False

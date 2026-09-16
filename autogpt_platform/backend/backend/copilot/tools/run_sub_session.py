@@ -1,4 +1,4 @@
-"""Start a sub-AutoPilot conversation via the copilot_executor queue.
+"""Start a sub-Otto conversation via the copilot_executor queue.
 
 Mirror-image of ``run_agent`` + ``view_agent_output`` for copilot turns:
 
@@ -29,6 +29,7 @@ import time
 from typing import Any
 
 from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import (
@@ -68,7 +69,7 @@ _WORKSPACE_FILE_MANIFEST_LIMIT = 50
 
 
 class RunSubSessionTool(BaseTool):
-    """Delegate a task to a fresh sub-AutoPilot via the copilot_executor queue."""
+    """Delegate a task to a fresh sub-Otto via the copilot_executor queue."""
 
     @property
     def name(self) -> str:
@@ -81,7 +82,7 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh sub-AutoPilot. Runs on the copilot "
+            "Delegate a task to a fresh child session. Runs on the copilot "
             "executor queue — survives tab-close AND worker restarts. Waits "
             f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
             "If not done, returns status=running + sub_session_id — poll via "
@@ -95,7 +96,7 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the sub-AutoPilot to execute.",
+                    "description": "The task for the child session to execute.",
                 },
                 "system_context": {
                     "type": "string",
@@ -287,6 +288,7 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+        outcome_response.message += await build_spawn_state_note()
         if discarded:
             # The row is gone, so its id and link would send the model to poll
             # a sub-session that no longer exists. Keep the reason, drop the
@@ -301,28 +303,14 @@ def apply_delegated_expert(
     response: SubSessionStatusResponse,
     expert: DelegatedExpertInfo | None,
 ) -> SubSessionStatusResponse:
-    """Re-badge a sub-session response as a named teammate's delegated run.
-
-    Only sets the ``expert`` field for the ToolChain card; the message text
-    is already correct when the caller passed ``actor=expert.name`` into
-    ``response_from_outcome`` up front. The ``replace`` below is a fallback
-    for callers that built the message with the default "Sub-AutoPilot"
-    wording and only learn the delegate's identity afterwards — it is a
-    no-op once the message was built with the right actor. No-op entirely
-    for same-scope subs.
-    """
+    """Attach delegated expert metadata without rewriting the response text."""
     if expert is None:
         return response
-    return response.model_copy(
-        update={
-            "message": response.message.replace("Sub-AutoPilot", expert.name),
-            "expert": expert,
-        }
-    )
+    return response.model_copy(update={"expert": expert})
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:
-    """Build the CoPilot UI URL for a sub-AutoPilot session.
+    """Build the CoPilot UI URL for a sub-Otto session.
 
     Kept in one place so the format stays consistent across the
     running/completed/error paths, and so the frontend only has one
@@ -483,13 +471,13 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
-    actor: str = "Sub-AutoPilot",
+    actor: str = "Subtask",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
     ``actor`` names who ran the turn in the human-readable message — the
-    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    default ``"Subtask"`` for a same-scope sub, or the delegate's name
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.

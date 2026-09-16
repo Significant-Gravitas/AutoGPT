@@ -1,10 +1,13 @@
 import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
+import prisma
 import prisma.enums
 import prisma.models
 import pytest
 
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -61,8 +64,13 @@ async def _make_listing(
 
 @pytest.fixture(autouse=True)
 async def clean_skill_listings(server: SpinTestServer):
-    await prisma.models.SkillListingVersion.prisma().delete_many()
-    await prisma.models.SkillListing.prisma().delete_many()
+    # These tests assert on the WHOLE marketplace, so they need the listing
+    # table to themselves — take it only when empty, never by emptying it.
+    if await prisma.models.SkillListing.prisma().count():
+        pytest.fail(
+            "this database already holds skill listings; run this file against a "
+            "throwaway Postgres, not the one every worktree here shares"
+        )
     yield
     await prisma.models.SkillListingVersion.prisma().delete_many()
     await prisma.models.SkillListing.prisma().delete_many()
@@ -151,17 +159,56 @@ async def test_detail_of_an_off_shelf_listing_is_not_found(has_approved_version:
         await skill_db.get_marketplace_skill("off-shelf-one")
 
 
-async def test_install_stores_under_the_listing_slug_and_counts(mocker):
-    listing = await _make_listing("install-one", body="# do this\n")
+async def test_live_skills_holds_only_listings_on_the_shelf():
+    live_one = await _make_listing("live-one")
+    draft = await _make_listing("draft-one", approved=False, has_approved_version=True)
+    never = await _make_listing("never-approved", approved=False)
+    unavailable = await _make_listing("unavailable-one", available=False)
+    deleted = await _make_listing("deleted-one")
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": deleted.id}, data={"isDeleted": True}
+    )
+    withdrawn = await _make_listing("withdrawn-one")
+    assert withdrawn.activeVersionId is not None
+    await prisma.models.SkillListingVersion.prisma().update(
+        where={"id": withdrawn.activeVersionId}, data={"isDeleted": True}
+    )
+
+    live = await skill_db.get_live_skills(
+        [
+            live_one.id,
+            draft.id,
+            never.id,
+            unavailable.id,
+            deleted.id,
+            withdrawn.id,
+            "missing-one",
+        ]
+    )
+
+    assert list(live) == [live_one.id]
+    assert live[live_one.id].name == "Live One"
+
+
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_id):
+    listing = await _make_listing(
+        f"install-one-{expert_id or 'library'}", body="# do this\n"
+    )
     stored = mocker.patch.object(skill_db, "store_user_skill")
-    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+    listed = mocker.patch.object(skill_db, "list_user_skills", return_value=[])
 
-    result = await skill_db.install_marketplace_skill("user-1", "install-one")
+    result = await skill_db.install_marketplace_skill(
+        "user-1", listing.slug, expert_id=expert_id
+    )
 
+    # The count checks the folder being written: the expert's or the library.
+    listed.assert_awaited_once_with("user-1", expert_id, heal_missing=False)
     stored.assert_awaited_once()
-    assert stored.await_args.kwargs["name"] == "install-one"
+    assert stored.await_args.kwargs["name"] == listing.slug
+    assert stored.await_args.kwargs["expert_id"] == expert_id
     assert stored.await_args.kwargs["body"] == "# do this\n"
-    assert result.name == "install-one"
+    assert result.name == listing.slug
     assert result.required_providers == ["google"]
 
     refreshed = await prisma.models.SkillListing.prisma().find_unique(
@@ -169,6 +216,110 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker):
     )
     assert refreshed is not None
     assert refreshed.installCount == 1
+
+
+@pytest.mark.parametrize(
+    "expert_id, folder",
+    [(None, "/skills"), ("expert-a", "/experts/expert-a/skills")],
+    ids=["library", "expert"],
+)
+async def test_install_writes_into_the_target_owners_folder_and_no_other(
+    mocker, expert_id, folder
+):
+    """The test above proves the id reaches ``store_user_skill``; this one runs
+    the real write, so a folder that ignored it would show up here."""
+    listing = await _make_listing(f"folder-one-{expert_id or 'library'}")
+    workspace = _FakeWorkspaceManager()
+    experts = MagicMock()
+    experts.add_expert_skill_name = AsyncMock()
+    mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
+
+    with _patch_skills_path(workspace):
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id=expert_id
+        )
+        # A second install of the same skill overwrites its copy rather than
+        # leaving a second one behind.
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id=expert_id
+        )
+
+    assert list(workspace.files) == [f"{folder}/{listing.slug}/SKILL.md"]
+    refreshed = await prisma.models.SkillListing.prisma().find_unique(
+        where={"id": listing.id}
+    )
+    assert refreshed is not None
+    assert refreshed.installCount == 1
+    if expert_id is None:
+        experts.add_expert_skill_name.assert_not_awaited()
+    else:
+        experts.add_expert_skill_name.assert_awaited_with(
+            "user-1", expert_id, listing.slug
+        )
+
+
+async def test_install_of_a_listing_with_no_files_passes_an_empty_package(mocker):
+    """`files=None` means "leave the folder alone", so a single-file listing
+    installed over a package would leave the old package's files in place."""
+    listing = await _make_listing("no-files-one")
+    stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+
+    await skill_db.install_marketplace_skill("user-1", listing.slug)
+
+    assert stored.await_args.kwargs["files"] == []
+
+
+async def test_install_carries_the_versions_files_and_their_executable_bits(mocker):
+    listing = await _make_listing("with-files-one")
+    assert listing.activeVersionId is not None
+    await prisma.models.SkillListingFile.prisma().create_many(
+        data=[
+            {
+                "skillListingVersionId": listing.activeVersionId,
+                "relativePath": "scripts/run.py",
+                "sizeBytes": 5,
+                "sha256": "x",
+                "isExecutable": True,
+                "content": prisma.Base64.encode(b"print"),
+            },
+            {
+                "skillListingVersionId": listing.activeVersionId,
+                "relativePath": "references/a.md",
+                "sizeBytes": 3,
+                "sha256": "y",
+                "content": prisma.Base64.encode(b"ref"),
+            },
+        ]
+    )
+    stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
+
+    await skill_db.install_marketplace_skill("user-1", listing.slug)
+
+    files = stored.await_args.kwargs["files"]
+    assert [(f.relative_path, f.content, f.is_executable) for f in files] == [
+        ("references/a.md", b"ref", False),
+        ("scripts/run.py", b"print", True),
+    ]
+
+
+async def test_detail_lists_the_package_files_without_their_bytes(mocker):
+    listing = await _make_listing("detail-files-one")
+    assert listing.activeVersionId is not None
+    await prisma.models.SkillListingFile.prisma().create(
+        data={
+            "skillListingVersionId": listing.activeVersionId,
+            "relativePath": "scripts/run.py",
+            "sizeBytes": 5,
+            "sha256": "x",
+            "content": prisma.Base64.encode(b"print"),
+        }
+    )
+
+    detail = await skill_db.get_marketplace_skill("detail-files-one")
+
+    assert [(f.path, f.size_bytes) for f in detail.files] == [("scripts/run.py", 5)]
 
 
 async def test_reinstalling_stores_again_but_does_not_count_again(mocker):

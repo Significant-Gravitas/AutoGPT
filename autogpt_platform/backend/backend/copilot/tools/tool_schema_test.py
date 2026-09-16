@@ -40,7 +40,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # (list_schedules, delete_schedule) needed by the trigger-agent flow.
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
-# AutoPilot can inspect/manage them).
+# Otto can inspect/manage them).
 # Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
 # of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
 # explicit "ends your turn" caveat, and an example wake-up message.
@@ -81,7 +81,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # trigger setup without inventing URLs or auto-picking credentials.
 # Bumped 42500 -> 45000 for the preset-management tools (list_presets /
 # update_preset / delete_preset) that complete the /presets lifecycle for
-# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# Otto. Adds ~1.6k chars: three tool skeletons plus the "is_active
 # pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
 # copy the model needs to manage triggers without re-running setup.
 # Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
@@ -109,7 +109,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # No single session sees them all (hire/raise/confirm and handoff/soul gate on
 # opposite sides of session.expert_id), but the registry total counts every
 # tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
-# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# Bumped 59_000 -> 61_000 for update_expert (the Otto-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
 # Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
@@ -131,8 +131,20 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     #14244 agent-collab-architecture              +0
 #     #14209 autopilot-auto-mode-v2                 +0
 #     #14432 secrt-2593-publish                     +0
+#     #14365 sandbox-e2b-desktop (start_desktop)  +670  (branch measures 63,417)
+# Bumped 68_238 -> 68_997 on 2026-09-16 when #14365 merged dev (twice in one
+# morning: #14416's pause/resume_schedule landed between the two). Dev's
+# registry measures 68,503 with start_desktop removed, so start_desktop's
+# delta is +493 once merged (the +670 above was against an older dev).
+# Merged registry measures 68,996; the ceiling is that plus one.
+# Bumped 68_997 -> 69_063 for #14382 (one box per owner): start_desktop's
+# description now says it is the same machine bash_exec runs in, +66.
+# Merged registry measures 69,062.
+# Lowered 69_063 -> 69_056 on the same PR: bash_exec's description no longer
+# tells the model that only ~/workspace shows on the desktop, -7.  Merged
+# registry measures 69,055.
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
-# make every increase in what AutoPilot pays per turn a decision someone took,
+# make every increase in what Otto pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
 # The assertion below is a strict <, so the ceiling is the measured total plus
 # one — 67,651 admits exactly that aggregate and nothing beyond it.
@@ -147,7 +159,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_651
+# Bumped 67_651 -> 68_238 for pause_schedule and resume_schedule, the two tools
+# this PR adds. MEASURE ON THE PR'S MERGE REF, never on the branch tip: a stacked
+# PR's CI builds this branch merged through its base into dev, so dev's own growth
+# counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
+# 68,237 — dev widened raise_expert by two characters after this line was first
+# set, which reddened three interpreters on a branch that had added nothing.
+_CHAR_BUDGET = 69_056
 
 
 @pytest.fixture(scope="module")

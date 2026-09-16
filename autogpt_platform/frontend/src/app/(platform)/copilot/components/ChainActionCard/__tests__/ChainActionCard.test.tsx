@@ -2,13 +2,15 @@ import {
   CredentialsProvidersContext,
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderBare,
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainActionCard } from "../ChainActionCard";
 import type {
@@ -28,6 +30,32 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
     data: [{ name: "github", description: "Connect your GitHub account" }],
   }),
 }));
+
+vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  useListExpertCredentials: () => ({ data: [], refetch: vi.fn() }),
+  useGrantExpertCredentials: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  getListExpertCredentialsQueryKey: (expertId?: string) => [
+    `/api/experts/${expertId}/credentials`,
+  ],
+}));
+
+// ConnectorRow's expert-grant hook writes the granted list into the cache.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function QueryWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function render(ui: ReactElement) {
+  return renderBare(ui, { wrapper: QueryWrapper });
+}
 
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",
@@ -635,7 +663,7 @@ describe("ChainActionCard", () => {
       renderCard({ questions: [questionRequest()] });
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(true);
     });
@@ -645,9 +673,7 @@ describe("ChainActionCard", () => {
         questions: [questionRequest({ answers: { region: "Europe" } })],
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
@@ -1110,7 +1136,7 @@ describe("ChainActionCard", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Add answers to message",
+            name: "Send answers",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -1131,11 +1157,109 @@ describe("ChainActionCard", () => {
       );
 
       const send = screen.getByRole("button", {
-        name: "Add answers to message",
+        name: "Send answers",
       }) as HTMLButtonElement;
       expect(send.disabled).toBe(false);
       fireEvent.click(send);
       expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("advances to the next question when an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which format?")).toBeDefined();
+    });
+
+    it("stays on the last question after an option is clicked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(onProceed).not.toHaveBeenCalled();
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Send answers",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    it("does not advance when the arrow keys select an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: "ArrowDown" });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.getByText("Which region?")).toBeDefined();
+    });
+
+    it("selects without advancing when Space is pressed on an option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+          { question: "Which format?", keyword: "format" },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      const europe = screen.getByRole("radio", { name: "Europe" });
+      europe.focus();
+      fireEvent.keyDown(europe, { key: " " });
+
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(screen.getByText("Which region?")).toBeDefined();
     });
 
     it("keeps two same-keyword questions on their own cards", () => {
@@ -1179,9 +1303,7 @@ describe("ChainActionCard", () => {
         isReady: false,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add answers to message" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
       expect(onProceed).toHaveBeenCalledOnce();
     });
   });

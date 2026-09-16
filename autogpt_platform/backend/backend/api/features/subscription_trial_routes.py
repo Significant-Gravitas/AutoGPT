@@ -6,7 +6,7 @@ from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
 from pydantic import BaseModel, Field
 
-from backend.api.features.credits_rate_limit import (
+from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.data.credit import _datafast_metadata, sync_subscription_from_stripe

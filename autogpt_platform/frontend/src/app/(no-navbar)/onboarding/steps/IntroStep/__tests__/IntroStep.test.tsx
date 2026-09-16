@@ -16,10 +16,20 @@ describe("IntroStep", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  it("shows the AutoPilot slide", () => {
+  it("shows the Otto slide", () => {
     render(<IntroStep slide="autopilot" />);
     expect(
       screen.getByRole("heading", { name: INTRO_SLIDES.autopilot.title }),
     ).toBeDefined();
+  });
+
+  it("draws each non-idle team member's status dot", () => {
+    render(<IntroStep slide="team" />);
+    const dots = screen
+      .getAllByTestId("status-dot")
+      .map((dot) => dot.getAttribute("data-status"));
+    expect(dots).toEqual(
+      expect.arrayContaining(["working", "thinking", "done"]),
+    );
   });
 });

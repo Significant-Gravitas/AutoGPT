@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 
 describe("HireStep — the team", () => {
-  it("renders AutoPilot's read, a card per expert and a Hire button each", async () => {
+  it("renders Otto's read, a card per expert and a Hire button each", async () => {
     mockTeam(TEAM);
     render(<HireStep />);
 

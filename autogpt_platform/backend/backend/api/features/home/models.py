@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, AUTOPILOT_ROLE
 
 
@@ -52,7 +52,7 @@ class HomeBriefingOutcome(BaseModel):
 
 
 class HomeBriefingAuthor(BaseModel):
-    """Who wrote the brief. Always AutoPilot, the account's built-in helper:
+    """Who wrote the brief. Always Otto, the account's built-in helper:
     the brief reports the team's work, so no member of the team authors it.
     `kind` is the seam a future personal-assistant author would widen."""
 

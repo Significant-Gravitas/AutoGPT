@@ -8,7 +8,7 @@ import fastapi.testclient
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.integrations.router import router
+from backend.api.features.integrations.router import _get_provider_oauth_handler, router
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
@@ -854,6 +854,65 @@ class TestWebhookPingOwnership:
         assert resp.status_code == 200
         assert resp.json() is True
         webhook_manager.trigger_ping.assert_awaited_once()
+
+
+class TestOAuthHandlerResolutionForDeviceProviders:
+    """A device-code provider has no OAuth handler, but it is not unknown.
+
+    `_get_provider_oauth_handler` must point the caller at the device-auth
+    endpoint (400) rather than reporting "does not support OAuth" (404).
+    """
+
+    # Synthetic keys so both patches are load-bearing. `HANDLERS_BY_NAME` is an
+    # `SDKAwareHandlersDict` whose `__contains__` reads the module-level
+    # `_handlers_dict` and the SDK registry, never its own storage, so
+    # `patch.dict` on the facade is inert: patch the backing dict instead.
+    DEVICE_ONLY_PROVIDER = "test_device_only_provider"
+    UNREGISTERED_PROVIDER = "test_unregistered_provider"
+
+    def test_a_device_code_provider_is_pointed_at_the_device_endpoint(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {self.DEVICE_ONLY_PROVIDER: MagicMock()},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+
+        assert exc.value.status_code == 400
+        assert "device code" in exc.value.detail
+        # The detail reaches the user verbatim, so the path must be the mounted
+        # one: the router lives under /api/integrations.
+        assert (
+            f"/api/integrations/{self.DEVICE_ONLY_PROVIDER}/device-auth/initiate"
+            in exc.value.detail
+        )
+
+    def test_an_unknown_provider_still_reports_no_oauth_support(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+
+        assert exc.value.status_code == 404
+        assert "does not support OAuth" in exc.value.detail
 
 
 class TestDeviceAuthEndpoints:

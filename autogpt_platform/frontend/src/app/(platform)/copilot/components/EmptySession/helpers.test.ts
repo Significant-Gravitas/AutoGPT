@@ -39,6 +39,13 @@ describe("getExpertRoleLabel", () => {
     expect(getExpertRoleLabel(role)).toBe(expected);
   });
 
+  test.each([
+    ["Social & Content Repurposing", "Social Media expert"],
+    ["Market & Competitor Intelligence", "Market Intelligence expert"],
+  ])("shortens the roster role %s to %s", (role, expected) => {
+    expect(getExpertRoleLabel(role)).toBe(expected);
+  });
+
   // Only the head noun decides: "Customer" would pass the suffix test alone.
   test("judges a multi-word role by its last word", () => {
     expect(getExpertRoleLabel("Customer")).toBe("Customer");
@@ -68,7 +75,7 @@ describe("getIntroLine", () => {
     );
   });
 
-  test("falls back to the Autopilot line without an expert", () => {
+  test("falls back to the Otto line without an expert", () => {
     expect(getIntroLine(null)).toBe(
       "Tell me about your work — I'll find what to automate.",
     );

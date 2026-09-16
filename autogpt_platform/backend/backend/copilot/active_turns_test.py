@@ -1,4 +1,4 @@
-"""Unit tests for active_turns: per-user concurrent AutoPilot turn tracking.
+"""Unit tests for active_turns: per-user concurrent Otto turn tracking.
 
 Backed by ``ChatSession.chatStatus`` accessed through ``chat_db()``;
 tests patch ``backend.copilot.active_turns.chat_db`` to return an
