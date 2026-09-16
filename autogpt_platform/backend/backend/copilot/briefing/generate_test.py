@@ -8,6 +8,7 @@ from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.util import funnel_analytics
 from backend.util.feature_flag import Flag
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
@@ -285,6 +286,14 @@ async def test_generate_reports_an_unevaluated_flag_separately(monkeypatch):
     assert result == {"status": "skipped", "reason": "flag_unavailable"}
 
 
+@pytest.fixture
+def funnel(monkeypatch):
+    """The funnel emitter is a module-level call now, not a client method."""
+    mock = MagicMock()
+    monkeypatch.setattr(generate_module, "emit_funnel_event", mock)
+    return mock
+
+
 @pytest.mark.asyncio
 async def test_generate_skips_when_already_delivered(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
@@ -443,7 +452,9 @@ def _patch_generate_env(monkeypatch, generate, client):
 
 
 @pytest.mark.asyncio
-async def test_generate_retries_undelivered_briefing_without_recomposing(monkeypatch):
+async def test_generate_retries_undelivered_briefing_without_recomposing(
+    monkeypatch, funnel
+):
     """A stored-but-undelivered record (prior session post failed) is
     redelivered from its stored content — no data gathering, no recompose,
     no duplicate create."""
@@ -468,7 +479,6 @@ async def test_generate_retries_undelivered_briefing_without_recomposing(monkeyp
         create_briefing=AsyncMock(),
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
-        emit_funnel_event=AsyncMock(),
     )
     _patch_generate_env(monkeypatch, generate, client)
     gather_mock = MagicMock(list_experts=AsyncMock(return_value=[]))
@@ -486,7 +496,7 @@ async def test_generate_retries_undelivered_briefing_without_recomposing(monkeyp
     append_call = client.append_plain_session_message.await_args
     assert append_call.kwargs["content"] == render_briefing_markdown(stored)
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
-    client.emit_funnel_event.assert_awaited_once_with(
+    funnel.assert_called_once_with(
         "user-1",
         "briefing_delivered",
         {"briefing_id": "briefing-1"},
@@ -816,7 +826,7 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
 
 @pytest.mark.asyncio
 async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say(
-    monkeypatch,
+    monkeypatch, funnel
 ):
     """Otherwise every future run re-gathers and re-composes the same row."""
     from unittest.mock import AsyncMock, MagicMock
@@ -845,7 +855,6 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
         get_briefing_for_date=AsyncMock(return_value=stale_record),
         append_plain_session_message=AsyncMock(),
         mark_briefing_delivered=AsyncMock(),
-        emit_funnel_event=AsyncMock(),
     )
     monkeypatch.setattr(
         generate, "get_database_manager_async_client", lambda **kwargs: client
@@ -879,7 +888,7 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
     assert result == {"status": "skipped", "reason": "nothing_to_say"}
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
     client.append_plain_session_message.assert_not_awaited()
-    client.emit_funnel_event.assert_awaited_once_with(
+    funnel.assert_called_once_with(
         "user-1",
         "briefing_generated",
         {"run_count": 0, "decision_count": 0, "has_content": False},
@@ -1165,7 +1174,7 @@ def test_narrative_cannot_forge_briefing_structure(narrative):
 
 
 @pytest.mark.asyncio
-async def test_generate_emits_events_on_delivery(monkeypatch):
+async def test_generate_emits_events_on_delivery(monkeypatch, funnel):
     """A delivered briefing fires briefing_generated (with real counts) and
     briefing_delivered through the DB-manager RPC client."""
     briefing_record = MagicMock(id="briefing-1")
@@ -1174,7 +1183,6 @@ async def test_generate_emits_events_on_delivery(monkeypatch):
         create_briefing=AsyncMock(return_value=briefing_record),
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
-        emit_funnel_event=AsyncMock(),
     )
     _patch_generate_env(monkeypatch, generate_module, client)
 
@@ -1197,13 +1205,13 @@ async def test_generate_emits_events_on_delivery(monkeypatch):
     result = await generate_module.generate_and_deliver_briefing("user-1")
 
     assert result["status"] == "delivered"
-    client.emit_funnel_event.assert_any_await(
+    funnel.assert_any_call(
         "user-1",
         "briefing_generated",
         {"run_count": 4, "decision_count": 2, "has_content": True},
         "briefing_generated:briefing-1",
     )
-    client.emit_funnel_event.assert_any_await(
+    funnel.assert_any_call(
         "user-1",
         "briefing_delivered",
         {"briefing_id": "briefing-1"},
@@ -1212,11 +1220,12 @@ async def test_generate_emits_events_on_delivery(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch):
+async def test_generate_emits_briefing_generated_when_nothing_to_say(
+    monkeypatch, funnel
+):
     """An empty briefing still fires briefing_generated with has_content False."""
     client = MagicMock(
         get_briefing_for_date=AsyncMock(return_value=None),
-        emit_funnel_event=AsyncMock(),
     )
     _patch_generate_env(monkeypatch, generate_module, client)
     monkeypatch.setattr(
@@ -1226,7 +1235,7 @@ async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch
     result = await generate_module.generate_and_deliver_briefing("user-1")
 
     assert result == {"status": "skipped", "reason": "nothing_to_say"}
-    client.emit_funnel_event.assert_awaited_once_with(
+    funnel.assert_called_once_with(
         "user-1",
         "briefing_generated",
         {"run_count": 0, "decision_count": 0, "has_content": False},
@@ -1235,13 +1244,19 @@ async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_generate_still_delivers_when_funnel_rpc_fails(monkeypatch):
+async def test_generate_still_delivers_when_posthog_is_down(monkeypatch):
+    """Isolation lives inside emit_funnel_event, so the real emitter is left in
+    place and PostHog is what fails."""
+    monkeypatch.setattr(
+        funnel_analytics,
+        "get_posthog_client",
+        MagicMock(side_effect=RuntimeError("analytics down")),
+    )
     client = MagicMock(
         get_briefing_for_date=AsyncMock(return_value=None),
         create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
-        emit_funnel_event=AsyncMock(side_effect=RuntimeError("analytics down")),
     )
     _patch_fresh_compose_env(monkeypatch, generate_module, client)
 
@@ -1253,4 +1268,3 @@ async def test_generate_still_delivers_when_funnel_rpc_fails(monkeypatch):
         "session_id": "session-1",
     }
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
-    assert client.emit_funnel_event.await_count == 2

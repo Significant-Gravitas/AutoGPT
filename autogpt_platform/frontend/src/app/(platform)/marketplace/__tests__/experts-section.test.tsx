@@ -14,6 +14,25 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
+
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
@@ -249,12 +268,7 @@ describe("Marketplace ExpertsSection", () => {
   });
 
   test("emits the section view event once the shelf has rendered", async () => {
-    const funnelBodies: { type: string }[] = [];
     server.use(
-      http.post(/log_raw_analytics/, async ({ request }) => {
-        funnelBodies.push((await request.json()) as { type: string });
-        return HttpResponse.json({ status: "ok" });
-      }),
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
     );
@@ -263,7 +277,7 @@ describe("Marketplace ExpertsSection", () => {
 
     await screen.findByText("Maria");
     await waitFor(() =>
-      expect(funnelBodies.map((body) => body.type)).toContain(
+      expect(funnelCalls().map((body) => body.type)).toContain(
         "experts_section_viewed",
       ),
     );

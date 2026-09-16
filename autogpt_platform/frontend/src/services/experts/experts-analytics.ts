@@ -1,11 +1,10 @@
 // Experts + home funnel events (SECRT-2526 / SECRT-2552). Capture is
 // best-effort: a blocked analytics host must never break a hire, a briefing, or
-// a home render. `trackFunnel` rides the backend analytics sink
-// (log_raw_analytics) so every funnel step lands in one pipeline; `trackExperts`
-// stays on PostHog, where the hire-flow timing series already lives.
+// a home render. The breadcrumb puts the same step on the timeline of any
+// error Sentry records afterwards.
 
+import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
-import { postAnalyticsLogRawAnalytics } from "@/app/api/__generated__/endpoints/analytics/analytics";
 
 export type FunnelViewEvent =
   | "experts_section_viewed"
@@ -36,13 +35,17 @@ export function trackFunnel(
   event: FunnelEvent,
   properties?: Record<string, unknown>,
 ) {
-  void postAnalyticsLogRawAnalytics({
-    type: event,
-    data: properties ?? {},
-    data_index: event,
-  }).catch(() => {
+  try {
+    Sentry.addBreadcrumb({
+      category: "funnel",
+      message: event,
+      data: properties ?? {},
+      level: "info",
+    });
+    posthog.capture(event, properties);
+  } catch {
     // Analytics is never worth a broken interaction.
-  });
+  }
 }
 
 type ExpertsEvent = "hire_flow_completed" | "hire_flow_abandoned";

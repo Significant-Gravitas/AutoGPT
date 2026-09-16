@@ -85,7 +85,6 @@ from backend.copilot.tools.skills import (
     get_default_skill_with_body,
     skill_name_key,
 )
-from backend.data.analytics import emit_funnel_event
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
@@ -108,6 +107,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -875,7 +875,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     try:
         result, state = await _hire_expert_impl(user_id, template_id, name)
     except Exception:
-        await emit_funnel_event(
+        emit_funnel_event(
             user_id,
             "hire_failed",
             {"template_id": template_id, "failed_preloads_count": 0},
@@ -883,7 +883,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         raise
     # An idempotent re-hire of an already-active expert is not a hire.
     if state != "existing":
-        await emit_funnel_event(
+        emit_funnel_event(
             user_id,
             "hire_completed",
             {
@@ -1462,7 +1462,7 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     if before is not None:
-        await _emit_writing_style_added(
+        _emit_writing_style_added(
             user_id, expert_id, before.voicePreferences, soul.voice_preferences
         )
     return expert
@@ -1664,20 +1664,20 @@ async def update_soul_fields_if_current(
     if updated != 1:
         return False
     if voice_preferences is not None:
-        await _emit_writing_style_added(
+        _emit_writing_style_added(
             user_id, expert_id, expected_voice_preferences, voice_preferences
         )
     return True
 
 
-async def _emit_writing_style_added(
+def _emit_writing_style_added(
     user_id: str, expert_id: str, before: str | None, after: str | None
 ) -> None:
     """Only a first blank→nonblank writing style counts; rewrites and removals
     are silent, so the funnel measures personalisation rather than edits."""
     if (before or "").strip() or not (after or "").strip():
         return
-    await emit_funnel_event(user_id, "writing_style_added", {"expert_id": expert_id})
+    emit_funnel_event(user_id, "writing_style_added", {"expert_id": expert_id})
 
 
 async def _install_preloads(
@@ -1829,7 +1829,7 @@ async def _install_library_workflow(
         data={"expertId": expert_id, "libraryAgentId": library_agent_id},
         include=_WORKFLOW_ROW_INCLUDE,
     )
-    await emit_funnel_event(
+    emit_funnel_event(
         user_id,
         "workflow_installed_on_expert",
         {
@@ -1878,7 +1878,7 @@ async def _install_marketplace_workflow(
         if raced is None:
             raise
         return _to_workflow_ref(raced)
-    await emit_funnel_event(
+    emit_funnel_event(
         user_id,
         "workflow_installed_on_expert",
         {
@@ -2020,7 +2020,7 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             raise ExpertNotFoundError(expert_id)
         # Re-archiving is an idempotent no-op; the funnel counts each firing once.
         return
-    await emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
+    emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:

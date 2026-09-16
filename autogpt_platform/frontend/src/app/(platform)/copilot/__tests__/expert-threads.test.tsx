@@ -20,7 +20,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
@@ -28,6 +28,25 @@ import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
 import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
 
 const flagState = vi.hoisted(() => ({
   values: { "hire-experts": true } as Record<string, boolean>,
@@ -237,7 +256,6 @@ describe("useChatSession — expert sessions", () => {
   it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
     let createBody: unknown = null;
     let transportInventoryLoaded = false;
-    const funnelEvents: { type: string; data: Record<string, unknown> }[] = [];
     server.use(
       http.post("*/api/chat/sessions", async ({ request }) => {
         createBody = await request.json();
@@ -272,15 +290,6 @@ describe("useChatSession — expert sessions", () => {
         });
       }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
-      http.post(/log_raw_analytics/, async ({ request }) => {
-        funnelEvents.push(
-          (await request.json()) as {
-            type: string;
-            data: Record<string, unknown>;
-          },
-        );
-        return HttpResponse.json({ status: "ok" });
-      }),
     );
 
     render(
@@ -301,7 +310,7 @@ describe("useChatSession — expert sessions", () => {
     });
     await waitFor(() =>
       expect(
-        funnelEvents.find((event) => event.type === "expert_thread_created")
+        funnelCalls().find((event) => event.type === "expert_thread_created")
           ?.data,
       ).toEqual({ expert_id: "expert-maria" }),
     );
@@ -309,7 +318,6 @@ describe("useChatSession — expert sessions", () => {
 
   it("does not emit expert_thread_created for an Autopilot session", async () => {
     let transportInventoryLoaded = false;
-    const funnelEvents: string[] = [];
     server.use(
       http.post("*/api/chat/sessions", () =>
         HttpResponse.json({
@@ -343,11 +351,6 @@ describe("useChatSession — expert sessions", () => {
         });
       }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
-      http.post(/log_raw_analytics/, async ({ request }) => {
-        const body = (await request.json()) as { type: string };
-        funnelEvents.push(body.type);
-        return HttpResponse.json({ status: "ok" });
-      }),
     );
 
     render(
@@ -365,7 +368,7 @@ describe("useChatSession — expert sessions", () => {
       ),
     );
 
-    expect(funnelEvents).not.toContain("expert_thread_created");
+    expect(funnelEventNames()).not.toContain("expert_thread_created");
   });
 
   it("opens the expert's latest thread when one already exists", async () => {

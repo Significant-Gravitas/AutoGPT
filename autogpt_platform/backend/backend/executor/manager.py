@@ -74,6 +74,7 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
@@ -721,38 +722,6 @@ def _expert_run_completed_event(
     }
 
 
-def _observe_funnel_emission(future: Future) -> None:
-    """The RPC write already left the surrounding try/except when this runs —
-    transport failures would otherwise vanish with the discarded future."""
-    try:
-        future.result()
-    except Exception:
-        logger.exception("Expert run funnel emission failed after submission")
-
-
-def _emit_expert_run_completed(
-    graph_exec: GraphExecutionEntry,
-    run_event: dict,
-    event_loop: asyncio.AbstractEventLoop,
-) -> None:
-    try:
-        future = asyncio.run_coroutine_threadsafe(
-            get_db_async_client().emit_funnel_event(
-                graph_exec.user_id,
-                "expert_run_completed",
-                run_event,
-                f"expert_run_completed:{graph_exec.graph_exec_id}",
-            ),
-            event_loop,
-        )
-        future.add_done_callback(_observe_funnel_emission)
-    except Exception:
-        logger.exception(
-            "Failed to emit expert run completion for run "
-            f"#{graph_exec.graph_exec_id}"
-        )
-
-
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -1149,12 +1118,14 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
-            # Only once the terminal state is persisted, and only for a run
-            # that has an expert — a plain run must not touch the loop at all.
+            # Only once the terminal state is persisted.
             run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
             if run_event is not None:
-                _emit_expert_run_completed(
-                    graph_exec, run_event, self.node_execution_loop
+                emit_funnel_event(
+                    graph_exec.user_id,
+                    "expert_run_completed",
+                    run_event,
+                    f"expert_run_completed:{graph_exec.graph_exec_id}",
                 )
 
     async def charge_node_usage(

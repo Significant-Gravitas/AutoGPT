@@ -188,22 +188,12 @@ describe("HireStep — hiring", () => {
     });
   });
 
-  it("posts hire_started to the funnel sink, not only to PostHog", async () => {
+  it("sends the funnel start and the DataFast hire goal", async () => {
     // The backend emits this hire's hire_completed, so without the start the
     // funnel's completion rate is unreadable for onboarding hires.
-    const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+    const datafast = vi.fn();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
     mockTeam(TEAM);
-    server.use(
-      http.post(/log_raw_analytics/, async ({ request }) => {
-        funnelBodies.push(
-          (await request.json()) as {
-            type: string;
-            data: Record<string, unknown>;
-          },
-        );
-        return HttpResponse.json({ status: "ok" });
-      }),
-    );
     render(<HireStep />);
 
     await userEvent.click(
@@ -211,9 +201,14 @@ describe("HireStep — hiring", () => {
     );
 
     await waitFor(() =>
-      expect(
-        funnelBodies.find((body) => body.type === "hire_started")?.data,
-      ).toEqual({ template_id: "tpl-maria" }),
+      expect(capture).toHaveBeenCalledWith("hire_started", {
+        template_id: "tpl-maria",
+      }),
+    );
+    await waitFor(() =>
+      expect(datafast).toHaveBeenCalledWith("hire_completed", {
+        template_id: "tpl-maria",
+      }),
     );
   });
 

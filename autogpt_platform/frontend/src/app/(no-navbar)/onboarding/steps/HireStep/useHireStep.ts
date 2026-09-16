@@ -4,6 +4,7 @@ import type { ExpertRecommendations } from "@/app/api/__generated__/models/exper
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
+import { analytics } from "@/services/analytics";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { useQueryClient } from "@tanstack/react-query";
@@ -90,6 +91,9 @@ export function useHireStep() {
     setHiringTemplateId(expert.template_id);
     try {
       await hireExpert({ data: { template_id: expert.template_id } });
+      analytics.sendDatafastEvent("hire_completed", {
+        template_id: expert.template_id,
+      });
       markHired(expert.template_id);
       trackBrainDump("onboarding_expert_hired", {
         template_id: expert.template_id,

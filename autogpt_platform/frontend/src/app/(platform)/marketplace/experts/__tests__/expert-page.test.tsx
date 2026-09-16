@@ -20,6 +20,25 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ExpertPage as MarketplaceExpertPage } from "../[expertId]/components/ExpertPage";
 
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
+
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockRouterPush = vi.hoisted(() => vi.fn());
 const mockParams = vi.hoisted(() => ({ expertId: "template-maria" }));
@@ -200,17 +219,7 @@ describe("Marketplace expert page", () => {
   });
 
   test("emits the profile-opened and hire-started funnel events", async () => {
-    const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
     server.use(
-      http.post(/log_raw_analytics/, async ({ request }) => {
-        funnelBodies.push(
-          (await request.json()) as {
-            type: string;
-            data: Record<string, unknown>;
-          },
-        );
-        return HttpResponse.json({ status: "ok" });
-      }),
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
       getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
@@ -220,7 +229,7 @@ describe("Marketplace expert page", () => {
 
     await waitFor(() =>
       expect(
-        funnelBodies.find((body) => body.type === "expert_profile_opened")
+        funnelCalls().find((body) => body.type === "expert_profile_opened")
           ?.data,
       ).toEqual({ template_id: mariaTemplate.id }),
     );
@@ -231,7 +240,7 @@ describe("Marketplace expert page", () => {
 
     await waitFor(() =>
       expect(
-        funnelBodies.find((body) => body.type === "hire_started")?.data,
+        funnelCalls().find((body) => body.type === "hire_started")?.data,
       ).toEqual({ template_id: mariaTemplate.id }),
     );
   });

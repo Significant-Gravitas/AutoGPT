@@ -22,6 +22,7 @@ from backend.data.db_accessors import (
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -252,25 +253,6 @@ async def _compose_fresh_briefing(
     )
 
 
-async def _emit_briefing_event(
-    user_id: str, event: str, data: dict, idempotency_key: str | None = None
-) -> None:
-    """Fire a briefing funnel event without ever affecting delivery.
-
-    The scheduler runs this Prisma-less, so the write rides the DB-manager
-    RPC — a transport hiccup must not sink the briefing, and the retrying
-    client must not stall the scheduler on an analytics write, hence
-    `should_retry=False`. The service side schedules the actual DB write in
-    the background, so this await is a single short round trip.
-    """
-    try:
-        await get_database_manager_async_client(should_retry=False).emit_funnel_event(
-            user_id, event, data, idempotency_key
-        )
-    except Exception:
-        logger.exception("Failed to emit briefing funnel event %s", event)
-
-
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
     enabled, authoritative = await evaluate_feature_flag(
         Flag.HIRE_EXPERTS, user_id, default=False
@@ -307,11 +289,11 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 # otherwise be re-gathered and re-composed on every future
                 # run. Stamp it so this user's cron stops reprocessing it.
                 await client.mark_briefing_delivered(user_id, record.id)
-            await _emit_briefing_event(
+            emit_funnel_event(
                 user_id,
                 "briefing_generated",
                 {"run_count": 0, "decision_count": 0, "has_content": False},
-                idempotency_key=(
+                (
                     f"briefing_generated:{record.id}"
                     if record is not None
                     else f"briefing_generated:empty:{briefing_date.isoformat()}"
@@ -329,7 +311,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             await client.update_briefing_content(
                 user_id, record.id, content.model_dump(mode="json")
             )
-        await _emit_briefing_event(
+        emit_funnel_event(
             user_id,
             "briefing_generated",
             {
@@ -337,7 +319,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 "decision_count": content.decision_total,
                 "has_content": True,
             },
-            idempotency_key=f"briefing_generated:{record.id}",
+            f"briefing_generated:{record.id}",
         )
 
     message_id = str(
@@ -353,11 +335,11 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
     )
     await client.mark_briefing_delivered(user_id, record.id)
-    await _emit_briefing_event(
+    emit_funnel_event(
         user_id,
         "briefing_delivered",
         {"briefing_id": record.id},
-        idempotency_key=f"briefing_delivered:{record.id}",
+        f"briefing_delivered:{record.id}",
     )
     return {
         "status": "delivered",
