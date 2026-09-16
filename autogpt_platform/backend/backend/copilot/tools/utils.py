@@ -133,6 +133,16 @@ def _serialize_missing_credential(
         "scopes": scopes,
     }
 
+    # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+    # Proves the setup card carries no upgrade pointer to an existing row.
+    logger.warning(
+        "[SCOPEDEBUG] setup-card field=%s provider=%s scopes=%s keys=%s",
+        field_key,
+        provider,
+        scopes,
+        sorted(result.keys()),
+    )
+
     # Include discriminator info so the frontend can auto-match
     # host-scoped credentials (e.g. SendAuthenticatedWebRequestBlock).
     if field_info.discriminator:
@@ -278,6 +288,15 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id, expert_id)
 
     for field_name, field_info in requirements.items():
+        # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+        # Per-field attribution: joins matcher lines to a user + requirement.
+        logger.warning(
+            "[SCOPEDEBUG] user=%s field=%s provider=%s scopes=%s",
+            user_id,
+            field_name,
+            sorted(str(p) for p in field_info.provider),
+            sorted(field_info.required_scopes or []),
+        )
         matching_cred = find_matching_credential(available_creds, field_info)
 
         if matching_cred:
@@ -351,6 +370,14 @@ def find_matching_credential(
     field_info: CredentialsFieldInfo,
 ) -> Credentials | None:
     """Find a credential that matches the required provider, type, scopes, and host."""
+    # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+    # Proves which stored rows were considered for a setup-card prompt.
+    logger.warning(
+        "[SCOPEDEBUG] matching %d rows against provider=%s scopes=%s",
+        len(available_creds),
+        sorted(str(p) for p in field_info.provider),
+        sorted(field_info.required_scopes or []),
+    )
     for cred in available_creds:
         if cred.provider not in field_info.provider:
             continue
@@ -359,10 +386,18 @@ def find_matching_credential(
         if cred.type == "oauth2" and not _credential_has_required_scopes(
             cred, field_info
         ):
+            # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
+            logger.warning(
+                "[SCOPEDEBUG] SKIP scopes row=%s scopes=%s",
+                cred.id,
+                sorted(getattr(cred, "scopes", None) or []),
+            )
             continue
         if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
             continue
         return cred
+    # TEMP DEBUG HOTFIX (investigation/click-button-correlation).
+    logger.warning("[SCOPEDEBUG] no row matched")
     return None
 
 
