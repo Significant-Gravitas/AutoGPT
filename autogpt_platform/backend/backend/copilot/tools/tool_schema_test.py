@@ -279,6 +279,85 @@ def test_total_schema_char_budget() -> None:
     )
 
 
+# The other half of the brake: what the LARGEST session actually declares, in
+# the shape the SDK path sends (``mcp__copilot__`` name, no ``required``,
+# compact separators).  ``_CHAR_BUDGET`` above sums the registry, which no
+# session ever gets — so hiding a tool behind a context, as the interactive
+# gate does, is worth nothing to it, and the SDK-only file tools it never
+# counted are ones the user pays for on every turn.  This line is that number.
+#
+# The largest is a plain Otto chat with both flags on and E2B: it hides the
+# five ``experts`` tools where an expert chat hides the eight ``expert_admin``
+# ones.  ``is_available`` is deliberately NOT applied — the environment
+# decides it, so applying it would make the ceiling differ between CI and a
+# laptop; every tool the session's gates admit counts, which is the upper
+# bound a ceiling wants.
+#
+# Set at the measured 62,003 plus one on 2026-09-16, the first time this line
+# existed. No margin, for the reason _CHAR_BUDGET carries none.
+# ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
+# CI measures only its own delta while the ceiling has to cover every in-flight
+# PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
+_SESSION_WIRE_BUDGET = 62_004
+
+
+def test_largest_declared_session_wire_budget() -> None:
+    """Assert what one session declares stays under the wire budget.
+
+    ``test_total_schema_char_budget`` measures the registry; this measures a
+    turn. The two move independently: a tool added behind a context raises the
+    first and not the second, and an SDK-only file tool raises the second and
+    not the first.
+    """
+    assert _largest_session_wire_chars() < _SESSION_WIRE_BUDGET, (
+        f"The largest session declares {_largest_session_wire_chars():,} chars "
+        f"of tool schema, over the {_SESSION_WIRE_BUDGET:,} budget. Hide the "
+        f"tool behind a context, trim it, or raise the budget intentionally."
+    )
+
+
+def _largest_session_wire_chars() -> int:
+    """Wire chars an Otto chat declares with both flags on, E2B, interactive."""
+    from backend.copilot.sdk.e2b_file_tools import E2B_FILE_TOOLS
+    from backend.copilot.sdk.tool_adapter import (
+        _READ_TOOL_DESCRIPTION,
+        _READ_TOOL_NAME,
+        _READ_TOOL_SCHEMA,
+        BASELINE_ONLY_MCP_TOOLS,
+        MCP_TOOL_PREFIX,
+        _build_input_schema,
+    )
+    from backend.copilot.tools import (
+        expert_tool_disabled_groups,
+        origin_disabled_tools,
+        tool_names_in_groups,
+    )
+
+    def wire(name: str, description: str, schema: dict) -> int:
+        entry = {
+            "name": f"{MCP_TOOL_PREFIX}{name}",
+            "description": description,
+            "input_schema": schema,
+        }
+        return len(json.dumps(entry, separators=(",", ":")))
+
+    hidden = set(
+        tool_names_in_groups(
+            expert_tool_disabled_groups(experts_enabled=True, expert_id=None)
+        )
+    )
+    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
+    hidden |= origin_disabled_tools("interactive")
+
+    total = sum(
+        wire(name, tool.description, _build_input_schema(tool))
+        for name, tool in TOOL_REGISTRY.items()
+        if name not in hidden
+    )
+    total += sum(wire(name, desc, schema) for name, desc, schema, _ in E2B_FILE_TOOLS)
+    return total + wire(_READ_TOOL_NAME, _READ_TOOL_DESCRIPTION, _READ_TOOL_SCHEMA)
+
+
 # ── Capability-group filtering (ToolGroup / disabled_groups) ───────────
 
 
@@ -334,3 +413,123 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         get_copilot_tool_names(use_e2b=True, disabled_groups=["graphiti"])
     )
     assert not (memory_mcp_names & filtered_e2b)
+
+
+# ── Origin filtering (INTERACTIVE_ORIGIN_TOOLS / origin_disabled_tools) ──
+
+
+def test_automation_origin_declares_no_interactive_origin_tools() -> None:
+    """A machine-authored session is not offered what its guard would refuse.
+
+    Both engines compose the same set: the baseline path passes it as
+    ``disabled_tools``, the SDK path unions it into the names it never
+    registers. A legacy ``origin=None`` is treated as automation, as
+    ``autopilot_session_guard`` treats it.
+    """
+    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
+    from backend.copilot.tools import (
+        INTERACTIVE_ORIGIN_TOOLS,
+        get_available_tools,
+        origin_disabled_tools,
+    )
+
+    for origin in ("automation", None):
+        hidden = origin_disabled_tools(origin)
+        assert hidden == INTERACTIVE_ORIGIN_TOOLS
+
+        baseline = {
+            t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
+        }
+        assert not (INTERACTIVE_ORIGIN_TOOLS & baseline), (
+            f"origin={origin!r} still declares "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & baseline)} on the baseline path"
+        )
+
+        sdk = set(registered_copilot_tool_names(hidden=hidden))
+        assert not (INTERACTIVE_ORIGIN_TOOLS & sdk), (
+            f"origin={origin!r} still registers "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & sdk)} on the SDK path"
+        )
+        # The gate is narrow on purpose: an automation still does its work,
+        # still reports through a chat platform, still wakes itself up.
+        assert {
+            "run_agent",
+            "run_block",
+            "run_sub_session",
+            "schedule_followup",
+            "ask_question",
+        } <= sdk
+
+
+def test_interactive_origin_declares_every_tool_it_did_before() -> None:
+    """An interactive session declares exactly what it declared before.
+
+    The counterpart to the test above, and what fails if the gate ever widens
+    past ``origin`` into the sessions a person really is driving.
+    """
+    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
+    from backend.copilot.tools import (
+        INTERACTIVE_ORIGIN_TOOLS,
+        get_available_tools,
+        origin_disabled_tools,
+    )
+
+    hidden = origin_disabled_tools("interactive")
+    assert hidden == frozenset()
+
+    baseline = {
+        t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
+    }
+    assert INTERACTIVE_ORIGIN_TOOLS <= baseline, (
+        "interactive session lost "
+        f"{sorted(INTERACTIVE_ORIGIN_TOOLS - baseline)} on the baseline path"
+    )
+
+    sdk = set(registered_copilot_tool_names(hidden=hidden))
+    assert INTERACTIVE_ORIGIN_TOOLS <= sdk, (
+        f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - sdk)} "
+        "on the SDK path"
+    )
+
+
+def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
+    """The set is only sound while it equals what the runtime refuses.
+
+    Hiding a tool the guard does not refuse takes a capability away from
+    automations; declaring one it does refuse is the waste this PR removes.
+    A new staffing tool adds ``autopilot_session_guard`` and this fails until
+    the name is listed — the check no other test in the tree performs.
+    """
+    import inspect
+
+    from backend.copilot.tools import INTERACTIVE_ORIGIN_TOOLS
+
+    guarded = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if "autopilot_session_guard(" in inspect.getsource(type(tool))
+    }
+    assert guarded == INTERACTIVE_ORIGIN_TOOLS, (
+        "INTERACTIVE_ORIGIN_TOOLS is out of step with the runtime guard: "
+        f"guarded but declared {sorted(guarded - INTERACTIVE_ORIGIN_TOOLS)}, "
+        f"hidden but unguarded {sorted(INTERACTIVE_ORIGIN_TOOLS - guarded)}"
+    )
+
+
+def test_sdk_path_honours_is_available() -> None:
+    """The SDK engine drops env-unavailable tools, as the baseline one does.
+
+    Without this the model is offered browser tools on a box with no
+    ``agent-browser`` binary, and they fail on first use.
+    """
+    from unittest.mock import patch
+
+    from backend.copilot.sdk.tool_adapter import registered_copilot_tool_names
+
+    browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+
+    with patch("backend.copilot.tools.agent_browser.shutil.which", return_value="/x"):
+        assert browser_tools <= set(registered_copilot_tool_names())
+
+    with patch("backend.copilot.tools.agent_browser.shutil.which", return_value=None):
+        assert not (browser_tools & set(registered_copilot_tool_names()))
