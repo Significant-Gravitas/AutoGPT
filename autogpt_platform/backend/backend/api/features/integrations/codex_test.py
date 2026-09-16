@@ -10,6 +10,7 @@ from backend.api.features.integrations.codex import (
     CODEX_LOGIN_STATE_KEY,
     CodexDeviceLogin,
     CodexDeviceLoginState,
+    _is_codex_lease,
     build_device_login_cancel_url,
     build_device_login_url,
     render_device_login_page,
@@ -79,6 +80,14 @@ def _oauth_state(login_id: str = "login-123") -> OAuthState:
         scopes=[],
         state_metadata={CODEX_LOGIN_STATE_KEY: login_id},
     )
+
+
+@pytest.mark.parametrize("strategy", ["oauth_handler", "provider_runtime"])
+def test_codex_routes_accept_current_and_legacy_refresh_ownership(strategy: str):
+    lease = MagicMock()
+    lease.credentials = _credentials().model_copy(update={"refresh_strategy": strategy})
+
+    assert _is_codex_lease(lease)
 
 
 def test_codex_login_reuses_generic_oauth_contract():

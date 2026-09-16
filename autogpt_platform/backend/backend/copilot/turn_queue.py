@@ -10,7 +10,7 @@ text column:
 
 The user's pending message itself is just a normal ChatMessage row (no
 status of its own).  The dispatcher's submit-time payload (``file_ids``,
-``mode``, ``model``, ``permissions``, ``context``, ``request_arrival_at``)
+``model``, ``permissions``, ``context``, ``request_arrival_at``)
 is stashed in that row's ``metadata`` JSONB so a later promotion can
 replay the turn faithfully.
 
@@ -45,6 +45,7 @@ from backend.copilot.model import (
     _get_session_lock,
     invalidate_session_cache,
 )
+from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -104,7 +105,6 @@ async def try_enqueue_turn(
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
-    mode: str | None = None,
     model: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -130,7 +130,6 @@ async def try_enqueue_turn(
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
@@ -149,7 +148,6 @@ async def enqueue_turn(
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
-    mode: str | None = None,
     model: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -170,8 +168,6 @@ async def enqueue_turn(
         metadata["context"] = dict(context)
     if file_ids is not None:
         metadata["file_ids"] = list(file_ids)
-    if mode is not None:
-        metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
     metadata["llm_auth_provider"] = llm_auth_provider
@@ -272,7 +268,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if head.metadata.llm_auth_provider == "codex":
+    route_provider = head.metadata.llm_auth_provider
+    if route_provider == "codex":
         if not await has_codex_access(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s lacks Codex entitlement, "
@@ -281,7 +278,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 head.session_id,
             )
             return False
-    else:
+    elif route_provider == "platform":
         if await is_user_paywalled(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
@@ -345,6 +342,35 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
 
     metadata = pending.metadata or {}
+
+    # A turn can sit in the queue long enough for the plan that bought it to
+    # lapse. The tier was checked when the turn was accepted, but promoting it
+    # is a second, later decision to spend, so it gets its own check --
+    # otherwise a downgrade between the two buys a free Advanced run. The turn
+    # goes back to queued rather than quietly re-running on Standard: nothing
+    # in this feature changes what a turn runs on without being asked. It
+    # promotes itself once entitlement returns, and can be cancelled meanwhile.
+    if route_provider == "platform" and metadata.get("model") == "advanced":
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            entitled = False
+            logger.warning(
+                "dispatch_next_for_user: could not resolve the Advanced "
+                "entitlement for user=%s; leaving session=%s queued",
+                user_id,
+                head.session_id,
+                exc_info=True,
+            )
+        if not entitled:
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_QUEUED,
+            )
+            await invalidate_session_cache(head.session_id)
+            return False
+
     turn_id = str(uuid.uuid4())
     try:
         # The user's message is already persisted AND the session is
@@ -371,7 +397,6 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             # org context on promotion.
             organization_id=head.organization_id,
             team_id=head.team_id,
-            mode=metadata.get("mode"),
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
             llm_credential_id=head.metadata.llm_credential_id,

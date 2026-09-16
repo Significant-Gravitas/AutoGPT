@@ -171,7 +171,6 @@ async def restore_existing_library_agent(
     return library_model.LibraryAgent.from_db(
         restored,
         schedule_info=schedule_info,
-        store_listing_version_id=store_listing_version.id,
     )
 
 
@@ -216,7 +215,6 @@ async def add_graph_to_library(
     return library_model.LibraryAgent.from_db(
         added_agent,
         schedule_info=schedule_info,
-        store_listing_version_id=store_listing_version.id,
     )
 
 

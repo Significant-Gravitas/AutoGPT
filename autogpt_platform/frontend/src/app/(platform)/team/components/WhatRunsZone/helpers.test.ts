@@ -11,7 +11,6 @@ import {
 import {
   getAdoptableExperts,
   getAdoptTargetKey,
-  getAdoptTargetVersionID,
   getFilterView,
   getUnadoptedAgents,
   getVisibleGroups,
@@ -39,7 +38,6 @@ function makeAgent(over: Partial<LibraryAgent>): LibraryAgent {
     id: "agent",
     graph_id: "graph",
     name: "Agent",
-    store_listing_version_id: null,
     ...over,
   } as unknown as LibraryAgent;
 }
@@ -206,58 +204,35 @@ describe("getVisibleGroups", () => {
 });
 
 describe("getUnadoptedAgents", () => {
-  it("excludes an exact version when every expert already has it", () => {
+  it("excludes an agent every expert already installed", () => {
     const experts = [
       makeExpert({
         id: "a",
-        workflows: [
-          makeWorkflow({
-            graph_id: "graph-installed",
-            store_listing_version_id: "slv-installed",
-          }),
-        ],
+        workflows: [makeWorkflow({ library_agent_id: "installed" })],
       }),
     ];
-    const agents = [
-      makeAgent({
-        id: "installed",
-        graph_id: "graph-installed",
-        store_listing_version_id: "slv-installed",
-      }),
-      makeAgent({
-        id: "free",
-        graph_id: "graph-free",
-        store_listing_version_id: "slv-free",
-      }),
-    ];
-    const result = getUnadoptedAgents(agents, experts);
-    expect(result.map((a) => a.id)).toEqual(["free"]);
+    const agents = [makeAgent({ id: "installed" }), makeAgent({ id: "free" })];
+
+    expect(getUnadoptedAgents(agents, experts).map((a) => a.id)).toEqual([
+      "free",
+    ]);
   });
 
-  it("keeps a newer snapshot of an installed graph adoptable", () => {
-    const expert = makeExpert({
-      workflows: [
-        makeWorkflow({
-          graph_id: "shared-graph",
-          store_listing_version_id: "slv-v1",
-        }),
-      ],
-    });
-    const newer = makeAgent({
-      graph_id: "shared-graph",
-      store_listing_version_id: "slv-v2",
-    });
+  it("keeps an unpublished agent adoptable", () => {
+    const agent = makeAgent({ id: "never-published" });
 
-    expect(getUnadoptedAgents([newer], [expert])).toEqual([newer]);
+    expect(
+      getUnadoptedAgents([agent], [makeExpert({ workflows: [] })]),
+    ).toEqual([agent]);
   });
 
   it("keeps an agent visible while another expert can adopt it", () => {
     const installed = makeExpert({
       id: "installed",
-      workflows: [makeWorkflow({ store_listing_version_id: "slv-shared" })],
+      workflows: [makeWorkflow({ library_agent_id: "shared" })],
     });
     const available = makeExpert({ id: "available", workflows: [] });
-    const agent = makeAgent({ store_listing_version_id: "slv-shared" });
+    const agent = makeAgent({ id: "shared" });
 
     expect(getUnadoptedAgents([agent], [installed, available])).toEqual([
       agent,
@@ -271,21 +246,20 @@ describe("getUnadoptedAgents", () => {
       getUnadoptedAgents([agent], [installed, available], optimistic),
     ).toEqual([]);
   });
-});
 
-describe("getAdoptTargetVersionID", () => {
-  it("returns the exact-match version id when present", () => {
-    expect(
-      getAdoptTargetVersionID(
-        makeAgent({ store_listing_version_id: "slv-exact" }),
-      ),
-    ).toBe("slv-exact");
-  });
+  it("counts a marketplace install of the same agent as adopted", () => {
+    const expert = makeExpert({
+      workflows: [
+        makeWorkflow({
+          library_agent_id: "shared",
+          store_listing_version_id: "slv-1",
+        }),
+      ],
+    });
 
-  it("returns null for a pure-local agent", () => {
-    expect(
-      getAdoptTargetVersionID(makeAgent({ store_listing_version_id: null })),
-    ).toBe(null);
+    expect(getUnadoptedAgents([makeAgent({ id: "shared" })], [expert])).toEqual(
+      [],
+    );
   });
 });
 
@@ -294,10 +268,10 @@ describe("pruneAdoptedTargetKeys", () => {
     const pending = makeExpert({ id: "pending", workflows: [] });
     const confirmed = makeExpert({
       id: "confirmed",
-      workflows: [makeWorkflow({ store_listing_version_id: "slv-exact" })],
+      workflows: [makeWorkflow({ library_agent_id: "agent" })],
     });
     const fired = makeExpert({ id: "fired", workflows: [] });
-    const agent = makeAgent({ store_listing_version_id: "slv-exact" });
+    const agent = makeAgent({ id: "agent" });
     const keys = new Set([
       getAdoptTargetKey(agent, pending),
       getAdoptTargetKey(agent, confirmed),
@@ -311,7 +285,7 @@ describe("pruneAdoptedTargetKeys", () => {
 
   it("preserves the set identity when no targets can be pruned", () => {
     const expert = makeExpert({ workflows: [] });
-    const agent = makeAgent({ store_listing_version_id: "slv-exact" });
+    const agent = makeAgent({ id: "agent" });
     const keys = new Set([getAdoptTargetKey(agent, expert)]);
 
     expect(pruneAdoptedTargetKeys(keys, [agent], [expert])).toBe(keys);

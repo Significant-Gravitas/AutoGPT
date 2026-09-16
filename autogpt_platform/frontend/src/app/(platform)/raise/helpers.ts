@@ -1,4 +1,5 @@
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import { creditsToUsdLabel } from "@/lib/credits";
 import {
   buildVoicePreferences,
   type VoicePickResult,
@@ -56,16 +57,16 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 export const RAISE_PROMPTS = {
   greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
-  nameQuestion: "Good pick. What do you want to call it?",
-  colorQuestion: "Nice. Now choose a color for it.",
+  nameQuestion: "Good pick. What do you want to call them?",
+  colorQuestion: "Nice. Now choose a color for them.",
   avatarQuestion: (name: string) =>
-    `Want to give ${name || "it"} a face? Upload a picture, let me generate one, or skip it.`,
+    `Want to give ${name || "them"} a face? Upload a picture, let me generate one, or skip it.`,
   aboutQuestion: (name: string) =>
-    `Anything else I should know about ${name || "your expert"}? How it should work, what matters to you — or skip it.`,
+    `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
-    `How should ${name || "your expert"} sound when it writes? Pick the one that feels right.`,
+    `How should ${name || "your expert"} sound when they write? Pick the one that feels right.`,
   budgetQuestion: (name: string) =>
-    `How much weekly budget should ${name || "your expert"} have? 500 credits is the default — pick an amount, or skip.`,
+    `How much weekly budget should ${name || "your expert"} have? $5 a week is the default — pick an amount, or skip.`,
   marketplaceQuestion: (name: string) =>
     `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
   skillsQuestion: (name: string) =>
@@ -203,15 +204,10 @@ export function raisedIdentity(name: string): string {
   return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
 }
 
-export function creditsToUsdLabel(credits: number): string {
-  const dollars = credits / 100;
-  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
-}
-
 export function kitBudgetLabel(kit: RaiseKit | null): string | null {
   if (!kit || kit.weeklyBudget === null) return null;
   if (kit.weeklyBudget === 0) return "No weekly limit";
-  return `${kit.weeklyBudget.toLocaleString()} credits (${creditsToUsdLabel(kit.weeklyBudget)}/week)`;
+  return `${creditsToUsdLabel(kit.weeklyBudget)} / week`;
 }
 
 export function kitToolsLabel(kit: RaiseKit | null): string | null {

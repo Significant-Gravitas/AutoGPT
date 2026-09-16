@@ -1,5 +1,6 @@
 "use client";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
@@ -16,7 +17,12 @@ import { useMainMarketplacePage } from "./useMainMarketplacePage";
 export const MainMarkeplacePage = () => {
   const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
     useMainMarketplacePage();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  // Hiring is still behind the flag, but the expert pages are public: a
+  // visitor browsing the marketplace needs a way to reach them. Signed-in
+  // users keep the flag gate so the beta stays invisible to them.
+  const showExperts = !isUserLoading && (!isLoggedIn || isHireExpertsEnabled);
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -45,7 +51,7 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {isHireExpertsEnabled ? <ExpertsSection /> : null}
+        {showExperts ? <ExpertsSection /> : null}
         {topAgents && (
           <div className="mb-20" id={AGENTS_SECTION_ID}>
             <AgentsSection

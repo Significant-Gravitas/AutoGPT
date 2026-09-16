@@ -179,16 +179,9 @@ async def test_create_store_submission(mocker):
         metadata="{}",  # type: ignore[reportArgumentType]
         integrations="",
         maxEmailsPerDay=1,
-        notifyOnAgentRun=True,
-        notifyOnZeroBalance=True,
-        notifyOnLowBalance=True,
-        notifyOnBlockExecutionFailed=True,
-        notifyOnContinuousAgentError=True,
-        notifyOnDailySummary=True,
-        notifyOnWeeklySummary=True,
-        notifyOnMonthlySummary=True,
-        notifyOnAgentApproved=True,
-        notifyOnAgentRejected=True,
+        briefingFrequency=prisma.enums.BriefingFrequency.WEEKLY,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
+        alertsEnabled=True,
+        notifyOnStoreVerdict=True,
         timezone="Europe/Delft",
         subscriptionTier=prisma.enums.SubscriptionTier.BASIC,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
     )

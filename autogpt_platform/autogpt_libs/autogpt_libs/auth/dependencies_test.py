@@ -4,7 +4,7 @@ Tests the full authentication flow from HTTP requests to user validation.
 """
 
 import os
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request, Security
@@ -14,6 +14,7 @@ from pytest_mock import MockerFixture
 from autogpt_libs.auth import config
 from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.dependencies import (
+    _ensure_platform_user,
     get_user_id,
     requires_admin_user,
     requires_user,
@@ -564,3 +565,284 @@ class TestAdminImpersonation:
         # Should strip whitespace and impersonate successfully
         assert user_id == "target-user-123"
         mock_logger.info.assert_called_once()
+
+
+class TestEnsurePlatformUser:
+    """A valid token whose platform User row is missing must self-heal.
+
+    Better Auth issues a session as soon as the auth identity exists, so a
+    request can arrive before (or without) the client-driven provisioning
+    call. Before this, the org bootstrap could not create an org for a user
+    it could not find and the account 400'd on every org-scoped endpoint
+    forever — see BUILDER-50B.
+    """
+
+    @staticmethod
+    def _stub_backend(mocker: MockerFixture, *, existing_user, provisioner):
+        """Point the deferred `backend.*` imports at test doubles."""
+        import sys
+        import types
+
+        db_mod = types.ModuleType("backend.data.db")
+        db_mod.prisma = Mock()
+        # A list means "successive calls" -- used to model the row appearing
+        # between the initial probe and the post-failure re-check.
+        db_mod.prisma.user.find_unique = (
+            AsyncMock(side_effect=list(existing_user))
+            if isinstance(existing_user, list)
+            else AsyncMock(return_value=existing_user)
+        )
+
+        user_mod = types.ModuleType("backend.data.user")
+        user_mod.get_or_create_user_with_status = provisioner
+
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "backend": types.ModuleType("backend"),
+                "backend.data": types.ModuleType("backend.data"),
+                "backend.data.db": db_mod,
+                "backend.data.user": user_mod,
+            },
+        )
+        return db_mod
+
+    @pytest.mark.asyncio
+    async def test_provisions_when_user_row_missing(self, mocker: MockerFixture):
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+        payload = {"sub": "user-1", "email": "new@example.com"}
+
+        await _ensure_platform_user("user-1", payload)
+
+        provision.assert_awaited_once_with(payload)
+
+    @pytest.mark.asyncio
+    async def test_noop_when_user_row_exists(self, mocker: MockerFixture):
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=Mock(), provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_never_provisions_from_an_impersonators_claims(
+        self, mocker: MockerFixture
+    ):
+        """Under impersonation the JWT describes the admin, not the target.
+
+        Provisioning from it would create the target's account under the
+        admin's email, so the self-heal must decline entirely.
+        """
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user(
+            "target-user", {"sub": "admin-456", "email": "admin@example.com"}
+        )
+
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_token_carries_no_email(self, mocker: MockerFixture):
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1"})
+
+        provision.assert_not_awaited()
+        # This account stays broken, so the refusal must not be silent —
+        # bricked *and* invisible is the failure mode this function ends.
+        logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_provisioning_failure_is_swallowed(self, mocker: MockerFixture):
+        """Best-effort: the caller still runs the org bootstrap and surfaces
+        the same 400 as before, so a failure here can only be neutral."""
+        provision = AsyncMock(side_effect=RuntimeError("db down"))
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        provision.assert_awaited_once()
+
+
+class TestRequestContextProvisioning:
+    """`get_request_context` must actually invoke the self-heal.
+
+    The whole effect of the fix lives on one call site; without this, deleting
+    that line leaves the unit tests above green.
+    """
+
+    @staticmethod
+    def _request(headers: dict | None = None):
+        request = Mock(spec=Request)
+        request.headers = headers or {}
+        request.method = "GET"
+        request.url = "http://test/api/library/agents"
+        return request
+
+    @pytest.fixture
+    def wiring(self, mocker: MockerFixture):
+        """Stub the deferred backend imports and record call order."""
+        import sys
+        import types
+
+        calls: list[str] = []
+
+        org_member = Mock(
+            status="ACTIVE", isOwner=True, isAdmin=False, isBillingManager=False
+        )
+        org_member.Org = Mock(deletedAt=None)
+
+        db_mod = types.ModuleType("backend.data.db")
+        db_mod.prisma = Mock()
+        # No personal org -> the self-heal branch.
+        db_mod.prisma.orgmember.find_first = AsyncMock(return_value=None)
+        db_mod.prisma.orgmember.find_unique = AsyncMock(return_value=org_member)
+
+        async def _default_team(_user_id):
+            calls.append("get_user_default_team")
+            return "org-1", "team-1"
+
+        orgs_mod = types.ModuleType("backend.api.features.orgs.db")
+        orgs_mod.get_user_default_team = _default_team
+
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "backend": types.ModuleType("backend"),
+                "backend.data": types.ModuleType("backend.data"),
+                "backend.data.db": db_mod,
+                "backend.api": types.ModuleType("backend.api"),
+                "backend.api.features": types.ModuleType("backend.api.features"),
+                "backend.api.features.orgs": types.ModuleType(
+                    "backend.api.features.orgs"
+                ),
+                "backend.api.features.orgs.db": orgs_mod,
+            },
+        )
+
+        async def _ensure(user_id, payload):
+            calls.append("ensure_platform_user")
+
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            side_effect=_ensure,
+        )
+        return ensure, calls
+
+    @pytest.mark.asyncio
+    async def test_self_heal_runs_before_the_org_bootstrap(self, wiring):
+        """Order matters: provisioning after the bootstrap would be useless,
+        since the bootstrap is what needs the User row to exist."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        ensure, calls = wiring
+        payload = {"sub": "user-1", "email": "new@example.com"}
+
+        ctx = await get_request_context(self._request(), payload)
+
+        ensure.assert_awaited_once_with("user-1", payload)
+        assert calls == ["ensure_platform_user", "get_user_default_team"]
+        assert ctx.org_id == "org-1"
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_the_user_already_has_a_personal_org(
+        self, wiring, mocker: MockerFixture
+    ):
+        """The common path must not pay for the self-heal."""
+        import sys
+
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        ensure, _ = wiring
+        member = Mock(orgId="org-existing")
+        sys.modules["backend.data.db"].prisma.orgmember.find_first = AsyncMock(
+            return_value=member
+        )
+
+        await get_request_context(self._request(), {"sub": "user-1", "email": "a@b.c"})
+
+        ensure.assert_not_awaited()
+
+
+class TestEnsurePlatformUserRaceLogging:
+    """A losing create race must not be reported as a failure.
+
+    One first page load fans out ~20 requests that all miss the probe, so all
+    but one lose the race inside `get_or_create_user_with_status` (Prisma's
+    UniqueViolationError, rewrapped as DatabaseError). Logging those at ERROR
+    put ~19 tracebacks claiming failure behind every successful heal, which
+    would make Sentry actively misleading about whether the fix works.
+    """
+
+    @pytest.mark.asyncio
+    async def test_lost_race_is_not_reported_as_a_failure(self, mocker: MockerFixture):
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        # Missing on the probe, present on the post-failure re-check.
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=[None, Mock()],
+            provisioner=AsyncMock(side_effect=RuntimeError("unique violation")),
+        )
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        logger.error.assert_not_called()
+        # The traceback still has to survive somewhere: WARNING is a Sentry
+        # breadcrumb, not an event, so the detail is kept without the noise.
+        logger.warning.assert_called_once()
+        assert logger.warning.call_args.kwargs.get("exc_info") is True
+
+    @pytest.mark.asyncio
+    async def test_genuine_failure_is_still_reported(self, mocker: MockerFixture):
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        # Still missing on the re-check -- the user really is unprovisioned.
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=[None, None],
+            provisioner=AsyncMock(side_effect=RuntimeError("db down")),
+        )
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        logger.error.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_successful_heal_reports_once(self, mocker: MockerFixture):
+        """The invariant breach is worth one Sentry event per account."""
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=None,
+            provisioner=AsyncMock(return_value=Mock(was_created=True)),
+        )
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        logger.error.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_row_found_rather_than_created_is_not_reported(
+        self, mocker: MockerFixture
+    ):
+        """Returning without raising is not proof we created anything.
+
+        A concurrent request can land its row between our probe and the
+        get-or-create's own lookup, which then reads it back with
+        was_created=False. Reporting that too would put several ERRORs behind
+        one heal, each claiming to have provisioned a row it only found.
+        """
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=None,
+            provisioner=AsyncMock(return_value=Mock(was_created=False)),
+        )
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        logger.error.assert_not_called()

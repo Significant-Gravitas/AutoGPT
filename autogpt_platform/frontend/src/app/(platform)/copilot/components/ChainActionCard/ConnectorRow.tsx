@@ -4,9 +4,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useContext, useEffect, useState } from "react";
 import type { ConnectorRow as Row } from "./helpers";
@@ -78,9 +82,25 @@ export function ConnectorRow({ row }: Props) {
         schema={row.schema}
         provider={row.provider}
         displayName={row.displayName}
+        credentialID={upgradableCredentialID(row.provider, allProviders)}
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
+        onConnected={row.onConnected}
       />
     </div>
   );
+}
+
+/** The account a re-auth should upgrade in place. Signing in without it can
+ *  grant narrower scopes than the user already had and leave a second row for
+ *  the same provider, which no ConnectorRow can ever resolve. Only safe when
+ *  exactly one account exists — otherwise picking one would be a guess. */
+function upgradableCredentialID(
+  provider: string,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  const oauthCredentials = filterSystemCredentials(
+    allProviders?.[provider]?.savedCredentials ?? [],
+  ).filter((credential) => credential.type === "oauth2");
+  return oauthCredentials.length === 1 ? oauthCredentials[0].id : undefined;
 }

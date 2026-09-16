@@ -79,6 +79,18 @@ const setupItem: HomeAttentionItem = {
   primary_action: { label: "Finish setup", href: "/team/maria" },
 };
 
+const questionItem: HomeAttentionItem = {
+  id: "question-sess-1",
+  kind: "question",
+  priority: "normal",
+  title: "Maria has a question",
+  description: "Monday morning or Friday evening?",
+  why_it_matters: "The work is paused until you answer in the chat.",
+  expert: maria,
+  created_at: NOW,
+  primary_action: { label: "Answer", href: "/copilot?sessionId=sess-1" },
+};
+
 function makeDashboard(attention: HomeAttentionItem[]): HomeDashboardResponse {
   return {
     generated_at: NOW,
@@ -198,4 +210,30 @@ test("keeps a rejected review actionable instead of dropping the row", async () 
 
   await waitFor(() => expect(approve.hasAttribute("disabled")).toBe(false));
   expect(screen.getByText("Approve item 1")).toBeDefined();
+});
+
+test("shows an unanswered copilot question and links back to the chat", async () => {
+  mockDashboard([questionItem]);
+
+  render(<HomePage />);
+
+  expect(await screen.findByText("Maria has a question")).toBeDefined();
+  expect(screen.getByText("Monday morning or Friday evening?")).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: "Answer" }).getAttribute("href"),
+  ).toBe("/copilot?sessionId=sess-1");
+});
+
+test("offers no approve or decline on a question", async () => {
+  mockDashboard([questionItem]);
+
+  render(<HomePage />);
+
+  await screen.findByText("Maria has a question");
+  expect(
+    screen.queryByRole("button", { name: /Approve: Maria has a question/ }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: /Decline: Maria has a question/ }),
+  ).toBeNull();
 });

@@ -22,6 +22,7 @@ function connectorRequest(
     ],
     selected: {},
     onChange: vi.fn(),
+    onConnected: vi.fn(),
     ...overrides,
   };
 }

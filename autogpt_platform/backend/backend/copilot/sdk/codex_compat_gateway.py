@@ -12,10 +12,11 @@ from typing import Protocol, cast
 from uuid import uuid4
 
 from aiohttp import web
-from openai_codex.generated.v2_all import AgentMessageDeltaNotification
-from openai_codex.models import Notification
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.provider_failure import classify as classify_provider_failure
+from backend.copilot.provider_failure import status_for
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
@@ -23,6 +24,7 @@ from backend.integrations.codex.models import (
     CodexInvocationRequest,
     CodexInvocationResult,
     CodexReasoningEffort,
+    CodexStreamEvent,
     CodexTokenUsage,
 )
 from backend.integrations.codex.transport import (
@@ -70,7 +72,7 @@ class _AgentSession(Protocol):
         tool_handler: Callable[
             [CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]
         ],
-        event_handler: Callable[[Notification], Awaitable[None]] | None = None,
+        event_handler: Callable[[CodexStreamEvent], Awaitable[None]] | None = None,
     ) -> CodexInvocationResult: ...
 
 
@@ -141,6 +143,11 @@ class CodexAnthropicGateway:
                 "Codex gateway requires a credential lease or agent session"
             )
         self._credential_lease = credential_lease
+        # The last failure this gateway named, kept so the service layer can
+        # report *what* went wrong. By the time a failure reaches the CLI it
+        # is an HTTP status and a sentence; the typed exception only exists
+        # in here.
+        self.last_failure: ProviderFailure | None = None
         self.model = model
         self.effort: CodexReasoningEffort | None = effort
         self._transport = cast(
@@ -427,10 +434,9 @@ class CodexAnthropicGateway:
         tools: list[CodexDynamicToolSpec],
         original_names: dict[str, str],
     ) -> None:
-        async def handle_event(notification: Notification) -> None:
-            payload = notification.payload
-            if isinstance(payload, AgentMessageDeltaNotification) and payload.delta:
-                await conversation.queue.put(_TextDelta(text=payload.delta))
+        async def handle_event(event: CodexStreamEvent) -> None:
+            if event.type == "text_delta" and event.delta:
+                await conversation.queue.put(_TextDelta(text=event.delta))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
             future: asyncio.Future[CodexDynamicToolResult] = (
@@ -478,6 +484,35 @@ class CodexAnthropicGateway:
             )
             await conversation.queue.put(_Failed(error=exc))
 
+    def _failure_response(self, failed: "_Failed") -> web.Response:
+        """Answer a failed conversation with a status the CLI can act on.
+
+        Every failure used to become ``502 api_error``, which reads as a
+        server fault and invites the CLI to retry something that cannot
+        succeed -- an expired credential retried three times is still
+        expired. Naming the failure lets the status say "stop asking".
+
+        Unrecognised failures keep the old 502: a wrong specific status
+        would be worse than an honest generic one.
+        """
+        failure = classify_provider_failure(
+            failed.error,
+            auth_provider="codex",
+            credential_id=(
+                self._credential_lease.credentials.id
+                if self._credential_lease is not None
+                else None
+            ),
+        )
+        self.last_failure = failure
+        if failure is None:
+            return _anthropic_error(502, "api_error", "Codex model transport failed")
+        return _anthropic_error(
+            status_for(failure),
+            failure.kind.value,
+            failure.message,
+        )
+
     async def _streaming_response(
         self,
         request: web.Request,
@@ -499,11 +534,7 @@ class CodexAnthropicGateway:
     ) -> web.StreamResponse:
         first = await conversation.queue.get()
         if isinstance(first, _Failed):
-            return _anthropic_error(
-                502,
-                "api_error",
-                "Codex model transport failed",
-            )
+            return self._failure_response(first)
 
         response = web.StreamResponse(
             status=200,
@@ -617,6 +648,28 @@ class CodexAnthropicGateway:
                     event.result.usage.output_tokens if event.result.usage else 0
                 )
                 await _write_message_end(response, "end_turn", output_tokens)
+                return
+            elif isinstance(event, _Failed):
+                # The HTTP status can no longer change once streaming starts,
+                # but classification is still required: the service reads
+                # ``last_failure`` after the gateway closes to persist the
+                # provider-specific reason on the turn.
+                self._failure_response(event)
+                failure = self.last_failure
+                await _write_sse(
+                    response,
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": failure.kind.value if failure else "api_error",
+                            "message": (
+                                failure.message
+                                if failure
+                                else "Codex model transport failed"
+                            ),
+                        },
+                    },
+                )
                 return
             else:
                 await _write_sse(

@@ -12,7 +12,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -30,6 +30,38 @@ class GithubListPullRequestsBlock(Block):
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
+        )
+        state: Literal["open", "closed", "all"] = SchemaField(
+            description="Only include pull requests in this state",
+            default="open",
+        )
+        base: str = SchemaField(
+            description="Only include pull requests targeting this base branch",
+            placeholder="main",
+            default="",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of pull requests to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        head: str = SchemaField(
+            description="Only include pull requests from this head branch. "
+            "Format: 'user:branch' or 'org:branch'.",
+            placeholder="octocat:feature-branch",
+            default="",
+            advanced=True,
+        )
+        sort: Literal["created", "updated", "popularity", "long-running"] = SchemaField(
+            description="What to sort the pull requests by",
+            default="created",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction",
+            default="desc",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -89,12 +121,25 @@ class GithubListPullRequestsBlock(Block):
 
     @staticmethod
     async def list_prs(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.PRItem]:
         api = get_api(credentials)
-        pulls_url = repo_url + "/pulls"
-        response = await api.get(pulls_url)
-        data = response.json()
+        params = {
+            "state": input_data.state,
+            "sort": input_data.sort,
+            "direction": input_data.direction,
+        }
+        if input_data.base:
+            params["base"] = input_data.base
+        if input_data.head:
+            params["head"] = input_data.head
+
+        data = await get_paginated(
+            api,
+            input_data.repo_url + "/pulls",
+            limit=input_data.limit,
+            params=params,
+        )
         pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
             {"title": pr["title"], "url": pr["html_url"]} for pr in data
         ]
@@ -107,10 +152,7 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        pull_requests = await self.list_prs(
-            credentials,
-            input_data.repo_url,
-        )
+        pull_requests = await self.list_prs(credentials, input_data)
         yield "pull_requests", pull_requests
         for pr in pull_requests:
             yield "pull_request", pr
@@ -217,6 +259,24 @@ class GithubMakePullRequestBlock(Block):
             yield "error", str(e)
 
 
+TEST_PR_PAYLOAD = {
+    "title": "Title of the pull request",
+    "body": "This is the body of the pull request.",
+    "user": {"login": "username"},
+    "draft": False,
+    "mergeable": True,
+    "mergeable_state": "clean",
+    "head": {
+        "ref": "feature-branch",
+        "repo": {"full_name": "someone/repo"},
+    },
+    "base": {
+        "ref": "main",
+        "repo": {"full_name": "owner/repo"},
+    },
+}
+
+
 class GithubReadPullRequestBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -235,6 +295,20 @@ class GithubReadPullRequestBlock(Block):
         body: str = SchemaField(description="Body of the pull request")
         author: str = SchemaField(description="User who created the pull request")
         changes: str = SchemaField(description="Changes made in the pull request")
+        pull_request: dict = SchemaField(
+            description="The full pull request object from the API, including "
+            "head/base refs (with fork repo and branch name for cross-repo PRs), "
+            "mergeability (mergeable, mergeable_state, rebaseable), draft state, "
+            "review/comment counts, labels, milestone, and diff/commit stats."
+        )
+        head_branch: str = SchemaField(
+            description="Name of the branch the PR is created from (the head "
+            "branch). For cross-repo PRs, this branch lives in the fork — see "
+            "pull_request.head.repo for the fork's URL."
+        )
+        target_branch: str = SchemaField(
+            description="Name of the branch the PR targets (the base branch)"
+        )
         error: str = SchemaField(
             description="Error message if reading the pull request failed"
         )
@@ -242,7 +316,8 @@ class GithubReadPullRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
-            description="This block reads the body, title, user, and changes of a specified GitHub pull request.",
+            description="This block reads the body, title, user, changes, and full "
+            "raw object of a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadPullRequestBlock.Input,
             output_schema=GithubReadPullRequestBlock.Output,
@@ -256,29 +331,57 @@ class GithubReadPullRequestBlock(Block):
                 ("title", "Title of the pull request"),
                 ("body", "This is the body of the pull request."),
                 ("author", "username"),
+                ("pull_request", TEST_PR_PAYLOAD),
+                ("head_branch", "feature-branch"),
+                ("target_branch", "main"),
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
-                "read_pr": lambda *args, **kwargs: (
-                    "Title of the pull request",
-                    "This is the body of the pull request.",
-                    "username",
-                ),
+                "read_pr": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
         )
 
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        pull_request = await self.read_pr(
+            credentials,
+            input_data.pr_url,
+        )
+        title, body, author = self._pr_summary(pull_request)
+        yield "title", title
+        yield "body", body
+        yield "author", author
+        yield "pull_request", pull_request
+        yield "head_branch", pull_request.get("head", {}).get("ref", "")
+        yield "target_branch", pull_request.get("base", {}).get("ref", "")
+
+        if input_data.include_pr_changes:
+            changes = await self.read_pr_changes(
+                credentials,
+                input_data.pr_url,
+            )
+            yield "changes", changes
+
     @staticmethod
-    async def read_pr(
-        credentials: GithubCredentials, pr_url: str
-    ) -> tuple[str, str, str]:
+    async def read_pr(credentials: GithubCredentials, pr_url: str) -> dict:
         api = get_api(credentials)
-        issue_url = pr_url.replace("/pull/", "/issues/")
-        response = await api.get(issue_url)
-        data = response.json()
-        title = data.get("title", "No title found")
-        body = data.get("body", "No body content found")
-        author = data.get("user", {}).get("login", "Unknown author")
+        pr_api_url = prepare_pr_api_url(pr_url=pr_url, path="").rstrip("/")
+        response = await api.get(pr_api_url)
+        return response.json()
+
+    @staticmethod
+    def _pr_summary(pull_request: dict) -> tuple[str, str, str]:
+        # GitHub returns an explicit `"body": null` for PRs with no description,
+        # so `.get(..., default)` alone won't catch it — `or` does.
+        title = pull_request.get("title") or "No title found"
+        body = pull_request.get("body") or "No body content found"
+        author = (pull_request.get("user") or {}).get("login") or "Unknown author"
         return title, body, author
 
     @staticmethod
@@ -309,28 +412,6 @@ class GithubReadPullRequestBlock(Block):
                 patch_header += f"+++ {is_filename}\n"
             changes.append(patch_header + diff)
         return "\n\n".join(changes)
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: GithubCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        title, body, author = await self.read_pr(
-            credentials,
-            input_data.pr_url,
-        )
-        yield "title", title
-        yield "body", body
-        yield "author", author
-
-        if input_data.include_pr_changes:
-            changes = await self.read_pr_changes(
-                credentials,
-                input_data.pr_url,
-            )
-            yield "changes", changes
 
 
 class GithubAssignPRReviewerBlock(Block):
@@ -467,6 +548,11 @@ class GithubUnassignPRReviewerBlock(Block):
             yield "error", str(e)
 
 
+# A PR accumulates one review event per comment round, so scan well past the
+# reviewer count to be sure the latest state of each reviewer is seen.
+MAX_REVIEWS_SCANNED = 500
+
+
 class GithubListPRReviewersBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -474,18 +560,28 @@ class GithubListPRReviewersBlock(Block):
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
         )
+        include_past_reviewers: bool = SchemaField(
+            description="Also include users who have already submitted a review, "
+            "in addition to users whose review request is pending",
+            default=False,
+        )
 
     class Output(BlockSchemaOutput):
         class ReviewerItem(TypedDict):
             username: str
             url: str
+            review_requested: bool
+            has_reviewed: bool
+            review_state: str
 
         reviewer: ReviewerItem = SchemaField(
             title="Reviewer",
-            description="Reviewers with their username and profile URL",
+            description="Reviewers with their username, profile URL, "
+            "and review status.",
         )
         reviewers: list[ReviewerItem] = SchemaField(
-            description="List of reviewers with their username and profile URL"
+            description="List of reviewers with their username, profile URL, "
+            "and review status"
         )
         error: str = SchemaField(
             description="Error message if listing reviewers failed"
@@ -494,7 +590,9 @@ class GithubListPRReviewersBlock(Block):
     def __init__(self):
         super().__init__(
             id="2646956e-96d5-4754-a3df-034017e7ed96",
-            description="This block lists all reviewers for a specified GitHub pull request.",
+            description="This block lists the requested reviewers for a specified "
+            "GitHub pull request, optionally including users who have already "
+            "submitted a review.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListPRReviewersBlock.Input,
             output_schema=GithubListPRReviewersBlock.Output,
@@ -510,6 +608,9 @@ class GithubListPRReviewersBlock(Block):
                         {
                             "username": "reviewer1",
                             "url": "https://github.com/reviewer1",
+                            "review_requested": True,
+                            "has_reviewed": False,
+                            "review_state": "",
                         }
                     ],
                 ),
@@ -518,6 +619,9 @@ class GithubListPRReviewersBlock(Block):
                     {
                         "username": "reviewer1",
                         "url": "https://github.com/reviewer1",
+                        "review_requested": True,
+                        "has_reviewed": False,
+                        "review_state": "",
                     },
                 ),
             ],
@@ -526,6 +630,9 @@ class GithubListPRReviewersBlock(Block):
                     {
                         "username": "reviewer1",
                         "url": "https://github.com/reviewer1",
+                        "review_requested": True,
+                        "has_reviewed": False,
+                        "review_state": "",
                     }
                 ]
             },
@@ -533,16 +640,49 @@ class GithubListPRReviewersBlock(Block):
 
     @staticmethod
     async def list_reviewers(
-        credentials: GithubCredentials, pr_url: str
+        credentials: GithubCredentials, pr_url: str, include_past_reviewers: bool
     ) -> list[Output.ReviewerItem]:
         api = get_api(credentials)
         reviewers_url = prepare_pr_api_url(pr_url=pr_url, path="requested_reviewers")
         response = await api.get(reviewers_url)
         data = response.json()
         reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
-            {"username": reviewer["login"], "url": reviewer["html_url"]}
+            {
+                "username": reviewer["login"],
+                "url": reviewer["html_url"],
+                "review_requested": True,
+                "has_reviewed": False,
+                "review_state": "",
+            }
             for reviewer in data.get("users", [])
         ]
+        if not include_past_reviewers:
+            return reviewers
+
+        reviews_url = prepare_pr_api_url(pr_url=pr_url, path="reviews")
+        reviews = await get_paginated(api, reviews_url, limit=MAX_REVIEWS_SCANNED)
+        reviewers_by_username = {r["username"]: r for r in reviewers}
+        for review in reviews:
+            # PENDING reviews are drafts that haven't been submitted yet
+            if review["state"] == "PENDING":
+                continue
+            # Reviews by deleted accounts come back with a null user
+            if not (user := review.get("user")):
+                continue
+            if user["login"] not in reviewers_by_username:
+                reviewer: GithubListPRReviewersBlock.Output.ReviewerItem = {
+                    "username": user["login"],
+                    "url": user["html_url"],
+                    "review_requested": False,
+                    "has_reviewed": True,
+                    "review_state": review["state"],
+                }
+                reviewers.append(reviewer)
+                reviewers_by_username[user["login"]] = reviewer
+            else:
+                reviewers_by_username[user["login"]].update(
+                    has_reviewed=True, review_state=review["state"]
+                )
         return reviewers
 
     async def run(
@@ -555,6 +695,7 @@ class GithubListPRReviewersBlock(Block):
         reviewers = await self.list_reviewers(
             credentials,
             input_data.pr_url,
+            input_data.include_past_reviewers,
         )
         yield "reviewers", reviewers
         for reviewer in reviewers:

@@ -477,7 +477,7 @@ class TestTransportProfile:
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by
-        ``executor.processor.resolve_use_sdk_for_mode`` — must stay in
+        ``executor.processor.resolve_use_sdk`` — must stay in
         sync with ``transport.supports_sdk``."""
         for kwargs in (
             dict(use_local=True, api_key="ollama", base_url="http://h:11434/v1"),
@@ -651,7 +651,7 @@ class TestLocalTransport:
     Claude Agent SDK CLI speaks Anthropic's wire protocol and Ollama
     doesn't implement it. ``thinking_available`` reports this so the
     request layer can downgrade gracefully (see
-    ``executor.processor.resolve_use_sdk_for_mode``)."""
+    ``executor.processor.resolve_use_sdk``)."""
 
     def test_local_transport_overrides_subscription(self):
         """An operator opting into local self-hosting must not have their

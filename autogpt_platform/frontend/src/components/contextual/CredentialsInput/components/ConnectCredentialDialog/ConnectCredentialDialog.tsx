@@ -20,8 +20,12 @@ interface Props {
   schema: BlockIOCredentialsSubSchema;
   provider: string;
   displayName: string;
+  /** Existing account to upgrade in place rather than signing in afresh. */
+  credentialID?: string;
   open: boolean;
   onClose: () => void;
+  /** Fires only on a completed sign-in, unlike onClose. */
+  onConnected?: () => void;
 }
 
 /** The onboarding connect flow (logo pair, "Connect AutoGPT to X",
@@ -32,8 +36,10 @@ export function ConnectCredentialDialog({
   schema,
   provider,
   displayName,
+  credentialID,
   open,
   onClose,
+  onConnected,
 }: Props) {
   const {
     selectedMethod,
@@ -45,10 +51,26 @@ export function ConnectCredentialDialog({
     isConnecting,
     handleContinue,
     reset,
-  } = useConnectCredentialDialog({ provider, onConnected: onClose });
+  } = useConnectCredentialDialog({
+    provider,
+    onConnected: () => {
+      onConnected?.();
+      onClose();
+    },
+    scopes: schema.credentials_scopes,
+    credentialID,
+  });
 
   function handleClose() {
     reset();
+    onClose();
+  }
+
+  // Device auth completes inside ConnectMethodView, so it never passes through
+  // the hook's success path and has to report the connection itself.
+  function handleDeviceAuthSuccess() {
+    reset();
+    onConnected?.();
     onClose();
   }
 
@@ -79,7 +101,7 @@ export function ConnectCredentialDialog({
             onSelectMethod={setSelectedMethod}
             apiKeyForm={apiKeyForm}
             onApiKeySubmit={handleApiKeySubmit}
-            onDeviceAuthSuccess={handleClose}
+            onDeviceAuthSuccess={handleDeviceAuthSuccess}
           />
           <div className="flex items-center justify-end gap-3">
             <Button variant="secondary" size="small" onClick={handleClose}>

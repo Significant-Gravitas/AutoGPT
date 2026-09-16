@@ -31,3 +31,9 @@ export function formatElapsedTime(ms: number): string {
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
+
+export const CARD_ICON_BUTTON_CLASS =
+  "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-zinc-900 shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-zinc-900 active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
+
+export const CARD_SEND_BUTTON_CLASS =
+  "size-9 rounded-full border-transparent bg-zinc-950 text-white transition-[background-color,transform] hover:border-transparent hover:bg-zinc-800 active:scale-[0.98] disabled:border-transparent disabled:bg-zinc-950/[0.06] disabled:text-zinc-400";

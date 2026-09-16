@@ -8,8 +8,9 @@ Two layers with different prompt weights:
   while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
   ``<expert_workflows>`` (expert session: installed workflows the model
-  should prefer ``run_agent`` on) or ``<team_context>`` (plain session:
-  hired experts the model can suggest, never silently delegate to).
+  should prefer ``run_agent`` on) plus ``<team_context>`` — the hired roster,
+  which both a plain session and an expert session (self excluded) may hand
+  work to via ``delegate_to_expert``, as long as they tell the user.
 
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
@@ -26,6 +27,7 @@ import logging
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -165,16 +167,45 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
     if not user_id:
         return ""
     try:
+        # ``delegate_to_expert`` is hidden from the tool schema and refused by
+        # execute_tool when the hire-experts flag is off, so the roster block
+        # must not tell the model to call it. Same boolean the engines use to
+        # gate the delegation supplement and the tool groups.
+        delegation_enabled = await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        )
         if expert_id:
-            return await _expert_session_context(user_id, expert_id)
-        return await _team_context(user_id)
+            return await _expert_session_context(
+                user_id, expert_id, delegation_enabled=delegation_enabled
+            )
+        return await _team_context(user_id, delegation_enabled=delegation_enabled)
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
         return ""
 
 
-async def _expert_session_context(user_id: str, expert_id: str) -> str:
-    expert = await experts_db().get_expert(user_id, expert_id)
+async def _expert_session_context(
+    user_id: str, expert_id: str, *, delegation_enabled: bool
+) -> str:
+    async def _load_teammates() -> str:
+        # The roster is an optional extra here; a failed lookup must not cost
+        # the expert its own workflow block, which is the load-bearing half.
+        try:
+            return await _team_context(
+                user_id,
+                delegation_enabled=delegation_enabled,
+                exclude_expert_id=expert_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to build teammate context: {e}")
+            return ""
+
+    # Independent lookups — run concurrently rather than paying their
+    # latency serially on every expert-session turn.
+    expert, teammates = await asyncio.gather(
+        experts_db().get_expert(user_id, expert_id),
+        _load_teammates(),
+    )
     # Identity validation already failed closed before this context lookup.
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
@@ -190,7 +221,7 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
     else:
         workflow_lines = "- No workflows installed yet."
 
-    return (
+    workflows_block = (
         f"<expert_workflows>\n"
         f"Workflows installed on this expert. For requests that match a "
         f"workflow's purpose, prefer running it with `run_agent` using the "
@@ -198,22 +229,74 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
         f"{workflow_lines}\n"
         f"</expert_workflows>\n\n"
     )
+    return workflows_block + teammates
 
 
-async def _team_context(user_id: str) -> str:
-    experts = await experts_db().list_experts(user_id)
-    if not experts:
+async def _team_context(
+    user_id: str,
+    *,
+    delegation_enabled: bool,
+    exclude_expert_id: str | None = None,
+) -> str:
+    """Roster block for the first user message.
+
+    Plain sessions may delegate to a listed expert or suggest opening their
+    thread, but must disclose it — AutoPilot speaks for the platform, so
+    silently answering as (or handing work to) an expert would misattribute
+    the work. Expert sessions get the teammate list minus themselves plus the
+    ``delegate_to_expert`` rule: a colleague passing work to a colleague is
+    normal, and the delegated turn runs under the teammate's own identity,
+    memory, and budget rather than being ghost-written.
+
+    With the hire-experts flag off the roster still helps the model route a
+    request, but the rule falls back to pointing at the expert's thread —
+    naming a tool the turn cannot execute is worse than saying nothing.
+    """
+    experts = await experts_db().list_experts(user_id, with_metrics=False)
+    teammates = [e for e in experts if e.id != exclude_expert_id]
+    if not teammates:
         return ""
 
-    lines = "\n".join(_team_line(e) for e in experts)
+    lines = "\n".join(_team_line(e) for e in teammates)
+    rule = _team_rule(
+        delegation_enabled=delegation_enabled,
+        exclude_expert_id=exclude_expert_id,
+    )
+    header = (
+        "The user has hired these experts:"
+        if exclude_expert_id is None
+        else "Your teammates on this user's team:"
+    )
+    return f"<team_context>\n{header}\n{lines}\n{rule}\n</team_context>\n\n"
+
+
+def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> str:
+    if not delegation_enabled:
+        if exclude_expert_id is None:
+            return (
+                "When a request clearly matches an expert's domain, suggest "
+                "opening that expert's thread (by expert id) instead of "
+                "handling it here; never silently answer as an expert."
+            )
+        return (
+            "These are your teammates. When a task needs their skills or "
+            "workflows rather than yours, tell the user which teammate owns "
+            "it and point them at that expert's thread. Never impersonate a "
+            "teammate or guess at their domain yourself."
+        )
+    if exclude_expert_id is None:
+        return (
+            "When a request clearly matches an expert's domain, you may hand "
+            "it off with `delegate_to_expert(expert_id=..., prompt=...)` or "
+            "suggest opening that expert's thread — either way, tell the "
+            "user which expert is handling it. Never delegate silently."
+        )
     return (
-        f"<team_context>\n"
-        f"The user has hired these experts:\n"
-        f"{lines}\n"
-        f"When a request clearly matches an expert's domain, suggest opening "
-        f"that expert's thread (by expert id) instead of handling it here; "
-        f"never silently delegate to an expert.\n"
-        f"</team_context>\n\n"
+        "These are your teammates. When a task needs their skills or "
+        "workflows rather than yours, hand it over with "
+        "`delegate_to_expert(expert_id=..., prompt=...)` — they cannot "
+        "see this thread, so put the context they need in the prompt. "
+        "Never impersonate a teammate or guess at their domain yourself."
     )
 
 

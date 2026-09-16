@@ -69,7 +69,7 @@ describe("CopilotModals", () => {
     render(<Harness />);
     expect(screen.queryByText("AutoPilot skills")).toBeNull();
     expect(screen.queryByText("Scheduled")).toBeNull();
-    expect(screen.queryByText("Third Party Integrations")).toBeNull();
+    expect(screen.queryByText("Integrations")).toBeNull();
   });
 
   test("opens the skills modal with header actions and empty state", async () => {
@@ -116,7 +116,7 @@ describe("CopilotModals", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("open-integrations"));
 
-    expect(await screen.findByText("Third Party Integrations")).toBeDefined();
+    expect(await screen.findByText("Integrations")).toBeDefined();
     expect(
       (await screen.findAllByText("Connect Service")).length,
     ).toBeGreaterThan(0);

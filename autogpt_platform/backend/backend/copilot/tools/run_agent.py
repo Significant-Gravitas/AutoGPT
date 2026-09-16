@@ -387,6 +387,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 params=params,
                 session_id=session_id,
+                expert_id=session.expert_id,
             )
             if prereq_error:
                 return prereq_error
@@ -614,6 +615,7 @@ class RunAgentTool(BaseTool):
         user_id: str,
         params: "RunAgentInput",
         session_id: str,
+        expert_id: str | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
@@ -625,7 +627,7 @@ class RunAgentTool(BaseTool):
             (graph_credentials, error_response) — error_response is None when ready.
         """
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph
+            user_id, graph, expert_id
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---

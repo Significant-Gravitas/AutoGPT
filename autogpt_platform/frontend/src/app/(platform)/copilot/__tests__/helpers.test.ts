@@ -10,7 +10,7 @@ import {
   getCopilotAuthHeaders,
   getSendSuppressionReason,
   parseSessionIDs,
-  resolveModeChangedMode,
+  isEngineSwitchPart,
   resolveSessionDryRun,
   shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
@@ -683,38 +683,38 @@ describe("getCopilotAuthHeaders", () => {
   });
 });
 
-describe("resolveModeChangedMode", () => {
-  it("returns the mode for a data-mode-changed part with a known mode", () => {
+describe("isEngineSwitchPart", () => {
+  it("reports a switch for a data-mode-changed part naming either engine", () => {
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "extended_thinking" },
       }),
-    ).toBe("extended_thinking");
+    ).toBe(true);
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "fast" },
       }),
-    ).toBe("fast");
+    ).toBe(true);
   });
 
-  it("returns null for other data part types", () => {
+  it("ignores other data part types", () => {
     expect(
-      resolveModeChangedMode({ type: "data-status", data: { mode: "fast" } }),
-    ).toBeNull();
+      isEngineSwitchPart({ type: "data-status", data: { mode: "fast" } }),
+    ).toBe(false);
   });
 
-  it("returns null for unknown or missing modes", () => {
+  it("ignores unknown or missing engines", () => {
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "turbo" },
       }),
-    ).toBeNull();
-    expect(resolveModeChangedMode({ type: "data-mode-changed" })).toBeNull();
+    ).toBe(false);
+    expect(isEngineSwitchPart({ type: "data-mode-changed" })).toBe(false);
     expect(
-      resolveModeChangedMode({ type: "data-mode-changed", data: "fast" }),
-    ).toBeNull();
+      isEngineSwitchPart({ type: "data-mode-changed", data: "fast" }),
+    ).toBe(false);
   });
 });

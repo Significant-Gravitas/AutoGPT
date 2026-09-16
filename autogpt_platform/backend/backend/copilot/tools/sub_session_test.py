@@ -20,10 +20,16 @@ from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    WorkspaceFileInfoData,
+)
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
+    apply_delegated_expert,
     response_from_outcome,
 )
 
@@ -32,6 +38,7 @@ def _session(
     user_id: str = "u",
     session_id: str = "s1",
     expert_id: str | None = None,
+    origin: str | None = "interactive",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -41,6 +48,7 @@ def _session(
     sess.team_id = None
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
+    sess.metadata.origin = origin
     sess.expert_id = expert_id
     return sess
 
@@ -145,9 +153,11 @@ def mock_model(monkeypatch):
         llm_auth_provider: str = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        origin: str = "interactive",
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
+        sess.metadata.origin = origin
         sess.user_id = user_id
         sess.dry_run = dry_run
         sess.organization_id = organization_id
@@ -240,6 +250,28 @@ class TestRunSubSession:
         assert mock_model["created"][0].dry_run is True
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("parent_origin", ["automation", "interactive"])
+    async def test_fresh_sub_is_always_an_automation(
+        self, parent_origin, mock_queue, mock_waiter, mock_model
+    ):
+        """A sub is machine-driven whatever opened it.
+
+        Its prompt is written by the parent model, not typed by the user, and
+        nothing restricts which tools it may call — so inheriting an
+        ``interactive`` origin would let a parent that read attacker-supplied
+        content reach the staffing tools one hop from the gate that refuses
+        them directly.
+        """
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin=parent_origin),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_model["created"], "create_chat_session was never awaited"
+        assert mock_model["created"][0].metadata.origin == "automation"
+
+    @pytest.mark.asyncio
     async def test_fresh_sub_inherits_expert_scope(
         self, mock_queue, mock_waiter, mock_model
     ):
@@ -277,6 +309,69 @@ class TestRunSubSession:
         assert isinstance(result, ErrorResponse)
         assert "current memory scope" in result.message
         mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_mismatched_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Resuming must hold the line the fresh-sub branch holds.
+
+        Subs are created as automations, so only a sub may be resumed as one.
+        Naming an interactive session the caller happens to own would run the
+        machine-authored prompt under the origin
+        ``autopilot_session_guard`` lets reach the staffing tools.
+        """
+        interactive_sub = _session("alice", "other-session", origin="interactive")
+
+        async def fake_get(_session_id: str):
+            return interactive_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="interactive"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "started by a person" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_accepts_legacy_sub_without_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """A sub started before ``origin`` shipped reads back as ``None``.
+
+        Every parent that stored a sub session id and re-feeds it holds one of
+        those, so refusing an unknown origin here would break live sub-sessions
+        to close a hole they never opened — the staffing guard is where an
+        unknown origin fails closed instead.
+        """
+        legacy_sub = _session("alice", "other-session", origin=None)
+        legacy_sub.messages = []
+
+        async def fake_get(_session_id: str):
+            return legacy_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+            wait_for_result=0,
+        )
+
+        assert not isinstance(result, ErrorResponse)
+        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
@@ -855,3 +950,62 @@ class TestHollowResponseRepro:
         )
         assert r.sub_workspace_files is None
         assert "workspace file" not in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# actor parameter — response_from_outcome builds the message once instead of
+# relying on a post-hoc string substitution against its own wording.
+# ---------------------------------------------------------------------------
+
+
+class TestActorParameter:
+    def test_default_actor_is_sub_autopilot(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+
+    @pytest.mark.parametrize(
+        "outcome,expected_prefix",
+        [
+            ("running", "Bea is still running"),
+            ("failed", "Bea failed"),
+            ("completed", "Bea completed"),
+        ],
+    )
+    def test_actor_names_the_delegate_in_every_terminal_message(
+        self, outcome, expected_prefix
+    ):
+        r = response_from_outcome(
+            outcome=outcome,
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        assert r.message is not None and r.message.startswith(expected_prefix)
+
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
+        """When the caller already passed the delegate's name as ``actor``,
+        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
+        find nothing to substitute — the message was already built correctly
+        by response_from_outcome, not patched up afterwards."""
+        response = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        expert = DelegatedExpertInfo(
+            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+        )
+        result = apply_delegated_expert(response, expert)
+        assert result.message == response.message
+        assert "Sub-AutoPilot" not in (result.message or "")

@@ -116,7 +116,6 @@ export function RecentChats() {
                     group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
                   }
                   avatarUrl={expert?.avatarUrl ?? null}
-                  role={expert?.role ?? null}
                   sessions={group.sessions}
                   renderItem={renderItem}
                 />

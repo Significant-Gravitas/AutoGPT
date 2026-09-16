@@ -33,7 +33,7 @@ export function SkillsStep({
       searchPlaceholder="Search library and marketplace skills…"
       emptyQueryHint="Search to add a marketplace skill, or pick from your library skills."
       emptyResultsHint="No matching skills."
-      primaryLabel={`Bring ${name || "it"} to life`}
+      primaryLabel={`Bring ${name || "them"} to life`}
       onSubmit={onSubmit}
       onSkip={onSkip}
     />

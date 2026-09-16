@@ -24,6 +24,7 @@ interface Props {
   onUseWorkspaceFile?: () => void;
   onClearGuidedPrompt?: () => void;
   disabled?: boolean;
+  className?: string;
 }
 
 export function ComposerPlusMenu({
@@ -31,6 +32,7 @@ export function ComposerPlusMenu({
   onUseWorkspaceFile,
   onClearGuidedPrompt,
   disabled,
+  className,
 }: Props) {
   const {
     fileInputRef,
@@ -60,7 +62,8 @@ export function ComposerPlusMenu({
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
-              "border-neutral-200 bg-white text-zinc-500 shadow-sm hover:border-neutral-200 hover:bg-neutral-50 hover:text-zinc-700",
+              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+              className,
               disabled && "opacity-40",
             )}
           >

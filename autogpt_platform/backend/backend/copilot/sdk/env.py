@@ -108,7 +108,7 @@ def build_sdk_env(
             f"build_sdk_env() called under transport "
             f"{config.transport.name!r}, which doesn't support the SDK. "
             "The request should have been downgraded to the baseline "
-            "path — see executor.processor.resolve_use_sdk_for_mode."
+            "path — see executor.processor.resolve_use_sdk."
         )
 
     # --- Mode 1: Claude Code subscription auth ---

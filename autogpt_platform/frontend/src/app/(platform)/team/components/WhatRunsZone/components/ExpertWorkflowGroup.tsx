@@ -92,7 +92,7 @@ export function ExpertWorkflowGroup({ group }: Props) {
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                   {needsSetup && !isPaused ? (
                     <>
-                      <Badge variant="info" className={STATUS_BADGE_CLASS}>
+                      <Badge variant="warning" className={STATUS_BADGE_CLASS}>
                         Needs setup
                       </Badge>
                       <Link

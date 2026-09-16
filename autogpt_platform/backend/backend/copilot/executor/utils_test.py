@@ -79,26 +79,9 @@ class TestCoPilotExecutionEntry:
         assert entry.user_id == "u1"
         assert entry.message == "hello"
         assert entry.is_user_message is True
-        assert entry.mode is None
+        assert not hasattr(entry, "mode")
         assert entry.context is None
         assert entry.file_ids is None
-
-    def test_mode_field(self):
-        entry = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="fast",
-        )
-        assert entry.mode == "fast"
-
-        entry2 = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="extended_thinking",
-        )
-        assert entry2.mode == "extended_thinking"
 
     def test_optional_fields(self):
         entry = CoPilotExecutionEntry(
@@ -120,7 +103,6 @@ class TestCoPilotExecutionEntry:
             session_id="s1",
             user_id="u1",
             message="hello",
-            mode="fast",
         )
         json_str = entry.model_dump_json()
         restored = CoPilotExecutionEntry.model_validate_json(json_str)

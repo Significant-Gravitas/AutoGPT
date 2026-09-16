@@ -85,6 +85,19 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
   },
 }));
 
+// These tests navigate by NO_PAYWALL_STEPS, which is the layout for a
+// deployment with neither a paywall nor a self-host connect step. isLocal()
+// is true for anything not explicitly CLOUD, including the test environment,
+// so it is pinned here rather than left to the default.
+vi.mock("@/services/environment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: { ...actual.environment, isLocal: () => false },
+  };
+});
+
 vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
 }));

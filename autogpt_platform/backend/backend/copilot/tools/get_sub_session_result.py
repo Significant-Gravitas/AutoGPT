@@ -31,9 +31,11 @@ from backend.copilot.sdk.session_waiter import (
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
 from .models import (
+    DelegatedExpertInfo,
     ErrorResponse,
     SubSessionProgressSnapshot,
     SubSessionStatusResponse,
@@ -42,6 +44,7 @@ from .models import (
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     _sub_session_link,
+    apply_delegated_expert,
     list_sub_workspace_files,
     response_from_outcome,
 )
@@ -103,7 +106,8 @@ class GetSubSessionResultTool(BaseTool):
                 "include_progress": {
                     "type": "boolean",
                     "description": (
-                        "Populate progress.last_messages when status=running."
+                        "Populate progress.last_messages when status=running. "
+                        "Ignored for a teammate's delegated thread."
                     ),
                     "default": False,
                 },
@@ -139,7 +143,7 @@ class GetSubSessionResultTool(BaseTool):
         # shape for "doesn't exist" and "belongs to someone else" avoids
         # leaking session existence.
         sub = await get_chat_session(inner_session_id)
-        if sub is None or sub.user_id != user_id or sub.expert_id != session.expert_id:
+        if sub is None or sub.user_id != user_id or not _in_caller_scope(sub, session):
             return ErrorResponse(
                 message=(
                     f"No sub-session with id {inner_session_id}. It may have "
@@ -149,22 +153,37 @@ class GetSubSessionResultTool(BaseTool):
             )
 
         started_at = time.monotonic()
+        delegate = await _delegated_expert_info(user_id, sub, session)
+        borrowed = _is_borrowed_thread(sub, session)
 
         if cancel:
+            if borrowed:
+                return ErrorResponse(
+                    message=(
+                        "That thread belongs to the teammate you delegated "
+                        "to, and the user chats in it too — only they can "
+                        "stop a turn there. Wait for the result, or say what "
+                        "you need instead."
+                    ),
+                    session_id=session.session_id,
+                )
             # Fan out the cancel event. Whichever worker is running the
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
             # still emit a little more output before the worker notices,
             # but the agent doesn't need to wait for that.
             await enqueue_cancel_task(inner_session_id)
-            return SubSessionStatusResponse(
-                message="Sub-AutoPilot cancel requested.",
-                session_id=session.session_id,
-                status="cancelled",
-                sub_session_id=inner_session_id,
-                sub_autopilot_session_id=inner_session_id,
-                sub_autopilot_session_link=_sub_session_link(inner_session_id),
-                elapsed_seconds=0.0,
+            return apply_delegated_expert(
+                SubSessionStatusResponse(
+                    message="Sub-AutoPilot cancel requested.",
+                    session_id=session.session_id,
+                    status="cancelled",
+                    sub_session_id=inner_session_id,
+                    sub_autopilot_session_id=inner_session_id,
+                    sub_autopilot_session_link=_sub_session_link(inner_session_id),
+                    elapsed_seconds=0.0,
+                ),
+                delegate,
             )
 
         # If a turn is currently running for this session (stream registry
@@ -195,25 +214,28 @@ class GetSubSessionResultTool(BaseTool):
 
         elapsed = time.monotonic() - started_at
 
-        if outcome == "running" and include_progress:
+        if outcome == "running" and include_progress and not borrowed:
             # Running + caller wants progress — hand-assemble the response
             # with the progress snapshot attached. response_from_outcome
             # doesn't carry progress, so we build the response here.
             progress = await _build_progress_snapshot(inner_session_id)
             link = _sub_session_link(inner_session_id)
-            return SubSessionStatusResponse(
-                message=(
-                    f"Sub-AutoPilot still running after {elapsed:.0f}s."
-                    f"{f' Watch live at {link}.' if link else ''} "
-                    "Call again to keep waiting, or cancel=true to abort."
+            return apply_delegated_expert(
+                SubSessionStatusResponse(
+                    message=(
+                        f"Sub-AutoPilot still running after {elapsed:.0f}s."
+                        f"{f' Watch live at {link}.' if link else ''} "
+                        "Call again to keep waiting, or cancel=true to abort."
+                    ),
+                    session_id=session.session_id,
+                    status="running",
+                    sub_session_id=inner_session_id,
+                    sub_autopilot_session_id=inner_session_id,
+                    sub_autopilot_session_link=link,
+                    elapsed_seconds=round(elapsed, 2),
+                    progress=progress,
                 ),
-                session_id=session.session_id,
-                status="running",
-                sub_session_id=inner_session_id,
-                sub_autopilot_session_id=inner_session_id,
-                sub_autopilot_session_link=link,
-                elapsed_seconds=round(elapsed, 2),
-                progress=progress,
+                delegate,
             )
 
         # On completion, read the authoritative workspace-file manifest from the
@@ -225,14 +247,77 @@ class GetSubSessionResultTool(BaseTool):
             if outcome == "completed"
             else None
         )
-        return response_from_outcome(
-            outcome=outcome,
-            result=result,
-            inner_session_id=inner_session_id,
-            parent_session_id=session.session_id,
-            elapsed=elapsed,
-            workspace_files=workspace_files,
+        return apply_delegated_expert(
+            response_from_outcome(
+                outcome=outcome,
+                result=result,
+                inner_session_id=inner_session_id,
+                parent_session_id=session.session_id,
+                elapsed=elapsed,
+                workspace_files=workspace_files,
+            ),
+            delegate,
         )
+
+
+def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
+    """Whether *session* is allowed to poll *sub*.
+
+    Same-scope subs (``run_sub_session``) are readable by their own expert.
+    A ``delegate_to_expert`` sub lives in the *target's* scope, so scope
+    equality would lock the delegator out of its own delegation; the recorded
+    delegating session id is the capability that lets exactly that caller —
+    and nobody else — poll across the boundary. A hand-off transfers
+    ownership for good (the caller gets no result back), so it grants no
+    such capability: only the receiving expert's own scope can read it.
+    """
+    if sub.expert_id == session.expert_id:
+        return True
+    return (
+        sub.metadata.handed_off_from_expert_id is None
+        and session.session_id is not None
+        and sub.metadata.delegated_by_session_id == session.session_id
+    )
+
+
+def _is_borrowed_thread(sub: ChatSession, session: ChatSession) -> bool:
+    """Whether *sub* is a teammate's own thread rather than the caller's sub.
+
+    A ``run_sub_session`` sub is private scratch space the caller owns end to
+    end. A ``delegate_to_expert`` sub is the *target's* user-visible chat: the
+    user can open the returned link and type into it. The delegator is owed
+    the answer it asked for, not a live window into that thread or a stop
+    button over turns the user started there, so both are refused here.
+    """
+    return sub.expert_id != session.expert_id
+
+
+async def _delegated_expert_info(
+    user_id: str, sub: ChatSession, session: ChatSession
+) -> DelegatedExpertInfo | None:
+    """Identity of the teammate running a delegated sub, for the ToolChain card.
+
+    Only cross-scope subs carry one; a same-scope sub is the caller itself and
+    renders as a plain Sub-AutoPilot.
+    """
+    if sub.expert_id is None or sub.expert_id == session.expert_id:
+        return None
+    try:
+        expert = await experts_db().get_expert(
+            user_id, sub.expert_id, include_workflows=False
+        )
+    except Exception as e:
+        logger.warning(f"Delegated expert lookup failed for {sub.expert_id}: {e}")
+        return None
+    if expert is None:
+        return None
+    return DelegatedExpertInfo(
+        id=expert.id,
+        name=expert.name,
+        role=expert.role,
+        avatar_url=expert.avatar_url,
+        color=expert.color,
+    )
 
 
 def _already_terminal_result(sub: ChatSession) -> SessionResult | None:

@@ -56,10 +56,10 @@ def test_dispatch_succeeds_first_try():
     assert kwargs["organization_id"] == "org-1"
     assert kwargs["message"] == CONTINUATION_MESSAGE
     assert kwargs["is_user_message"] is False
-    assert kwargs["mode"] == "extended_thinking"
+    assert "mode" not in kwargs
 
 
-def test_dispatch_preserves_codex_transport_for_extended_thinking(
+def test_dispatch_preserves_codex_transport_for_engine_switch(
     mock_chat_session,
 ):
     mock_chat_session.return_value.metadata.llm_auth_provider = "codex"
@@ -71,7 +71,7 @@ def test_dispatch_preserves_codex_transport_for_extended_thinking(
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     kwargs = mock_schedule.call_args.kwargs
-    assert kwargs["mode"] == "extended_thinking"
+    assert "mode" not in kwargs
     assert kwargs["llm_auth_provider"] == "codex"
     assert kwargs["llm_credential_id"] == "cred-codex"
 

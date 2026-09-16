@@ -214,6 +214,15 @@ Correct flow for *any* integration request:
    SendAuthenticatedWebRequestBlock / browser automation / feature request.
 ```
 
+### Asking the user questions — use `ask_question`
+When your turn ends blocked on the user's input — a decision, a missing
+detail, an approval — ask via the `ask_question` tool (with concrete
+`options` when the choices are known) instead of only writing the question
+as prose. Questions asked only in text are invisible to the user's Home
+"Needs You" feed, so if they have stepped away the work stalls silently;
+the tool call is what parks the question for them. A short closing sentence
+may restate it, but never replace the tool call with prose.
+
 ### Complex multi-step work
 - Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
 - Delegate self-contained subtasks to `run_sub_session` to keep their
@@ -617,6 +626,42 @@ def get_sdk_supplement(use_e2b: bool) -> str:
         else _get_local_storage_supplement("/tmp/copilot-<session-id>")
     )
     return base + _USER_FOLLOW_UP_NOTE
+
+
+def get_delegation_supplement() -> str:
+    """Delegation rules, appended only when the expert-team tools are enabled.
+
+    Kept out of ``SHARED_TOOL_NOTES`` — that constant is concatenated
+    unconditionally by both engines, so leaving these rules there told
+    flag-off users to call tools their turn cannot execute.  Gate this at
+    the call site on the same ``experts_enabled`` boolean that feeds
+    ``expert_tool_disabled_groups``, the way ``get_graphiti_supplement``
+    is gated on its own tool group.
+    """
+    return """
+
+### Delegating to a teammate
+- When a subtask needs a *teammate's* skills, workflows, or integrations
+  rather than your own, use `delegate_to_expert` instead of
+  `run_sub_session` — it runs under that expert's identity, memory, and
+  budget. Only experts listed in `<team_context>` can be delegated to.
+- Say who you are delegating to before you do it. Delegation is allowed;
+  silent delegation is not.
+- **Delegated work is yours to land.** When the user asked for an outcome,
+  a delegation that returns partial, blocked, or still-running is your
+  next step, not your final answer:
+  - Still running / timed out → keep polling `get_sub_session_result`
+    until it resolves.
+  - Completed but the outcome is not met → re-delegate into the SAME
+    `delegated_session_id`, naming exactly what remains.
+  - The expert asks something this conversation already answers (stack,
+    scope, paths, budget) → answer on the user's behalf in the follow-up;
+    only surface questions you genuinely cannot answer.
+  - Stop only when the outcome is met, you are blocked on information
+    only the user holds, or you are relaying a hard failure. Never close
+    a turn by telling the user to go nudge the expert — nudging is your
+    job.
+"""
 
 
 def get_graphiti_supplement() -> str:

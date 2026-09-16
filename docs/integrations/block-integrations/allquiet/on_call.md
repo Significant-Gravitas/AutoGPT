@@ -3,7 +3,7 @@
 A block for reading All Quiet's on-call rotation: who is responsible right now, or who was (or will be) at any other point in time.
 <!-- END MANUAL -->
 
-## All Quiet Get On Call
+## AllQuiet Get On Call
 
 ### What it is
 Looks up who is on call in All Quiet, now or at a given time

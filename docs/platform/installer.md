@@ -36,6 +36,10 @@ curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
 powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
 ```
 
+For a prebuilt, experimental alternative intended for small self-hosted
+installations, see [Run AutoGPT in one Docker container](single-container.md).
+That image is separate from the development-oriented installer described here.
+
 ## Manual Installation
 
 If you prefer, you can manually download and run the installer scripts:
@@ -105,4 +109,4 @@ If you encounter any issues during installation:
 1. Make sure all prerequisites are correctly installed
 2. Check that Docker is running
 3. Ensure you have a stable internet connection
-4. Verify you have sufficient permissions to create directories and run Docker 
+4. Verify you have sufficient permissions to create directories and run Docker

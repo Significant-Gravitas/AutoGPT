@@ -21,6 +21,12 @@ export function extractToolName(part: ToolUIPart): string {
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   run_sub_session: "Sub-AutoPilot",
   get_sub_session_result: "Sub-AutoPilot result",
+  delegate_to_expert: "Teammate delegation",
+  handoff_to_expert: "Teammate hand-off",
+  hire_expert: "Expert hire preview",
+  raise_expert: "Expert raise preview",
+  update_expert: "Expert update",
+  confirm_expert_change: "Expert change confirmation",
   run_agent: "Agent",
   view_agent_output: "Agent output",
   run_block: "Action",

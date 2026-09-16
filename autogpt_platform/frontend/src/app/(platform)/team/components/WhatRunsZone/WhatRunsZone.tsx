@@ -50,12 +50,9 @@ export function WhatRunsZone({ experts, schedules }: Props) {
   const groupEmptyMessage = GROUP_EMPTY_MESSAGES[filter];
 
   return (
-    <section aria-label="What runs" className="flex flex-col gap-4">
-      <div className={cn("flex flex-col gap-1", SECTION_INSET_CLASS)}>
-        <Text variant="h3">What runs</Text>
-        <Text variant="body" className="max-w-prose text-zinc-600">
-          Workflows installed on your experts, plus agents you can adopt.
-        </Text>
+    <section aria-label="What runs" className="!mt-10 flex flex-col gap-4">
+      <div className={cn("border-b border-zinc-100 pb-4", SECTION_INSET_CLASS)}>
+        <Text variant="h4">What runs</Text>
       </div>
 
       <div className={SECTION_INSET_CLASS}>
@@ -67,10 +64,10 @@ export function WhatRunsZone({ experts, schedules }: Props) {
           instantly. Neither child holds state, so the remount costs nothing. */}
       <div
         key={filter}
-        className="flex flex-col gap-4 duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+        className="flex flex-col gap-6 duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
       >
         {groups.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {groups.map((group) => (
               <ExpertWorkflowGroup key={group.expert.id} group={group} />
             ))}
@@ -87,7 +84,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
           ) : isErrorAgents ? (
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
               <Text variant="small" className="text-zinc-500">
-                We could not load your agents.
+                We could not load your workflows.
               </Text>
               <Button variant="secondary" size="small" onClick={retryAgents}>
                 Retry

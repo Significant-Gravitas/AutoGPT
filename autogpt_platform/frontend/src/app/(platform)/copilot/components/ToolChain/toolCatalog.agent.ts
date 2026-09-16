@@ -140,7 +140,41 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   get_sub_session_result: {
     category: "agent",
-    running: "Checking sub-AutoPilot result",
-    done: "Sub-AutoPilot result received",
+    running: "Checking the sub-session's progress",
+    done: "Caught up with the sub-session",
+  },
+  delegate_to_expert: {
+    category: "agent",
+    running: "Handing off to a teammate:",
+    done: "Teammate handled:",
+    subject: (input) => quoted(input, "prompt", 45),
+  },
+  handoff_to_expert: {
+    category: "agent",
+    running: "Handing over:",
+    done: "Handed over:",
+    subject: (input) => quoted(input, "prompt", 45),
+  },
+  hire_expert: {
+    category: "team",
+    running: "Drafting a hire",
+    done: "Ready to hire",
+  },
+  raise_expert: {
+    category: "team",
+    running: "Writing a charter for",
+    done: "Ready to raise",
+    subject: (input) => quoted(input, "name", 30),
+  },
+  update_expert: {
+    category: "team",
+    running: "Updating",
+    done: "Updated",
+    subject: (input) => quoted(input, "name", 30),
+  },
+  confirm_expert_change: {
+    category: "team",
+    running: "Adding to the team",
+    done: "Added to the team",
   },
 };

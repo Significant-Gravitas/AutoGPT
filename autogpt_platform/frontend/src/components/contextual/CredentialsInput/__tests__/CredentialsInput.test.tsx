@@ -14,7 +14,12 @@ import type {
 import React from "react";
 import { CredentialsInput } from "../CredentialsInput";
 
-vi.mock("@/hooks/useCredentials", () => ({ default: vi.fn() }));
+// The default variant mounts ConnectCredentialDialog, which reads the pure
+// getConnectableCredentialTypes helper — keep it while stubbing the hook.
+vi.mock("@/hooks/useCredentials", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useCredentials")>()),
+  default: vi.fn(),
+}));
 vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: vi.fn(),
   BackendAPIProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -35,6 +40,18 @@ vi.mock("@/lib/oauth-popup", () => ({
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
 }));
+// The unified connect dialog's method picker pulls in the OAuth and API-key
+// connect hooks; a stub keeps the default-variant test on the dialog itself.
+vi.mock(
+  "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView",
+  () => ({
+    ConnectMethodView: ({ provider }: { provider: { name: string } }) => (
+      <div data-testid="connect-method-view">
+        Connect AutoGPT to {provider.name}
+      </div>
+    ),
+  }),
+);
 
 import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
@@ -510,6 +527,7 @@ describe("CredentialsInput – device auth", () => {
         schema={deviceSchema}
         selectedCredentials={undefined}
         onSelectCredentials={vi.fn()}
+        variant="node"
       />,
     );
   }
@@ -532,9 +550,11 @@ describe("CredentialsInput – device auth", () => {
 function StatefulCredentialsInput({
   initial,
   onSelectionChange,
+  variant,
 }: {
   initial?: CredentialsMetaInput;
   onSelectionChange?: (credential?: CredentialsMetaInput) => void;
+  variant?: "default" | "node";
 }) {
   const [selected, setSelected] = React.useState<
     CredentialsMetaInput | undefined
@@ -551,6 +571,7 @@ function StatefulCredentialsInput({
       selectedCredentials={selected}
       onSelectCredentials={handleSelectionChange}
       showTitle={false}
+      variant={variant}
     />
   );
 }
@@ -814,7 +835,9 @@ describe("CredentialsInput – a removed connection", () => {
     // the thing it was warning about.
     // The provider list starts empty and gains the connection when the
     // callback resolves, which is what really happens: `oAuthCallback` mints
-    // the credential and refreshes the list.
+    // the credential and refreshes the list. The builder node wires the
+    // button straight to that flow (the default variant opens the connect
+    // dialog instead).
     const reconnected = {
       id: "new-cred",
       provider: "codex",
@@ -841,7 +864,7 @@ describe("CredentialsInput – a removed connection", () => {
       cleanup: { abort: vi.fn() },
     });
 
-    render(<StatefulCredentialsInput initial={deleted} />);
+    render(<StatefulCredentialsInput initial={deleted} variant="node" />);
 
     expect(
       await screen.findByText(
@@ -854,5 +877,29 @@ describe("CredentialsInput – a removed connection", () => {
     );
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+});
+
+describe("CredentialsInput default variant", () => {
+  it("opens the unified connect dialog instead of the per-type action flow", async () => {
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    const backendAPI = makeBackendAPI();
+    mockUseBackendAPI.mockReturnValue(backendAPI);
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={undefined}
+        onSelectCredentials={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+
+    expect(await screen.findByText(/^Connect AutoGPT to/)).toBeDefined();
+    expect(backendAPI.oAuthLogin).not.toHaveBeenCalled();
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
   });
 });

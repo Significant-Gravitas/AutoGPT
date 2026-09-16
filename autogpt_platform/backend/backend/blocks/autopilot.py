@@ -372,6 +372,10 @@ class AutoPilotBlock(Block):
             dry_run=dry_run,
             organization_id=organization_id,
             team_id=team_id,
+            # The prompt of a graph run is machine-authored and may quote
+            # untrusted upstream data, so this session must not reach the
+            # tools that restaff the user's team.
+            origin="automation",
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
         )
@@ -592,6 +596,26 @@ class AutoPilotBlock(Block):
                 yield "error", (
                     "The AutoPilot session was not found. Start a new session "
                     "or check that the session ID belongs to this account."
+                )
+                return
+
+            # `create_session` stamps origin="automation" so this block's
+            # machine-authored prompt can never reach the staffing tools.
+            # Resuming has to hold the same line: without this check a graph
+            # could pass the user's own interactive session_id and run its
+            # prompt under an origin that `autopilot_session_guard` accepts.
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and every
+            # graph that stores a session_id and re-feeds it on the next run
+            # holds one of those. Refusing those would break live automations
+            # to close a hole they never opened — the staffing guard is where
+            # an unknown origin fails closed instead.
+            if existing_session.metadata.origin == "interactive":
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session was started by a person, not by an "
+                    "automation. Start a new session for this graph run."
                 )
                 return
 

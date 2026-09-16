@@ -14,12 +14,50 @@ from backend.data.credit import (
     reconcile_stripe_tier_for_user,
     sync_tier_from_checkout_session,
 )
+from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 
 from .v1 import _claim_stripe_event, _release_stripe_event, v1_router
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
 client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def stub_lifecycle_emails(mocker: pytest_mock.MockFixture):
+    """The billing emails are wired into this webhook. Stub them by default so
+    unrelated dispatch tests neither hit Stripe nor queue mail; the tests that
+    care about the wiring assert on these mocks."""
+    # The welcome email needs the subscription itself for its plan slots; keep
+    # that lookup off the network in tests.
+    mocker.patch(
+        "stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value={"id": "sub_stub"},
+    )
+    return {
+        # The welcome is queued rather than sent inline: the customer has
+        # already paid, and retrying the whole event to re-send a welcome would
+        # re-run `fulfill_checkout`. The consumer re-reads the session from
+        # Stripe and sends it, with retries and a DLQ.
+        "checkout": mocker.patch(
+            "backend.api.features.v1.queue_pass_work",
+            new_callable=AsyncMock,
+            return_value=NotificationResult(success=True),
+        ),
+        "payment_failed": mocker.patch(
+            "backend.api.features.v1.lifecycle.on_payment_failed",
+            new_callable=AsyncMock,
+        ),
+        "updated": mocker.patch(
+            "backend.api.features.v1.lifecycle.on_subscription_updated",
+            new_callable=AsyncMock,
+        ),
+        "deleted": mocker.patch(
+            "backend.api.features.v1.lifecycle.on_subscription_deleted",
+            new_callable=AsyncMock,
+        ),
+    }
 
 
 def _make_checkout_event(mode: str, sub_id: str | None = None) -> dict:
@@ -687,3 +725,128 @@ async def test_reconcile_stripe_tier_active_sub_unchanged_returns_false(
     )
 
     assert await reconcile_stripe_tier_for_user("user_abc") is False
+
+
+# ---------------------------------------------------------------------------
+# The billing emails hang off this webhook, so the dispatch is part of its
+# contract: exactly one trigger per email, and no trial listener at all.
+# ---------------------------------------------------------------------------
+
+
+def _post_event(mocker: pytest_mock.MockFixture, event: dict) -> None:
+    mocker.patch("stripe.Webhook.construct_event", return_value=event)
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+    assert response.status_code == 200
+
+
+def test_welcome_email_hangs_off_checkout_not_subscription_created(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+) -> None:
+    """Both events fire at signup; listening to both would double-send."""
+    mocker.patch(
+        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.v1.sync_tier_from_checkout_session",
+        new_callable=AsyncMock,
+    )
+    _post_event(mocker, _make_checkout_event("subscription", "sub_123"))
+    stub_lifecycle_emails["checkout"].assert_awaited_once()
+    queued = stub_lifecycle_emails["checkout"].await_args
+    assert queued.args[0] == PassWorkKind.WELCOME.value
+    assert (
+        PassWorkEvent.model_validate_json(queued.args[2]).context["session_id"]
+        == "cs_test_123"
+    )
+
+    stub_lifecycle_emails["checkout"].reset_mock()
+    mocker.patch(
+        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    _post_event(
+        mocker,
+        {
+            "type": "customer.subscription.created",
+            "data": {"object": {"id": "sub_123", "customer": "cus_1"}},
+        },
+    )
+    stub_lifecycle_emails["checkout"].assert_not_awaited()
+
+
+def test_subscription_updated_passes_previous_attributes_through(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+) -> None:
+    """The cancel/resume emails fire on the flip, which is only visible in
+    previous_attributes."""
+    mocker.patch(
+        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    _post_event(
+        mocker,
+        {
+            "type": "customer.subscription.updated",
+            "data": {
+                "object": {"id": "sub_1", "customer": "cus_1"},
+                "previous_attributes": {"cancel_at_period_end": False},
+            },
+        },
+    )
+    subscription, previous = stub_lifecycle_emails["updated"].await_args.args
+    assert subscription["id"] == "sub_1"
+    assert previous == {"cancel_at_period_end": False}
+
+
+def test_subscription_deleted_triggers_the_plan_ended_email(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    _post_event(
+        mocker,
+        {
+            "type": "customer.subscription.deleted",
+            "data": {"object": {"id": "sub_1", "customer": "cus_1"}},
+        },
+    )
+    stub_lifecycle_emails["deleted"].assert_awaited_once()
+
+
+def test_payment_failure_triggers_the_payment_email(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.handle_subscription_payment_failure",
+        new_callable=AsyncMock,
+    )
+    _post_event(
+        mocker,
+        {
+            "type": "invoice.payment_failed",
+            "data": {"object": {"id": "in_1", "customer": "cus_1"}},
+        },
+    )
+    stub_lifecycle_emails["payment_failed"].assert_awaited_once()
+
+
+def test_a_trial_ending_event_is_not_listened_for(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+) -> None:
+    """The platform does not offer a trial, so this event does nothing."""
+    _post_event(
+        mocker,
+        {
+            "type": "customer.subscription.trial_will_end",
+            "data": {"object": {"id": "sub_1", "customer": "cus_1"}},
+        },
+    )
+    for mock in stub_lifecycle_emails.values():
+        mock.assert_not_awaited()

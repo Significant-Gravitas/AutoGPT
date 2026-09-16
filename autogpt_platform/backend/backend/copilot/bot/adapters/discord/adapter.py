@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import asyncio
 import io
 import logging
 import re
@@ -69,6 +70,18 @@ REFERENCED_MESSAGE_CONTEXT = 15
 # Discord IDs are numeric snowflakes — used to tell a raw channel ID from a
 # channel name in the proactive-post resolver (see ``looks_like_channel_id``).
 _SNOWFLAKE = re.compile(r"^\d{15,21}$")
+
+# Marks a role in the shared ``(name, id)`` mention allowlist; users carry a
+# bare snowflake. Kept on the id so the platform-neutral resolver needs no
+# knowledge of Discord's two mention markups.
+ROLE_ID_PREFIX = "role:"
+
+# Send-time member lookup: at most this many distinct @names are queried per
+# message, each returning up to this many prefix matches.
+MENTION_QUERY_CAP = 8
+MENTION_QUERY_LIMIT = 20
+# First word after an @ that is not inside an email, URL or existing token.
+_MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
 
 
 class DiscordAdapter(SocketAdapter):
@@ -151,7 +164,9 @@ class DiscordAdapter(SocketAdapter):
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
-            rendered, allowed = _resolve_mentions(text, mentionable_users)
+            rendered, allowed = _resolve_mentions(
+                text, await self._mentionables_for(channel, text, mentionable_users)
+            )
             # tts=False is the default but we pin it explicitly — AutoPilot
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
@@ -196,12 +211,19 @@ class DiscordAdapter(SocketAdapter):
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
-        rendered, allowed = _resolve_mentions(text, mentionable_users)
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, mentionable_users)
+        )
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(rendered, tts=False, allowed_mentions=allowed)
-        except discord.NotFound:
+        except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 5xx
+            # fetch_message needs Read Message History, which gateway delivery
+            # doesn't — a plain send needs neither, so don't lose the reply.
+            # Only fetch failures fall back: a failed reply() must not retry as
+            # a plain send, which could double-post if Discord accepted it.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
+            return
+        await msg.reply(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.
@@ -344,10 +366,13 @@ class DiscordAdapter(SocketAdapter):
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
         first: Optional[discord.Message] = None
-        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
+        for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
-                msg = await channel.send(chunk, tts=False)
+                msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
             except discord.HTTPException:
                 if first is None:
                     raise
@@ -654,18 +679,80 @@ class DiscordAdapter(SocketAdapter):
             replacement = "" if user.id == bot_id else f"@{user.display_name}"
             for token in raw_tokens:
                 text = text.replace(token, replacement)
+        for role in getattr(message, "role_mentions", None) or ():
+            text = text.replace(f"<@&{role.id}>", f"@{role.name}")
         return text.strip()
 
     def _collect_mentionable_users(
         self, message: discord.Message
     ) -> tuple[tuple[str, str], ...]:
-        """Users from the inbound message the bot may ping back this turn."""
+        """The author and anyone mentioned in the inbound message. Server
+        members and roles are looked up at send time from the names the bot
+        actually uses (see ``_mentionables_for``)."""
         bot_id = self._client.user.id if self._client.user else None
-        return tuple(
-            (user.display_name, str(user.id))
-            for user in message.mentions
-            if user.id != bot_id
-        )
+        pairs: list[tuple[str, str]] = []
+        for user in (message.author, *message.mentions):
+            if user.id == bot_id:
+                continue
+            pair = (user.display_name, str(user.id))
+            if pair not in pairs:
+                pairs.append(pair)
+        return tuple(pairs)
+
+    async def _mentionables_for(
+        self,
+        channel: discord.abc.Messageable,
+        text: str,
+        known: tuple[tuple[str, str], ...],
+    ) -> tuple[tuple[str, str], ...]:
+        """Everyone ``text`` may ping in ``channel``: ``known`` (author and
+        inbound mentions) plus, for a server channel, any member whose display
+        name or username matches an ``@Name`` in the text and any role by name.
+
+        Members are found with a gateway member query per name, which needs no
+        privileged intent and works on any server. ``@everyone`` and ``@here``
+        are never listed, so they stay plain text and the ping object keeps
+        them off regardless. A DM has no server, so only ``known`` applies.
+        """
+        guild = getattr(channel, "guild", None)
+        if not isinstance(guild, discord.Guild):
+            return known
+        bot_id = self._client.user.id if self._client.user else None
+        pairs: list[tuple[str, str]] = list(known)
+        seen: set[tuple[str, str]] = set(pairs)
+
+        def add(name: Optional[str], token_id: str) -> None:
+            if name and (name, token_id) not in seen:
+                seen.add((name, token_id))
+                pairs.append((name, token_id))
+
+        role_names: set[str] = set()
+        for role in guild.roles:
+            if role.id == guild.id or role.is_default():
+                continue
+            add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+            role_names.add(role.name.casefold())
+        for query in _mention_queries(text):
+            if query.casefold() in role_names:
+                continue
+            try:
+                members = await guild.query_members(
+                    query=query, limit=MENTION_QUERY_LIMIT, cache=False
+                )
+            except (
+                asyncio.TimeoutError,
+                ValueError,
+                discord.ClientException,
+                discord.HTTPException,
+            ):
+                logger.warning("Member lookup for @%s failed", query, exc_info=True)
+                continue
+            for member in members:
+                if member.id == bot_id or member.bot:
+                    continue
+                add(member.display_name, str(member.id))
+                add(member.name, str(member.id))
+        return tuple(pairs)
 
     async def _thread_history(
         self, message: discord.Message
@@ -673,7 +760,7 @@ class DiscordAdapter(SocketAdapter):
         if not isinstance(message.channel, discord.Thread):
             return ()
         try:
-            return await self._budgeted_history(
+            history = await self._budgeted_history(
                 message.channel.history(
                     limit=THREAD_HISTORY_LIMIT,
                     before=message,
@@ -683,7 +770,42 @@ class DiscordAdapter(SocketAdapter):
             )
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
-            return ()
+            history = ()
+        starter = await self._thread_starter_entry(message.channel)
+        return (starter, *history) if starter else history
+
+    async def _thread_starter_entry(
+        self, thread: discord.Thread
+    ) -> Optional[MessageHistoryEntry]:
+        """The message a thread was opened from, as its oldest history entry.
+
+        A thread created from a channel post shares that post's id, but the
+        post itself lives in the parent channel and never appears in
+        ``thread.history()``. Without it the bot sees a thread whose first
+        line is "make this happen" and has no idea what "this" is. Threads
+        opened without an origin message have no starter and return None.
+        Kept outside the character budget so it is never truncated away.
+        """
+        starter = thread.starter_message
+        if not isinstance(starter, discord.Message):
+            parent = thread.parent
+            if not isinstance(parent, discord.abc.Messageable):
+                return None
+            try:
+                starter = await parent.fetch_message(thread.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return None
+        bot_user_id = self._client.user.id if self._client.user else None
+        if bot_user_id is not None and starter.author.id == bot_user_id:
+            return None
+        text = self._strip_mentions(starter)
+        if not text:
+            return None
+        return MessageHistoryEntry(
+            username=starter.author.display_name,
+            user_id=str(starter.author.id),
+            text=text,
+        )
 
     async def _budgeted_history(
         self, history, char_budget: int
@@ -822,20 +944,41 @@ def _resolve_mentions(
     shared in ``text.resolve_mentions``; here we only supply Discord's mention
     token and turn the pinged IDs into Discord's ping-safety object.
     """
-    rendered, pinged = resolve_mentions(
-        text, mentionable_users, lambda _name, uid: f"<@{uid}>"
-    )
-    pinged_ids: list[int] = []
-    for uid in pinged:
+    rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    user_ids: list[int] = []
+    role_ids: list[int] = []
+    for token_id in pinged:
+        is_role = token_id.startswith(ROLE_ID_PREFIX)
         try:
-            pinged_ids.append(int(uid))
+            numeric = int(token_id.removeprefix(ROLE_ID_PREFIX))
         except ValueError:
             continue
-    if not pinged_ids:
+        (role_ids if is_role else user_ids).append(numeric)
+    if not user_ids and not role_ids:
         return rendered, discord.AllowedMentions.none()
     return rendered, discord.AllowedMentions(
         everyone=False,
-        users=[discord.Object(id=uid) for uid in pinged_ids],
-        roles=False,
+        users=[discord.Object(id=uid) for uid in user_ids] or False,
+        roles=[discord.Object(id=rid) for rid in role_ids] or False,
         replied_user=False,
     )
+
+
+def _mention_token(_name: str, token_id: str) -> str:
+    if token_id.startswith(ROLE_ID_PREFIX):
+        return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
+    return f"<@{token_id}>"
+
+
+def _mention_queries(text: str) -> list[str]:
+    """The distinct first words following an ``@`` in ``text``, capped, used as
+    member-query prefixes. ``everyone`` and ``here`` are skipped outright."""
+    queries: list[str] = []
+    for match in _MENTION_CANDIDATE.finditer(text):
+        word = match.group(1).rstrip("'-")
+        if word.casefold() in ("everyone", "here") or word in queries:
+            continue
+        queries.append(word)
+        if len(queries) >= MENTION_QUERY_CAP:
+            break
+    return queries

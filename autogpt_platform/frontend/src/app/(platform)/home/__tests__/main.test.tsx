@@ -193,12 +193,12 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your briefing" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
   expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your agents" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
   expect(
-    screen.getByRole("link", { name: /View all 10 agents/ }),
+    screen.getByRole("link", { name: /View all 10 experts/ }),
   ).toBeDefined();
   expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
   expect(
@@ -224,16 +224,20 @@ test("shows weekly spend per agent and on the team line", async () => {
 
   render(<HomePage />);
 
-  // Spend sits in its own non-truncating element, so a long detail line can
-  // never clip the figure this tile exists to show.
-  const spend = await screen.findByText("· $9.00 this week");
-  expect(spend.className).toContain("shrink-0");
+  expect(await screen.findByText(/\$9\.00 this week/)).toBeDefined();
   expect(
     screen.getByText("1 working now · 7 ready · $12.50 this week"),
   ).toBeDefined();
-  // An expert with no attributed spend keeps its detail line unadorned.
-  expect(screen.getByText("Ready for the next task")).toBeDefined();
-  expect(screen.queryByText("· $0.00 this week")).toBeNull();
+  // An expert with no attributed spend shows no spend line at all, and the
+  // setup detail stays with Needs you rather than repeating here.
+  expect(screen.queryByText(/\$0\.00 this week/)).toBeNull();
+  expect(screen.queryByText("Ready for the next task")).toBeNull();
+  expect(
+    screen.getAllByRole("link", { name: /^Chat with / }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.getAllByRole("link", { name: /^Manage / }).length,
+  ).toBeGreaterThan(0);
 });
 
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
@@ -292,7 +296,7 @@ test("keeps a Review deep link alongside the approval shortcuts", async () => {
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
 });
 
-test("shows calm, useful empty states without hiding the page structure", async () => {
+test("shows calm, useful empty states and drops the empty inbox", async () => {
   mockDashboard({
     ...dashboard,
     attention: [],
@@ -311,8 +315,11 @@ test("shows calm, useful empty states without hiding the page structure", async 
 
   render(<HomePage />);
 
-  expect(await screen.findByText("You are all caught up")).toBeDefined();
-  expect(screen.getByText("No new outcomes yet")).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
+  // The header already says nothing needs you, so an empty "Needs you"
+  // tile would only repeat it.
+  expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
+  expect(screen.queryByText("You are all caught up")).toBeNull();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
 });
@@ -427,7 +434,7 @@ test("renders the briefing unchanged when no narrative was generated", async () 
   render(<HomePage />);
 
   expect(
-    await screen.findByRole("heading", { name: "Your briefing" }),
+    await screen.findByRole("heading", { name: "Recent work" }),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
 });

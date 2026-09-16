@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 // Mirrors ExpertTeamCard's structure — banner, straddling avatar, tagline,
-// credits meter, footer actions — so the grid doesn't jump when the real
+// spend meter, footer actions — so the grid doesn't jump when the real
 // cards land. A single flat block would settle at the wrong height.
 export function ExpertTeamCardSkeleton() {
   return (

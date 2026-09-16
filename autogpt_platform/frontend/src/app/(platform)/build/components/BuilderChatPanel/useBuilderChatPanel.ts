@@ -134,7 +134,6 @@ export function useBuilderChatPanel({
       hydratedMessages,
       hasActiveStream,
       refetchSession: sessionQuery.refetch,
-      copilotMode: "fast",
       copilotModel: undefined,
     });
 

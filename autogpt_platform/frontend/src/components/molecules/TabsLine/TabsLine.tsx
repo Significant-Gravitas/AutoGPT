@@ -135,7 +135,11 @@ const TabsLineContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
+      // Radix marks inactive panels with the `hidden` attribute, but the UA
+      // rule behind it is weaker than any author display utility — a panel
+      // styled `flex`/`grid` stays laid out and keeps stealing space from the
+      // active one. The data-state variant is specific enough to win.
+      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
       className,
     )}
     {...props}

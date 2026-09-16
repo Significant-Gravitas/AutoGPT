@@ -26,6 +26,55 @@ export interface ChainRow {
    *  the card below the chain — the row is hidden but stays mounted so the
    *  card keeps its registration. */
   lifted?: boolean;
+  /** A later row shows this same sub-session's card — this one keeps its
+   *  row line but renders no card, so one delegation never stacks
+   *  duplicate cards down the chain. */
+  supersededSubSession?: boolean;
+}
+
+const SUB_SESSION_CARD_TOOLS = new Set([
+  "run_sub_session",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "get_sub_session_result",
+]);
+
+function subSessionIdOf(row: ChainRow): string | null {
+  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const output = asObject(row.output);
+  const sid = output?.sub_session_id;
+  return typeof sid === "string" && sid ? sid : null;
+}
+
+/** Delegating opens a run; ``get_sub_session_result`` only polls one. A
+ *  re-delegation reuses the same sub-session, so grouping by id alone would
+ *  hide the previous run's answer. */
+const SUB_SESSION_START_TOOLS = new Set([
+  "run_sub_session",
+  "delegate_to_expert",
+  "handoff_to_expert",
+]);
+
+/** Delegate → poll → poll chains reference the same sub-session; only the
+ *  LAST row per RUN keeps its card, earlier ones are marked superseded. A
+ *  fresh delegation starts a new run, so the row holding the previous run's
+ *  response stays readable instead of dropping out of the transcript. */
+export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
+  const supersededKeys = new Set<string>();
+  const openRowKey = new Map<string, string>();
+  for (const row of rows) {
+    const sid = subSessionIdOf(row);
+    if (!sid) continue;
+    const open = openRowKey.get(sid);
+    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+      supersededKeys.add(open);
+    }
+    openRowKey.set(sid, row.key);
+  }
+  if (supersededKeys.size === 0) return rows;
+  return rows.map((row) =>
+    supersededKeys.has(row.key) ? { ...row, supersededSubSession: true } : row,
+  );
 }
 
 const ACTION_RESPONSE_TYPES = new Set([
@@ -34,6 +83,7 @@ const ACTION_RESPONSE_TYPES = new Set([
   "need_login",
   "trigger_config_required",
   "suggested_goal",
+  "expert_change_proposed",
 ]);
 
 function actionLabel(output: unknown): string | null {
@@ -59,6 +109,7 @@ function actionLabel(output: unknown): string | null {
       : "Review this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
+  if (data.type === "expert_change_proposed") return "Approve the new expert";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
     : "Action required";
@@ -66,12 +117,13 @@ function actionLabel(output: unknown): string | null {
 
 /** Setup-requirements rows whose card registers with the chain and renders
  *  outside it — including run_mcp_tool, whose hidden MCPSetupCard registers
- *  an MCP row into the same connectors table. */
+ *  an MCP row into the same connectors table. Only rows whose card registers
+ *  a ChainActionEntry may be lifted: a lifted row renders off-screen, so a
+ *  card that never registers would disappear entirely. */
 export function isLiftedSetupRow(row: ChainRow): boolean {
   const data = asObject(row.output);
-  return (
-    !!data && data.type === "setup_requirements" && !!asObject(data.setup_info)
-  );
+  if (!data) return false;
+  return data.type === "setup_requirements" && !!asObject(data.setup_info);
 }
 
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
@@ -86,7 +138,12 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   return undefined;
 }
 
+// The compaction row owns its own progress bar and payoff frame — folding
+// it into a chain would bury both behind a collapsed "summarized context".
+export const COMPACTION_PART_TYPE = "tool-context_compaction";
+
 export function isChainPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE) return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
@@ -212,6 +269,7 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   integration: "connected integrations",
   feature: "handled feature requests",
   question: "asked you questions",
+  team: "changed the team",
   info: "checked your account",
   narration: "",
   other: "used tools",
@@ -256,7 +314,6 @@ export type ChainSegment =
 export function buildChainSegments(
   parts: MessagePart[],
   isChainable: (part: MessagePart) => boolean = isChainPart,
-  isStreaming = false,
 ): ChainSegment[] {
   const segments: ChainSegment[] = [];
   let chain: Extract<ChainSegment, { kind: "chain" }> | null = null;
@@ -282,16 +339,12 @@ export function buildChainSegments(
       chain.parts.push(part);
       return;
     }
-    // Fold short progress narration into the surrounding chain.  While
-    // streaming, fold optimistically so the text lands inside the chain
-    // from the first token; once settled, keep it only when another tool
-    // call follows, so the turn's final answer (even a short one) always
-    // renders as regular message text.
-    if (
-      chain &&
-      narrationText(part) !== null &&
-      (isStreaming || hasChainableAhead(index + 1))
-    ) {
+    // Fold short progress narration into the surrounding chain, but only
+    // once a later tool call proves it was narration and not the answer.
+    // Folding optimistically while streaming made every trailing answer
+    // render inside the chain and then jump out to regular message text —
+    // either when it outgrew NARRATION_MAX_CHARS or when the stream ended.
+    if (chain && narrationText(part) !== null && hasChainableAhead(index + 1)) {
       chain.parts.push(part);
       return;
     }

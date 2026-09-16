@@ -217,8 +217,11 @@ def _system_prompt(expert: Expert | None) -> str:
         voice = fence_voice_preferences(
             _clean(expert.voice_preferences, _MAX_PERSONA_CHARS)
         )
+        # An expert with no role would otherwise render as
+        # "You are Geronimo — , a hired expert on the user's team."
+        headline = f"You are {name} — {role}," if role else f"You are {name},"
         persona = (
-            f"You are {name} — {role}, a hired expert on the user's team.\n"
+            f"{headline} a hired expert on the user's team.\n"
             f"<identity>\n{identity}\n</identity>\n"
             f"<voice_preferences>\n{voice}\n</voice_preferences>"
         )

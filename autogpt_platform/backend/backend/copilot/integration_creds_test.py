@@ -297,6 +297,7 @@ class TestRefreshUnlockedPath:
 
         mock_handler = MagicMock()
         mock_handler.needs_refresh = MagicMock(return_value=False)
+        mock_handler.ROTATES_REFRESH_TOKEN = False
 
         with patch(
             "backend.integrations.creds_manager._get_provider_oauth_handler",

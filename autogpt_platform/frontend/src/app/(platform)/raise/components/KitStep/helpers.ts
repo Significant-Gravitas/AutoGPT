@@ -2,6 +2,7 @@ import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSki
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { RaiseAttachment } from "@/app/api/__generated__/models/raiseAttachment";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { parseUsdToCredits } from "@/lib/credits";
 import type { RaiseAttachmentDraft } from "../../helpers";
 
 export const MAX_ATTACHMENTS = 20;
@@ -11,8 +12,8 @@ export const MAX_BUDGET_CREDITS = 1_000_000;
 export const MAX_SEARCH_RESULTS = 3;
 
 export const BUDGET_PRESETS = [
-  { credits: 500, label: "500 credits" },
-  { credits: 1000, label: "1,000 credits" },
+  { credits: 500, label: "$5 / week" },
+  { credits: 1000, label: "$10 / week" },
   { credits: 0, label: "No weekly limit" },
 ] as const;
 
@@ -51,14 +52,8 @@ export function limitSearchHits(hits: SearchHit[], query: string) {
   return ranked.slice(0, MAX_SEARCH_RESULTS);
 }
 
-export function parseCredits(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (!/^\d+$/.test(trimmed)) return null;
-  const credits = Number(trimmed);
-  if (!Number.isInteger(credits)) return null;
-  if (credits < 0 || credits > MAX_BUDGET_CREDITS) return null;
-  return credits;
+export function parseBudget(value: string): number | null {
+  return parseUsdToCredits(value, MAX_BUDGET_CREDITS);
 }
 
 export function marketplaceKey(creator: string, slug: string) {

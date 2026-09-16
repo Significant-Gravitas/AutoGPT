@@ -60,6 +60,23 @@ class ExpertNotFoundError(NotFoundError):
         return f"Expert {self.expert_id} not found"
 
 
+class ExpertWriteNotReadableError(Exception):
+    """A write landed, but the expert could not be read back afterwards.
+
+    Deliberately not an ``ExpertNotFoundError``: the row vanishing *after* a
+    committed update is the opposite of the update being refused, and callers
+    must never fold the two together and report a landed change as "nothing
+    was changed".
+    """
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} was updated but could not be read back"
+
+
 class ExpertPrivateTenancyNotFoundError(MissingConfigError):
     def __init__(self, expert_id: str):
         super().__init__(expert_id)
@@ -67,6 +84,52 @@ class ExpertPrivateTenancyNotFoundError(MissingConfigError):
 
     def __str__(self) -> str:
         return f"Private tenancy for expert {self.expert_id} not found"
+
+
+class ExpertTemplateNotFoundError(Exception):
+    """The roster template a hire referred to no longer exists."""
+
+    def __init__(self, template_id: str):
+        # args mirrors __init__ so the RPC layer can reconstruct the
+        # exception; __str__ keeps the user-facing rendering.
+        super().__init__(template_id)
+        self.template_id = template_id
+
+    def __str__(self) -> str:
+        return f"Expert template {self.template_id} not found"
+
+
+class ExpertHireUnavailableError(Exception):
+    """The expert workspace could not be provisioned for a hire."""
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} could not be made available"
+
+
+class ExpertLimitExceededError(Exception):
+    """The account is already at its active-expert cap."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Active expert limit of {self.limit} reached"
+
+
+class RaisedExpertLifetimeLimitExceededError(Exception):
+    """The account has raised its lifetime maximum of experts."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Raised expert lifetime limit of {self.limit} reached"
 
 
 class GraphNotFoundError(ValueError):

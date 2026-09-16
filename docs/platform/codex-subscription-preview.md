@@ -123,11 +123,12 @@ disabled, and its sandbox is read-only. Any side effect comes only through a
 tool that Claude Code was already permitted to invoke through AutoGPT's MCP and
 security hooks.
 
-The implementation pins `openai-codex` and its bundled runtime together at
-`0.144.4`. Do not float either dependency independently. The Claude Agent SDK
-and bundled CLI are also pinned by the backend lock. Because `dynamicTools` and
-the compatibility surface are version-sensitive, updates require the focused
-protocol, Messages conformance, and bundled-CLI tests to pass before rollout.
+ChatGPT is reached over HTTPS: sign-in, refresh, the model catalog and
+inference all run against `auth.openai.com` and `chatgpt.com`, so no Codex
+binary ships in the image and there is no version to pin. The Claude Agent SDK
+and its CLI are still pinned by the backend lock. Because the compatibility
+surface is version-sensitive, updates require the focused protocol and Messages
+conformance tests to pass before rollout.
 
 ## Verify an existing local login
 
@@ -138,10 +139,11 @@ To test an existing local Codex login before starting the stack, run this from
 poetry run python -m scripts.codex_preview_smoke
 ```
 
-The smoke test copies, never moves, `~/.codex/auth.json` into an isolated home,
-checks account, models, and rate limits, performs one subscription-backed turn,
-and fails if the runtime can read a host canary or mutates the source login. It
-does consume a small amount of the connected account's Codex usage.
+The smoke test reads `~/.codex/auth.json` without writing to it, checks the
+account and model catalog, and performs one subscription-backed turn with a tool
+call over HTTPS -- failing if the model never calls the tool or returns no text.
+It reports the quota the turn's response headers carried. It does consume a
+small amount of the connected account's usage.
 
 ## Deploy a private cloud preview
 
@@ -187,10 +189,12 @@ device-code completion.
   truth.
 - Raw ChatGPT tokens do not enter Redis, RabbitMQ, frontend responses,
   container-wide environment variables, or AutoPilot session records.
-- Each native invocation or shared AutoPilot runtime actor materializes auth
-  into an isolated temporary home. An AutoPilot actor keeps that home only
-  while one or more overlapping chats are attached, checkpoints Codex-managed
-  refresh throughout its lifetime and at shutdown, then cleans the home.
+- Tokens are held in memory for the life of a turn and never written to disk:
+  there is no on-disk auth home, because there is no process to hand one to.
+  A client is built per turn and never cached, so one user's subscription can
+  never serve another's request. Refresh is owned by the credentials manager
+  and serialized behind its Redis mutex, since OpenAI rotates the refresh token
+  on every exchange.
 - Code Generation turns expose no dynamic tools or host workspace. AutoPilot
   exposes only the tools registered by its existing Claude SDK/MCP harness.
 - Runtime reuse is scoped to the exact user and credential. Credentials are

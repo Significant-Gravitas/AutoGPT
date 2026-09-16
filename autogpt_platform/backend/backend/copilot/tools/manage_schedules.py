@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -212,6 +213,21 @@ class DeleteScheduleTool(BaseTool):
             },
             "required": ["schedule_id"],
         }
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, ScheduleDeletedResponse):
+            return None
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.deleted",
+            title="Removed a schedule",
+            schedule_id=result.schedule_id,
+        )
 
     async def _execute(
         self,

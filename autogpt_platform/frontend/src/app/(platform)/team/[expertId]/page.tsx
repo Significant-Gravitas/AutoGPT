@@ -21,6 +21,7 @@ import { getLastRunLabel } from "../helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../components/FireExpertMenu/FireExpertMenu";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
+import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
@@ -193,6 +194,12 @@ export default function ExpertDetailPage() {
         expertName={expert.name}
         schedules={schedules}
         lastRunLabel={getLastRunLabel(expert)}
+      />
+
+      <ExpertIntegrationsSection
+        expertId={expert.id}
+        expertName={expert.name}
+        expertAvatarUrl={expert.avatar_url ?? null}
       />
 
       <ExpertWorkflowsSection

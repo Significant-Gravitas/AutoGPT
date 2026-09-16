@@ -165,12 +165,25 @@ class IntegrationCredentialsManager:
         and updating them elsewhere until the lock is released.
         See the class docstring for more info.
         """
-        # Use a low-priority (!time_sensitive) locking queue on top of the general lock
-        # to allow priority access for refreshing/updating the tokens.
+        # Refresh before taking the long-lived lease lock. A rotating OAuth
+        # provider refreshes under that same credential lock; calling get()
+        # after acquiring it would make acquire() wait on its own lock.
+        refreshed = await self.get(user_id, credentials_id)
+        if not refreshed:
+            raise ValueError(
+                f"Credentials #{credentials_id} for user #{user_id} not found"
+            )
+
+        # Use a low-priority (!time_sensitive) locking queue on top of the
+        # general lock to allow priority access for refreshing/updating the
+        # tokens.
         async with self._locked(user_id, credentials_id, "!time_sensitive"):
             lock = await self._acquire_lock(user_id, credentials_id)
         try:
-            credentials = await self.get(user_id, credentials_id, lock=False)
+            # Reload under the lease lock. Another writer may have replaced or
+            # deleted the row between the pre-refresh and this acquisition;
+            # the lease must expose the stored winner, never the stale snapshot.
+            credentials = await self.store.get_creds_by_id(user_id, credentials_id)
             if not credentials:
                 raise ValueError(
                     f"Credentials #{credentials_id} for user #{user_id} not found"
@@ -269,6 +282,22 @@ class IntegrationCredentialsManager:
         handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
+            # A different worker may have completed the refresh while this one
+            # waited for the refresh mutex. Re-read before deciding, otherwise
+            # rotating providers can receive the same old refresh token twice.
+            current = await self.store.get_creds_by_id(user_id, credentials.id)
+            if current is None:
+                raise ValueError(
+                    f"Credentials #{credentials.id} for user #{user_id} not found"
+                )
+            if current.type != "oauth2":
+                raise TypeError(
+                    f"Credentials #{credentials.id} for user #{user_id} changed "
+                    f"type to {current.type!r} during OAuth refresh"
+                )
+            if current.provider != credentials.provider:
+                raise RuntimeError("Credential provider changed during refresh")
+            credentials = current
             oauth_handler = handler or await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
@@ -375,7 +404,15 @@ class IntegrationCredentialsManager:
             raise RuntimeError(
                 f"Cannot update credentials #{updated.id} without its owned lock"
             )
-        if updated.type != "oauth2" or updated.refresh_strategy != "provider_runtime":
+        provider_runtime_checkpoint = (
+            updated.type == "oauth2" and updated.refresh_strategy == "provider_runtime"
+        )
+        codex_http_migration = (
+            updated.type == "oauth2"
+            and updated.provider == "codex"
+            and updated.refresh_strategy == "oauth_handler"
+        )
+        if not (provider_runtime_checkpoint or codex_http_migration):
             raise RuntimeError("Acquired updates require provider-runtime credentials")
 
         current = await self.store.get_creds_by_id(user_id, updated.id)

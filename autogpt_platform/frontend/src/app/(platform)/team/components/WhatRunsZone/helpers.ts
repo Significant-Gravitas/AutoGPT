@@ -18,7 +18,7 @@ export type WhatRunsFilter =
 export const WHAT_RUNS_FILTERS: { id: WhatRunsFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "members", label: "Members" },
-  { id: "agents", label: "Agents" },
+  { id: "agents", label: "Unassigned" },
   { id: "workflows", label: "Workflows" },
   { id: "scheduled", label: "Scheduled" },
 ];
@@ -108,9 +108,7 @@ export function getVisibleGroups(
   return groups;
 }
 
-/** Keep agents that still have at least one eligible expert target. Matching
- *  the immutable listing-version id lets a newer snapshot remain adoptable
- *  and lets one agent be installed on more than one expert. */
+/** Keep agents that still have at least one eligible expert target. */
 export function getUnadoptedAgents(
   agents: LibraryAgent[],
   experts: Expert[],
@@ -118,7 +116,6 @@ export function getUnadoptedAgents(
 ): LibraryAgent[] {
   return agents.filter(
     (agent) =>
-      !getAdoptTargetVersionID(agent) ||
       getAdoptableExperts(agent, experts, adoptedTargetKeys).length > 0,
   );
 }
@@ -128,13 +125,10 @@ export function getAdoptableExperts(
   experts: Expert[],
   adoptedTargetKeys?: ReadonlySet<string>,
 ): Expert[] {
-  const versionID = getAdoptTargetVersionID(agent);
-  if (!versionID) return experts;
   return experts.filter(
     (expert) =>
-      !expert.workflows.some(
-        (workflow) => workflow.store_listing_version_id === versionID,
-      ) && !adoptedTargetKeys?.has(getAdoptTargetKey(agent, expert)),
+      !isAdopted(agent, expert) &&
+      !adoptedTargetKeys?.has(getAdoptTargetKey(agent, expert)),
   );
 }
 
@@ -167,21 +161,17 @@ export function pruneAdoptedTargetKeys(
     const agent = agentsByID.get(target.agentID);
     const expert = expertsByID.get(target.expertID);
     if (!agent || !expert) continue;
-    const versionID = getAdoptTargetVersionID(agent);
-    if (!versionID) continue;
-    const isConfirmed = expert.workflows.some(
-      (workflow) => workflow.store_listing_version_id === versionID,
-    );
-    if (!isConfirmed) next.add(key);
+    if (!isAdopted(agent, expert)) next.add(key);
   }
 
   return next.size === adoptedTargetKeys.size ? adoptedTargetKeys : next;
 }
 
-/** The immutable marketplace version matching this agent's exact graph
- *  snapshot, resolved server-side. Pure-local agents have none, so Adopt is
- *  hidden for them — the install endpoint only accepts a
- *  store_listing_version_id. */
-export function getAdoptTargetVersionID(agent: LibraryAgent) {
-  return agent.store_listing_version_id;
+/** An expert installs a library agent by id, so the same agent stays
+ *  adoptable on other experts and a marketplace install of it counts too —
+ *  that path records the same library_agent_id. */
+function isAdopted(agent: LibraryAgent, expert: Expert) {
+  return expert.workflows.some(
+    (workflow) => workflow.library_agent_id === agent.id,
+  );
 }

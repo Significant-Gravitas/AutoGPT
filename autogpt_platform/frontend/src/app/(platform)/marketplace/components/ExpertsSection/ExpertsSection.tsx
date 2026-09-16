@@ -5,28 +5,17 @@ import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import Link from "next/link";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
-import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
 import { useExpertsSection } from "./useExpertsSection";
 
 export function ExpertsSection() {
-  const {
-    isLoggedIn,
-    templates,
-    hiredTemplateIds,
-    isLoading,
-    isError,
-    selectedTemplateId,
-    openTemplate,
-    closeSheet,
-  } = useExpertsSection();
-
-  if (!isLoggedIn) {
-    return null;
-  }
+  const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
+    useExpertsSection();
 
   if (isError || (!isLoading && templates.length === 0)) {
     // Raising an expert needs no roster templates, so the second door
     // stays open even when the template list is empty or failed to load.
+    // It needs an account, though, so visitors get nothing here.
+    if (!isLoggedIn) return null;
     return (
       <section id="experts" className="mb-20 scroll-mt-24">
         <RaiseLink standalone />
@@ -40,11 +29,15 @@ export function ExpertsSection() {
         titleIcon={<AITeamIcon size={30} />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
-        action={{ label: "View your team", href: "/team" }}
+        action={
+          isLoggedIn ? { label: "View your team", href: "/team" } : undefined
+        }
       />
-      <div className="-mt-3 mb-6">
-        <RaiseLink />
-      </div>
+      {isLoggedIn ? (
+        <div className="-mt-3 mb-6">
+          <RaiseLink />
+        </div>
+      ) : null}
       {isLoading ? (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -58,15 +51,10 @@ export function ExpertsSection() {
               key={template.id}
               expert={template}
               isHired={hiredTemplateIds.has(template.id)}
-              onClick={() => openTemplate(template.id)}
             />
           ))}
         </div>
       )}
-      <ExpertProfileSheet
-        expert={templates.find((t) => t.id === selectedTemplateId) ?? null}
-        onClose={closeSheet}
-      />
     </section>
   );
 }

@@ -75,12 +75,17 @@ export function IntegrationsList() {
     await requestDelete(ids, true);
   }
 
-  const pendingNames = buildTargets(pendingDeleteIds).map(
-    (t) => t.name ?? t.provider,
-  );
+  const pendingTargets = buildTargets(pendingDeleteIds);
+  const pendingNames = pendingTargets.map((t) => t.name ?? t.provider);
   const pendingForceNames = buildTargets(pendingForceIds).map(
     (t) => t.name ?? t.provider,
   );
+  // The generic warning talks about agents losing access, which is not what
+  // removing a ChatGPT connection does: it stops new ChatGPT-backed chats and
+  // leaves everything already said in them alone.
+  const pendingNotice = pendingTargets.some((t) => t.provider === "codex")
+    ? "New chats can no longer run on your ChatGPT plan — they fall back to the connection AutoGPT picks. Your chat history is kept, and your other integrations are unaffected."
+    : undefined;
 
   if (isLoading) {
     return (
@@ -181,6 +186,7 @@ export function IntegrationsList() {
           if (!open) setPendingDeleteIds([]);
         }}
         itemNames={pendingNames}
+        notice={pendingNotice}
         isPending={isDeleting}
         onConfirm={confirmDelete}
       />

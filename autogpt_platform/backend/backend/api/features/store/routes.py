@@ -232,11 +232,12 @@ async def post_user_review_for_agent(
     "/listings/versions/{store_listing_version_id}",
     summary="Get agent by version",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def get_agent_by_listing_version(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:
+    # Public on purpose: the query only reads the APPROVED-only StoreAgent
+    # view, so a signed-out expert page can show its workflows' preview images.
     agent = await store_db.get_store_agent_by_version_id(store_listing_version_id)
     return agent
 

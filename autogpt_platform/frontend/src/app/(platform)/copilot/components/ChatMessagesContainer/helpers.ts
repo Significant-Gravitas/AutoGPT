@@ -1,25 +1,14 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
-import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
-import type { TodoItem } from "../TaskProgressBar/helpers";
-
-export function shouldShowTaskListNotice({
-  isContextPanelEnabled,
-  isChatStreaming,
-  latestTaskList,
-}: {
-  isContextPanelEnabled: boolean;
-  isChatStreaming: boolean;
-  latestTaskList: TodoItem[] | null;
-}): boolean {
-  if (!isContextPanelEnabled || !isChatStreaming || !latestTaskList) {
-    return false;
-  }
-  return latestTaskList.some((t) => t.status !== "completed");
-}
+import {
+  COMPACTION_DATA_PART_TYPE,
+  readCompactionStats,
+  type CompactionPhase,
+  type CompactionStats,
+} from "../CompactionCard/helpers";
+import { COMPACTION_PART_TYPE } from "../ToolChain/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -27,53 +16,103 @@ export type MessagePart = UIMessage<
   UITools
 >["parts"][number];
 
-export type RenderSegment =
-  | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] }
-  | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
-
-const LEGACY_CUSTOM_TOOL_TYPES = new Set([
-  "tool-ask_question",
-  "tool-find_block",
-  "tool-find_agent",
-  "tool-find_library_agent",
-  "tool-search_docs",
-  "tool-get_doc_page",
-  "tool-connect_integration",
-  "tool-run_block",
-  "tool-continue_run_block",
-  "tool-connect_integration",
-  "tool-run_mcp_tool",
-  "tool-run_agent",
-  "tool-schedule_agent",
-  "tool-setup_agent_webhook_trigger",
-  "tool-create_agent",
-  "tool-edit_agent",
-  "tool-view_agent_output",
-  "tool-search_feature_requests",
-  "tool-create_feature_request",
-  "tool-decompose_goal",
-]);
-
-const REASONING_TOOL_TYPES = new Set([
-  "tool-find_block",
-  "tool-find_agent",
-  "tool-find_library_agent",
-  "tool-search_docs",
-  "tool-get_doc_page",
-  "tool-search_feature_requests",
-  "tool-ask_question",
-]);
-
-export function isReasoningToolPart(part: MessagePart): boolean {
-  return REASONING_TOOL_TYPES.has(part.type);
+// Every assistant tool renders inside the ToolChain. ToolResult supplies a
+// compact result view for known backend tools and a structured fallback for
+// SDK or future tools, so no tool ever renders as a bare top-level part.
+export function isChainableToolPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE) return false;
+  return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
-// Every assistant tool belongs to the new ToolChain. ToolResult supplies a
-// compact result view for known backend tools and a structured fallback for
-// SDK or future tools, so no tool can fall back to the legacy top-level UI.
-export function isChainableToolPart(part: MessagePart): boolean {
-  return part.type === "reasoning" || part.type.startsWith("tool-");
+const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);
+
+// All `data-*` parts are transient bookkeeping (status, cursor,
+// pending-drained, mode-changed, …) — none of them is content that settles
+// a compaction row, and neither may any future one. Enumerating them here
+// would silently kill the bar the day a new data part ships mid-compaction.
+function isCompactionTransparentPart(part: MessagePart): boolean {
+  return (
+    part.type.startsWith("data-") ||
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === "step-start"
+  );
+}
+
+/**
+ * A row closed by the abort sentinel (output "") or an error never compacted
+ * anything — any phase parts it left behind are stale, and the row itself
+ * renders nothing. This is a cross-language contract with the backend's
+ * close paths, so it lives here once: `MessagePartRenderer` decides what to
+ * draw with the same predicate `getLatestCompactionPhase` decides with.
+ */
+export function isRetiredCompactionRow(part: MessagePart): boolean {
+  if (part.type !== COMPACTION_PART_TYPE || !("state" in part)) return false;
+  const tool = part as ToolUIPart;
+  if (tool.state === "output-error") return true;
+  return (
+    tool.state === "output-available" &&
+    typeof tool.output === "string" &&
+    tool.output.trim() === ""
+  );
+}
+
+/**
+ * Latest `data-compaction` phase on a message, or null once real content has
+ * landed past it (at which point the compaction row is settled history).
+ */
+export function getLatestCompactionPhase(
+  parts: MessagePart[],
+): CompactionPhase | null {
+  const lastRow = parts.findLast((p) => p.type === COMPACTION_PART_TYPE);
+  if (lastRow && isRetiredCompactionRow(lastRow)) return null;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === COMPACTION_DATA_PART_TYPE) {
+      const data = (part as { data?: { phase?: unknown } }).data;
+      const phase = data?.phase;
+      if (typeof phase === "string" && COMPACTION_PHASES.has(phase)) {
+        return phase as CompactionPhase;
+      }
+      return null;
+    }
+    if (isCompactionTransparentPart(part)) continue;
+    if (part.type === "text" && "text" in part && !part.text.trim()) continue;
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Stats carried by the message's `data-compaction` parts, merged in stream
+ * order (later phases override earlier ones). They pace the live progress
+ * curve before the tool row closes with its own — authoritative — stats.
+ */
+export function getLatestCompactionStats(
+  parts: MessagePart[],
+): CompactionStats {
+  const stats: CompactionStats = {};
+  for (const part of parts) {
+    if (part.type !== COMPACTION_DATA_PART_TYPE) continue;
+    const data = (part as { data?: unknown }).data;
+    if (typeof data !== "object" || data === null) continue;
+    Object.assign(stats, readCompactionStats(data as Record<string, unknown>));
+  }
+  return stats;
+}
+
+/**
+ * Tool-call ID of the message's last `tool-context_compaction` part. The live
+ * phase applies only to this row — without the ID gate, a second compaction
+ * cycle's `summarizing` part would flip earlier (settled) rows back to live.
+ */
+export function getLastCompactionCallId(parts: MessagePart[]): string | null {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === COMPACTION_PART_TYPE && "toolCallId" in part) {
+      return (part as ToolUIPart).toolCallId ?? null;
+    }
+  }
+  return null;
 }
 
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
@@ -88,175 +127,6 @@ export function isChainableToolPart(part: MessagePart): boolean {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
-
-const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
-  ResponseType.setup_requirements,
-  ResponseType.trigger_setup,
-  ResponseType.agent_details,
-  ResponseType.block_details,
-  ResponseType.review_required,
-  ResponseType.need_login,
-  ResponseType.input_validation_error,
-  ResponseType.agent_builder_clarification_needed,
-  ResponseType.suggested_goal,
-  ResponseType.agent_builder_preview,
-  ResponseType.agent_builder_saved,
-  ResponseType.task_decomposition,
-]);
-
-export function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
-  return (
-    part.type.startsWith("tool-") &&
-    "state" in part &&
-    (part.state === "output-available" || part.state === "output-error")
-  );
-}
-
-export function isInteractiveToolPart(part: MessagePart): boolean {
-  if (!part.type.startsWith("tool-")) return false;
-  if (!("state" in part) || part.state !== "output-available") return false;
-
-  let output = (part as ToolUIPart).output;
-  if (!output) return false;
-
-  if (typeof output === "string") {
-    try {
-      output = JSON.parse(output);
-    } catch {
-      return false;
-    }
-  }
-
-  if (typeof output !== "object" || output === null) return false;
-
-  const responseType = (output as Record<string, unknown>).type;
-  return (
-    typeof responseType === "string" &&
-    INTERACTIVE_RESPONSE_TYPES.has(responseType)
-  );
-}
-
-export function buildRenderSegments(
-  parts: MessagePart[],
-  baseIndex = 0,
-): RenderSegment[] {
-  const segments: RenderSegment[] = [];
-  let pendingTools: Array<{ part: ToolUIPart; index: number }> | null = null;
-  let pendingReasoning: Array<{ part: MessagePart; index: number }> | null =
-    null;
-
-  function flushTools() {
-    if (!pendingTools) return;
-    if (pendingTools.length >= 2) {
-      segments.push({
-        kind: "collapsed-group",
-        parts: pendingTools.map((p) => p.part),
-      });
-    } else {
-      for (const p of pendingTools) {
-        segments.push({ kind: "part", part: p.part, index: p.index });
-      }
-    }
-    pendingTools = null;
-  }
-
-  // Native reasoning parts (one per agentic turn) are always emitted as a
-  // reasoning-group — including a lone part. This folds a multi-step task's
-  // consecutive reasoning into one collapsed block instead of a stacked wall of
-  // "Reasoning" accordions, and gives the run a single stable identity
-  // (`reasoning-group` keyed by its first index) so a single block doesn't
-  // remount — losing its open/closed state — the moment a second consecutive
-  // block arrives and turns it into a group.
-  function flushReasoning() {
-    if (!pendingReasoning) return;
-    segments.push({
-      kind: "reasoning-group",
-      parts: pendingReasoning.map((p) => p.part),
-      index: pendingReasoning[0].index,
-    });
-    pendingReasoning = null;
-  }
-
-  parts.forEach((part, i) => {
-    const absoluteIndex = baseIndex + i;
-
-    // `step-start` markers delimit turns in multi-step agentic streams and
-    // render as nothing. Treat them as transparent: skipping them (rather than
-    // flushing) keeps the reasoning blocks on either side in a single run, which
-    // is exactly the consecutive-reasoning case this grouping targets.
-    if (part.type === "step-start") return;
-
-    const isGenericCompletedTool =
-      isCompletedToolPart(part) && !LEGACY_CUSTOM_TOOL_TYPES.has(part.type);
-
-    if (isGenericCompletedTool) {
-      flushReasoning();
-      if (!pendingTools) pendingTools = [];
-      pendingTools.push({ part: part as ToolUIPart, index: absoluteIndex });
-    } else if (part.type === "reasoning") {
-      flushTools();
-      if (!pendingReasoning) pendingReasoning = [];
-      pendingReasoning.push({ part, index: absoluteIndex });
-    } else {
-      flushTools();
-      flushReasoning();
-      segments.push({ kind: "part", part, index: absoluteIndex });
-    }
-  });
-
-  flushTools();
-  flushReasoning();
-  return segments;
-}
-
-function isReasoningBoundary(part: MessagePart): boolean {
-  return part.type === "reasoning" || isReasoningToolPart(part);
-}
-
-export function splitReasoningAndResponse(parts: MessagePart[]): {
-  reasoning: MessagePart[];
-  response: MessagePart[];
-} {
-  const lastReasoningIndex = parts.findLastIndex(isReasoningBoundary);
-
-  if (lastReasoningIndex === -1) {
-    return { reasoning: [], response: parts };
-  }
-
-  const hasResponseAfterReasoning = parts
-    .slice(lastReasoningIndex + 1)
-    .some((p) => p.type === "text");
-
-  if (!hasResponseAfterReasoning) {
-    return { reasoning: [], response: parts };
-  }
-
-  const rawReasoning = parts.slice(0, lastReasoningIndex + 1);
-  const rawResponse = parts.slice(lastReasoningIndex + 1);
-
-  const reasoning: MessagePart[] = [];
-  const pinnedParts: MessagePart[] = [];
-
-  for (const part of rawReasoning) {
-    // Corrupted card-capable parts are pinned too: their output failed to
-    // parse, so isInteractiveToolPart can't recognize them, but hiding them
-    // in the steps modal would silently swallow a lost sign-in/setup card.
-    // Pinning lets the tool renderer surface a visible error instead.
-    if (isInteractiveToolPart(part) || isCorruptedCardToolPart(part)) {
-      pinnedParts.push(part);
-    } else {
-      // Reasoning / thinking parts stay inside the outer "Show steps" modal
-      // alongside the tool-use timeline — their own inline accordion handles
-      // expansion inside the modal so there's no visual collision.
-      reasoning.push(part);
-    }
-  }
-
-  return {
-    reasoning,
-    response: [...pinnedParts, ...rawResponse],
-  };
-}
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],

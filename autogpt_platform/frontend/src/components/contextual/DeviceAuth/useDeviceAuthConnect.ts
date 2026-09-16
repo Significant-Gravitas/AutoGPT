@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  getGetV1ListCredentialsQueryKey,
   postV1InitiateDeviceCodeOauthFlow,
   postV1PollDeviceCodeOauthFlowForCompletion,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 interface Args {
   provider: string;
@@ -82,9 +82,7 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           setPhase("done");
           stopPolling();
           toast({ title: "Connected via device auth", variant: "success" });
-          await queryClient.invalidateQueries({
-            queryKey: getGetV1ListCredentialsQueryKey(),
-          });
+          await invalidateConnectionQueries(queryClient);
           onSuccess(credentials ?? undefined);
           return;
         }
