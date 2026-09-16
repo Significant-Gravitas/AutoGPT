@@ -90,6 +90,176 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["marketing"],
         "required_providers": [],
     },
+    {
+        "slug": "account-health-and-qbrs",
+        "categories": ["support", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "draft-the-reply",
+        "categories": ["support", "content"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "getting-started",
+        "categories": ["support", "operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "logistics-shipment-and-customs",
+        "categories": ["operations", "support"],
+        "required_providers": [],
+    },
+    {
+        "slug": "onboarding-and-adoption",
+        "categories": ["support", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "sensitive-data-safe-handling",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "technical-diagnostics-with-tools",
+        "categories": ["support", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "trust-and-safety-escalations",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "voice-of-customer-and-feedback",
+        "categories": ["support", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "billing-refunds-and-exceptions",
+        "categories": ["support", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "enterprise-identity-sso-support",
+        "categories": ["support", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "help-center-answers-and-kb",
+        "categories": ["support", "content"],
+        "required_providers": ["google", "notion"],
+    },
+    {
+        "slug": "mass-recovery-and-bulk-comms",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "own-to-closure",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "social-and-community-support",
+        "categories": ["support", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "triage-and-prioritize",
+        "categories": ["support", "operations"],
+        "required_providers": ["google", "slack"],
+    },
+    {
+        "slug": "upsell-and-retention-offers",
+        "categories": ["sales", "support"],
+        "required_providers": [],
+    },
+    {
+        "slug": "workforce-and-capacity-planning",
+        "categories": ["operations", "support"],
+        "required_providers": [],
+    },
+    {
+        "slug": "bpo-vendor-quality-ops",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "escalations-and-incidents",
+        "categories": ["support", "operations"],
+        "required_providers": ["slack"],
+    },
+    {
+        "slug": "knowledge-centered-service",
+        "categories": ["support", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "live-channel-queue-operations",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "marketplace-two-sided-mediation",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "support-ops-improvement-program",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "troubleshoot-and-resolve",
+        "categories": ["support", "operations"],
+        "required_providers": ["google", "slack"],
+    },
+    {
+        "slug": "vip-and-white-glove-care",
+        "categories": ["support", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "compliance-and-regulated-support",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "fraud-and-chargeback-defense",
+        "categories": ["support", "finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "orders-returns-and-warranty",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "member-benefits-and-claims",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "quality-csat-and-coaching",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "service-recovery-and-goodwill",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "travel-disruption-and-rebooking",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "voice-and-phone-support",
+        "categories": ["support", "operations"],
+        "required_providers": [],
+    },
 ]
 
 
