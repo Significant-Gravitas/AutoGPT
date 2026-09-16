@@ -419,7 +419,7 @@ class FillEnvSecretsTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            filled = runtime_config.fill_env_secrets(path)
+            filled = runtime_config.fill_env_blanks(path)
 
             self.assertEqual(filled, ["ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY"])
             values = dict(
@@ -440,9 +440,9 @@ class FillEnvSecretsTest(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
 
-            runtime_config.fill_env_secrets(path)
+            runtime_config.fill_env_blanks(path)
             after_first = path.read_text(encoding="utf-8")
-            self.assertEqual(runtime_config.fill_env_secrets(path), [])
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
             self.assertEqual(path.read_text(encoding="utf-8"), after_first)
 
     def test_generated_values_differ_between_installs(self) -> None:
@@ -451,19 +451,38 @@ class FillEnvSecretsTest(unittest.TestCase):
             for index in range(2):
                 path = Path(directory) / f"{index}.env"
                 path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
-                runtime_config.fill_env_secrets(path)
+                runtime_config.fill_env_blanks(path)
                 keys.append(path.read_text(encoding="utf-8"))
             self.assertNotEqual(keys[0], keys[1])
 
-    def test_preserves_file_permissions(self) -> None:
+    def test_generated_file_becomes_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
             path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
-            path.chmod(0o600)
+            path.chmod(0o644)
 
-            runtime_config.fill_env_secrets(path)
+            runtime_config.fill_env_blanks(path)
 
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_check_env_defaults_rejects_populated_duplicate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT:
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text("", encoding="utf-8")
+            (root / "backend/.env.default").write_text(
+                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n",
+                encoding="utf-8",
+            )
+            (root / "frontend/.env.default").write_text(
+                "BETTER_AUTH_SECRET=\n", encoding="utf-8"
+            )
+
+            self.assertEqual(
+                runtime_config.check_env_defaults(root),
+                ["backend/.env.default:ENCRYPTION_KEY"],
+            )
 
     def test_env_default_ships_its_secrets_blank_and_generatable(self) -> None:
         """`.env.default` is public, so these must ship blank (SECRT-2611) —
@@ -479,7 +498,7 @@ class FillEnvSecretsTest(unittest.TestCase):
 
                 # Blank is only safe if setup can actually fill it back in.
                 self.assertEqual(
-                    sorted(runtime_config.fill_env_secrets(copy)), sorted(names)
+                    sorted(runtime_config.fill_env_blanks(copy)), sorted(names)
                 )
 
 

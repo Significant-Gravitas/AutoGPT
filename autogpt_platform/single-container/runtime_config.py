@@ -48,9 +48,12 @@ def main() -> int:
         elif args.command == "fill-env":
             if args.missing_ok and not args.path.exists():
                 return 0
-            filled = fill_env_secrets(args.path)
-            if filled:
-                print(f"{args.path}: generated {', '.join(filled)}")
+            if args.path.is_symlink():
+                print(f"{args.path}: symlink, left untouched", file=sys.stderr)
+                return 0
+            names = fill_env_blanks(args.path)
+            if names:
+                print(f"{args.path}: generated {', '.join(names)}")
         elif args.command == "check-env-defaults":
             offenders = check_env_defaults(args.root)
             for location in offenders:
@@ -86,7 +89,7 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
     return values
 
 
-def fill_env_secrets(path: Path) -> list[str]:
+def fill_env_blanks(path: Path) -> list[str]:
     """Give every blank secret in a .env file a freshly generated value.
 
     Idempotent by construction: only ``NAME=`` lines with nothing after the
@@ -114,22 +117,26 @@ def fill_env_secrets(path: Path) -> list[str]:
 
 
 def check_env_defaults(root: Path) -> list[str]:
-    """Return `path:NAME` for every retired secret that is not blank."""
+    """Return `path:NAME` for every retired secret not assigned exactly once, blank."""
     offenders: list[str] = []
     for relative_path, names in BLANK_IN_ENV_DEFAULT.items():
         content = (root / relative_path).read_text(encoding="utf-8")
         for name in names:
-            if f"\n{name}=\n" not in f"\n{content}":
+            values = re.findall(rf"(?m)^{re.escape(name)}=([^\r\n]*)\r?$", content)
+            if values != [""]:
                 offenders.append(f"{relative_path}:{name}")
     return offenders
 
 
 def _replace_atomically(path: Path, content: str) -> None:
-    """Rewrite `path` without a window where it is truncated or half-written."""
+    """Rewrite `path` owner-only, with no window where it is truncated or
+    half-written. The file now holds generated secrets, so it stops inheriting
+    whatever mode the copied `.env.default` had."""
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        temporary.write_text(content, encoding="utf-8")
-        temporary.chmod(stat.S_IMODE(path.stat().st_mode))
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(content)
         os.replace(temporary, path)
     except BaseException:
         temporary.unlink(missing_ok=True)

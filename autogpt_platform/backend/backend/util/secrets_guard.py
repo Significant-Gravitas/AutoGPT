@@ -17,9 +17,16 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-BOOTSTRAP_HINT = (
-    "Run `make init-env` in autogpt_platform/ to generate per-developer secrets "
-    "into backend/.env (it never overwrites values you already set)."
+# `make init-env` only fills `NAME=` lines that are present and blank, so each
+# hint spells out the one edit that makes it apply.
+MISSING_HINT = (
+    "Add a line `ENCRYPTION_KEY=` to autogpt_platform/backend/.env (create the "
+    "file if needed) and run `make init-env` in autogpt_platform/ to generate a "
+    "value for it. Values you already set are never overwritten."
+)
+RETIRED_HINT = (
+    "Clear the value in autogpt_platform/backend/.env (leave `{name}=`) and run "
+    "`make init-env` in autogpt_platform/ to generate a fresh one."
 )
 
 # SHA-256 of each value published in backend/.env.default before SECRT-2611.
@@ -46,7 +53,7 @@ def check_secrets(settings: Settings | None = None) -> None:
         raise ValueError(
             "ENCRYPTION_KEY is not set. It encrypts stored integration "
             "credentials and signs cached values, so the backend will not "
-            f"start without it. {BOOTSTRAP_HINT}"
+            f"start without it. {MISSING_HINT}"
         )
 
     for name, value in configured.items():
@@ -62,12 +69,13 @@ def check_secrets(settings: Settings | None = None) -> None:
         )
         raise ValueError(
             f"{name} is set to a value that was published in this repository's "
-            "public .env.default and must be treated as compromised. Replace it "
-            f"with a fresh secret. {BOOTSTRAP_HINT}{rotation_note}"
+            "public .env.default and must be treated as compromised. "
+            f"{RETIRED_HINT.format(name=name)}{rotation_note}"
         )
 
     if not configured["UNSUBSCRIBE_SECRET_KEY"]:
         logger.warning(
             "[SECURITY] UNSUBSCRIBE_SECRET_KEY is not set: email unsubscribe "
-            f"links cannot be signed. {BOOTSTRAP_HINT}"
+            "links cannot be signed. "
+            + MISSING_HINT.replace("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY")
         )

@@ -88,11 +88,6 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: "synthetic-bake-no-real-key" # pragma: allowlist secret
 
     steps:
-      - name: Generate ephemeral secrets
-        # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
-        # exist. Generated per run: a value committed here would be published.
-        run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
@@ -103,6 +98,11 @@ jobs:
           # Only the release-publish step needs a token, via env — don't
           # persist credentials into the workspace git config.
           persist-credentials: false
+
+      - name: Generate ephemeral secrets
+        # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
+        # exist. Generated per run: a value committed here would be published.
+        run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
