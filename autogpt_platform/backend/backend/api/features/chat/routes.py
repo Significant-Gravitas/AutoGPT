@@ -110,6 +110,7 @@ from backend.copilot.tools.manage_presets import (
 from backend.copilot.tools.manage_schedules import (
     ScheduleDeletedResponse,
     ScheduleListResponse,
+    ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -2390,6 +2391,7 @@ ToolResponseUnion = (
     | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
+    | ScheduleToggledResponse
     | PresetListResponse
     | PresetUpdatedResponse
     | PresetDeletedResponse

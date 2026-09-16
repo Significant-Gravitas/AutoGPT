@@ -1202,7 +1202,7 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         schedule_name: str,
         cron: str,
-        timezone: str,
+        timezone: str | None,
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
