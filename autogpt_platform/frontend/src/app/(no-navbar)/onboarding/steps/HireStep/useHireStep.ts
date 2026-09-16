@@ -4,6 +4,7 @@ import type { ExpertRecommendations } from "@/app/api/__generated__/models/exper
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -83,6 +84,9 @@ export function useHireStep() {
       template_id: expert.template_id,
       source: "onboarding_hire_step",
     });
+    // The backend counts this hire's completion, so the funnel sink needs its
+    // start too — otherwise onboarding hires make completion rate unreadable.
+    trackFunnel("hire_started", { template_id: expert.template_id });
     setHiringTemplateId(expert.template_id);
     try {
       await hireExpert({ data: { template_id: expert.template_id } });

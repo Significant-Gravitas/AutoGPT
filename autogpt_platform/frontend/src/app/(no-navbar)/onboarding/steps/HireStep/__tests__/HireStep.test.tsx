@@ -188,6 +188,35 @@ describe("HireStep — hiring", () => {
     });
   });
 
+  it("posts hire_started to the funnel sink, not only to PostHog", async () => {
+    // The backend emits this hire's hire_completed, so without the start the
+    // funnel's completion rate is unreadable for onboarding hires.
+    const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+    mockTeam(TEAM);
+    server.use(
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        funnelBodies.push(
+          (await request.json()) as {
+            type: string;
+            data: Record<string, unknown>;
+          },
+        );
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    render(<HireStep />);
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Hire" }))[0],
+    );
+
+    await waitFor(() =>
+      expect(
+        funnelBodies.find((body) => body.type === "hire_started")?.data,
+      ).toEqual({ template_id: "tpl-maria" }),
+    );
+  });
+
   it("shows templates hired on an earlier visit as hired", async () => {
     mockTeam(TEAM);
     useOnboardingWizardStore.getState().markHired("tpl-max");
