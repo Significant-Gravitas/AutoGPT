@@ -343,9 +343,11 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
     so it does not see the eight ``/api/credits*`` routes served by other modules
     (admin, trials, exports). Widening it to ``real_app`` makes all eight
     unexpected at once and needs each audited against this rule on its own —
-    a security review, not a refactor. Until then this cannot catch an ungated
-    route outside ``v1_router``, and once the credits section moves to its own
-    module it will see nothing at all.
+    a security review, not a refactor, tracked as SECRT-2650. Until then this
+    cannot catch an ungated route outside ``v1_router``, and once the credits
+    section moves to its own module it will see nothing at all: that move must
+    mount ``real_app`` and carry the eight in a ``PENDING_AUDIT`` set, so a
+    ninth unexpected route still fails while none of the eight is signed off.
     """
     gated: set[str] = set()
     ungated: set[str] = set()
