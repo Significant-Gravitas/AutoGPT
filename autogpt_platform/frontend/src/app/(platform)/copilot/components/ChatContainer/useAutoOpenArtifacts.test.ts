@@ -41,7 +41,6 @@ const defaultProps = {
   sessionId: "s1",
   messages: [] as Messages,
   isLoadingSession: false,
-  isArtifactsEnabled: true,
 };
 
 describe("useAutoOpenArtifacts (card-based)", () => {

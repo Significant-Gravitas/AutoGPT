@@ -143,7 +143,6 @@ export const ChatContainer = ({
   isKickoffStarting,
   hasFloatingControls,
 }: ChatContainerProps) => {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   // The composer and the message column only slide aside while the floating
   // files card is shown; this host is the one that mounts the card.
@@ -152,7 +151,6 @@ export const ChatContainer = ({
     sessionId,
     messages,
     isLoadingSession,
-    isArtifactsEnabled,
   });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
@@ -291,14 +289,10 @@ export const ChatContainer = ({
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isArtifactsEnabled && (
-                  <>
-                    <div className="absolute right-0 top-0 z-30">
-                      <ContextPanelToggle sessionId={sessionId} />
-                    </div>
-                    <WorkspaceFileCards sessionId={sessionId} />
-                  </>
-                )}
+                <div className="absolute right-0 top-0 z-30">
+                  <ContextPanelToggle sessionId={sessionId} />
+                </div>
+                <WorkspaceFileCards sessionId={sessionId} />
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -319,7 +313,7 @@ export const ChatContainer = ({
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
-                  canOpenActivity={isArtifactsEnabled}
+                  canOpenActivity
                   areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
