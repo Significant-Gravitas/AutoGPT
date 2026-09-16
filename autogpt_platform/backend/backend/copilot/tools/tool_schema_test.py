@@ -299,10 +299,16 @@ def test_total_schema_char_budget() -> None:
 #
 # Set at the measured 62,003 plus one on 2026-09-16, the first time this line
 # existed. No margin, for the reason _CHAR_BUDGET carries none.
+# Raised 62_004 -> 63_610 the same day, on the dev merge that brought
+# #14436's edit_chat_platform_message: the tool measures 1,351 here and the
+# line added to post_to_chat_platform's description 255, so the largest
+# session moves 62,003 -> 63,609. Measured on the branch merged with dev,
+# which is what CI builds — the branch tip still read 62,003 and would have
+# been ejected from the queue.
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 62_004
+_SESSION_WIRE_BUDGET = 63_610
 
 
 def test_largest_declared_session_wire_budget() -> None:
