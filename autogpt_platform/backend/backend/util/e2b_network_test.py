@@ -12,6 +12,7 @@ import backend
 from backend.util import e2b_network
 from backend.util.e2b_network import (
     EgressOwner,
+    ProxyCredential,
     connect_sandbox,
     create_sandbox,
     credential_record,
@@ -94,23 +95,32 @@ class TestPinned:
     async def test_create_pins_the_box_under_a_credential_the_proxy_can_resolve(self):
         box, redis = _box("sb-1"), _redis()
         cls = _sdk(box)
-        with _configured(_PROXY), patch(
-            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        minted = ProxyCredential(username="box-a1", secret="s3cr3t-256-bits")
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._mint", return_value=minted),
         ):
             await create_sandbox(cls, _OWNER, template="t", api_key="k")
             proxy = cls.create.await_args.kwargs["network"]["egress_proxy"]
-            record = await credential_record(proxy["username"])
+            record = await credential_record("box-a1")
 
-        assert proxy["address"] == _PROXY
+        # What E2B's host presents to the proxy...
+        assert proxy == {
+            "address": _PROXY,
+            "username": "box-a1",
+            "password": "s3cr3t-256-bits",
+        }
+        # ...and what the proxy finds for it: the owner and a digest, never
+        # the secret itself.
         assert record == {
             "owner": "expert:exp-1",
             "user_id": "user-1",
             "sandbox_id": "sb-1",
-            "secret_sha256": secret_digest(proxy["password"]),
+            "secret_sha256": secret_digest("s3cr3t-256-bits"),
         }
-        # The secret itself is in no record: the proxy compares digests.
-        assert proxy["password"] not in json.dumps(redis.store)
-        assert redis.store["e2b:egress:box:sb-1"] == proxy["username"]
+        assert "s3cr3t-256-bits" not in json.dumps(redis.store)
+        assert redis.store["e2b:egress:box:sb-1"] == "box-a1"
 
     @pytest.mark.asyncio
     async def test_the_record_exists_before_the_box_does(self):
