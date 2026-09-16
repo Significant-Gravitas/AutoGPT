@@ -94,7 +94,7 @@ def build_sdk_env(
     # A connected Codex account is a request-scoped auth transport.  It must
     # win over the deployment-wide profile, including ``local``: the loopback
     # gateway speaks the Anthropic wire protocol expected by Claude Code even
-    # when the configured baseline provider does not.
+    # when the configured provider does not.
     codex_route = codex_gateway_url is not None
     if codex_route and codex_gateway_token is not None:
         no_proxy = _loopback_no_proxy_value()

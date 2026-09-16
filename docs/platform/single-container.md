@@ -406,7 +406,7 @@ Then set:
 CHAT_USE_LOCAL=true
 CHAT_BASE_URL=http://host.docker.internal:11434/v1
 CHAT_API_KEY=ollama
-CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+CHAT_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
 `CHAT_API_KEY` must be non-empty even if the local server ignores it. The

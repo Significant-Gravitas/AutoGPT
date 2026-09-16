@@ -368,7 +368,7 @@ async def extract_business_understanding(
     of any no-API-key install).
 
     Model picks ``ChatConfig.title_model`` only under the local transport so
-    the auto-derivation from ``fast_standard_model`` flows through here too —
+    the auto-derivation from ``thinking_standard_model`` flows through here too —
     one less env to remember for self-hosted operators. Cloud transports
     (OpenRouter / direct-Anthropic) keep the historical ``openai/gpt-4o-mini``
     pick so existing deployments don't see a silent model swap (different

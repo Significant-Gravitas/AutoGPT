@@ -125,9 +125,9 @@ def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     model used to *price* it — no single-model fan-out across phases.
     """
     return {
-        "consolidate": _to_native_anthropic_model(config.fast_standard_model),
-        "recombine": _to_native_anthropic_model(config.fast_advanced_model),
-        "sanitize": _to_native_anthropic_model(config.fast_standard_model),
+        "consolidate": _to_native_anthropic_model(config.thinking_standard_model),
+        "recombine": _to_native_anthropic_model(config.thinking_advanced_model),
+        "sanitize": _to_native_anthropic_model(config.thinking_standard_model),
     }
 
 

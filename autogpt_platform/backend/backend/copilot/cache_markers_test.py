@@ -75,13 +75,13 @@ class TestIsAnthropicModel:
 
 class TestFreshHelpers:
     def test_cache_control_uses_configured_ttl(self, monkeypatch):
-        """TTL comes from ChatConfig.baseline_prompt_cache_ttl — defaults
+        """TTL comes from ChatConfig.prompt_cache_ttl — defaults
         to 1h so the static prefix (system + tools) stays warm across
         workspace users past the 5-min default window."""
-        assert cm.config.baseline_prompt_cache_ttl == "1h"
+        assert cm.config.prompt_cache_ttl == "1h"
         cc = cm._fresh_ephemeral_cache_control()
         assert cc == {"type": "ephemeral", "ttl": "1h"}
-        monkeypatch.setattr(cm.config, "baseline_prompt_cache_ttl", "5m")
+        monkeypatch.setattr(cm.config, "prompt_cache_ttl", "5m")
         assert cm._fresh_ephemeral_cache_control() == {
             "type": "ephemeral",
             "ttl": "5m",

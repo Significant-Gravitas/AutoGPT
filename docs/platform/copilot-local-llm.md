@@ -26,10 +26,14 @@ equally well:
 | [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html), [LocalAI](https://localai.io/), [LM Studio](https://lmstudio.ai/), [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy) | their respective `/v1` URLs |
 | A managed OpenAI-compatible API you don't pay AutoGPT for | its `/v1` URL |
 
-Anything that speaks the OpenAI `/v1/chat/completions` shape — including
-`tools=[...]` for function calling — will work. The rest of this guide
-uses Ollama as the running example because it's the easiest, but
-substitute your own endpoint anywhere you see `http://...:11434/v1`.
+The endpoint must speak **two** shapes: OpenAI `/v1/chat/completions`
+for the aux calls (title generation, dry-run simulator), and an
+Anthropic-compatible `/v1/messages` endpoint **with tool use** for chat
+turns themselves — AutoPilot runs every turn through the Claude Agent
+SDK CLI pointed at your backend. Ollama 0.14+, vLLM, the llama.cpp
+server, and the LiteLLM proxy all qualify. The rest of this guide uses
+Ollama as the running example because it's the easiest, but substitute
+your own endpoint anywhere you see `http://...:11434/v1`.
 
 ## How it works
 
@@ -38,16 +42,11 @@ four chat transports. When `CHAT_USE_LOCAL=true`:
 
 | Transport behaviour | Local |
 | --- | --- |
-| Routes the baseline (fast) path to `CHAT_BASE_URL` over OpenAI-compatible HTTP | ✅ |
-| Supports the SDK / extended-thinking path (Claude Agent SDK) | ❌ — auto-downgrades to fast |
+| Routes chat turns to `CHAT_BASE_URL` through the Claude Agent SDK CLI (Anthropic `/v1/messages` shape) | ✅ — requires `/v1/messages` with tool use |
+| Aux calls (titles, dry-run simulator) over OpenAI-compatible HTTP | ✅ |
 | `api_key` falls back to `OPEN_ROUTER_API_KEY` / `OPENAI_API_KEY` if `CHAT_API_KEY` is unset | ❌ — explicit `CHAT_API_KEY` only |
-| Aux + advanced models (`title_model`, `simulation_model`, `fast_advanced_model`) inherit `fast_standard_model` if left at a cloud default | ✅ |
+| Aux + advanced models (`title_model`, `simulation_model`, `thinking_advanced_model`) inherit `thinking_standard_model` if left at a cloud default | ✅ |
 | Allows non-`anthropic/*` SDK model slugs (vendor validator skipped) | ✅ |
-
-The downgrade is logged at WARNING when an `extended_thinking` request
-arrives — there is no 500. The frontend toggle should already be hidden
-because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
-self-hosted deployments.
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
 vars are the *bottom* layer of model resolution: LaunchDarkly per-user
@@ -84,23 +83,25 @@ CHAT_API_KEY=ollama
 # The chat model. Bare model names ONLY — provider/model slugs (e.g.
 # `anthropic/claude-...`) are passed through verbatim and Ollama can't
 # resolve them. See "Picking a model" below.
-CHAT_FAST_STANDARD_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
+CHAT_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 
 # Optional — override for the advanced tier. If you leave it out, the
 # local transport derives title_model, simulation_model, AND
-# CHAT_FAST_ADVANCED_MODEL from CHAT_FAST_STANDARD_MODEL automatically
+# CHAT_ADVANCED_MODEL from CHAT_MODEL automatically
 # (see _apply_local_aux_models in backend/backend/copilot/config.py),
 # so the advanced toggle never sends a cloud-only slug to Ollama. Set
 # it explicitly only if you want a bigger model for the advanced tier
 # and have the VRAM for it.
-CHAT_FAST_ADVANCED_MODEL=qwen3:14b-q4_K_M
+CHAT_ADVANCED_MODEL=qwen3:14b-q4_K_M
 ```
 
 ## Picking a model
 
-The platform's chat loop calls **OpenAI-style tool-calling** on every
-turn, streams responses, and ships an ~8 k-token system prompt. Pick a
-model that handles all three.
+The SDK CLI calls your backend's **Anthropic-compatible Messages
+endpoint with tool use** on every turn, streams responses, and ships an
+~8 k-token system prompt plus tool schemas. Pick a model that handles
+all three — and a backend version that serves `/v1/messages`
+(Ollama 0.14+).
 
 | Tier | Recommended Ollama tag | Why | Footprint |
 | --- | --- | --- | --- |
@@ -125,16 +126,19 @@ are incoherent or 500 outright.
 Set the window **once, on the server**, via `OLLAMA_CONTEXT_LENGTH`. There is
 **no AutoGPT-side context config** to keep in sync: AutoPilot reads the
 backend's *actual* loaded window back at runtime — Ollama `/api/ps`, llama.cpp
-`/props`, vLLM / LM Studio `/v1/models` — and compacts the conversation under
-it. Backends that don't report a window (LiteLLM proxy, Jan,
-text-generation-webui) fall back to assuming 32k.
+`/props`, vLLM / LM Studio `/v1/models` — pins the SDK CLI's context window
+at it, and compacts the conversation under it. Backends that don't report a
+window (LiteLLM proxy, Jan, text-generation-webui) fall back to assuming
+32k.
 
-The default Ornith model has a 262,144-token native window, so the installer
-sets `OLLAMA_CONTEXT_LENGTH=262144`. This maximizes available conversation
-history but substantially increases KV-cache RAM/VRAM use. Operators using a
-custom model or constrained hardware can lower it, but should keep at least
-24k: below that, the system prompt + tools leave almost no room for
-conversation and AutoPilot logs a warning.
+The SDK CLI has a hard floor: a backend reporting under **65,000 tokens**
+fails the turn with operator remediation, and anything under ~24k logs a
+warning (the ~19k system prompt + tool schemas leave almost no room for
+conversation). The default Ornith model has a 262,144-token native window,
+so the installer sets `OLLAMA_CONTEXT_LENGTH=262144`. This maximizes
+available conversation history but substantially increases KV-cache
+RAM/VRAM use. Operators using a custom model or constrained hardware can
+lower it, but must stay above 65k.
 
 The installer sets `OLLAMA_CONTEXT_LENGTH` for you. Manual setup per platform:
 
@@ -253,7 +257,7 @@ flows to every backend helper that needs an LLM, so a single
 - **Dry-run block simulator** — when a user clicks "Test" in the agent
   builder, blocks role-play their execution against an LLM rather than
   hitting external APIs. Uses `ChatConfig.simulation_model`
-  (auto-derived to `fast_standard_model` under local).
+  (auto-derived to `thinking_standard_model` under local).
 - **Onboarding business-understanding extraction** — the post-signup
   Tally form is extracted into structured suggestions via the LLM.
   Uses `ChatConfig.title_model`.
@@ -306,9 +310,9 @@ docker exec autogpt_platform-copilot_executor-1 env | grep ^CHAT_
 #   CHAT_BASE_URL=http://192.168.1.42:11434/v1
 #   ...
 
-# 2. Send a turn from the UI, then confirm baseline routing in the log
+# 2. Send a turn from the UI, then confirm SDK routing in the log
 docker logs autogpt_platform-copilot_executor-1 | grep -E "Using.*service"
-#   [CoPilotExecutor|...] Using baseline service (mode=default)
+#   [CoPilotExecutor|...] Using SDK service
 
 # 3. Confirm Ollama saw the request — per platform:
 
@@ -325,7 +329,7 @@ tail -F ~/.ollama/logs/server.log | grep "POST"
 powershell -Command "Get-Content $env:LOCALAPPDATA\Ollama\server.log -Wait | Select-String POST"
 ```
 
-If `Using baseline service` appears and Ollama logs a 200, the
+If `Using SDK service` appears and Ollama logs a 200, the
 end-to-end path is working — any remaining errors are model / RAM /
 quantization concerns rather than config-routing bugs.
 
@@ -345,7 +349,7 @@ key set for graphiti / embedders doesn't silently bind to your local
 backend as the bearer token.
 
 **Title generation fails / returns "Untitled chat"** — `title_model`
-should auto-inherit `fast_standard_model` under the local transport. If
+should auto-inherit `thinking_standard_model` under the local transport. If
 you've explicitly set `CHAT_TITLE_MODEL=openai/gpt-4o-mini` somewhere,
 remove it.
 

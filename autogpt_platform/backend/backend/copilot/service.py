@@ -1003,7 +1003,7 @@ async def _record_title_generation_cost(
             completion_tokens=completion_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
-            cache_ttl=config.baseline_prompt_cache_ttl,
+            cache_ttl=config.prompt_cache_ttl,
         )
 
     # Nothing meaningful to record — skip the DB roundtrip entirely

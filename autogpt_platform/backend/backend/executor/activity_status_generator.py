@@ -387,7 +387,7 @@ async def generate_activity_status_for_execution(
         #   local server, and the ``openai/`` prefix coercion would mangle
         #   bare Ollama tags (``qwen3:0.6b`` → ``openai/qwen3:0.6b``) into
         #   404s. Use ``ChatConfig.title_model`` instead — it auto-derives
-        #   from the operator's chosen ``fast_standard_model`` under
+        #   from the operator's chosen ``thinking_standard_model`` under
         #   ``use_local`` and is already shaped for the local backend.
         # - ``extra_body={"usage": {"include": True}}`` is OpenRouter's
         #   piggybacked-cost extension; local backends don't implement it
@@ -396,8 +396,8 @@ async def generate_activity_status_for_execution(
         #   window (e.g. OLLAMA_CONTEXT_LENGTH) governs, read back at
         #   runtime by ``local_context_probe`` for compaction.
         #
-        # Same gating pattern as ``backend/copilot/baseline/service.py`` and
-        # ``backend/executor/simulator.py`` — keep the three in sync.
+        # Same gating pattern as ``backend/executor/simulator.py`` — keep
+        # the two in sync.
         from backend.copilot.sdk.env import config as chat_cfg
 
         is_local_transport = chat_cfg.transport.name == "local"
@@ -422,7 +422,7 @@ async def generate_activity_status_for_execution(
             # the reference. The OpenAI SDK treats ``extra_body`` as opaque
             # pass-through, but if any intermediate layer ever mutates it
             # the shared constant would leak across coroutines. Mirrors the
-            # defensive ``dict(...)`` ``baseline/service.py`` already uses.
+            # defensive ``dict(...)`` ``simulator.py`` already uses.
             extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
 
         # Track the most recent attempt's usage so we can persist cost even

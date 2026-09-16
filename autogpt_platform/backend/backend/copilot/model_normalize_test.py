@@ -96,7 +96,7 @@ class TestNormalizeModelForTransport:
             use_local=True,
             api_key="ollama",
             base_url="http://ollama:11434/v1",
-            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            thinking_standard_model="llama3.1:8b-instruct-q4_K_M",
         )
         assert (
             normalize_model_for_transport("llama3.1:8b-instruct-q4_K_M", cfg)

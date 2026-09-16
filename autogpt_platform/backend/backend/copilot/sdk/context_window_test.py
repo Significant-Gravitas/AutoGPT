@@ -23,11 +23,9 @@ def _make_config(**overrides) -> ChatConfig:
         "use_local": False,
         "api_key": None,
         "base_url": None,
-        # Fast tiers pinned like the thinking tiers: the direct-Anthropic
-        # vendor validator rejects non-anthropic slugs, and a
-        # local-flavored .env would otherwise leak llama slugs in here.
-        "fast_standard_model": "anthropic/claude-sonnet-5",
-        "fast_advanced_model": "anthropic/claude-opus-4-8",
+        # Thinking tiers pinned: the direct-Anthropic vendor validator
+        # rejects non-anthropic slugs, and a local-flavored .env would
+        # otherwise leak llama slugs in here.
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
         "claude_agent_autocompact_pct_override": 50,

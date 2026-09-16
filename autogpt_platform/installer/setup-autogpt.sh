@@ -408,9 +408,9 @@ write_local_env() {
         echo "CHAT_USE_LOCAL=true"
         echo "CHAT_BASE_URL=${host_url}/v1"
         echo "CHAT_API_KEY=ollama"
-        echo "CHAT_FAST_STANDARD_MODEL=$OLLAMA_MODEL"
-        echo "CHAT_FAST_ADVANCED_MODEL=$OLLAMA_MODEL"
-        # title_model + simulation_model auto-derive from fast_standard_model
+        echo "CHAT_MODEL=$OLLAMA_MODEL"
+        echo "CHAT_ADVANCED_MODEL=$OLLAMA_MODEL"
+        # title_model + simulation_model auto-derive from thinking_standard_model
         # under the local transport — no need to set them explicitly.
         # OLLAMA_HOST is the block-layer LLM (separate from the chat path);
         # set it too so the AI Text Generator block points at the same backend.
@@ -467,9 +467,8 @@ main() {
     if [ "$WITH_OLLAMA" = true ]; then
         echo
         print_color "BLUE" "🦙 AutoPilot wired to Ollama (model: $OLLAMA_MODEL)"
-        print_color "YELLOW" "  Extended-thinking mode auto-downgrades to fast — Ollama"
-        print_color "YELLOW" "  doesn't speak Anthropic's wire protocol. See"
-        print_color "YELLOW" "  docs/platform/copilot-local-llm.md."
+        print_color "YELLOW" "  See docs/platform/copilot-local-llm.md for the"
+        print_color "YELLOW" "  context-window and endpoint requirements."
     fi
     echo
     print_color "YELLOW" "To stop services: docker compose down"

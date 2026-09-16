@@ -51,8 +51,6 @@ def _empty_catalog_by_default():
 def _make_config() -> ChatConfig:
     """Build a config with the canonical defaults so tests read naturally."""
     return ChatConfig(
-        fast_standard_model="anthropic/claude-sonnet-4-6",
-        fast_advanced_model="anthropic/claude-opus-4.7",
         thinking_standard_model="anthropic/claude-sonnet-4-6",
         thinking_advanced_model="anthropic/claude-opus-4.7",
     )
@@ -100,8 +98,6 @@ class TestResolveModel:
         whitespace-stripped LD side, bypassing subscription mode for
         every anonymous request.  Strip at the source."""
         cfg = ChatConfig(
-            fast_standard_model="anthropic/claude-sonnet-4-6",
-            fast_advanced_model="anthropic/claude-opus-4.7",
             thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing ws
             thinking_advanced_model="anthropic/claude-opus-4.7",
         )

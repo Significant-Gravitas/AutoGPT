@@ -1,13 +1,11 @@
 """Model-slug normalization for the configured transport.
 
-Shared between the SDK (extended-thinking) path and the baseline (fast)
-path so a single rule decides whether to keep the OpenRouter
-``vendor/model`` slug or strip it for direct-Anthropic / subscription
-transports.
+One rule decides whether to keep the OpenRouter ``vendor/model`` slug
+or strip it for direct-Anthropic / subscription transports.
 
-Lives in its own module to avoid a circular import — both paths need
-this and importing from one into the other would knot up the dependency
-graph.
+Lives in its own module to avoid a circular import — both call sites
+need this and importing from one into the other would knot up the
+dependency graph.
 """
 
 from __future__ import annotations
@@ -60,8 +58,7 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
                 f"{config.effective_transport!r} transport requires an "
                 f"Anthropic model, got vendor={vendor!r} from "
                 f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
-                f"CHAT_THINKING_ADVANCED_MODEL/CHAT_FAST_STANDARD_MODEL/"
-                f"CHAT_FAST_ADVANCED_MODEL to an anthropic/* slug, or "
+                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
                 f"enable OpenRouter."
             )
     elif model and not model.startswith("claude-"):
