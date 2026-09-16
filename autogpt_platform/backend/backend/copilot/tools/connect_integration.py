@@ -23,6 +23,7 @@ from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants
 
 
 class ConnectIntegrationTool(BaseTool):
@@ -157,8 +158,7 @@ class ConnectIntegrationTool(BaseTool):
         if session.expert_id is not None:
             message_parts.append(
                 "Note: a credential connected here belongs to the account and "
-                "still needs to be granted to this expert before it can use it; "
-                "the next run will name it if so."
+                "is granted to this expert automatically."
             )
 
         # Route the single-provider entry through the shared serializer
@@ -185,6 +185,10 @@ class ConnectIntegrationTool(BaseTool):
         # generic serializer produces from `field_key`.
         missing_credentials[field_key]["title"] = f"{display_name} Credentials"
         missing_credentials[field_key]["provider_name"] = display_name
+        if user_id:
+            missing_credentials = await annotate_expert_grants(
+                user_id, session.expert_id, missing_credentials
+            )
 
         return SetupRequirementsResponse(
             type=ResponseType.SETUP_REQUIREMENTS,
