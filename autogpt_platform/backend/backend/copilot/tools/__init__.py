@@ -292,7 +292,7 @@ def expert_tool_disabled_groups(
 # a machine-authored PROMPT, not an empty chat: a dream pass and a scheduled
 # brief both carry it and both expect the user to read and reply.  So what is
 # safe to withhold on this seam is what the runtime already withholds, no
-# more.  ``origin_gate_test`` keeps the two in sync.
+# more.  ``tool_schema_test`` asserts the two stay equal.
 INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
     {
         "hire_expert",
