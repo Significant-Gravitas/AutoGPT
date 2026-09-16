@@ -6,36 +6,15 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
-from autogpt_libs.auth.models import RequestContext
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 
 from .routes import router
 
-
-def _test_ctx(user_id: str) -> RequestContext:
-    return RequestContext(
-        user_id=user_id,
-        org_id="test-org",
-        team_id="test-workspace",
-        is_org_owner=True,
-        is_org_admin=True,
-        is_org_billing_manager=False,
-        is_team_admin=True,
-        is_team_billing_manager=False,
-        seat_status="ACTIVE",
-    )
-
-
 app = fastapi.FastAPI()
 app.include_router(router)
-# Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
-# tests below verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 
 client = fastapi.testclient.TestClient(app)
 
