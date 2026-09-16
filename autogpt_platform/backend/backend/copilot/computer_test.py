@@ -311,7 +311,7 @@ class TestOpenDesktop:
     async def test_a_new_desktop_whose_stream_fails_is_paused_not_lost(self):
         """Its id is cached, so the next open resumes it; meanwhile it must
         not sit running on the meter."""
-        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        owner = SandboxOwner(kind="session", id=_SESSION)
         redis = _redis(None)
         desktop = _desktop("sb-new")
         desktop.start_stream = AsyncMock(side_effect=RuntimeError("no novnc"))
