@@ -15,7 +15,11 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
+from .chat_platform import (
+    EditChatPlatformMessageTool,
+    ListChatPlatformChannelsTool,
+    PostToChatPlatformTool,
+)
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
@@ -61,7 +65,12 @@ from .manage_folders import (
     UpdateFolderTool,
 )
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
-from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .manage_schedules import (
+    DeleteScheduleTool,
+    ListSchedulesTool,
+    PauseScheduleTool,
+    ResumeScheduleTool,
+)
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
@@ -73,6 +82,7 @@ from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
+from .start_desktop import StartDesktopTool
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -118,9 +128,12 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Schedule management
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
+    "pause_schedule": PauseScheduleTool(),
+    "resume_schedule": ResumeScheduleTool(),
     "schedule_followup": ScheduleFollowupTool(),
     # Proactive chat-platform output (post message / open thread on user's behalf)
     "post_to_chat_platform": PostToChatPlatformTool(),
+    "edit_chat_platform_message": EditChatPlatformMessageTool(),
     "list_chat_platform_channels": ListChatPlatformChannelsTool(),
     # Trigger management (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
@@ -160,6 +173,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
+    "start_desktop": StartDesktopTool(),
     "connect_integration": ConnectIntegrationTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools

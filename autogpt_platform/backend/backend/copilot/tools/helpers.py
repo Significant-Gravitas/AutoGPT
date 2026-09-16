@@ -50,7 +50,11 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
-from .expert_scope import provider_slug, ungranted_credential_hint
+from .expert_scope import (
+    annotate_expert_grants,
+    provider_slug,
+    ungranted_credential_hint,
+)
 from .models import (
     BlockOutputResponse,
     CredentialRejection,
@@ -898,8 +902,12 @@ async def prepare_block_for_execution(
         dry_run or validate_only
     ):
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
-        missing_creds_dict = build_missing_credentials_from_field_info(
-            credentials_fields_info, set(matched_credentials.keys())
+        missing_creds_dict = await annotate_expert_grants(
+            user_id,
+            session.expert_id,
+            build_missing_credentials_from_field_info(
+                credentials_fields_info, set(matched_credentials.keys())
+            ),
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:

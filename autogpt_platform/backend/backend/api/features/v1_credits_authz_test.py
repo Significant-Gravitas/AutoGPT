@@ -35,13 +35,23 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
+from backend.api.rest_api import app as real_app
 from backend.data.model import AutoTopUpConfig, TransactionHistory
 from backend.data.org_credit import OrgCreditModel
 
+from .billing.credits import routes as credits_routes
+from .billing.subscriptions import routes as subscriptions_routes
 from .v1 import v1_router
 
 app = fastapi.FastAPI()
+# Both halves of /credits now live in their own modules. v1_router stays mounted
+# because this suite's role matrix still reaches routes left behind in it; every
+# further layer that moves a /credits route has to add its router here too, and
+# the durable fix is to give the request-level tests the real app as the two
+# introspection tests already use.
 app.include_router(v1_router)
+app.include_router(credits_routes.router)
+app.include_router(subscriptions_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 ORG_ID = "test-org"
@@ -215,15 +225,25 @@ def credit_stubs(mocker: pytest_mock.MockFixture) -> CreditStubs:
         return_value="https://billing.example.com/portal"
     )
     model.get_refund_requests = AsyncMock(return_value=[])
+    # manage_payment_method moved to the subscriptions module with #14477 and
+    # resolves that module's own get_credit_model — so the suite spans two
+    # modules and both bindings need stubbing.
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_credit_model",
+        return_value=model,
+    )
     return CreditStubs(
         get_credit_model=mocker.patch(
-            "backend.api.features.v1.get_credit_model", return_value=model
+            "backend.api.features.billing.credits.routes.get_credit_model",
+            return_value=model,
         ),
         get_auto_top_up=mocker.patch(
-            "backend.api.features.v1.get_auto_top_up",
+            "backend.api.features.billing.credits.routes.get_auto_top_up",
             return_value=AutoTopUpConfig(amount=500, threshold=100),
         ),
-        set_auto_top_up=mocker.patch("backend.api.features.v1.set_auto_top_up"),
+        set_auto_top_up=mocker.patch(
+            "backend.api.features.billing.credits.routes.set_auto_top_up"
+        ),
         model=model,
     )
 
@@ -330,25 +350,79 @@ def _enforced_org_actions(dependant: Dependant) -> set[OrgAction]:
     return enforced
 
 
+# The eight /api/credits* routes served by modules other than the credits
+# router. T250.2's audit (SECRT-2650) found none of them needs MANAGE_BILLING,
+# so they are asserted by WHAT makes them safe rather than listed by name: a
+# name survives the removal of the thing that justified it, which is the latent
+# defect in UNGATED_CREDITS_ROUTES above.
+ADMIN_CREDITS_ROUTES = {
+    "add_user_credits",
+    "admin_get_all_user_history",
+    "export_copilot_weekly_usage",
+    "export_credit_transactions",
+}
+TRIAL_CREDITS_ROUTES = {
+    "cancel_trial",
+    "confirm_trial",
+    "get_trial_status",
+    "start_trial_checkout",
+}
+
+
+def _dependency_names(dependant: Dependant) -> set[str]:
+    """Every dependency call name in a route's flattened tree."""
+    names: set[str] = set()
+    for sub_dep in dependant.dependencies:
+        call = sub_dep.call
+        if call is not None:
+            names.add(getattr(call, "__name__", type(call).__name__))
+        names |= _dependency_names(sub_dep)
+    return names
+
+
 def test_every_credits_route_is_gated_or_explicitly_exempt():
     """Introspect the mounted app so a *new* ungated /credits route fails.
 
     ``GATED_ROUTES`` above is hand-maintained, so on its own it can only prove
-    that the routes someone remembered to list are gated. This walks the real
-    routing table instead: every ``/credits*`` route must either carry the
-    MANAGE_BILLING dependency or be an explicit, documented exemption.
+    that the routes someone remembered to list are gated. This walks the routing
+    table instead: every ``/credits*`` route must either carry the MANAGE_BILLING
+    dependency or be an explicit, documented exemption.
+
+    It walks ``real_app``, not a locally-mounted router: this layer moves the
+    credits routes out of ``v1_router``, so a ``v1_router``-only mount would see
+    nothing at all here and pass vacuously. (#14475's docstring asked for a
+    ``PENDING_AUDIT`` set of names; T250.2's audit then found none of the eight
+    needs a gate, so they are asserted by what makes them safe instead — see
+    ADMIN_CREDITS_ROUTES and TRIAL_CREDITS_ROUTES above, SECRT-2650.)
+
+    A ninth unexpected ``/api/credits*`` route still fails this, which is the
+    property the widening exists to restore.
     """
     gated: set[str] = set()
     ungated: set[str] = set()
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/credits"):
+    for route in real_app.routes:
+        if not isinstance(route, APIRoute) or not route.path.startswith("/api/credits"):
             continue
         if OrgAction.MANAGE_BILLING in _enforced_org_actions(route.dependant):
             gated.add(route.name)
+        elif route.name in ADMIN_CREDITS_ROUTES:
+            # Safe because an admin JWT role claim gates it, which no org role
+            # reaches — assert that, not the name.
+            assert "requires_admin_user" in _dependency_names(route.dependant), (
+                f"{route.name} is treated as admin-gated but no longer resolves "
+                "requires_admin_user; it now needs MANAGE_BILLING or its own reason"
+            )
+        elif route.name in TRIAL_CREDITS_ROUTES:
+            # Safe because it resolves no org context at all, so there is no
+            # pooled balance for it to read.
+            assert "get_request_context" not in _dependency_names(route.dependant), (
+                f"{route.name} now resolves an org context; it can reach pooled "
+                "credit and needs gating or its own documented reason"
+            )
         else:
             ungated.add(route.name)
 
-    assert gated, "no /credits routes found — did the router or prefix change?"
+    assert gated, "no /api/credits routes found — did the router or prefix change?"
     assert ungated == set(UNGATED_CREDITS_ROUTES), (
         "A /credits route is not behind MANAGE_BILLING. Gate it with "
         "`ctx: BillingManagerContext`, or — if it is genuinely not org-pooled "
@@ -383,7 +457,7 @@ def test_every_org_balance_reader_is_gated_or_explicitly_exempt():
     """
     ungated = {
         route.name
-        for route in app.routes
+        for route in real_app.routes
         if isinstance(route, APIRoute)
         and "get_credit_model" in inspect.getsource(route.endpoint)
         and OrgAction.MANAGE_BILLING not in _enforced_org_actions(route.dependant)
