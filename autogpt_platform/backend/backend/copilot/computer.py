@@ -215,10 +215,7 @@ async def _open_desktop_locked(
                 stream = _owner_bound(await desktop.start_stream(), user_id)
                 mounted = await desktop.is_workspace_mounted()
             except Exception:
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(
-                        desktop.pause(), timeout=_KILL_TIMEOUT_SECONDS
-                    )
+                await _pause_quietly(desktop)
                 raise
             return stream, False, mounted
 
@@ -246,8 +243,20 @@ async def _open_desktop_locked(
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(desktop.kill(), timeout=_KILL_TIMEOUT_SECONDS)
         raise
-    stream = _owner_bound(await desktop.start_stream(), user_id)
+    try:
+        stream = _owner_bound(await desktop.start_stream(), user_id)
+    except Exception:
+        # The id is cached, so the next open resumes this box; pause it now
+        # rather than bill it until the lifecycle timeout.
+        await _pause_quietly(desktop)
+        raise
     return stream, True, persistence.volume_mounted
+
+
+async def _pause_quietly(desktop: DesktopSession) -> None:
+    """Best-effort pause of a box a failed open would otherwise leave running."""
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(desktop.pause(), timeout=_KILL_TIMEOUT_SECONDS)
 
 
 async def _reconnect_desktop(

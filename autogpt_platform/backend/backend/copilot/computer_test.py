@@ -308,6 +308,30 @@ class TestOpenDesktop:
         desktop.kill.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_a_new_desktop_whose_stream_fails_is_paused_not_lost(self):
+        """Its id is cached, so the next open resumes it; meanwhile it must
+        not sit running on the meter."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT)
+        redis = _redis(None)
+        desktop = _desktop("sb-new")
+        desktop.start_stream = AsyncMock(side_effect=RuntimeError("no novnc"))
+        desktop.pause = AsyncMock()
+        desktop.kill = AsyncMock()
+        with (
+            patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_C}.DesktopSession") as desktop_cls,
+            patch(f"{_C}.chat_config") as cfg,
+        ):
+            cfg.e2b_desktop_timeout = 900
+            cfg.e2b_desktop_template = "desktop"
+            desktop_cls.create = AsyncMock(return_value=(desktop, PersistenceInfo()))
+            with pytest.raises(RuntimeError, match="no novnc"):
+                await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.pause.assert_awaited_once()
+        desktop.kill.assert_not_awaited()
+        assert any(c.args[1] == "sb-new" for c in redis.set.await_args_list)
+
+    @pytest.mark.asyncio
     async def test_gives_up_when_the_lock_never_frees(self):
         owner = SandboxOwner(kind="expert", id=_EXPERT)
         redis = _redis(None, lock_free=False)
