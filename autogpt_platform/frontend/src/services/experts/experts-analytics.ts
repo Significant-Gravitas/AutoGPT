@@ -35,6 +35,7 @@ export function trackFunnel(
   event: FunnelEvent,
   properties?: Record<string, unknown>,
 ) {
+  // Separate boundaries: a breadcrumb failure must not cost the capture.
   try {
     Sentry.addBreadcrumb({
       category: "funnel",
@@ -42,6 +43,11 @@ export function trackFunnel(
       data: properties ?? {},
       level: "info",
     });
+  } catch {
+    // Analytics is never worth a broken interaction.
+  }
+
+  try {
     posthog.capture(event, properties);
   } catch {
     // Analytics is never worth a broken interaction.

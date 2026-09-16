@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import MagicMock, patch
 
 from backend.util import funnel_analytics
@@ -13,6 +14,7 @@ def test_captures_to_posthog_with_the_user_as_distinct_id():
         event="hire_completed",
         distinct_id="user-1",
         properties={"template_id": "tpl-1"},
+        uuid=None,
     )
 
 
@@ -82,6 +84,55 @@ def test_a_disabled_posthog_still_leaves_a_breadcrumb():
         emit_funnel_event("user-1", "expert_fired", {"expert_id": "e-1"})
 
     crumb.assert_called_once()
+
+
+def test_a_throwing_breadcrumb_still_lets_the_capture_through():
+    """The two sinks are independent: losing Sentry must not lose PostHog."""
+    client = MagicMock()
+    with (
+        patch.object(funnel_analytics, "get_posthog_client", return_value=client),
+        patch.object(
+            funnel_analytics.sentry_sdk,
+            "add_breadcrumb",
+            side_effect=RuntimeError("sentry unavailable"),
+        ),
+    ):
+        emit_funnel_event("user-1", "hire_completed", {"template_id": "tpl-1"})
+
+    client.capture.assert_called_once()
+
+
+def test_a_data_index_also_becomes_a_deterministic_event_uuid():
+    """PostHog's ingestion keys on the event uuid, which the client otherwise
+    randomises per call, so a retry needs the same one."""
+    client = MagicMock()
+    with patch.object(funnel_analytics, "get_posthog_client", return_value=client):
+        emit_funnel_event("user-1", "briefing_delivered", {}, "briefing_delivered:b-1")
+        first = client.capture.call_args.kwargs["uuid"]
+        emit_funnel_event("user-1", "briefing_delivered", {}, "briefing_delivered:b-1")
+        second = client.capture.call_args.kwargs["uuid"]
+
+    assert first and first == second
+    assert uuid.UUID(first).version == 5
+
+
+def test_a_different_event_identity_gets_a_different_uuid():
+    client = MagicMock()
+    with patch.object(funnel_analytics, "get_posthog_client", return_value=client):
+        emit_funnel_event("user-1", "briefing_delivered", {}, "briefing_delivered:b-1")
+        a = client.capture.call_args.kwargs["uuid"]
+        emit_funnel_event("user-2", "briefing_delivered", {}, "briefing_delivered:b-1")
+        b = client.capture.call_args.kwargs["uuid"]
+
+    assert a != b
+
+
+def test_no_data_index_leaves_the_uuid_to_the_client():
+    client = MagicMock()
+    with patch.object(funnel_analytics, "get_posthog_client", return_value=client):
+        emit_funnel_event("user-1", "expert_fired", {"expert_id": "e-1"})
+
+    assert client.capture.call_args.kwargs["uuid"] is None
 
 
 def test_a_failing_capture_never_raises_into_the_caller():

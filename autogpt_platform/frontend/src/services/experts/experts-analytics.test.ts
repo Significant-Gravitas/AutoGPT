@@ -52,11 +52,16 @@ describe("trackFunnel", () => {
     expect(addBreadcrumb).toHaveBeenCalledOnce();
   });
 
-  it("swallows a throwing analytics host", () => {
+  it("still captures when the breadcrumb throws", () => {
+    // The two sinks are independent: losing Sentry must not lose PostHog.
     addBreadcrumb.mockImplementation(() => {
       throw new Error("sentry unavailable");
     });
 
     expect(() => trackFunnel("briefing_opened")).not.toThrow();
+    expect(capture).toHaveBeenCalledExactlyOnceWith(
+      "briefing_opened",
+      undefined,
+    );
   });
 });

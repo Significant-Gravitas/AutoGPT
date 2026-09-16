@@ -8,6 +8,7 @@ through the DB manager.
 
 import logging
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 import sentry_sdk
 
@@ -28,18 +29,31 @@ def emit_funnel_event(
     the network either.
 
     ``data_index`` is an idempotency key for a redelivery or requeue that can
-    emit the same event twice.
+    emit the same event twice; it is carried both as ``$insert_id`` and as a
+    deterministic event uuid.
     """
+    # Separate boundaries: a breadcrumb failure must not cost the capture.
     try:
         sentry_sdk.add_breadcrumb(
             category="funnel", message=event, data=dict(data), level="info"
         )
+    except Exception:
+        logger.exception(f"Failed to breadcrumb funnel event {event}")
+
+    try:
         client = get_posthog_client()
         if client is None:
             return
         properties: dict[str, Any] = {**data}
+        event_uuid = None
         if data_index is not None:
+            # Both, because the two are read at different layers: PostHog's
+            # ingestion keys on the event uuid, which the client otherwise
+            # randomises per call, and $insert_id is what its docs name.
             properties["$insert_id"] = data_index
-        client.capture(event=event, distinct_id=user_id, properties=properties)
+            event_uuid = str(uuid5(NAMESPACE_URL, f"{user_id}:{event}:{data_index}"))
+        client.capture(
+            event=event, distinct_id=user_id, properties=properties, uuid=event_uuid
+        )
     except Exception:
         logger.exception(f"Failed to emit funnel event {event} for user {user_id}")
