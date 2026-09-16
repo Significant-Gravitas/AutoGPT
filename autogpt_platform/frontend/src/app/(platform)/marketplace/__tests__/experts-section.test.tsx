@@ -29,10 +29,6 @@ beforeEach(() => {
   capture.mockReset();
 });
 
-function funnelEventNames() {
-  return capture.mock.calls.map(([event]) => event as string);
-}
-
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 

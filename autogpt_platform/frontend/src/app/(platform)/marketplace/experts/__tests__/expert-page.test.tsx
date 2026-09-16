@@ -35,10 +35,6 @@ beforeEach(() => {
   capture.mockReset();
 });
 
-function funnelEventNames() {
-  return capture.mock.calls.map(([event]) => event as string);
-}
-
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockRouterPush = vi.hoisted(() => vi.fn());
 const mockParams = vi.hoisted(() => ({ expertId: "template-maria" }));
