@@ -12,9 +12,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult_budget
 from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 from backend.copilot.tools.find_session import MAX_RESULTS, FindSessionTool
 from backend.copilot.tools.message_session import MessageSessionTool
 from backend.copilot.tools.models import (
@@ -50,6 +52,9 @@ def _info(
     expert_id: str | None = None,
     purpose: str | None = None,
     status: str = "idle",
+    builder_graph_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
 ) -> ChatSessionInfo:
     return ChatSessionInfo(
         session_id=session_id,
@@ -57,7 +62,12 @@ def _info(
         usage=[],
         started_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
-        metadata=ChatSessionMetadata(purpose=purpose),
+        metadata=ChatSessionMetadata(
+            purpose=purpose,
+            builder_graph_id=builder_graph_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+        ),
         chat_status=status,
         expert_id=expert_id,
     )
@@ -175,6 +185,9 @@ class TestMessageSessionDelivery:
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="idle"),
+                ), patch(
                     f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
                 ) as enqueue:
                     result = await MessageSessionTool()._execute(
@@ -221,6 +234,9 @@ class TestMessageSessionDelivery:
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="idle"),
+                ), patch(
                     f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
                 ) as enqueue:
                     await MessageSessionTool()._execute(
@@ -231,6 +247,115 @@ class TestMessageSessionDelivery:
                     )
         meta = enqueue.await_args.kwargs["message_metadata"]
         assert meta["from_session_id"] == CALLER_SESSION
+
+
+class TestWakeCarriesTheTargetsOwnExecutionContext:
+    """A woken turn is the TARGET's own turn, so it must run under the
+    target's permissions, provider and credential.
+
+    Forwarding none of them dispatches unrestricted, which lifts a builder
+    session's tool blocks and re-routes a credential-bound session onto the
+    platform default — a widening on a path this tool introduces.
+    """
+
+    @staticmethod
+    async def _wake_kwargs(target: ChatSessionInfo) -> dict:
+        queued = QueuePendingMessageResponse(
+            buffer_length=0, max_buffer_length=10, turn_in_flight=False
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=target)
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ):
+                with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="idle"),
+                ):
+                    with patch(
+                        f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+                    ) as enqueue:
+                        await MessageSessionTool()._execute(
+                            OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                        )
+        return enqueue.await_args.kwargs
+
+    async def test_builder_bound_target_keeps_its_blocked_tools(self) -> None:
+        kwargs = await self._wake_kwargs(
+            _info(TARGET_SESSION, builder_graph_id="graph-1")
+        )
+        perms = kwargs["permissions"]
+        assert perms is not None, "a builder session woken unrestricted is a widening"
+        assert perms["tools_exclude"] is True
+        assert sorted(perms["tools"]) == sorted(BUILDER_BLOCKED_TOOLS)
+
+    async def test_unbound_target_stays_unrestricted(self) -> None:
+        kwargs = await self._wake_kwargs(_info(TARGET_SESSION))
+        assert kwargs["permissions"] is None
+
+    async def test_target_keeps_its_own_llm_credential(self) -> None:
+        kwargs = await self._wake_kwargs(
+            _info(
+                TARGET_SESSION,
+                llm_auth_provider="codex",
+                llm_credential_id="cred-9",
+            )
+        )
+        assert kwargs["llm_auth_provider"] == "codex"
+        assert kwargs["llm_credential_id"] == "cred-9"
+
+
+class TestQueuedTargetRidesItsOwnTurn:
+    """A queued target must not be woken again.
+
+    ``enqueue_turn`` would append a newer user row, and the dispatcher replays
+    a queued turn from the LATEST one — so the user's own submit-time payload
+    would be replaced by this message's.
+    """
+
+    async def test_queued_target_is_not_enqueued_again(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=0, max_buffer_length=10, turn_in_flight=False
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="queued"),
+                ):
+                    with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
+                        result = await MessageSessionTool()._execute(
+                            OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                        )
+        assert isinstance(result, SessionMessageResponse)
+        assert result.delivery == "queued"
+        enqueue.assert_not_awaited()
+        # The second push is unconditional: the waiting turn drains it.
+        assert deliver.await_count == 2
+
+
+class TestDryRun:
+    async def test_dry_run_sends_nothing(self) -> None:
+        dry = _session()
+        dry.metadata.dry_run = True
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION)),
+        ):
+            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+                with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
+                    result = await MessageSessionTool()._execute(
+                        OWNER, dry, session_id=TARGET_SESSION, message="hi"
+                    )
+        assert isinstance(result, SessionMessageResponse)
+        deliver.assert_not_awaited()
+        enqueue.assert_not_awaited()
 
 
 class TestTaintPropagation:

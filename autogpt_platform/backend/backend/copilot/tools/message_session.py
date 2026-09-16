@@ -14,8 +14,9 @@ sit unread, so we wake the session with a real turn instead — see the design
 note; the cost is one turn, and ``delivery`` says which happened.
 
 The sender's session id rides on the message so the receiver can answer with
-``message_session`` without a lookup, and taint propagates with it: a tainted
-session messaging an untainted one is how taint would otherwise be laundered.
+``message_session`` without a lookup, and the sender's taint rides with it, so
+the receiving turn treats the content as data rather than instructions. That
+is a marker on the message, not an enforcement boundary.
 """
 
 import logging
@@ -23,10 +24,11 @@ from typing import Any
 
 from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.context import get_current_envelope, take_session_message_slot
-from backend.copilot.db import get_chat_session_metadata
+from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
 from backend.copilot.expert_context import escape_prompt_xml_tags
-from backend.copilot.model import ChatSession
+from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
 from backend.copilot.pending_message_helpers import queue_user_message
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
 from .base import BaseTool
@@ -138,7 +140,20 @@ class MessageSessionTool(BaseTool):
                 target_session_id=target_id,
             )
 
-        return await self._wake(user_id, session, target_id, payload)
+        # A queued target already has a turn coming, and that turn drains the
+        # pending buffer. Enqueueing a second one instead would append a newer
+        # user row, and the dispatcher replays the queued turn from the LATEST
+        # such row — so the user's own submit-time payload (their attachments,
+        # page context and model choice) would be replaced by this message's.
+        if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
+            await queue_user_message(session_id=target.session_id, message=payload)
+            return SessionMessageResponse(
+                message=f"Queued for session {target.session_id}'s next turn.",
+                delivery="queued",
+                target_session_id=target.session_id,
+            )
+
+        return await self._wake(user_id, session, target, payload)
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -147,10 +162,19 @@ class MessageSessionTool(BaseTool):
         self,
         user_id: str,
         session: ChatSession,
-        target_id: str,
+        target: ChatSessionInfo,
         payload: str,
     ) -> ToolResponseBase:
-        """Start a turn on an idle session so the message is actually read."""
+        """Start a turn on an idle session so the message is actually read.
+
+        The turn runs as the TARGET's own, so it carries the target's
+        permissions, provider and credential — mirroring what the chat route
+        forwards. Passing none of them would dispatch unrestricted, lifting a
+        builder session's tool blocks and re-routing a session bound to the
+        user's own LLM credential onto the platform default.
+        """
+        target_id = target.session_id
+        permissions = resolve_session_permissions(target)
         try:
             await try_enqueue_turn(
                 user_id=user_id,
@@ -158,6 +182,11 @@ class MessageSessionTool(BaseTool):
                 session_id=target_id,
                 message=payload,
                 message_metadata={"from_session_id": session.session_id},
+                llm_auth_provider=target.metadata.llm_auth_provider,
+                llm_credential_id=target.metadata.llm_credential_id,
+                permissions=(
+                    permissions.model_dump(exclude_none=True) if permissions else None
+                ),
             )
         except InflightCapExceeded:
             return self._error(

@@ -737,12 +737,13 @@ class SessionMessageResponse(ToolResponseBase):
     """What ``message_session`` did with the message.
 
     ``delivery`` is the half the model must read: "injected" reached a turn
-    already running and costs nothing extra, "woke" started a turn and costs
-    one. There is no reply here — an answer arrives as its own message.
+    already running and costs nothing extra, "queued" rode a turn already
+    waiting, "woke" started one and costs a turn. There is no reply here —
+    an answer arrives as its own message.
     """
 
     type: ResponseType = ResponseType.SESSION_MESSAGE
-    delivery: Literal["injected", "woke"]
+    delivery: Literal["injected", "queued", "woke"]
     target_session_id: str
 
 

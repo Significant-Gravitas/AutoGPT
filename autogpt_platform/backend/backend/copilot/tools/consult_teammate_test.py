@@ -131,6 +131,20 @@ class TestExecute:
         assert isinstance(result, ErrorResponse)
         assert "someone else" in result.message
 
+    async def test_a_name_resolving_back_to_the_caller_is_refused(self):
+        """The id check cannot catch this: a name reference resolves to an
+        expert, and that expert can be the caller."""
+        completion = AsyncMock()
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert(id="drafter-1")),
+        ), patch(
+            "backend.copilot.tools.consult_teammate.structured_completion", completion
+        ):
+            result = await self._run(expert_id="Their Own Name")
+        assert isinstance(result, ErrorResponse)
+        completion.assert_not_awaited()
+
     async def test_provider_failure_is_insufficient_never_pass(self):
         """A check that did not happen must not read as one that passed."""
         with patch(
