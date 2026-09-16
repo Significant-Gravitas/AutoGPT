@@ -155,6 +155,43 @@ const RESUME_REPLAY_CHUNKS: UIMessageChunk[] = [
   { type: "text-end", id: "replay-2" },
 ];
 
+/** Typed mid-turn and drained into the running turn at a tool boundary, so
+ *  the backend persisted it as its own user row inside the turn. */
+const MIDTURN_FOLLOWUP = "And book the two o clock";
+
+/**
+ * The same reload, but the user typed while the turn was running: the drained
+ * follow-up is persisted between the turn's two assistant halves.
+ */
+const DRAINED_MIDTURN_MESSAGES = [
+  sessionMessage(1, "user", EARLIER_PROMPT),
+  sessionMessage(2, "assistant", EARLIER_ANSWER),
+  sessionMessage(3, "user", RESUMED_PROMPT),
+  sessionMessage(4, "assistant", PERSISTED_HALF),
+  sessionMessage(5, "user", MIDTURN_FOLLOWUP),
+];
+
+/** The same replay, plus the drain hint the backend re-emits from the turn's
+ *  Redis stream — the transcript renders the follow-up bubble from it. */
+const RESUME_REPLAY_WITH_DRAIN: UIMessageChunk[] = [
+  { type: "start", messageId: "resumed-turn-2" },
+  { type: "start-step" },
+  { type: "text-start", id: "replay-1" },
+  { type: "text-delta", id: "replay-1", delta: PERSISTED_HALF },
+  { type: "text-end", id: "replay-1" },
+  {
+    type: "data-pending-drained",
+    id: "hint-1",
+    data: {
+      drainedCount: 1,
+      messages: [{ id: "pm-1", content: MIDTURN_FOLLOWUP }],
+    },
+  },
+  { type: "text-start", id: "replay-2" },
+  { type: "text-delta", id: "replay-2", delta: REPLAYED_HALF },
+  { type: "text-end", id: "replay-2" },
+];
+
 /**
  * A turn the backend started on its own (the engine-switch continuation
  * dispatched with ``is_user_message=False``): the completed answer is
@@ -171,6 +208,7 @@ const BACKEND_STARTED_TURN_MESSAGES = [
 function renderResumedSession(
   messages: SessionDetailResponseMessagesItem[] = HYDRATED_SESSION_MESSAGES,
   activeStreamStartedAt = "2026-05-13T00:04:00Z",
+  replayChunks: UIMessageChunk[] = RESUME_REPLAY_CHUNKS,
 ) {
   let resumeRequests = 0;
   server.use(
@@ -178,7 +216,7 @@ function renderResumedSession(
       `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
       () => {
         resumeRequests += 1;
-        return parkedSseResponse(RESUME_REPLAY_CHUNKS);
+        return parkedSseResponse(replayChunks);
       },
     ),
   );
@@ -248,6 +286,42 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
       expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
       expect(screen.getAllByText(EARLIER_ANSWER)).toHaveLength(1);
+    },
+  );
+
+  it(
+    "replays the whole turn around a drained mid-turn follow-up",
+    { timeout: 20000 },
+    async () => {
+      renderResumedSession(
+        DRAINED_MIDTURN_MESSAGES,
+        "2026-05-13T00:04:00Z",
+        RESUME_REPLAY_WITH_DRAIN,
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+
+      // Everything from the running turn now comes from the replay: the work
+      // before the drain, the follow-up bubble the hint carries, then the
+      // work after it. The hydrated `-seq-4` / `-seq-5` rows sit INSIDE that
+      // turn, so leaving them (the cut used to stop at the mid-turn user row)
+      // keeps the pre-drain half and the follow-up on screen twice.
+      expect(
+        Array.from(document.querySelectorAll("[data-message-id]")).map((el) =>
+          el.getAttribute("data-message-id"),
+        ),
+      ).toEqual([
+        `${TEST_SESSION_ID}-seq-1`,
+        `${TEST_SESSION_ID}-seq-2`,
+        `${TEST_SESSION_ID}-seq-3`,
+        "resumed-turn-2#seg0",
+        "midturn-pm-1",
+        "resumed-turn-2",
+      ]);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+      expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
     },
   );
 
