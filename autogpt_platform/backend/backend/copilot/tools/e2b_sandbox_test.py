@@ -12,15 +12,34 @@ session-scoped event loop in conftest.py.
 """
 
 import asyncio
+import contextlib
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b import SandboxState
+
+from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop._common import (
+    expert_volume_name,
+    user_volume_name,
+    workspace_volume_mounts,
+)
+from backend.util.sandbox_metadata import deployment_env
 
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
+    SandboxLookupError,
+    SandboxNotOwnedError,
+    SandboxOwner,
     _try_reconnect,
+    connect_owned,
+    count_expert_turn,
+    find_owned_sandbox_id,
     get_or_create_sandbox,
+    kill_expert_sandboxes,
     kill_sandbox,
     pause_sandbox,
     pause_sandbox_direct,
@@ -32,13 +51,59 @@ _SANDBOX_ID = "sb-abc"
 _TIMEOUT = 300
 
 
-def _mock_sandbox(sandbox_id: str = _SANDBOX_ID, running: bool = True) -> MagicMock:
+def _mock_sandbox(
+    sandbox_id: str = _SANDBOX_ID,
+    running: bool = True,
+    *,
+    owner: SandboxOwner | None = None,
+    kind: str = "shell",
+) -> MagicMock:
+    """A connected box stamped as *owner*'s (the session's shell box by default).
+
+    ``connect_owned`` reads the stamp back through ``get_info``; a box with
+    the wrong stamp is refused, so every test that reconnects says whose box
+    it is.
+    """
     sb = MagicMock()
     sb.sandbox_id = sandbox_id
     sb.is_running = AsyncMock(return_value=running)
     sb.pause = AsyncMock()
     sb.kill = AsyncMock()
+    stamped = (owner or SandboxOwner(kind="session", id=_SESSION_ID)).metadata(
+        kind  # type: ignore[arg-type]
+    )
+    sb.get_info = AsyncMock(return_value=MagicMock(metadata=stamped))
+    _STAMPS[sandbox_id] = sb.get_info.return_value
     return sb
+
+
+# sandbox_id -> the info the SDK reports for it, filled by ``_mock_sandbox``.
+_STAMPS: dict[str, MagicMock] = {}
+_SESSION_SHELL_STAMP = SandboxOwner(kind="session", id=_SESSION_ID).metadata("shell")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_stamps():
+    _STAMPS.clear()
+    yield
+
+
+@contextlib.contextmanager
+def _patch_sdk():
+    """The E2B SDK, with ``get_info`` answering for the boxes a test built.
+
+    ``connect_owned`` reads a box's stamp through the *static* ``get_info``
+    before it connects, so the class mock has to know the stamp too: a box
+    from ``_mock_sandbox`` answers with its own, and an id no test built is
+    taken to be the session's shell box, which is what most tests reconnect.
+    """
+    with patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls:
+
+        async def _get_info(sandbox_id: str, **_):
+            return _STAMPS.get(sandbox_id) or MagicMock(metadata=_SESSION_SHELL_STAMP)
+
+        mock_cls.get_info = AsyncMock(side_effect=_get_info)
+        yield mock_cls
 
 
 def _mock_redis(
@@ -55,7 +120,9 @@ def _mock_redis(
     """
     r = AsyncMock()
     raw = stored_sandbox_id.encode() if stored_sandbox_id else None
-    r.get = AsyncMock(return_value=raw)
+    shell_key = f"copilot:e2b:sandbox:{_SESSION_ID}"
+    # Only the session's shell key holds the id; its desktop key is empty.
+    r.get = AsyncMock(side_effect=lambda key: raw if key == shell_key else None)
     r.set = AsyncMock(return_value=set_nx_result)
     r.delete = AsyncMock()
     return r
@@ -75,12 +142,29 @@ def _patch_redis(redis: AsyncMock):
 
 
 class TestTryReconnect:
+    def test_reconnect_refuses_a_box_stamped_for_someone_else(self):
+        """A cached id that resolves to another owner's box is dropped, not used."""
+        sb = _mock_sandbox(owner=SandboxOwner(kind="session", id="other-session"))
+        redis = _mock_redis()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(_try_reconnect(_SANDBOX_ID, _SESSION_ID, _API_KEY))
+
+        assert result is None
+        # Connecting would resume the other owner's box; it is never touched.
+        mock_cls.connect.assert_not_awaited()
+        sb.kill.assert_not_awaited()
+        redis.delete.assert_awaited_once()
+
     def test_reconnect_success(self):
         """Returns the sandbox when it connects and is running; refreshes Redis TTL."""
         sb = _mock_sandbox()
         redis = _mock_redis()
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -96,7 +180,7 @@ class TestTryReconnect:
         sb = _mock_sandbox(running=False)
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -109,7 +193,7 @@ class TestTryReconnect:
         """Clears sandbox_id in Redis when connect raises an exception."""
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
@@ -130,7 +214,7 @@ class TestGetOrCreateSandbox:
         sb = _mock_sandbox()
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -148,7 +232,7 @@ class TestGetOrCreateSandbox:
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
@@ -188,7 +272,7 @@ class TestGetOrCreateSandbox:
         redis.set = AsyncMock(side_effect=fake_set)
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.ensure_template",
                 side_effect=fake_ensure,
@@ -211,7 +295,7 @@ class TestGetOrCreateSandbox:
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
@@ -231,7 +315,7 @@ class TestGetOrCreateSandbox:
         """If sandbox creation fails, the Redis creation slot is deleted."""
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.create = AsyncMock(side_effect=RuntimeError("quota"))
@@ -265,7 +349,7 @@ class TestGetOrCreateSandbox:
         redis.set = AsyncMock(side_effect=_set_side_effect)
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
@@ -290,7 +374,7 @@ class TestGetOrCreateSandbox:
         redis.delete = AsyncMock()
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
@@ -319,7 +403,7 @@ class TestGetOrCreateSandbox:
             return new_sb
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
@@ -339,7 +423,7 @@ class TestGetOrCreateSandbox:
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
@@ -371,7 +455,7 @@ class TestGetOrCreateSandbox:
             return new_sb
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
@@ -394,7 +478,7 @@ class TestGetOrCreateSandbox:
             raise asyncio.CancelledError
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
@@ -419,7 +503,7 @@ class TestGetOrCreateSandbox:
             raise asyncio.CancelledError
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox._set_stored_sandbox_id",
                 side_effect=_set_side_effect,
@@ -451,7 +535,7 @@ class TestGetOrCreateSandbox:
         redis.delete = AsyncMock()
 
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=stale_sb)
@@ -476,7 +560,7 @@ class TestKillSandbox:
         sb = _mock_sandbox()
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -486,6 +570,20 @@ class TestKillSandbox:
         sb.kill.assert_awaited_once()
         # Redis key cleared after successful kill
         redis.delete.assert_awaited_once()
+
+    def test_kill_refuses_a_foreign_box_and_forgets_it(self):
+        """A cached id stamped for someone else is dropped so the next
+        pause or kill does not fail the same way; the box is never touched."""
+        foreign = _mock_sandbox(owner=SandboxOwner(kind="session", id="other"))
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.connect = AsyncMock(return_value=foreign)
+            result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+
+        assert result is False
+        mock_cls.connect.assert_not_awaited()
+        foreign.kill.assert_not_awaited()
+        redis.delete.assert_awaited_once_with(f"copilot:e2b:sandbox:{_SESSION_ID}")
 
     def test_kill_no_sandbox(self):
         """No-op when Redis has no sandbox_id."""
@@ -502,7 +600,7 @@ class TestKillSandbox:
         """
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
@@ -547,7 +645,7 @@ class TestPauseSandbox:
         sb = _mock_sandbox()
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -570,7 +668,7 @@ class TestPauseSandbox:
         """Returns False if connect fails."""
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
@@ -613,7 +711,7 @@ class TestPauseSandbox:
         sb = _mock_sandbox(_SANDBOX_ID)
         redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_sdk() as mock_cls,
             _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
@@ -665,3 +763,651 @@ class TestPauseSandboxDirect:
             result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Expert boxes: one persistent sandbox per hired expert
+# ---------------------------------------------------------------------------
+
+_EXPERT_ID = "exp-777"
+_USER_ID = "user-42"
+_EXPERT_SHELL_KEY = f"copilot:e2b:expert:{_EXPERT_ID}:shell"
+_EXPERT_DESKTOP_KEY = f"copilot:e2b:expert:{_EXPERT_ID}:desktop"
+_EXPERT_ACTIVE_KEY = f"{_EXPERT_SHELL_KEY}:active"
+
+
+def _info(
+    sandbox_id: str, state: SandboxState, age_seconds: int = 0
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        sandbox_id=sandbox_id,
+        state=state,
+        started_at=datetime.now(timezone.utc) - timedelta(seconds=age_seconds),
+    )
+
+
+def _mock_list(infos: list) -> MagicMock:
+    """``AsyncSandbox.list`` is sync and returns an async paginator."""
+    paginator = MagicMock()
+    paginator.next_items = AsyncMock(return_value=infos)
+    return MagicMock(return_value=paginator)
+
+
+def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMock:
+    """Redis mock answering ``get`` per key (bytes, like the real client)."""
+    r = AsyncMock()
+    r.get = AsyncMock(side_effect=lambda key: (values.get(key) or "").encode() or None)
+    r.set = AsyncMock(return_value=True)
+    r.delete = AsyncMock()
+    # Two scripts: ``_acquire_turn`` (INCR + EXPIRE) and ``_release_turn``
+    # (DECR, and DEL when nothing is left).
+    r.eval = AsyncMock(
+        side_effect=lambda script, *_: 1 if "incr" in script else max(decr_result, 0)
+    )
+    return r
+
+
+def _turn_acquires(redis: AsyncMock) -> list[str]:
+    """Keys the acquire script ran against, in order."""
+    return [
+        call.args[2] for call in redis.eval.await_args_list if "incr" in call.args[0]
+    ]
+
+
+class TestConnectOwned:
+    def test_checks_the_stamp_then_connects(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        sb = _mock_sandbox("sb-expert", owner=owner, kind="desktop")
+        with _patch_sdk() as mock_cls:
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(connect_owned("sb-expert", owner, "desktop", _API_KEY))
+        assert result is sb
+        mock_cls.get_info.assert_awaited_once_with("sb-expert", api_key=_API_KEY)
+        mock_cls.connect.assert_awaited_once_with(
+            "sb-expert", api_key=_API_KEY, timeout=None
+        )
+
+    def test_timeout_reaches_the_connect(self):
+        """A resumed desktop gets its own running-time limit, not the SDK's."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        sb = _mock_sandbox("sb-expert", owner=owner, kind="desktop")
+        with _patch_sdk() as mock_cls:
+            mock_cls.connect = AsyncMock(return_value=sb)
+            asyncio.run(
+                connect_owned("sb-expert", owner, "desktop", _API_KEY, timeout=900)
+            )
+        mock_cls.connect.assert_awaited_once_with(
+            "sb-expert", api_key=_API_KEY, timeout=900
+        )
+
+    @pytest.mark.parametrize(
+        "stamp",
+        [
+            {"autogpt_owner": "expert:someone-else", "autogpt_kind": "shell"},
+            {"autogpt_owner": f"expert:{_EXPERT_ID}", "autogpt_kind": "desktop"},
+            {},
+        ],
+        ids=["another owner", "wrong kind", "unstamped"],
+    )
+    def test_refuses_a_box_that_is_not_the_owners_without_waking_it(self, stamp):
+        """Any id connects under the platform key; the stamp is the only record.
+
+        A connect resumes a paused box and extends its life, so the refusal
+        has to come from the stamp alone, before any connect.
+        """
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        with _patch_sdk() as mock_cls:
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            mock_cls.connect = AsyncMock()
+            with pytest.raises(SandboxNotOwnedError):
+                asyncio.run(connect_owned("sb-x", owner, "shell", _API_KEY))
+        mock_cls.connect.assert_not_awaited()
+
+
+class TestSandboxOwner:
+    def test_expert_session_is_owned_by_the_expert(self):
+        owner = SandboxOwner.for_session(_SESSION_ID, _EXPERT_ID)
+        assert owner == SandboxOwner(kind="expert", id=_EXPERT_ID)
+        assert owner.is_expert
+        assert owner.key() == _EXPERT_SHELL_KEY
+        assert owner.key("desktop") == _EXPERT_DESKTOP_KEY
+
+    def test_plain_session_keys_are_unchanged(self):
+        owner = SandboxOwner.for_session(_SESSION_ID, None)
+        assert not owner.is_expert
+        assert owner.key() == f"copilot:e2b:sandbox:{_SESSION_ID}"
+        assert owner.key("desktop") == f"copilot:e2b:desktop:{_SESSION_ID}"
+
+    def test_expert_cache_outlives_session_cache(self):
+        assert (
+            SandboxOwner(kind="expert", id=_EXPERT_ID).ttl
+            > SandboxOwner(kind="session", id=_SESSION_ID).ttl
+        )
+
+    def test_metadata_identifies_owner_and_kind(self):
+        assert SandboxOwner(kind="expert", id=_EXPERT_ID).metadata("desktop") == {
+            "autogpt_owner": f"expert:{_EXPERT_ID}",
+            "autogpt_kind": "desktop",
+        }
+
+
+class TestFindOwnedSandboxId:
+    def test_session_owner_never_hits_the_api(self):
+        with _patch_sdk() as mock_cls:
+            result = asyncio.run(
+                find_owned_sandbox_id(
+                    SandboxOwner(kind="session", id=_SESSION_ID), "shell", _API_KEY
+                )
+            )
+        assert result is None
+        mock_cls.list.assert_not_called()
+
+    def test_prefers_running_box_over_newer_paused_one(self):
+        infos = [
+            _info("sb-paused-new", SandboxState.PAUSED, age_seconds=10),
+            _info("sb-running-old", SandboxState.RUNNING, age_seconds=500),
+        ]
+        with _patch_sdk() as mock_cls:
+            mock_cls.list = _mock_list(infos)
+            result = asyncio.run(
+                find_owned_sandbox_id(
+                    SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
+                )
+            )
+        assert result == "sb-running-old"
+        query = mock_cls.list.call_args.kwargs["query"]
+        assert query.metadata == {
+            "autogpt_owner": f"expert:{_EXPERT_ID}",
+            "autogpt_kind": "shell",
+        }
+        assert set(query.state) == {SandboxState.RUNNING, SandboxState.PAUSED}
+
+    def test_newest_paused_box_when_none_running(self):
+        infos = [
+            _info("sb-old", SandboxState.PAUSED, age_seconds=900),
+            _info("sb-new", SandboxState.PAUSED, age_seconds=5),
+        ]
+        with _patch_sdk() as mock_cls:
+            mock_cls.list = _mock_list(infos)
+            result = asyncio.run(
+                find_owned_sandbox_id(
+                    SandboxOwner(kind="expert", id=_EXPERT_ID), "desktop", _API_KEY
+                )
+            )
+        assert result == "sb-new"
+
+    def test_api_failure_is_an_error_not_a_miss(self):
+        """ "Unknown" must never be read as "none": the caller would create a
+        second box and fork the expert's durable state."""
+        with _patch_sdk() as mock_cls:
+            mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
+            with pytest.raises(SandboxLookupError, match="e2b down"):
+                asyncio.run(
+                    find_owned_sandbox_id(
+                        SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
+                    )
+                )
+
+
+class TestExpertShellBox:
+    def test_recovers_expert_box_from_e2b_when_redis_is_empty(self):
+        """Redis is only a cache for an expert's box; E2B metadata is the record."""
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
+        redis = _keyed_redis({})
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([_info("sb-expert", SandboxState.PAUSED)])
+            mock_cls.connect = AsyncMock(return_value=sb)
+            mock_cls.create = AsyncMock()
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                )
+            )
+
+        assert result is sb
+        mock_cls.connect.assert_awaited_once_with(
+            "sb-expert", api_key=_API_KEY, timeout=None
+        )
+        mock_cls.create.assert_not_awaited()
+        # Re-cached under the expert key, never the session key.
+        keys = {call.args[0] for call in redis.set.await_args_list}
+        assert _EXPERT_SHELL_KEY in keys
+        assert f"copilot:e2b:sandbox:{_SESSION_ID}" not in keys
+        # This turn is counted so a concurrent turn's end cannot pause the box.
+        assert _turn_acquires(redis) == [_EXPERT_ACTIVE_KEY]
+
+    def test_lookup_failure_never_creates_a_second_expert_box(self):
+        redis = _keyed_redis({})
+        with (
+            _patch_sdk() as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.ensure_template", AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
+            mock_cls.create = AsyncMock()
+            with pytest.raises(SandboxLookupError):
+                asyncio.run(
+                    get_or_create_sandbox(
+                        _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                    )
+                )
+        mock_cls.create.assert_not_awaited()
+
+    def test_listed_expert_box_gets_a_second_reconnect_before_being_forked(self):
+        """One transient connect failure must not leave the durable box behind."""
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
+        redis = _keyed_redis({})
+        with (
+            _patch_sdk() as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([_info("sb-expert", SandboxState.PAUSED)])
+            mock_cls.connect = AsyncMock(side_effect=[RuntimeError("502"), sb])
+            mock_cls.create = AsyncMock()
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                )
+            )
+        assert result is sb
+        assert mock_cls.connect.await_count == 2
+        mock_cls.create.assert_not_awaited()
+
+    def test_count_turn_false_defers_the_turn_count(self):
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    expert_id=_EXPERT_ID,
+                    count_turn=False,
+                )
+            )
+            assert _turn_acquires(redis) == []
+            asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
+        assert _turn_acquires(redis) == [_EXPERT_ACTIVE_KEY]
+
+    def test_counting_a_turn_arms_the_expiry_in_the_same_script(self):
+        """An INCR without its EXPIRE would be a count nothing releases."""
+        redis = _keyed_redis({})
+        with _patch_redis(redis):
+            asyncio.run(count_expert_turn(_SESSION_ID, _EXPERT_ID))
+        script, nkeys, key, ttl = redis.eval.await_args.args
+        assert nkeys == 1 and key == _EXPERT_ACTIVE_KEY
+        assert "incr" in script and "expire" in script and ttl > 0
+
+    def test_a_turn_that_cannot_be_counted_does_not_get_the_box(self):
+        """An uncounted turn's release would decrement someone else's count
+        and could pause the box under them, so the count failure surfaces."""
+        sb = _mock_sandbox(
+            "sb-expert", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
+        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            with pytest.raises(ConnectionError):
+                asyncio.run(
+                    get_or_create_sandbox(
+                        _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                    )
+                )
+        # The failed acquire was the only script; no release ran for it.
+        assert [
+            c.args[0] for c in redis.eval.await_args_list if "decr" in c.args[0]
+        ] == []
+
+    def test_creates_expert_box_with_home_and_shared_volumes(self):
+        sb = _mock_sandbox("sb-expert-new")
+        sb.commands = MagicMock()
+        sb.commands.run = AsyncMock()
+        redis = _keyed_redis({})
+        mounts = workspace_volume_mounts(_USER_ID, _EXPERT_ID)
+        with (
+            _patch_sdk() as mock_cls,
+            # Volumes already exist -> mounted by name.  Patched where the
+            # module looks it up, so no real E2B call can sneak through.
+            patch(
+                "backend.copilot.tools.e2b_sandbox.resolve_volume",
+                AsyncMock(side_effect=lambda name, key: name),
+            ),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([])
+            mock_cls.create = AsyncMock(return_value=sb)
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    volume_mounts=mounts,
+                    expert_id=_EXPERT_ID,
+                )
+            )
+
+        assert result is sb
+        kwargs = mock_cls.create.call_args.kwargs
+        assert kwargs["volume_mounts"] == {
+            WORKSPACE_PATH: expert_volume_name(_EXPERT_ID),
+            SHARED_PATH: user_volume_name(_USER_ID),
+        }
+        assert kwargs["metadata"] == {
+            "service": "autogpt-platform",
+            "autogpt_owner": f"expert:{_EXPERT_ID}",
+            "autogpt_kind": "shell",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_session": _SESSION_ID,
+            "autogpt_expert": _EXPERT_ID,
+            "autogpt_template": "base",
+            "autogpt_mounts": "attached",
+        }
+        # Creation lock and cached id both live under the expert key.
+        lock_call = redis.set.await_args_list[0]
+        assert lock_call.args[0] == _EXPERT_SHELL_KEY
+        assert lock_call.args[1] == _CREATING_SENTINEL
+        # Both mount points exist before the first command runs.
+        mkdir = sb.commands.run.await_args.args[0]
+        assert WORKSPACE_PATH in mkdir and SHARED_PATH in mkdir
+
+    def test_plain_session_create_is_tagged_but_untouched_otherwise(self):
+        sb = _mock_sandbox("sb-plain")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.create = AsyncMock(return_value=sb)
+            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+
+        kwargs = mock_cls.create.call_args.kwargs
+        assert kwargs["metadata"] == {
+            "service": "autogpt-platform",
+            "autogpt_owner": f"session:{_SESSION_ID}",
+            "autogpt_kind": "shell",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_session": _SESSION_ID,
+            "autogpt_template": "base",
+            "autogpt_mounts": "none",
+        }
+        assert kwargs["volume_mounts"] is None
+        mock_cls.list.assert_not_called()
+        assert _turn_acquires(redis) == []
+
+
+class TestExpertPause:
+    def test_last_turn_pauses_the_box(self):
+        sb = _mock_sandbox()
+        redis = _keyed_redis({}, decr_result=0)
+        with _patch_redis(redis):
+            ok = asyncio.run(
+                pause_sandbox_direct(sb, _SESSION_ID, expert_id=_EXPERT_ID)
+            )
+        assert ok is True
+        sb.pause.assert_awaited_once()
+        # One script does the DECR and, at zero, the DEL: no window for a turn
+        # that starts in between to lose its count.
+        script, _, key = redis.eval.await_args.args
+        assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
+
+    def test_concurrent_turn_keeps_the_box_running(self):
+        """Pausing under another session of the same expert would sever its
+        command stream, so the box stays up until the last turn ends."""
+        sb = _mock_sandbox()
+        redis = _keyed_redis({}, decr_result=1)
+        with _patch_redis(redis):
+            ok = asyncio.run(
+                pause_sandbox_direct(sb, _SESSION_ID, expert_id=_EXPERT_ID)
+            )
+        assert ok is False
+        sb.pause.assert_not_awaited()
+
+    def test_lookup_pause_honours_the_counter_too(self):
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: _SANDBOX_ID}, decr_result=2)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock()
+            ok = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY, expert_id=_EXPERT_ID))
+        assert ok is False
+        mock_cls.connect.assert_not_awaited()
+
+    def test_session_pause_never_touches_the_counter(self):
+        sb = _mock_sandbox()
+        redis = _keyed_redis({})
+        with _patch_redis(redis):
+            ok = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
+        assert ok is True
+        redis.eval.assert_not_awaited()
+
+
+class TestExpertKill:
+    def test_deleting_an_expert_chat_leaves_the_expert_box_alone(self):
+        """kill_sandbox only knows session keys; an expert box has none."""
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-expert"})
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock()
+            ok = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+        assert ok is False
+        mock_cls.connect.assert_not_awaited()
+
+    def test_archive_kills_shell_and_desktop_and_clears_cache(self):
+        expert = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        shell = _mock_sandbox("sb-shell", owner=expert)
+        desktop = _mock_sandbox("sb-desktop", owner=expert, kind="desktop")
+        redis = _keyed_redis(
+            {_EXPERT_SHELL_KEY: "sb-shell", _EXPERT_DESKTOP_KEY: "sb-desktop"}
+        )
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(
+                side_effect=lambda sid, api_key, timeout=None: {
+                    "sb-shell": shell,
+                    "sb-desktop": desktop,
+                }[sid]
+            )
+            killed = asyncio.run(kill_expert_sandboxes(_EXPERT_ID, _API_KEY))
+
+        assert killed == 2
+        shell.kill.assert_awaited_once()
+        desktop.kill.assert_awaited_once()
+        deleted = {call.args[0] for call in redis.delete.await_args_list}
+        assert deleted == {_EXPERT_SHELL_KEY, _EXPERT_DESKTOP_KEY, _EXPERT_ACTIVE_KEY}
+        mock_cls.list.assert_not_called()
+
+    def test_archive_falls_back_to_e2b_metadata_for_forgotten_boxes(self):
+        shell = _mock_sandbox(
+            "sb-shell", owner=SandboxOwner(kind="expert", id=_EXPERT_ID)
+        )
+        redis = _keyed_redis({})
+        lists = {
+            "shell": [_info("sb-shell", SandboxState.PAUSED)],
+            "desktop": [],
+        }
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+
+            def _list(query, **_):
+                paginator = MagicMock()
+                paginator.next_items = AsyncMock(
+                    return_value=lists[query.metadata["autogpt_kind"]]
+                )
+                return paginator
+
+            mock_cls.list = MagicMock(side_effect=_list)
+            mock_cls.connect = AsyncMock(return_value=shell)
+            killed = asyncio.run(kill_expert_sandboxes(_EXPERT_ID, _API_KEY))
+
+        assert killed == 1
+        shell.kill.assert_awaited_once()
+        assert mock_cls.list.call_count == 2
+
+    def test_failed_kill_keeps_cache_for_retry(self):
+        _mock_sandbox("sb-shell", owner=SandboxOwner(kind="expert", id=_EXPERT_ID))
+        redis = _keyed_redis({_EXPERT_SHELL_KEY: "sb-shell"})
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([])
+            mock_cls.connect = AsyncMock(side_effect=RuntimeError("boom"))
+            killed = asyncio.run(kill_expert_sandboxes(_EXPERT_ID, _API_KEY))
+        assert killed == 0
+        deleted = {call.args[0] for call in redis.delete.await_args_list}
+        assert _EXPERT_SHELL_KEY not in deleted
+
+
+class TestKillSandboxDesktop:
+    def test_deleting_a_chat_kills_its_desktop_too(self):
+        """start_desktop's box is never paused at turn end, so the session
+        delete is the only thing that ever stops it."""
+        shell, desktop = _mock_sandbox("sb-shell"), _mock_sandbox(
+            "sb-desk", kind="desktop"
+        )
+        redis = _keyed_redis(
+            {
+                f"copilot:e2b:sandbox:{_SESSION_ID}": "sb-shell",
+                f"copilot:e2b:desktop:{_SESSION_ID}": "sb-desk",
+            }
+        )
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(
+                side_effect=lambda sid, api_key, timeout=None: {
+                    "sb-shell": shell,
+                    "sb-desk": desktop,
+                }[sid]
+            )
+            ok = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+        assert ok is True
+        shell.kill.assert_awaited_once()
+        desktop.kill.assert_awaited_once()
+        deleted = {call.args[0] for call in redis.delete.await_args_list}
+        assert deleted == {
+            f"copilot:e2b:sandbox:{_SESSION_ID}",
+            f"copilot:e2b:desktop:{_SESSION_ID}",
+        }
+
+    def test_desktop_only_session_still_reports_a_kill(self):
+        desktop = _mock_sandbox("sb-desk", kind="desktop")
+        redis = _keyed_redis({f"copilot:e2b:desktop:{_SESSION_ID}": "sb-desk"})
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=desktop)
+            ok = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+        assert ok is True
+        desktop.kill.assert_awaited_once()
+
+
+class TestExpertBoxRecovery:
+    def test_unconnectable_listed_box_falls_through_to_create(self):
+        """E2B may keep listing a box we cannot reconnect to; the loop must
+        create a replacement instead of spinning on the same id."""
+        fresh = _mock_sandbox("sb-fresh")
+        # Stamped as the expert's, so the refusal is not what stops the reconnect.
+        _mock_sandbox("sb-dead", owner=SandboxOwner(kind="expert", id=_EXPERT_ID))
+        redis = _keyed_redis({})
+        with (
+            _patch_sdk() as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([_info("sb-dead", SandboxState.PAUSED)])
+            mock_cls.connect = AsyncMock(side_effect=RuntimeError("unresumable"))
+            mock_cls.create = AsyncMock(return_value=fresh)
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, expert_id=_EXPERT_ID
+                )
+            )
+        assert result is fresh
+        # Exactly one retry of the listed box, then a replacement.
+        assert mock_cls.connect.await_count == 2
+        mock_cls.connect.assert_awaited_with("sb-dead", api_key=_API_KEY, timeout=None)
+        mock_cls.create.assert_awaited_once()
+        assert mock_cls.list.call_count <= 2
+
+    def test_mounts_survive_transient_create_failures(self):
+        """Only the final attempt goes volume-less; a slow first attempt must
+        not quietly cost an expert its durable home for 30 days."""
+        sb = _mock_sandbox("sb-late")
+        sb.commands = MagicMock()
+        sb.commands.run = AsyncMock()
+        redis = _keyed_redis({})
+        mounts = workspace_volume_mounts(_USER_ID, _EXPERT_ID)
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.resolve_volume",
+                new=AsyncMock(side_effect=lambda name, key: name),
+            ),
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", new=AsyncMock()),
+            _patch_redis(redis),
+        ):
+            mock_cls.list = _mock_list([])
+            mock_cls.create = AsyncMock(
+                side_effect=[asyncio.TimeoutError(), RuntimeError("busy"), sb]
+            )
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    volume_mounts=mounts,
+                    expert_id=_EXPERT_ID,
+                )
+            )
+        assert result is sb
+        attempts = [c.kwargs for c in mock_cls.create.call_args_list]
+        assert len(attempts) == _SANDBOX_CREATE_MAX_RETRIES
+        assert attempts[0]["volume_mounts"] == mounts
+        assert attempts[1]["volume_mounts"] == mounts
+        assert attempts[2]["volume_mounts"] is None
+        assert attempts[0]["metadata"]["autogpt_mounts"] == "attached"
+        assert attempts[2]["metadata"]["autogpt_mounts"] == "none"
+
+    def test_release_fails_closed_when_redis_is_unavailable(self):
+        """Without the counter we cannot rule out a concurrent turn, so the
+        box is left running for the lifecycle timeout to pause."""
+        sb = _mock_sandbox()
+        redis = _keyed_redis({})
+        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
+        with _patch_redis(redis):
+            ok = asyncio.run(
+                pause_sandbox_direct(sb, _SESSION_ID, expert_id=_EXPERT_ID)
+            )
+        assert ok is False
+        sb.pause.assert_not_awaited()

@@ -3902,6 +3902,7 @@
                     },
                     { "$ref": "#/components/schemas/ScheduleListResponse" },
                     { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
+                    { "$ref": "#/components/schemas/ScheduleToggledResponse" },
                     { "$ref": "#/components/schemas/PresetListResponse" },
                     { "$ref": "#/components/schemas/PresetUpdatedResponse" },
                     { "$ref": "#/components/schemas/PresetDeletedResponse" },
@@ -4227,6 +4228,45 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/computer": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session Computer",
+        "description": "The computer behind this chat.\n\nA plain chat has its own boxes; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
+        "operationId": "getV2GetSessionComputer",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ComputerInfo" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/connection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
@@ -4277,6 +4317,47 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/desktop": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Start Session Desktop",
+        "description": "Start or resume the desktop behind this chat and return its live stream.\n\nSame box the ``start_desktop`` tool uses from inside a turn, so the side\npanel and the model always look at one screen.",
+        "operationId": "postV2StartSessionDesktop",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopStream" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "The desktop could not be started" },
+          "503": { "description": "E2B is not configured" }
         }
       }
     },
@@ -5529,7 +5610,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "List Stripe invoices",
-        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "description": "Recent Stripe invoices for the caller's active org, for billing managers.\n\nThe invoices belong to the org the request resolves to (the caller's\npersonal org when no ``X-Org-Id`` is supplied), so this is restricted to\norg roles holding ``MANAGE_BILLING``.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the org has no Stripe customer yet.",
         "operationId": "getV1List stripe invoices",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5955,6 +6036,38 @@
         }
       }
     },
+    "/api/desktop-preview": {
+      "get": {
+        "tags": ["v1"],
+        "summary": "Open Desktop Preview",
+        "description": "Redirect the desktop's owner to its live stream.\n\nThe stream URL carries the desktop's password, so it is only ever\ndisclosed here, to the user the token was issued to, and marked\n``no-store`` so no cache or referrer keeps a copy.",
+        "operationId": "getV1OpenDesktopPreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 8192, "title": "Token" }
+          }
+        ],
+        "responses": {
+          "307": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Preview unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/email/": {
       "post": {
         "tags": ["v1", "email"],
@@ -6311,6 +6424,72 @@
             }
           }
         }
+      }
+    },
+    "/api/experiments/assignments": {
+      "get": {
+        "tags": ["experiments"],
+        "summary": "List experiment assignments",
+        "operationId": "getExperimentsList experiment assignments",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentAssignment"
+                  },
+                  "type": "array",
+                  "title": "Response Getexperimentslist Experiment Assignments"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["experiments"],
+        "summary": "Record experiment assignment",
+        "operationId": "postExperimentsRecord experiment assignment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/experts": {
@@ -6779,6 +6958,86 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/computer": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Computer",
+        "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "operationId": "getV2GetExpertComputer",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ComputerInfo" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/computer/desktop": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Start Expert Desktop",
+        "description": "Start or resume the expert's desktop and return its live stream.\n\nThis is the same box the expert's next ``start_desktop`` turn reconnects\nto, so what the user does here is what the expert sees.",
+        "operationId": "postV2StartExpertDesktop",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopStream" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "The desktop could not be started" },
+          "503": { "description": "E2B is not configured" }
         }
       }
     },
@@ -7780,7 +8039,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__v1__ShareResponse"
+                  "$ref": "#/components/schemas/backend__api__features__graph_executions__model__ShareResponse"
                 }
               }
             }
@@ -13727,6 +13986,66 @@
         }
       }
     },
+    "/api/skills/package": {
+      "post": {
+        "tags": ["v1", "skills"],
+        "summary": "Upload a copilot skill as a zipped package",
+        "description": "Create a skill from a zipped package — a root ``SKILL.md`` plus the\nfiles beside it.\n\nThe zip is transport only: it is unpacked here and stored as the skill's\nfolder, so the model reaches ``scripts/`` and ``references/`` by path\nexactly as it does for a package copied from another skill.",
+        "operationId": "uploadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Store the skill as this expert's own.",
+              "title": "Expert Id"
+            },
+            "description": "Store the skill as this expert's own."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadCopilotSkillPackage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillInfo" }
+              }
+            }
+          },
+          "400": {
+            "description": "Unreadable archive, or a malformed SKILL.md or path"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Per-user skill limit reached" },
+          "413": {
+            "description": "Archive, file or file count over the package limit"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/skills/{name}": {
       "delete": {
         "tags": ["v1", "skills"],
@@ -13838,6 +14157,61 @@
         }
       }
     },
+    "/api/skills/{name}/package": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Download a copilot skill as a zipped package",
+        "description": "Return the skill's whole folder as a zip — ``SKILL.md`` at the root,\nsiblings at their relative paths, executable bits preserved — so a\ndownload re-uploads to the same tree.\n\nBuilt-in defaults are single on-disk files and are not downloadable here;\nGET ``/skills/{name}`` serves their body.",
+        "operationId": "downloadCopilotSkillPackage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to download",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to download"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Download this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Download this expert's own copy of the skill."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skill folder as a zip archive",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/listings": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
@@ -13929,6 +14303,49 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+      }
+    },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin Read Skill Submission File",
+        "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
+        "operationId": "getV2Admin read skill submission file",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
@@ -14598,6 +15015,66 @@
         }
       }
     },
+    "/api/store/media/{user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get stored marketplace media",
+        "operationId": "getV2Get stored marketplace media",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -15056,11 +15533,72 @@
         }
       }
     },
+    "/api/store/skills/{slug}/files/{path}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Read marketplace skill file",
+        "description": "One file's text, for reading a package before installing it.",
+        "operationId": "getV2Read marketplace skill file",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "File's path relative to the skill folder",
+              "title": "Path"
+            },
+            "description": "File's path relative to the skill folder"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it.",
+              "title": "Version Id"
+            },
+            "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "404": { "description": "Skill, version or file not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/skills/{slug}/install": {
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
-        "description": "Copy the listing's skill into the caller's Otto skill library.",
+        "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15074,6 +15612,17 @@
               "title": "Slug"
             },
             "description": "Slug of the skill listing"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Install into this expert's skills instead of the caller's own.",
+              "title": "Expert Id"
+            },
+            "description": "Install into this expert's skills instead of the caller's own."
           }
         ],
         "responses": {
@@ -15088,7 +15637,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Skill not found" },
+          "404": { "description": "Skill or expert not found" },
           "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",
@@ -17696,6 +18245,14 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "Body_uploadCopilotSkillPackage": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_uploadCopilotSkillPackage"
+      },
       "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -18589,6 +19146,49 @@
         "required": ["uuid"],
         "title": "CommunitySummary"
       },
+      "ComputerInfo": {
+        "properties": {
+          "owner_kind": {
+            "type": "string",
+            "enum": ["session", "expert"],
+            "title": "Owner Kind"
+          },
+          "owner_id": { "type": "string", "title": "Owner Id" },
+          "e2b_active": { "type": "boolean", "title": "E2B Active" },
+          "shell": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SandboxSummary" },
+              { "type": "null" }
+            ]
+          },
+          "desktop": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SandboxSummary" },
+              { "type": "null" }
+            ]
+          },
+          "mounts": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Mounts",
+            "default": {}
+          },
+          "workspace_path": {
+            "type": "string",
+            "title": "Workspace Path",
+            "default": "/home/user/workspace"
+          },
+          "shared_path": {
+            "type": "string",
+            "title": "Shared Path",
+            "default": "/home/user/shared"
+          }
+        },
+        "type": "object",
+        "required": ["owner_kind", "owner_id", "e2b_active"],
+        "title": "ComputerInfo",
+        "description": "The owner's computer: its boxes and the volumes they mount."
+      },
       "ConfirmLinkRequest": {
         "properties": {
           "telegram_auth": {
@@ -18710,10 +19310,10 @@
             "title": "Is Default",
             "default": false
           },
-          "sibling_files": {
-            "items": { "type": "string" },
+          "files": {
+            "items": { "$ref": "#/components/schemas/CopilotSkillFile" },
             "type": "array",
-            "title": "Sibling Files",
+            "title": "Files",
             "default": []
           }
         },
@@ -18721,6 +19321,21 @@
         "required": ["name", "description", "body"],
         "title": "CopilotSkillDetail",
         "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "CopilotSkillFile",
+        "description": "One file of a skill package, by its path relative to the skill folder\n(``scripts/run.py``) — the path the SKILL.md body references it by."
       },
       "CopilotSkillInfo": {
         "properties": {
@@ -19752,6 +20367,32 @@
         "title": "DemotionSummary",
         "description": "One line per demoted RELATES_TO edge."
       },
+      "DesktopStream": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "desktop_stream",
+            "title": "Kind",
+            "default": "desktop_stream"
+          },
+          "url": { "type": "string", "title": "Url" },
+          "provider": {
+            "type": "string",
+            "const": "e2b",
+            "title": "Provider",
+            "default": "e2b"
+          },
+          "sandbox_id": { "type": "string", "title": "Sandbox Id" },
+          "requires_auth": {
+            "type": "boolean",
+            "title": "Requires Auth",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["url", "sandbox_id"],
+        "title": "DesktopStream"
+      },
       "DeviceAuthInitiateResponse": {
         "properties": {
           "state_token": { "type": "string", "title": "State Token" },
@@ -20654,6 +21295,21 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "ExperimentAssignment": {
+        "properties": {
+          "experiment_key": { "type": "string", "title": "Experiment Key" },
+          "variant": { "type": "string", "title": "Variant" },
+          "source": { "type": "string", "title": "Source" },
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assigned At"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant", "source", "assigned_at"],
+        "title": "ExperimentAssignment"
       },
       "Expert": {
         "properties": {
@@ -21915,6 +22571,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22104,6 +22768,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -22216,6 +22888,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
           },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -24414,6 +25094,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "default": []
           }
         },
         "type": "object",
@@ -26667,7 +27353,7 @@
         "type": "object",
         "required": ["kind", "source", "id"],
         "title": "RaiseAttachment",
-        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace workflow), a library\nagent UUID (library workflow), or a skill slug — the caller's own skill\nfor ``library``, a Hub :class:`SkillListing` slug for ``marketplace``.\nEither skill slug ends up on ``Expert.skills``."
       },
       "RaiseAttachmentFailure": {
         "properties": {
@@ -26921,6 +27607,31 @@
         "title": "RecommendedProvidersResponse",
         "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
       },
+      "RecordAssignmentRequest": {
+        "properties": {
+          "experiment_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Key"
+          },
+          "variant": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Variant"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["posthog", "launchdarkly", "backend"],
+            "title": "Source",
+            "default": "posthog"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant"],
+        "title": "RecordAssignmentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -27020,6 +27731,11 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_toggled",
+          "expert_workflow",
+          "expert_workflows",
+          "expert_credentials",
+          "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",
           "trigger_setup",
@@ -27047,6 +27763,7 @@
           "browser_act",
           "browser_screenshot",
           "bash_exec",
+          "desktop_stream",
           "web_fetch",
           "web_search",
           "feature_request_search",
@@ -27241,6 +27958,43 @@
         "required": ["executions", "total"],
         "title": "RunningExecutionsListResponse",
         "description": "Response model for list of running executions"
+      },
+      "SandboxSummary": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["shell", "desktop"],
+            "title": "Kind"
+          },
+          "sandbox_id": { "type": "string", "title": "Sandbox Id" },
+          "state": {
+            "type": "string",
+            "enum": ["running", "paused"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "cpu_count": { "type": "integer", "title": "Cpu Count" },
+          "memory_mb": { "type": "integer", "title": "Memory Mb" },
+          "template_id": { "type": "string", "title": "Template Id" },
+          "mounts_attached": { "type": "boolean", "title": "Mounts Attached" }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "sandbox_id",
+          "state",
+          "started_at",
+          "cpu_count",
+          "memory_mb",
+          "template_id",
+          "mounts_attached"
+        ],
+        "title": "SandboxSummary",
+        "description": "One of the owner's sandboxes as E2B reports it, without waking it."
       },
       "ScheduleCleanupRequest": {
         "properties": {
@@ -27457,6 +28211,11 @@
           "name": { "type": "string", "title": "Name" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "paused": { "type": "boolean", "title": "Paused", "default": false },
           "cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Cron"
@@ -27492,6 +28251,25 @@
         ],
         "title": "ScheduleSummary",
         "description": "Summary of a single schedule (either a graph run or copilot turn)."
+      },
+      "ScheduleToggledResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_toggled"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "paused": { "type": "boolean", "title": "Paused" },
+          "changed": { "type": "boolean", "title": "Changed", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id", "paused"],
+        "title": "ScheduleToggledResponse"
       },
       "SchedulesListResponse": {
         "properties": {
@@ -27994,6 +28772,25 @@
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
       },
+      "SkillPackageFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "SkillPackageFile",
+        "description": "One file beside the published ``SKILL.md``, by its path relative to the\nskill folder. The contents are not inlined — a package runs to 20 MiB."
+      },
       "SkillReviewRequest": {
         "properties": {
           "is_approved": { "type": "boolean", "title": "Is Approved" },
@@ -28037,6 +28834,12 @@
             "type": "boolean",
             "title": "Is Live",
             "description": "Whether this version is the one the marketplace serves."
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "description": "Files beside the submitted SKILL.md, so a reviewer sees what a package ships before approving it."
           }
         },
         "type": "object",
@@ -32024,7 +32827,7 @@
         "required": ["share_url", "share_token"],
         "title": "ShareResponse"
       },
-      "backend__api__features__v1__ShareResponse": {
+      "backend__api__features__graph_executions__model__ShareResponse": {
         "properties": {
           "share_url": { "type": "string", "title": "Share Url" },
           "share_token": { "type": "string", "title": "Share Token" }

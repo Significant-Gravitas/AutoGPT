@@ -38,7 +38,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import commands, config, intro
+from . import choice_ui, commands, config, intro
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -81,6 +81,14 @@ ROLE_ID_PREFIX = "role:"
 # message, each returning up to this many prefix matches.
 MENTION_QUERY_CAP = 8
 MENTION_QUERY_LIMIT = 20
+# Who owns a name when several things share it, best first. See
+# ``DiscordAdapter._mentionables_for``.
+_RANK_CONVERSATION = 0
+_RANK_MEMBER = 1
+_RANK_ROLE = 2
+_RANK_PREFIX = 3
+# A raw Discord mention token: user ``<@id>`` / ``<@!id>`` or role ``<@&id>``.
+_RAW_MENTION = re.compile(r"<@([!&]?)(\d{15,21})>")
 # First word after an @ that is not inside an email, URL or existing token.
 _MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
 
@@ -133,6 +141,9 @@ class DiscordAdapter(SocketAdapter):
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
+        # Choice buttons are stateless and outlive this process, so their
+        # click handler is registered once here rather than per sent message.
+        choice_ui.register_choice_handler(self._client, self, callback)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -197,6 +208,27 @@ class DiscordAdapter(SocketAdapter):
             )
         )
         await channel.send(text, view=view, tts=False)
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return False
+        if self._on_message_callback is None:
+            return False
+        view = choice_ui.build_choice_view(token, options)
+        await channel.send(text, view=view, tts=False)
+        return True
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         channel = await self._resolve_channel(channel_id)
@@ -765,54 +797,94 @@ class DiscordAdapter(SocketAdapter):
         text: str,
         known: tuple[tuple[str, str], ...],
     ) -> tuple[tuple[str, str], ...]:
-        """Everyone ``text`` may ping in ``channel``: ``known`` (author and
-        inbound mentions) plus, for a server channel, any member whose display
-        name or username matches an ``@Name`` in the text and any role by name.
+        """Everyone ``text`` may ping in ``channel``, as ``(name, id)`` pairs.
 
-        Members are found with a gateway member query per name, which needs no
-        privileged intent and works on any server. ``@everyone`` and ``@here``
-        are never listed, so they stay plain text and the ping object keeps
-        them off regardless. A DM has no server, so only ``known`` applies.
+        ``known`` (the author and anyone the inbound message mentioned) always
+        applies. A server channel adds, from the text itself: members named
+        with ``@Name``, members written as a raw ``<@id>``, and roles.
+
+        One name can point at several of these, and the shared resolver pings
+        nobody for a name that belongs to two different ids. So each name is
+        claimed only by its best source, and only a tie at that level is a
+        real clash. Best first:
+
+        1. someone already in this conversation
+        2. a server member whose display name or username is exactly the name
+        3. a role of that name (no member lookup is run for a role's name)
+        4. a member the typed ``@Name`` only prefixes (``@Bently`` for
+           ``Bently [SOMN]``)
+
+        So a "Bently" role never hides the Bently who just wrote to the bot,
+        and a member called "PlatformBot" never steals ``@Platform`` from the
+        Platform role. Members are found with a gateway query per name, which
+        needs no privileged intent. ``@everyone`` and ``@here`` are never
+        listed. A DM has no server, so only ``known`` applies.
         """
         guild = getattr(channel, "guild", None)
         if not isinstance(guild, discord.Guild):
             return known
         bot_id = self._client.user.id if self._client.user else None
-        pairs: list[tuple[str, str]] = list(known)
-        seen: set[tuple[str, str]] = set(pairs)
-
-        def add(name: Optional[str], token_id: str) -> None:
-            if name and (name, token_id) not in seen:
-                seen.add((name, token_id))
-                pairs.append((name, token_id))
-
+        candidates: list[tuple[int, str, str]] = [
+            (_RANK_CONVERSATION, name, token_id) for name, token_id in known
+        ]
         role_names: set[str] = set()
         for role in guild.roles:
             if role.id == guild.id or role.is_default():
                 continue
-            add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+            candidates.append((_RANK_ROLE, role.name, f"{ROLE_ID_PREFIX}{role.id}"))
             role_names.add(role.name.casefold())
         for query in _mention_queries(text):
+            # A name that is a role means the role, unless someone in this
+            # conversation holds it, and they are already in ``known``.
             if query.casefold() in role_names:
                 continue
-            try:
-                members = await guild.query_members(
-                    query=query, limit=MENTION_QUERY_LIMIT, cache=False
-                )
-            except (
-                asyncio.TimeoutError,
-                ValueError,
-                discord.ClientException,
-                discord.HTTPException,
-            ):
-                logger.warning("Member lookup for @%s failed", query, exc_info=True)
-                continue
-            for member in members:
+            for member in await self._query_members(guild, query):
                 if member.id == bot_id or member.bot:
                     continue
-                add(member.display_name, str(member.id))
-                add(member.name, str(member.id))
-        return tuple(pairs)
+                member_id = str(member.id)
+                for name in (member.display_name, member.name):
+                    exact = name.casefold() == query.casefold()
+                    candidates.append(
+                        (_RANK_MEMBER if exact else _RANK_PREFIX, name, member_id)
+                    )
+                candidates.append((_RANK_PREFIX, query, member_id))
+        listed_ids = {token_id for _, _, token_id in candidates}
+        for user_id in _raw_user_mention_ids(text):
+            if user_id in listed_ids or user_id == str(bot_id):
+                continue
+            member = await self._guild_member(guild, int(user_id))
+            if member is not None and not member.bot:
+                candidates.append((_RANK_MEMBER, member.display_name, user_id))
+        return _best_claims(candidates)
+
+    async def _query_members(
+        self, guild: discord.Guild, query: str
+    ) -> list[discord.Member]:
+        try:
+            return await guild.query_members(
+                query=query, limit=MENTION_QUERY_LIMIT, cache=False
+            )
+        except (
+            asyncio.TimeoutError,
+            ValueError,
+            discord.ClientException,
+            discord.HTTPException,
+        ):
+            logger.warning("Member lookup for @%s failed", query, exc_info=True)
+            return []
+
+    async def _guild_member(
+        self, guild: discord.Guild, user_id: int
+    ) -> Optional[discord.Member]:
+        """The server member behind a raw ``<@id>``, or None when that id is not
+        a member here. Cache first, then one REST lookup."""
+        member = guild.get_member(user_id)
+        if member is not None:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     async def _thread_history(
         self, message: discord.Message
@@ -1005,6 +1077,14 @@ def _resolve_mentions(
     token and turn the pinged IDs into Discord's ping-safety object.
     """
     rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    # The shared resolver reads user ids; a raw role token is Discord's own.
+    allowlisted = {token_id for _, token_id in mentionable_users}
+    for match in _RAW_MENTION.finditer(rendered):
+        if match.group(1) != "&":
+            continue
+        token_id = f"{ROLE_ID_PREFIX}{match.group(2)}"
+        if token_id in allowlisted and token_id not in pinged:
+            pinged.append(token_id)
     user_ids: list[int] = []
     role_ids: list[int] = []
     for token_id in pinged:
@@ -1028,6 +1108,35 @@ def _mention_token(_name: str, token_id: str) -> str:
     if token_id.startswith(ROLE_ID_PREFIX):
         return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
     return f"<@{token_id}>"
+
+
+def _best_claims(
+    candidates: list[tuple[int, str, str]],
+) -> tuple[tuple[str, str], ...]:
+    """Keep, for each name, only the ``(name, id)`` pairs from its best rank,
+    in first-seen order. A lower-ranked source never makes a name ambiguous."""
+    best: dict[str, int] = {}
+    for rank, name, _ in candidates:
+        key = name.casefold()
+        best[key] = min(rank, best.get(key, rank))
+    pairs: list[tuple[str, str]] = []
+    for rank, name, token_id in candidates:
+        pair = (name, token_id)
+        if name and rank == best[name.casefold()] and pair not in pairs:
+            pairs.append(pair)
+    return tuple(pairs)
+
+
+def _raw_user_mention_ids(text: str) -> list[str]:
+    """Distinct user ids written as raw ``<@id>`` / ``<@!id>`` tokens, capped."""
+    ids: list[str] = []
+    for match in _RAW_MENTION.finditer(text):
+        if match.group(1) == "&" or match.group(2) in ids:
+            continue
+        ids.append(match.group(2))
+        if len(ids) >= MENTION_QUERY_CAP:
+            break
+    return ids
 
 
 def _mention_queries(text: str) -> list[str]:

@@ -156,6 +156,12 @@ oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
 profile = "black"
+extend_skip_glob = ["test/fixtures/*", "*/test/fixtures/*"]
+
+[tool.black]
+# A vendored upstream package is test data: the suite compares it byte for byte
+# against what publishing stored, so reformatting it would test our own output.
+force-exclude = "test/fixtures/"
 
 [tool.coverage.run]
 # Offline eval harnesses: run manually with LLM credentials / ffmpeg
@@ -200,3 +206,7 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
+extend-exclude = ["test/fixtures"]
+# `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
+# the vendored fixture it walks into.
+force-exclude = true

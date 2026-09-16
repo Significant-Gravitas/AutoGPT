@@ -212,6 +212,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     COHERE_COMMAND_A_VISION_07_2025 = "cohere/command-a-vision-07-2025"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
+    DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
     PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
@@ -225,6 +226,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
+    META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -247,6 +250,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    # Sakana AI models
+    SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"

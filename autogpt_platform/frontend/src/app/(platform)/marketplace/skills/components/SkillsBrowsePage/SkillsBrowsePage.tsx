@@ -52,10 +52,10 @@ export function SkillsBrowsePage() {
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
             <Icon icon={BookOpen01Icon} size={30} aria-hidden />
-            Otto Skills
+            Skills
           </h1>
           <p className="mt-2 text-base text-zinc-500">
-            Playbooks your Otto follows. Install one and it knows how.
+            Playbooks your experts follow. Teach them your way of working.
           </p>
         </div>
         <SearchBar

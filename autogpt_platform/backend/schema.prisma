@@ -189,7 +189,31 @@ model User {
   // Platform bot linking
   PlatformLinks     PlatformLink[]
   PlatformUserLinks PlatformUserLink[]
+
+  ExperimentAssignments ExperimentAssignment[]
 }
+
+// One row per (user, experiment): the arm a user was bucketed into the first
+// time the experiment was evaluated for them. Written once and never
+// overwritten, so analytics can join a stable arm to every later event
+// (runs, retention, spend) without depending on the flag provider's history.
+model ExperimentAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  experimentKey String
+  variant       String
+  // "posthog" when the frontend reports a PostHog-evaluated flag,
+  // "backend" when the server bucketed the user itself.
+  source        String
+
+  @@unique([userId, experimentKey])
+  @@index([experimentKey, variant])
+}
+
 
 enum ChatSessionStatus {
   idle
@@ -1335,6 +1359,14 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // How the run was started (values: backend.data.execution.ExecutionTrigger).
+  // Persisted so analytics can separate human-initiated runs from schedule,
+  // webhook, API and copilot-initiated ones instead of inferring it from the
+  // preset / expert / parent columns. Null for rows that predate the column.
+  triggerSource String?
+  // What started the run, for that source: schedule id, webhook id, chat
+  // session id, API key id, or the UI surface for manual runs.
+  triggerRef    String?
   // What started this run, when it was not a person: the scheduler job or
   // the webhook that fired. Soft references, since jobs live in
   // APScheduler's own store and webhooks are cleaned up independently.
@@ -2134,11 +2166,37 @@ model SkillListingVersion {
   // Tenancy
   organizationId String?
 
+  Files     SkillListingFile[]
+
   @@unique([skillListingId, version])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+/// One file beside a published version's SKILL.md, snapshotted at submit time
+/// like the body is. Bytes live in the row: a version is immutable once
+/// approved, capped at 20 MiB in the application layer, and cascade-deleted
+/// with its version, so a blob store would only add orphan cleanup.
+model SkillListingFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  skillListingVersionId String
+  SkillListingVersion   SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  /// Posix path relative to the skill folder, e.g. `scripts/with_server.py`.
+  relativePath String
+  sizeBytes    Int
+  sha256       String
+  mimeType     String?
+  /// Restored on install: `python scripts/x.py` works without it, `./x.py` does not.
+  isExecutable Boolean @default(false)
+
+  content Bytes
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs

@@ -223,6 +223,23 @@ as prose. Questions asked only in text are invisible to the user's Home
 the tool call is what parks the question for them. A short closing sentence
 may restate it, but never replace the tool call with prose.
 
+### Scheduling future work — use `schedule_followup`
+`schedule_followup` is the ONLY way to schedule a future copilot turn: "remind
+me", "check every morning", "watch X and tell me when it changes". Pass
+`delay_seconds` for one-shot, `cron` for recurring, and the `session_id` from
+`<session_context>` to land it in this chat (omit it to fire into a fresh
+chat). To run an *agent* on a schedule, use `run_agent` with `schedule_name` +
+`cron` instead — that registers a graph schedule that runs the agent directly,
+with no copilot turn re-deciding what to do each time; for event-driven runs
+use `setup_agent_webhook_trigger`. Those are the only calls that outlive the
+turn: no shell command, background process, or CLI cron-style tool survives the
+end of the turn, even if it reports success and says it persisted to disk. So
+never tell the user you will keep checking on something unless a scheduling
+call actually succeeded — an unscheduled promise is silent, and they only find
+out by noticing that nothing ever arrived. Use `list_schedules` to verify what
+is set up; it shows every schedule in this expert's scope (or the plain
+copilot's) across all chats, not only the ones created here.
+
 ### Complex multi-step work
 - Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
 - Delegate self-contained subtasks to `run_sub_session` to keep their
@@ -658,6 +675,36 @@ def get_sdk_supplement(use_e2b: bool) -> str:
         else _get_local_storage_supplement("/tmp/copilot-<session-id>")
     )
     return base + _USER_FOLLOW_UP_NOTE
+
+
+# The one reply a chat-platform bot does not deliver. A message on Discord,
+# Slack, Telegram or Teams can genuinely need no answer: an acknowledgement,
+# two humans talking in a thread the bot is subscribed to, a bare ping. Whole
+# message, exact case: a reply that merely contains the word is delivered.
+NO_REPLY = "NO_REPLY"
+
+
+def get_chat_platform_supplement(source_platform: str | None) -> str:
+    """The silence rule, appended only for sessions that a chat bot opened.
+
+    Lives in the system prompt rather than the per-turn message so the web
+    chat view of a linked session shows what the person typed and nothing
+    else. Gated on the session's source platform: a web session has none,
+    and there a human is waiting, so silence would be a bug. Constant across
+    every bot session, so the prompt cache stays warm across them.
+    """
+    if not source_platform:
+        return ""
+    return f"""
+
+### Staying silent
+You are answering through a chat platform, where not every message needs a
+reply: an acknowledgement, a message not addressed to you, people talking to
+each other in a thread you are in. When a message needs no response from you,
+reply with exactly `{NO_REPLY}` as your entire message and nothing else, and
+nothing will be posted. Otherwise answer normally. You may use tools first to
+decide. Never write `{NO_REPLY}` inside a real reply.
+"""
 
 
 def get_delegation_supplement() -> str:

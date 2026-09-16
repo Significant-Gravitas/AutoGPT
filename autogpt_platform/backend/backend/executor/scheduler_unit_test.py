@@ -46,6 +46,17 @@ from backend.util.exceptions import (
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
 
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
+
+
 # ---------------------------------------------------------------------------
 # _build_trigger
 # ---------------------------------------------------------------------------
@@ -1636,6 +1647,10 @@ class TestScheduleOrgVisibility:
         sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
         with (
             patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            # None of these fixture jobs are paused, so the active-only path
+            # (what get_execution_schedules actually calls unless
+            # include_paused=True) can return the same list.
+            patch.object(Scheduler, "_get_active_jobs_cached", lambda self: jobs),
             patch(
                 "backend.executor.scheduler._job_to_info",
                 side_effect=fake_job_to_info,
@@ -1949,4 +1964,29 @@ class TestMorningBriefingSchedule:
         assert any(
             "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
+        )
+
+
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    # Two caches, not one: the default path reads the SQL-filtered
+    # _get_active_jobs_cached and only include_paused reads the unfiltered
+    # _get_jobs_cached. Patching one leaves the other on the real jobstore,
+    # which this Scheduler.__new__ instance does not have.
+    active = [j for j in jobs if j.next_run_time is not None]
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch.object(Scheduler, "_get_active_jobs_cached", return_value=active),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
         )

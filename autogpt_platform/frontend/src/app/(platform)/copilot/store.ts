@@ -58,6 +58,16 @@ export interface ArtifactRef {
   expert?: ExpertArtifact;
 }
 
+/** The live desktop behind a chat, as `start_desktop` reports it. */
+export interface DesktopStreamRef {
+  url: string;
+  sandbox_id: string;
+  provider: string;
+}
+
+/** Which face the side panel shows: the artifact preview or the computer. */
+export type ArtifactPanelMode = "artifact" | "computer";
+
 interface ArtifactPanelState {
   isOpen: boolean;
   activeArtifact: ArtifactRef | null;
@@ -66,6 +76,11 @@ interface ArtifactPanelState {
   /** Preview that was showing when the panel last closed — the sidebar
    *  toggle restores it on reopen instead of landing on the tabs view. */
   lastArtifact: ArtifactRef | null;
+  mode: ArtifactPanelMode;
+  /** Stream of the desktop most recently started in this chat, if any. */
+  computer: DesktopStreamRef | null;
+  /** The computer face is open even with no artifact preview behind it. */
+  isComputerOpen: boolean;
 }
 
 export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
@@ -214,6 +229,11 @@ interface CopilotUIState {
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
+  /** Remember the chat's desktop stream and show it if nothing else is open. */
+  registerComputerStream: (ref: DesktopStreamRef) => void;
+  /** Open the side panel on its computer face. */
+  openComputer: () => void;
+  setArtifactPanelMode: (mode: ArtifactPanelMode) => void;
   openContextPanelForFiles: () => void;
   showFilesTab: () => void;
 
@@ -338,6 +358,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     history: [],
     activeTab: getPersistedTab(),
     lastArtifact: null,
+    mode: "artifact",
+    computer: null,
+    isComputerOpen: false,
   },
   openArtifact: (ref, opts) =>
     set((state) => {
@@ -360,6 +383,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: true,
           activeArtifact: ref,
           history,
+          mode: "artifact",
         },
       };
     }),
@@ -387,6 +411,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           // Remember what was previewing so the sidebar toggle can bring it
           // back; closing from the tabs view remembers nothing.
           lastArtifact: state.artifactPanel.activeArtifact,
+          isComputerOpen: false,
         },
       };
     }),
@@ -396,6 +421,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         activeArtifact: null,
         history: [],
+        isComputerOpen: false,
       },
     })),
   resetArtifactPanel: () =>
@@ -405,6 +431,45 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeArtifact: null,
         history: [],
         lastArtifact: null,
+        mode: "artifact",
+        computer: null,
+        isComputerOpen: false,
+      },
+    })),
+  registerComputerStream: (ref) =>
+    set((state) => {
+      const { activeArtifact, isComputerOpen } = state.artifactPanel;
+      // A desktop the model just started is the thing to look at: show it
+      // unless an artifact preview is already holding the panel.
+      const showNow = activeArtifact == null || isComputerOpen;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          computer: ref,
+          // Selecting the face is not enough if the panel itself is closed.
+          isOpen: showNow ? true : state.artifactPanel.isOpen,
+          isComputerOpen: showNow || isComputerOpen,
+          mode: showNow ? "computer" : state.artifactPanel.mode,
+        },
+      };
+    }),
+  openComputer: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        mode: "computer",
+        isComputerOpen: true,
+      },
+    })),
+  setArtifactPanelMode: (mode) =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        mode,
+        // Switching to the artifact face closes the computer face, so a
+        // later registerComputerStream does not flip the panel back.
+        isComputerOpen: mode === "computer",
       },
     })),
   goBackArtifact: () =>
@@ -437,12 +502,20 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: nextOpen,
           activeArtifact: null,
           history: [],
+          isComputerOpen: false,
         },
       };
     }),
   clearLastArtifact: () =>
     set((state) => ({
-      artifactPanel: { ...state.artifactPanel, lastArtifact: null },
+      artifactPanel: {
+        ...state.artifactPanel,
+        lastArtifact: null,
+        // A new chat has its own computer; never show the previous chat's.
+        computer: null,
+        isComputerOpen: false,
+        mode: "artifact",
+      },
     })),
   toggleContextPanelTab: (tab) =>
     set((state) => {
@@ -587,6 +660,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         history: [],
         activeTab: "files",
         lastArtifact: null,
+        mode: "artifact",
+        computer: null,
+        isComputerOpen: false,
       },
       copilotLlmModel: "standard",
       copilotLlmAuth: null,
