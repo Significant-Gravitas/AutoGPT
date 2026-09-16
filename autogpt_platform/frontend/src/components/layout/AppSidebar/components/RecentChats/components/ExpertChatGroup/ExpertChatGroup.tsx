@@ -15,11 +15,8 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 import {
   Collapsible,
   CollapsibleContent,
@@ -63,6 +60,7 @@ export function ExpertChatGroup({
   const [isOpen, setIsOpen] = useState(true);
   const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
   const visibleSessions = sessions.slice(0, visibleCount);
+  const avatarConfig = expertNotionConfig({ name: label, avatarUrl, color });
   const hasHiddenSessions = sessions.length > visibleSessions.length;
   const runningSessions = sessions.filter((session) => session.is_processing);
 
@@ -82,7 +80,9 @@ export function ExpertChatGroup({
         >
           {isAutopilot ? (
             <AutopilotAvatar size={24} />
-          ) : isUploadedAvatar(avatarUrl) ? (
+          ) : avatarConfig ? (
+            <NotionAvatarImage config={avatarConfig} size={24} title={label} />
+          ) : (
             <Avatar className="h-6 w-6 border border-stone-500">
               <AvatarImage
                 src={avatarUrl ?? undefined}
@@ -92,14 +92,6 @@ export function ExpertChatGroup({
               />
               <AvatarFallback>{label}</AvatarFallback>
             </Avatar>
-          ) : (
-            <BotAvatar
-              config={expertAvatarConfig({ name: label, avatarUrl, color })}
-              size={24}
-              animated={false}
-              showBadge={false}
-              title={label}
-            />
           )}
           <span className="truncate">{label}</span>
           {newChatHref && (

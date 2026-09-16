@@ -9,9 +9,15 @@ from urllib.parse import urlparse
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth import (
+    get_request_context,
+    get_user_id,
+    requires_org_permission,
+    requires_user,
+)
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction
 from fastapi import (
     APIRouter,
     Body,
@@ -43,8 +49,6 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
 )
-from backend.api.features.experts import experts_db
-from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateGraph,
@@ -57,18 +61,6 @@ from backend.api.model import (
 )
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
-from backend.copilot.tools.skills import (
-    BuiltInSkillError,
-    SkillLimitError,
-    SkillNotFoundError,
-    delete_user_skill,
-    get_default_skill_with_body,
-    list_user_skill_sibling_paths,
-    list_user_skills,
-    parse_skill_markdown,
-    read_user_skill_with_body,
-    store_user_skill,
-)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
@@ -130,7 +122,6 @@ from backend.data.subscription_trial_billing import (
     sync_trials_for_billing_event,
 )
 from backend.data.tally import extract_business_understanding
-from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
@@ -146,7 +137,6 @@ from backend.data.user import (
     verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
-from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
@@ -160,7 +150,6 @@ from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
-from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import (
     GraphValidationError,
@@ -170,10 +159,7 @@ from backend.util.exceptions import (
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.json import dumps
 from backend.util.settings import Settings
-from backend.util.timezone_utils import (
-    convert_utc_time_to_user_timezone,
-    get_user_timezone_or_utc,
-)
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
@@ -724,6 +710,20 @@ async def upload_file(
 ########################################################
 
 
+# MANAGE_BILLING excludes org admins by design; personal-org membership rows
+# are always isOwner=True, so this gate is a no-op for personal orgs.
+#
+# Release ordering (SECRT-2449): the frontend never sends X-Org-Id, so the gate
+# is inert today. Forwarding it must not ship before the billing UI handles 403
+# for plain members — they would otherwise lose the nav Wallet (GET /credits)
+# and the settings billing page (/credits/transactions, /credits/refunds,
+# /credits/invoices).
+BillingManagerContext = Annotated[
+    RequestContext,
+    Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+]
+
+
 @v1_router.get(
     path="/credits",
     tags=["credits"],
@@ -732,7 +732,7 @@ async def upload_file(
 )
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> dict[str, int]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"credits": await credit_model.get_credits(user_id)}
@@ -747,7 +747,7 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     x_datafast_visitor_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
@@ -773,7 +773,7 @@ async def request_top_up(
 )
 async def refund_top_up(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
@@ -789,7 +789,7 @@ async def refund_top_up(
 )
 async def fulfill_checkout(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
     await credit_model.fulfill_checkout(user_id=user_id)
@@ -805,7 +805,7 @@ async def fulfill_checkout(
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
 
@@ -1730,7 +1730,7 @@ async def manage_payment_method(
 )
 async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
@@ -1758,7 +1758,7 @@ async def get_credit_history(
 )
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> list[RefundRequest]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return await credit_model.get_refund_requests(user_id)
@@ -1772,14 +1772,18 @@ async def get_refund_requests(
 )
 async def list_invoices(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     limit: int = Query(24, ge=1, le=100),
 ) -> list[InvoiceListItem]:
-    """Recent Stripe invoices for the current user.
+    """Recent Stripe invoices for the caller's active org, for billing managers.
+
+    The invoices belong to the org the request resolves to (the caller's
+    personal org when no ``X-Org-Id`` is supplied), so this is restricted to
+    org roles holding ``MANAGE_BILLING``.
 
     Each item includes ``hosted_invoice_url`` (Stripe-hosted view) and
     ``invoice_pdf_url`` (direct PDF download). Returns an empty list when
-    the credit system is disabled or the user has no Stripe customer yet.
+    the credit system is disabled or the org has no Stripe customer yet.
     """
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return await credit_model.list_invoices(user_id, limit=limit)
@@ -2162,6 +2166,8 @@ async def execute_graph(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            trigger=execution_db.ExecutionTrigger.MANUAL,
+            trigger_ref=source,
         )
         record_graph_operation(operation="execute", status="success")
         if source == "library":
@@ -2547,396 +2553,3 @@ async def download_shared_file(
         raise HTTPException(status_code=404, detail="Not found")
 
     return await create_file_download_response(file)
-
-
-########################################################
-##################### Schedules ########################
-########################################################
-
-
-class ScheduleCreationRequest(pydantic.BaseModel):
-    graph_version: Optional[int] = None
-    name: str
-    cron: str
-    inputs: dict[str, Any]
-    credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
-    timezone: Optional[str] = pydantic.Field(
-        default=None,
-        description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
-    )
-    expert_id: Optional[str] = pydantic.Field(
-        default=None,
-        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
-    )
-
-
-@v1_router.post(
-    path="/graphs/{graph_id}/schedules",
-    summary="Create execution schedule",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def create_graph_execution_schedule(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    graph_id: str = Path(..., description="ID of the graph to schedule"),
-    schedule_params: ScheduleCreationRequest = Body(),
-) -> scheduler.GraphExecutionJobInfo:
-    graph = await graph_db.get_graph(
-        graph_id=graph_id,
-        version=schedule_params.graph_version,
-        user_id=user_id,
-    )
-    if not graph:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
-        )
-
-    # Use timezone from request if provided, otherwise fetch from user profile
-    if schedule_params.timezone:
-        user_timezone = schedule_params.timezone
-    else:
-        user = await get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
-
-    # Expert attribution: explicit expert_id must be an active expert owned
-    # by the caller; when omitted, a unique (user, graph) → expert match
-    # keeps attribution for schedules created through the generic UI.
-    expert_id = schedule_params.expert_id
-    if expert_id is not None:
-        expert = await experts_db.get_expert(
-            user_id, expert_id, include_workflows=False
-        )
-        if expert is None or expert.is_archived:
-            raise HTTPException(
-                status_code=404, detail=f"Expert #{expert_id} not found."
-            )
-    else:
-        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
-
-    result = await get_scheduler_client().add_execution_schedule(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        name=schedule_params.name,
-        cron=schedule_params.cron,
-        input_data=schedule_params.inputs,
-        input_credentials=schedule_params.credentials,
-        user_timezone=user_timezone,
-        organization_id=ctx.org_id,
-        team_id=ctx.team_id,
-        expert_id=expert_id,
-    )
-
-    # Convert the next_run_time back to user timezone for display
-    if result.next_run_time:
-        result.next_run_time = convert_utc_time_to_user_timezone(
-            result.next_run_time, user_timezone
-        )
-
-    await complete_onboarding_step(user_id, OnboardingStep.SCHEDULE_AGENT)
-
-    return result
-
-
-@v1_router.get(
-    path="/graphs/{graph_id}/schedules",
-    summary="List execution schedules for a graph",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_graph_execution_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    graph_id: str = Path(),
-) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        graph_id=graph_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-    )
-
-
-@v1_router.get(
-    path="/schedules",
-    summary="List execution schedules for a user",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_all_graphs_execution_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-    )
-
-
-@v1_router.get(
-    path="/schedules/followups",
-    summary="List copilot follow-up schedules for a user",
-    operation_id="listCopilotFollowupSchedules",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def list_copilot_turn_schedules(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> list[scheduler.CopilotTurnJobInfo]:
-    """Return only copilot-turn schedules for the current user.
-
-    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
-    keeps the generated frontend client typed to a single concrete return type
-    instead of a discriminated union.
-    """
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="copilot_turn"
-    )
-    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
-    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
-    # for the ``kind`` filter, but we narrow the polymorphic
-    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
-    # subset before returning so the generated frontend client gets a single
-    # concrete schema. If a row ever slips through the discriminator (e.g.
-    # legacy untyped row, scheduler-side bug), we drop it rather than fail
-    # the response with a Pydantic validation error.
-    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
-
-
-@v1_router.delete(
-    path="/schedules/{schedule_id}",
-    summary="Delete execution schedule",
-    tags=["schedules"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_graph_execution_schedule(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-    schedule_id: str = Path(..., description="ID of the schedule to delete"),
-) -> dict[str, Any]:
-    try:
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Schedule #{schedule_id} not found",
-        )
-    return {"id": schedule_id}
-
-
-########################################################
-##################### COPILOT SKILLS #####################
-########################################################
-
-
-class CopilotSkillInfo(BaseModel):
-    """User-distilled copilot skill metadata for the library UI.
-
-    Defaults (built-in agent-building / MCP-tool guides) are intentionally
-    excluded — they cannot be edited or deleted, so surfacing them in the
-    user-facing list would add noise without affordances.
-    """
-
-    name: str
-    description: str
-    triggers: list[str] = []
-
-
-class CopilotSkillDetail(BaseModel):
-    """Full SKILL.md content surfaced to the library expand-to-view UI."""
-
-    name: str
-    description: str
-    triggers: list[str] = []
-    body: str
-    version: str | None = None
-    is_default: bool = False
-    # Sibling files in the same skill folder (references/, scripts/,
-    # assets/, etc.) — the workspace paths the model can reach via
-    # ``read_workspace_file``.  Empty for built-in defaults since they
-    # ship as on-disk markdown and have no sibling artefacts.
-    sibling_files: list[str] = []
-
-
-class UploadCopilotSkillRequest(BaseModel):
-    """Body for the library UI's "upload skill" action.
-
-    Carries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the
-    user picked from disk; the server parses + validates it so the upload and
-    the copilot's ``store_skill`` tool share one source of truth.
-    """
-
-    content: str
-
-
-@v1_router.get(
-    path="/skills",
-    summary="List user-distilled copilot skills",
-    operation_id="listCopilotSkills",
-    tags=["skills"],
-    dependencies=[Security(requires_user)],
-)
-async def list_copilot_skills(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> list[CopilotSkillInfo]:
-    """Return user-stored skills for the current user.
-
-    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
-    library UI sees the exact same set the copilot ``<available_skills>``
-    block surfaces, minus the built-in defaults (which are read-only and
-    handled separately by the copilot runtime).
-    """
-    skills = await list_user_skills(user_id)
-    return [
-        CopilotSkillInfo(
-            name=s.name,
-            description=s.description,
-            triggers=list(s.triggers),
-        )
-        for s in skills
-    ]
-
-
-@v1_router.post(
-    path="/skills",
-    summary="Upload a copilot skill from a SKILL.md file",
-    operation_id="uploadCopilotSkill",
-    tags=["skills"],
-    status_code=201,
-    responses={
-        400: {"description": "Malformed SKILL.md or validation error"},
-        409: {"description": "Per-user skill limit reached"},
-    },
-    dependencies=[Security(requires_user)],
-)
-async def upload_copilot_skill(
-    user_id: Annotated[str, Security(get_user_id)],
-    body: UploadCopilotSkillRequest,
-) -> CopilotSkillInfo:
-    """Create a user-distilled skill from an uploaded ``SKILL.md`` file.
-
-    Parses the canonical frontmatter + body, then reuses
-    :func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill
-    is validated, capped, and persisted exactly like one the copilot distils
-    via ``store_skill``.  Malformed files return 400, the per-user cap returns
-    409, and an existing slug is overwritten (upsert).
-    """
-    parsed = parse_skill_markdown(body.content)
-    if parsed is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "File is not a valid SKILL.md — expected YAML frontmatter with "
-                "'name' and 'description' followed by a markdown body."
-            ),
-        )
-    try:
-        stored = await store_user_skill(
-            user_id,
-            name=parsed.name,
-            description=parsed.description,
-            body=parsed.body,
-            triggers=list(parsed.triggers),
-            version=parsed.version,
-        )
-    except SkillLimitError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except (VirusDetectedError, VirusScanError) as exc:
-        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
-        raise HTTPException(
-            status_code=400, detail="Skill content rejected by virus scan"
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    return CopilotSkillInfo(
-        name=stored.name,
-        description=stored.description,
-        triggers=list(stored.triggers),
-    )
-
-
-@v1_router.get(
-    path="/skills/{name}",
-    summary="Read a single copilot skill with its full SKILL.md body",
-    operation_id="readCopilotSkill",
-    tags=["skills"],
-    responses={404: {"description": "Skill not found"}},
-    dependencies=[Security(requires_user)],
-)
-async def read_copilot_skill(
-    user_id: Annotated[str, Security(get_user_id)],
-    name: str = Path(..., description="Slug of the skill to read"),
-) -> CopilotSkillDetail:
-    """Return full SKILL.md content (name, description, triggers, body)
-    for the library UI's expand-to-view dialog.
-
-    Built-in default skills are returned with ``is_default=True`` so the
-    UI can hide destructive affordances; missing user skills return 404.
-    """
-    slug = name.strip().lower()
-    try:
-        default = get_default_skill_with_body(slug)
-    except OSError:
-        # Don't leak the on-disk path; operators trace via server logs.
-        logger.exception("[skills] failed to load default skill body for %s", slug)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to load default skill body",
-        )
-    if default is not None:
-        return CopilotSkillDetail(
-            name=default.name,
-            description=default.description,
-            triggers=list(default.triggers),
-            body=default.body,
-            is_default=True,
-        )
-
-    parsed = await read_user_skill_with_body(user_id, slug)
-    if parsed is None:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
-        )
-    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
-    return CopilotSkillDetail(
-        name=parsed.name,
-        description=parsed.description,
-        triggers=list(parsed.triggers),
-        body=parsed.body,
-        version=parsed.version,
-        is_default=False,
-        sibling_files=sibling_files,
-    )
-
-
-@v1_router.delete(
-    path="/skills/{name}",
-    summary="Delete a user-distilled copilot skill",
-    operation_id="deleteCopilotSkill",
-    tags=["skills"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_copilot_skill(
-    user_id: Annotated[str, Security(get_user_id)],
-    name: str = Path(..., description="Slug of the skill to delete"),
-) -> dict[str, str]:
-    """Delete a user-distilled skill by slug.
-
-    Built-in defaults are not user-deletable — attempting to delete one
-    returns 400.  Missing skills return 404 so the UI can reconcile a
-    stale list.
-    """
-    try:
-        slug = await delete_user_skill(user_id, name)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except BuiltInSkillError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except SkillNotFoundError as exc:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
-    return {"name": slug}

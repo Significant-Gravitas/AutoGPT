@@ -139,6 +139,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # The next tool that does not fit raises this line itself, with its own measured
 # number and its own row above.
 #
+# Bumped 67_651 -> 68_604 on 2026-09-16, by the line above: #14415 landed and
+# dev alone now measures 67,622, leaving 29 chars — consult_teammate's measured
+# +981 does not fit. Measured on the MERGED tree, which is what this PR's CI
+# runs on, not on the branch tip:
+#     dev 2ee0819cc5                             67,622 (81 tools)
+#     + #14207 multi-expert-teams  +981          68,603 (82 tools)
+# Still no margin: strict <, so the ceiling is that total plus one. dev's own
+# 29 chars are the standing problem here — the next tool anyone adds trips this
+# again, whatever this line says.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
@@ -147,7 +157,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_651
+_CHAR_BUDGET = 68_604
 
 
 @pytest.fixture(scope="module")

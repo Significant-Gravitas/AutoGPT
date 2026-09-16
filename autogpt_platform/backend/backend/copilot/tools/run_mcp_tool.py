@@ -25,6 +25,7 @@ from backend.copilot.tools.utils import (
     build_missing_credentials_from_field_info,
     sanitize_provider_message,
 )
+from backend.data.db_accessors import experts_db
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
@@ -223,7 +224,34 @@ class RunMCPToolTool(BaseTool):
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
-        creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
+        normalized_url = normalize_mcp_url(server_url)
+        # Narrow before ranking, not after: an ungranted manual token outranks a
+        # granted OAuth row, so checking the single best match would refuse an
+        # expert that does have usable access to this server.
+        allowed_ids: set[str] | None = None
+        if session.expert_id is not None:
+            allowed_ids = set(
+                await experts_db().expert_allowed_credential_ids(
+                    user_id, session.expert_id
+                )
+            )
+        creds = await auto_lookup_mcp_credential(
+            user_id, normalized_url, allowed_ids=allowed_ids
+        )
+        if creds is None and allowed_ids is not None:
+            ungranted = await auto_lookup_mcp_credential(user_id, normalized_url)
+            if ungranted is not None:
+                return ErrorResponse(
+                    message=(
+                        f"The account's credential for {server_host(server_url)} "
+                        f"(credential_id={ungranted.id}) is not granted to this "
+                        "expert. Ask the user to grant it on the expert's "
+                        "Integrations page or from personal AutoPilot with "
+                        "grant_expert_credential."
+                    ),
+                    error="credential_not_granted",
+                    session_id=session_id,
+                )
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
             if creds is not None

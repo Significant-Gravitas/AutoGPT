@@ -134,8 +134,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   run_sub_session: {
     category: "agent",
-    running: "Delegating to sub-Otto:",
-    done: "Sub-Otto handled:",
+    running: "Delegating subtask:",
+    done: "Subtask completed:",
     subject: (input) => quoted(input, "prompt", 45),
   },
   get_sub_session_result: {

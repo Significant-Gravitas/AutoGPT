@@ -115,7 +115,7 @@ describe("Otto streaming — error paths", () => {
     // useCopilotStream's rate-limit branch sets rateLimitMessage, which the
     // RateLimitGate translates into a Dialog with this title.
     expect(
-      await screen.findByText(/daily otto limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -150,7 +150,7 @@ describe("Otto streaming — error paths", () => {
     });
 
     expect(
-      await screen.findByText(/daily otto limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();

@@ -52,7 +52,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -442,6 +442,7 @@ async def execute_node(
             input_data=input_data,
             creds_manager=creds_manager,
             user_id=user_id,
+            expert_id=execution_context.expert_id,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)
@@ -1087,6 +1088,7 @@ class ExecutionProcessor:
             activity_events.handle_run_completed(
                 db_client, graph_exec, exec_meta, exec_stats
             )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
