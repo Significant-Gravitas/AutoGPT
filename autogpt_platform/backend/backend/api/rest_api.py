@@ -37,6 +37,7 @@ import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
 import backend.api.features.executions.review.routes
+import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
@@ -53,7 +54,9 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
@@ -88,6 +91,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
+    ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
@@ -364,6 +368,7 @@ async def validation_error_handler(
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(ConflictError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
@@ -389,6 +394,16 @@ app.include_router(
     prefix="/api/api-keys",
 )
 app.include_router(
+    skills_routes.router,
+    tags=["v1", "skills"],
+    prefix="/api/skills",
+)
+app.include_router(
+    schedules_routes.router,
+    tags=["v1", "schedules"],
+    prefix="/api",
+)
+app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
@@ -402,6 +417,11 @@ app.include_router(
     analytics_router,
     prefix="/api/analytics",
     tags=["analytics"],
+)
+app.include_router(
+    backend.api.features.experiments.router,
+    prefix="/api/experiments",
+    tags=["experiments"],
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"

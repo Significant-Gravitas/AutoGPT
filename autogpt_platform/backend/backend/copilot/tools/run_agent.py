@@ -12,7 +12,11 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -38,6 +42,11 @@ from .execution_utils import (
     get_execution_outputs,
     summarize_node_failures,
     wait_for_execution,
+)
+from .expert_scope import (
+    provider_slug,
+    require_installed_workflow,
+    ungranted_credential_hint,
 )
 from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
 from .models import (
@@ -180,7 +189,7 @@ class RunAgentTool(BaseTool):
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Library agent ID.",
+                    "description": "Library agent ID or graph ID from your library.",
                 },
                 "preset_id": {
                     "type": "string",
@@ -314,9 +323,19 @@ class RunAgentTool(BaseTool):
 
             # Priority: library_agent_id if provided
             if has_library_id:
-                library_agent = await library_db().get_library_agent(
-                    params.library_agent_id, user_id
-                )
+                try:
+                    library_agent = await library_db().get_library_agent(
+                        params.library_agent_id, user_id
+                    )
+                except NotFoundError:
+                    # get_library_agent raises rather than returning None, so
+                    # the graph-id fallback this tool documents is only
+                    # reachable from here.
+                    library_agent = None
+                if not library_agent:
+                    library_agent = await library_db().get_library_agent_by_graph_id(
+                        user_id, params.library_agent_id
+                    )
                 if not library_agent:
                     return ErrorResponse(
                         message=f"Library agent '{params.library_agent_id}' not found",
@@ -344,6 +363,15 @@ class RunAgentTool(BaseTool):
                     message=f"Agent '{identifier}' not found",
                     session_id=session_id,
                 )
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=graph.id,
+                library_agent_id=library_agent.id if library_agent else None,
+                name=graph.name,
+            )
+            if scope_error is not None:
+                return scope_error
 
             # Builder-bound sessions can only run their bound agent.  We
             # resolve the graph first so the user sees a precise error that
@@ -666,7 +694,16 @@ class RunAgentTool(BaseTool):
                 graph, graph_credentials
             )
             return graph_credentials, SetupRequirementsResponse(
-                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
+                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
+                + await ungranted_credential_hint(
+                    user_id,
+                    expert_id,
+                    {
+                        provider_slug(m.get("provider", ""))
+                        for m in missing_credentials_dict.values()
+                    }
+                    - {""},
+                ),
                 session_id=session_id,
                 setup_info=SetupInfo(
                     agent_id=graph.id,
@@ -792,6 +829,11 @@ class RunAgentTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        scope_error = await require_installed_workflow(
+            user_id, session, graph_id=graph.id, name=graph.name
+        )
+        if scope_error is not None:
+            return scope_error
 
         # Builder-bound sessions can only run their bound agent — enforce the
         # same guard as the regular run path so a preset for a different graph
@@ -920,6 +962,8 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                trigger=ExecutionTrigger.COPILOT,
+                trigger_ref=session_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

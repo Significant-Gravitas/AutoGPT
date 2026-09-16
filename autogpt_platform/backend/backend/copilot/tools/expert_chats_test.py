@@ -199,6 +199,7 @@ class TestGating:
                 session=_caller(expert_id="expert-a"),
                 tool_call_id="call-1",
                 disabled_groups=["expert_admin"],
+                disabled_tools=(),
             )
         execute_mock.assert_not_awaited()
         assert result.success is False
@@ -342,8 +343,10 @@ class TestReadRendering:
 
 
 class TestReadPaging:
+    # Each row is over the row cap, so it truncates to exactly _MAX_MESSAGE_CHARS
+    # and _MAX_PAGE_CHARS // _MAX_MESSAGE_CHARS = 4 of the 6 fit on a page.
     def _long_chat(self) -> _FakeChatDB:
-        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 6)])
+        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 7)])
 
     @pytest.mark.asyncio
     async def test_the_cap_drops_the_oldest_rows_and_reports_them_as_more(
@@ -351,7 +354,7 @@ class TestReadPaging:
     ) -> None:
         result = await _read(self._long_chat())
         assert sum(len(m.content) for m in result.messages) <= _MAX_PAGE_CHARS
-        assert [m.sequence for m in result.messages] == [3, 4, 5]
+        assert [m.sequence for m in result.messages] == [3, 4, 5, 6]
         assert result.has_more is True
         assert result.next_before_sequence == 3
 

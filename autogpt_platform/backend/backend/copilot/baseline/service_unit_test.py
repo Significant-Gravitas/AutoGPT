@@ -3075,12 +3075,12 @@ class TestBaselineExpertsFlagGuard:
 
 
 class TestBaselineToolExecutorForwardsDisabledGroups:
-    """``_baseline_tool_executor`` must forward its ``disabled_groups`` to
+    """``_baseline_tool_executor`` must forward both of its gates to
     ``execute_tool`` — that's the only thing making the schema-hiding filter
     an actual enforcement boundary for the baseline engine."""
 
-    @pytest.mark.asyncio
-    async def test_disabled_groups_reach_execute_tool(self) -> None:
+    @staticmethod
+    async def _forwarded_kwargs(**gates: object) -> dict:
         session = ChatSession.new("user-1", dry_run=False)
         state = _BaselineStreamState()
         tool_call = LLMToolCall(id="call-1", name="hire_expert", arguments="{}")
@@ -3102,7 +3102,24 @@ class TestBaselineToolExecutorForwardsDisabledGroups:
                 state=state,
                 user_id="user-1",
                 session=session,
-                disabled_groups=["expert_admin"],
+                **gates,  # pyright: ignore[reportArgumentType]
             )
 
-        assert execute_mock.await_args.kwargs["disabled_groups"] == ["expert_admin"]
+        return execute_mock.await_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_disabled_groups_reach_execute_tool(self) -> None:
+        kwargs = await self._forwarded_kwargs(
+            disabled_groups=["expert_admin"], disabled_tools=frozenset()
+        )
+
+        assert kwargs["disabled_groups"] == ["expert_admin"]
+
+    @pytest.mark.asyncio
+    async def test_disabled_tools_reach_execute_tool(self) -> None:
+        """The kickoff gate travels the same path as the capability gate."""
+        kwargs = await self._forwarded_kwargs(
+            disabled_groups=[], disabled_tools=frozenset({"run_agent"})
+        )
+
+        assert kwargs["disabled_tools"] == frozenset({"run_agent"})

@@ -1,10 +1,10 @@
 """What stands between a hired expert and its scheduled work.
 
 A workflow "needs setup" when its roster cadence could not become a schedule
-at install time, almost always because the graph needs a credential the
-expert cannot reach. This names that gap per workflow so the Team page can
-offer the one fix that clears it: connect a service, or allow the expert to
-use one the user already has.
+at install time — the graph needs a credential the expert cannot reach, or an
+input value only the user can give. This names that gap per workflow so the
+Team page can offer the one fix that clears it: connect a service, allow the
+expert to use one the user already has, or fill the workflow's inputs in.
 """
 
 import logging
@@ -19,6 +19,7 @@ from backend.api.features.experts.credentials import (
     filter_credentials_for_expert,
 )
 from backend.api.features.experts.models import ExpertSetupItem
+from backend.api.features.experts.scheduling import unsatisfied_required_inputs
 from backend.data.model import Credentials
 
 logger = logging.getLogger(__name__)
@@ -124,8 +125,12 @@ async def _workflow_items(
                 credential_id=candidate.id if candidate else None,
             )
         )
-    # Everything is reachable yet the schedule is still missing: whatever
-    # failed was not a credential, so hand the user the workflow itself.
+    if missing_inputs := unsatisfied_required_inputs(graph):
+        items.append(
+            item(providers=[], resolution="inputs", missing_inputs=missing_inputs)
+        )
+    # Nothing is missing yet the schedule is not there: whatever failed was
+    # neither a credential nor an input, so hand the user the workflow itself.
     return items or [item(providers=[], resolution="workflow")]
 
 

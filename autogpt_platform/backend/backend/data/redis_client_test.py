@@ -16,6 +16,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
 
 import backend.data.redis_client as redis_client
+from backend.util.testing import is_tcp_port_reachable
 
 
 @pytest.fixture(autouse=True)
@@ -243,15 +244,7 @@ async def test_disconnect_async_no_cached_client_is_noop() -> None:
 
 
 def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
+    return is_tcp_port_reachable(redis_client.HOST, redis_client.PORT)
 
 
 @pytest.mark.skipif(

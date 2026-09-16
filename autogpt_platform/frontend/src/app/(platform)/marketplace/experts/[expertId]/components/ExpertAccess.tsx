@@ -1,5 +1,6 @@
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { ExpertPill } from "./ExpertPill";
 import { ExpertSection } from "./ExpertSection";
 
 interface Props {
@@ -17,17 +18,11 @@ export function ExpertAccess({ name, providers }: Props) {
     >
       <ul className="flex flex-wrap gap-2">
         {providers.map((provider) => (
-          <li
+          <ExpertPill
             key={provider}
-            className="flex min-w-0 items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm text-zinc-700 ring-1 ring-inset ring-zinc-200/80"
-          >
-            {/* The label beside it already names the provider; without this a
-                screen reader announces the name twice. */}
-            <span aria-hidden="true" className="flex shrink-0">
-              <IntegrationLogo provider={provider} />
-            </span>
-            <span className="truncate">{formatProviderName(provider)}</span>
-          </li>
+            icon={<IntegrationLogo provider={provider} />}
+            label={formatProviderName(provider)}
+          />
         ))}
       </ul>
     </ExpertSection>

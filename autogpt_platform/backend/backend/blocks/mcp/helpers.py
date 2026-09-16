@@ -145,12 +145,15 @@ async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
 
 
 async def auto_lookup_mcp_credential(
-    user_id: str, server_url: str
+    user_id: str, server_url: str, allowed_ids: set[str] | None = None
 ) -> OAuth2Credentials | None:
     """Look up the best stored MCP credential for *server_url*.
 
     The caller should pass a **normalized** URL (via :func:`normalize_mcp_url`)
     so the comparison with ``mcp_server_url`` in credential metadata matches.
+
+    ``allowed_ids`` narrows the candidates before ranking, so an expert whose
+    grant is outranked by an ungranted row still gets the one it may use.
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if it can expire and needs it, or ``None`` when no match is found.
@@ -180,6 +183,7 @@ async def auto_lookup_mcp_credential(
             if (
                 isinstance(cred, OAuth2Credentials)
                 and (cred.metadata or {}).get("mcp_server_url") == server_url
+                and (allowed_ids is None or cred.id in allowed_ids)
             ):
                 if best is None or rank(cred) >= rank(best):
                     best = cred

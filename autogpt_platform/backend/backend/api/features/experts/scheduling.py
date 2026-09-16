@@ -10,6 +10,7 @@ Split out of ``experts_db`` to keep both files within the size guideline.
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import prisma.models
 from prisma.enums import ResourceVisibility
@@ -24,6 +25,9 @@ from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
+
+if TYPE_CHECKING:
+    from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -63,11 +67,24 @@ async def create_workflow_schedule(
     user hasn't connected yet: the cadence stays on the row with a null
     ``scheduleId``, surfacing the workflow as "needs setup" instead of
     silently dropping the roster's intent.
+
+    A graph that still needs user-supplied input gets no schedule at all,
+    for the same reason: a surprise run whose input node yields nothing is
+    worse than no run, and the missing fields are named on the setup card.
     """
     try:
-        input_credentials = await _resolve_workflow_credentials(
-            user_id, expert_id, graph_id, graph_version
-        )
+        graph = await _load_workflow_graph(user_id, graph_id, graph_version)
+        input_credentials: dict[str, CredentialsMetaInput] = {}
+        if graph is not None:
+            if missing := unsatisfied_required_inputs(graph):
+                logger.info(
+                    f"Schedule for expert #{expert_id} workflow #{workflow_row_id} "
+                    f"not created (needs input): {', '.join(missing)}"
+                )
+                return False
+            input_credentials = await _resolve_workflow_credentials(
+                user_id, expert_id, graph
+            )
         schedule = await get_scheduler_client().add_execution_schedule(
             user_id=user_id,
             graph_id=graph_id,
@@ -110,8 +127,32 @@ async def create_workflow_schedule(
     return True
 
 
+def unsatisfied_required_inputs(graph: "GraphModel") -> list[str]:
+    """Graph inputs a schedule would have to supply and cannot.
+
+    ``input_schema.required`` is exactly the set of graph inputs carrying no
+    default value, and an install-time schedule passes no input data.
+    """
+    schema = graph.input_schema
+    properties: dict = schema.get("properties", {})
+    return [
+        properties.get(name, {}).get("title") or name
+        for name in schema.get("required", [])
+    ]
+
+
+async def _load_workflow_graph(
+    user_id: str, graph_id: str, graph_version: int
+) -> "GraphModel | None":
+    # Imported here: graph loading pulls in the executor, which imports this
+    # package at module load.
+    from backend.data.graph import get_graph
+
+    return await get_graph(graph_id, graph_version, user_id, include_subgraphs=True)
+
+
 async def _resolve_workflow_credentials(
-    user_id: str, expert_id: str, graph_id: str, graph_version: int
+    user_id: str, expert_id: str, graph: "GraphModel"
 ) -> dict[str, CredentialsMetaInput]:
     """The graph's credential inputs, filled from the expert's allow-list.
 
@@ -122,11 +163,7 @@ async def _resolve_workflow_credentials(
     # Imported here: the matcher lives beside the executor, which imports this
     # package at module load.
     from backend.copilot.tools.utils import match_user_credentials_to_graph
-    from backend.data.graph import get_graph
 
-    graph = await get_graph(graph_id, graph_version, user_id, include_subgraphs=True)
-    if graph is None:
-        return {}
     matched, _missing = await match_user_credentials_to_graph(user_id, graph, expert_id)
     return matched
 
@@ -272,6 +309,73 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
                 f"Failed to pause schedule #{schedule.id} while detaching "
                 f"expert #{expert_id}: {type(e).__name__}: {e}"
             )
+
+
+async def suspend_workflow_triggers(
+    user_id: str,
+    expert_id: str,
+    graph_id: str,
+    *,
+    except_schedule_id: str | None = None,
+) -> list[str]:
+    """Stop the expert's remaining triggers for *graph_id*, and name them.
+
+    ``ExpertWorkflow.scheduleId`` records only the install-time schedule. A cron
+    the expert made through ``run_agent`` and a webhook preset it set up are
+    stored separately, so without this an uninstalled workflow keeps firing
+    under the expert's attribution and spending the owner's money. Paused
+    rather than deleted, because a schedule the user made themselves is theirs
+    to keep.
+    """
+    stopped: list[str] = []
+    presets = await prisma.models.AgentPreset.prisma().find_many(
+        where={
+            "expertId": expert_id,
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isActive": True,
+        }
+    )
+    if presets:
+        await prisma.models.AgentPreset.prisma().update_many(
+            where={
+                "expertId": expert_id,
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+                "isActive": True,
+            },
+            data={"isActive": False},
+        )
+        stopped.extend(p.name for p in presets)
+
+    try:
+        scheduler = get_scheduler_client()
+        schedules = await _get_expert_schedules(user_id, expert_id)
+    except Exception as e:
+        # Best-effort: an unreachable scheduler must not fail the uninstall
+        # itself. The survivors stay expert-attributed, so the detach preview
+        # and the archive sweep still find them.
+        logger.warning(
+            f"Could not list schedules while removing graph #{graph_id} from "
+            f"expert #{expert_id}: {type(e).__name__}: {e}"
+        )
+        return stopped
+    for schedule in schedules:
+        if schedule.graph_id != graph_id or schedule.id == except_schedule_id:
+            continue
+        try:
+            await scheduler.pause_schedule(schedule.id, user_id=user_id)
+            stopped.append(schedule.name or schedule.cron or schedule.id)
+        except Exception as e:
+            # Unlike detach, no run-time gate catches a survivor: the expert
+            # stays active and execution never checks membership (#14607).
+            logger.warning(
+                f"Failed to pause schedule #{schedule.id} while removing graph "
+                f"#{graph_id} from expert #{expert_id}: {type(e).__name__}: {e}"
+            )
+    return stopped
 
 
 async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:

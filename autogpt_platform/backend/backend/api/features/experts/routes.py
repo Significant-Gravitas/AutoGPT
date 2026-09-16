@@ -25,12 +25,14 @@ from backend.api.features.experts.models import (
     ExpertSetupItem,
     ExpertSkillsUpdate,
     ExpertSoulUpdate,
+    ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
     RaiseResult,
     validate_avatar_url,
 )
+from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
 router = APIRouter(
@@ -128,8 +130,19 @@ class CreateRaisedExpertRequest(BaseModel):
 
 
 @public_router.get("/templates", operation_id="list_expert_templates")
-async def list_expert_templates() -> list[Expert]:
-    return await experts_db.list_templates()
+async def list_expert_templates(
+    search_query: str | None = fastapi.Query(default=None),
+    category: str | None = fastapi.Query(default=None),
+    user_id: str | None = Security(autogpt_auth_lib.get_optional_user_id),
+) -> list[ExpertTemplate]:
+    """Roster templates, narrowed by a search term and/or a marketplace category.
+
+    Unpaginated: the roster is small, and every caller reads the whole list.
+    """
+    templates = await experts_db.list_templates(
+        search_query=search_query, category=category
+    )
+    return await experts_db.with_bundled_skills(templates, user_id)
 
 
 @router.post(
@@ -146,7 +159,9 @@ async def hire_expert(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> HireResult:
     try:
-        return await experts_db.hire_expert(user_id, request.template_id, request.name)
+        result = await experts_db.hire_expert(
+            user_id, request.template_id, request.name
+        )
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     except experts_db.ExpertNotFoundError as e:
@@ -166,6 +181,13 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
+    product_analytics.track_expert_hired(
+        user_id=user_id,
+        expert_id=result.expert.id,
+        template_id=request.template_id,
+        name=result.expert.name,
+    )
+    return result
 
 
 @router.post(

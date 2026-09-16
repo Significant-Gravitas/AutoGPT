@@ -28,6 +28,7 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.util.feature_flag import Flag
 
 _EC = "backend.copilot.expert_context"
@@ -63,9 +64,9 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned when the assistant was renamed AutoPilot -> Otto.
+# Last re-pinned for the <skills_update> drift-notice sentence.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "572493d92b08c0b1f4abfcdd8339790c0f0d504401403ea57d5c1fe155217323"
+    "a7877c867b2f688996ac0ddab71b2dfd7c9ff110ee2dcf5fa9092fee61268d71"
 )
 
 
@@ -158,6 +159,8 @@ class TestBuildExpertIdentitySuffix:
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
         assert "never present yourself as Otto" in result
+        assert "call `expert_onboarding` exactly once" in result
+        assert "Do not use `ask_question` for it" in result
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):
@@ -454,6 +457,24 @@ class TestBuildExpertContextExpertSession:
         assert "Otto" in result
         assert "Maria" not in result.split("<team_context>")[1]
         assert "delegate_to_expert" in result
+
+    @pytest.mark.asyncio
+    async def test_teammates_can_be_left_out_without_a_roster_lookup(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Otto")]
+        )
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context(
+                "user-1", "exp-1", include_teammates=False
+            )
+
+        assert "<expert_workflows>" in result
+        assert "<team_context>" not in result
+        mock_db.list_experts.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_solo_expert_gets_no_team_block(self):
@@ -803,6 +824,96 @@ class TestInjectUserContextExpertWiring:
         assert "<expert_identity>" not in result
         assert "<expert_workflows>" in result
         assert result.endswith("hello")
+
+    @pytest.mark.asyncio
+    async def test_kickoff_turn_keeps_only_the_experts_own_workflows(self):
+        """The card must come from the expert's own role: the user's pain
+        points and a teammate's workflows are exactly what the model would
+        otherwise borrow its questions from."""
+        from backend.copilot.expert_kickoff import expert_kickoff_metadata
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+        from backend.data.understanding import BusinessUnderstanding
+
+        understanding = BusinessUnderstanding(
+            id="u-1",
+            user_id="user-1",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            pain_points=["Finding leads"],
+        )
+        kickoff = ChatMessage(
+            role="user",
+            content="You were just hired.",
+            metadata=expert_kickoff_metadata("exp-1"),
+            sequence=None,
+        )
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Max")]
+        )
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await inject_user_context(
+                understanding,
+                "You were just hired.",
+                "sess-1",
+                [kickoff],
+                user_id="user-1",
+                expert_id="exp-1",
+            )
+
+        assert result is not None
+        assert "<expert_workflows>" in result
+        assert "<user_context>" not in result
+        assert "Finding leads" not in result
+        assert "<team_context>" not in result
+        assert "Max" not in result
+        assert result.endswith("You were just hired.")
+
+    @pytest.mark.asyncio
+    async def test_typed_first_turn_in_expert_session_keeps_user_and_team_context(
+        self,
+    ):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+        from backend.data.understanding import BusinessUnderstanding
+
+        understanding = BusinessUnderstanding(
+            id="u-1",
+            user_id="user-1",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            pain_points=["Finding leads"],
+        )
+        msg = ChatMessage(role="user", content="hello", sequence=None)
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Max")]
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+            ),
+        ):
+            result = await inject_user_context(
+                understanding,
+                "hello",
+                "sess-1",
+                [msg],
+                user_id="user-1",
+                expert_id="exp-1",
+            )
+
+        assert result is not None
+        assert "<expert_workflows>" in result
+        assert "<team_context>" in result
+        assert "Max" in result
+        assert "<user_context>" in result
+        assert "Finding leads" in result
 
     @pytest.mark.asyncio
     async def test_no_expert_block_without_expert_or_team(self):

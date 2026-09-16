@@ -1,13 +1,12 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 
-const VALID_CREDENTIAL_TYPES = new Set([
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-]);
+// Used as a filter below, so it has to be total: a type missing here is
+// silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
+// `CredentialsType` at build time, so a new type cannot go missing quietly.
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(CREDENTIALS_TYPES);
 
 export function coerceCredentialFields(rawMissingCredentials: unknown): {
   credentialFields: CredentialField[];

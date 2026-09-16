@@ -140,6 +140,28 @@ class TestTeamBuildingSupplement:
         assert "hire_expert" not in result
 
 
+class TestChatPlatformSupplement:
+    """The silence rule belongs to sessions a chat bot opened, and to no
+    others: on the web a human is waiting, and silence there is a bug."""
+
+    def test_a_web_session_gets_nothing(self):
+        assert prompting.get_chat_platform_supplement(None) == ""
+        assert prompting.get_chat_platform_supplement("") == ""
+
+    def test_every_bot_platform_gets_the_same_rule(self):
+        rules = {
+            prompting.get_chat_platform_supplement(p)
+            for p in ("discord", "slack", "telegram", "teams")
+        }
+        assert len(rules) == 1, "one string, so the prompt cache is shared"
+        rule = rules.pop()
+        assert f"exactly `{prompting.NO_REPLY}` as your entire message" in rule
+        assert "Otherwise answer normally" in rule
+
+    def test_the_word_is_exact_and_case_sensitive(self):
+        assert prompting.NO_REPLY == "NO_REPLY"
+
+
 class TestExpertOversightSupplement:
     """The chat-reading tools are in the ``expert_admin`` group, so only an
     Otto session with the team flag on can call them — a turn that
@@ -167,3 +189,42 @@ class TestExpertOversightSupplement:
             )
             == ""
         )
+
+
+class TestSchedulingGuidance:
+    """The CLI's cron built-ins are blocked (REQ-121), but blocking alone just
+    moves the failure: the model must be told which primitive is durable, and
+    told not to promise monitoring it never scheduled.
+    """
+
+    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Scheduling future work — use `schedule_followup`" in result
+        assert "ONLY way to schedule a future copilot turn" in result
+
+    def test_supplement_keeps_agent_schedules_on_run_agent(self):
+        # "Run my report agent every morning" must stay a graph schedule, not
+        # become a recurring copilot turn that re-decides what to run.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "use `run_agent` with `schedule_name` +" in result
+        assert "use `setup_agent_webhook_trigger`" in result
+
+    def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        # CronCreate reports success and claims it persisted to disk, so
+        # "it said it worked" must not be treated as evidence it is scheduled.
+        assert "even if it reports success and says it persisted to disk" in result
+        assert "unless a scheduling" in result
+        assert "call actually succeeded" in result
+
+    def test_supplement_describes_list_schedules_scope_honestly(self):
+        # list_schedules filters by expert_id, not session_id: it returns the
+        # expert's (or plain copilot's) schedules from every chat.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "across all chats, not only the ones created here" in result
+        assert "current chat's scope" not in result
+
+    def test_baseline_mode_gets_the_same_rule(self):
+        # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
+        # system prompt; the rule is useless if it only reaches one mode.
+        assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
