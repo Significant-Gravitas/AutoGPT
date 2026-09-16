@@ -165,7 +165,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
 # 68,237 — dev widened raise_expert by two characters after this line was first
 # set, which reddened three interpreters on a branch that had added nothing.
-_CHAR_BUDGET = 69_056
+# Bumped 69_056 -> 70_771 for SECRT-2605: edit_chat_platform_message (mirroring
+# post_to_chat_platform's platform/target enums plus channel_id/ref_id/content)
+# measures 1,460, and the line in post_to_chat_platform's description pointing
+# at it 255. Measured on the branch merged with dev: 70,770, plus one.
+_CHAR_BUDGET = 70_771
 
 
 @pytest.fixture(scope="module")
