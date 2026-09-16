@@ -22,9 +22,9 @@ serving, and that mapping is the tenant boundary on the proxy's side.  A
 credential is minted for one running stretch of a box: fresh at create,
 fresh again at every reconnect, the previous one forgotten.  The proxy
 looks the username up (``e2b:egress:cred:<username>``) and checks the
-password against the stored hash; the record names the owner and the user
+secret against the stored digest; the record names the owner and the user
 whose credentials may be swapped in.  A box cannot claim another owner:
-usernames are random, and the password is handed to E2B's host, which dials
+usernames are random, and the secret is handed to E2B's host, which dials
 the proxy, never to anything running inside the box.
 
 Known gap, to be settled by the spike on SECRT-2615: E2B tunnels TCP only.
@@ -81,12 +81,17 @@ class EgressOwner(BaseModel):
 
 
 class ProxyCredential(BaseModel):
-    """What E2B's host presents to the proxy for one running stretch of a box."""
+    """What E2B's host presents to the proxy for one running stretch of a box.
+
+    The secret is 256 random bits, not a password anyone chose: it goes into
+    the SOCKS5 ``password`` field, but there is nothing to dictionary-attack,
+    so the record keeps a plain SHA-256 digest of it, as for any API token.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     username: str
-    password: str
+    secret: str
 
 
 def proxy_address() -> Optional[str]:
@@ -94,9 +99,9 @@ def proxy_address() -> Optional[str]:
     return Settings().config.e2b_egress_proxy_address.strip() or None
 
 
-def password_digest(password: str) -> str:
-    """What the record stores instead of the password; the proxy compares to it."""
-    return hashlib.sha256(password.encode()).hexdigest()
+def secret_digest(secret: str) -> str:
+    """What the record stores instead of the secret; the proxy compares to it."""
+    return hashlib.sha256(secret.encode()).hexdigest()
 
 
 async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any) -> S:
@@ -157,7 +162,7 @@ async def connect_sandbox(
 
 
 async def credential_record(username: str) -> Optional[dict[str, Any]]:
-    """What the proxy sees for a username: owner, user, box, password digest."""
+    """What the proxy sees for a username: owner, user, box, secret digest."""
     redis = await get_redis_async()
     raw = await redis.get(_CREDENTIAL_KEY_PREFIX + username)
     if not raw:
@@ -167,7 +172,7 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
 
 def _mint() -> ProxyCredential:
     return ProxyCredential(
-        username=f"box-{secrets.token_hex(8)}", password=secrets.token_urlsafe(32)
+        username=f"box-{secrets.token_hex(8)}", secret=secrets.token_urlsafe(32)
     )
 
 
@@ -184,7 +189,7 @@ def _proxy(address: str, credential: ProxyCredential) -> SandboxEgressProxyOpts:
     return {
         "address": address,
         "username": credential.username,
-        "password": credential.password,
+        "password": credential.secret,
     }
 
 
@@ -196,7 +201,7 @@ async def _remember(
         "owner": owner.label,
         "user_id": owner.user_id,
         "sandbox_id": sandbox_id,
-        "password_sha256": password_digest(credential.password),
+        "secret_sha256": secret_digest(credential.secret),
     }
     await redis.set(
         _CREDENTIAL_KEY_PREFIX + credential.username,

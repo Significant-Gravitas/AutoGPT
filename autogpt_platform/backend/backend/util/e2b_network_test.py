@@ -15,7 +15,7 @@ from backend.util.e2b_network import (
     connect_sandbox,
     create_sandbox,
     credential_record,
-    password_digest,
+    secret_digest,
 )
 
 _M = "backend.util.e2b_network"
@@ -106,9 +106,9 @@ class TestPinned:
             "owner": "expert:exp-1",
             "user_id": "user-1",
             "sandbox_id": "sb-1",
-            "password_sha256": password_digest(proxy["password"]),
+            "secret_sha256": secret_digest(proxy["password"]),
         }
-        # The password itself is in no record: the proxy compares digests.
+        # The secret itself is in no record: the proxy compares digests.
         assert proxy["password"] not in json.dumps(redis.store)
         assert redis.store["e2b:egress:box:sb-1"] == proxy["username"]
 
