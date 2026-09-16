@@ -211,6 +211,7 @@ function detail(overrides: Partial<MarketplaceSkillDetails>) {
   return getGetV2GetMarketplaceSkillMockHandler200({
     slug: SLUG,
     name: SLUG,
+    title: "Webapp testing",
     description: "Test a web app end to end.",
     categories: ["development"],
     required_providers: [],
