@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import prisma.types
 from pydantic import BaseModel
@@ -64,7 +64,7 @@ _pending_funnel_writes: set[asyncio.Task] = set()
 
 
 async def _write_funnel_event(
-    user_id: str, event: str, data: dict, data_index: str | None
+    user_id: str, event: str, data: dict[str, Any], data_index: str | None
 ) -> None:
     try:
         effective_data_index = event if data_index is None else data_index
@@ -89,7 +89,7 @@ async def _write_funnel_event(
 
 
 async def emit_funnel_event(
-    user_id: str, event: str, data: dict, data_index: str | None = None
+    user_id: str, event: str, data: dict[str, Any], data_index: str | None = None
 ) -> None:
     """Record a funnel event without blocking or raising into the caller.
 

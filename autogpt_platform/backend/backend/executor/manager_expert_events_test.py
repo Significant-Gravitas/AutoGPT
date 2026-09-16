@@ -115,6 +115,30 @@ def test_persists_before_scheduling_funnel_emission():
     )
 
 
+def test_non_expert_run_persists_without_scheduling_an_emission():
+    rpc_client = MagicMock(emit_funnel_event=MagicMock())
+    submitted = MagicMock()
+
+    with (
+        patch.object(manager, "update_graph_execution_state") as persist,
+        patch.object(manager, "get_db_async_client", return_value=rpc_client),
+        patch.object(
+            manager.asyncio, "run_coroutine_threadsafe", return_value=submitted
+        ) as submit,
+    ):
+        _persist_graph_completion_and_emit_funnel(
+            MagicMock(),
+            _graph_exec(expert_id=None),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+            MagicMock(),
+        )
+
+    persist.assert_called_once()
+    submit.assert_not_called()
+    rpc_client.emit_funnel_event.assert_not_called()
+
+
 def test_observe_funnel_emission_logs_background_failure():
     future: Future = Future()
     future.set_exception(RuntimeError("rpc unavailable"))

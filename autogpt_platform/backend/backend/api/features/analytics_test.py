@@ -405,6 +405,32 @@ async def test_emit_funnel_event_swallows_errors(
     await _drain_funnel_writes()
 
 
+async def test_emit_funnel_event_swallows_a_failing_dedup_read(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The idempotency lookup runs before the write and inside the same
+    try, so a failing read must not raise into the measured action either."""
+    mock_log = mocker.patch(
+        "backend.data.analytics.log_raw_analytics",
+        new_callable=AsyncMock,
+    )
+    analytics_client = Mock(
+        find_first=AsyncMock(side_effect=RuntimeError("index unavailable"))
+    )
+    mocker.patch(
+        "prisma.models.AnalyticsDetails.prisma",
+        return_value=analytics_client,
+    )
+
+    await backend.data.analytics.emit_funnel_event(
+        "user-1", "briefing_delivered", {}, "briefing_delivered:b-1"
+    )
+    await _drain_funnel_writes()
+
+    analytics_client.find_first.assert_awaited_once()
+    mock_log.assert_not_awaited()
+
+
 async def test_emit_funnel_event_skips_duplicate_idempotency_key(
     mocker: pytest_mock.MockFixture,
 ) -> None:

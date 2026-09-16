@@ -14,6 +14,32 @@ describe("trackFunnel", () => {
     postAnalyticsMock.mockReset();
   });
 
+  it("posts the event, its payload and the analytics index", async () => {
+    postAnalyticsMock.mockResolvedValueOnce({ status: "ok" });
+
+    trackFunnel("expert_profile_opened", { template_id: "template-maria" });
+
+    await vi.waitFor(() => expect(postAnalyticsMock).toHaveBeenCalledOnce());
+    expect(postAnalyticsMock).toHaveBeenCalledWith({
+      type: "expert_profile_opened",
+      data: { template_id: "template-maria" },
+      data_index: "expert_profile_opened",
+    });
+  });
+
+  it("posts an empty payload for a view event", async () => {
+    postAnalyticsMock.mockResolvedValueOnce({ status: "ok" });
+
+    trackFunnel("experts_section_viewed");
+
+    await vi.waitFor(() => expect(postAnalyticsMock).toHaveBeenCalledOnce());
+    expect(postAnalyticsMock).toHaveBeenCalledWith({
+      type: "experts_section_viewed",
+      data: {},
+      data_index: "experts_section_viewed",
+    });
+  });
+
   it("swallows a rejected analytics request", async () => {
     postAnalyticsMock.mockRejectedValueOnce(new Error("analytics unavailable"));
 
