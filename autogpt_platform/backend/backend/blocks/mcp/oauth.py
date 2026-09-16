@@ -230,7 +230,12 @@ class MCPOAuthHandler(BaseOAuthHandler):
             client_secret = urllib.parse.quote_plus(self.client_secret, safe="")
             encoded = b64encode(f"{client_id}:{client_secret}".encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
-            return {}, headers
+            # The secret stays in the header, but the id also goes in the body:
+            # RFC 6749 §2.3.1 allows it for identification, and servers that do
+            # not read the Basic header for the id reject the exchange outright
+            # (Miro answers "Missing client_id" and the sign-in dies after the
+            # user has already consented).
+            return {"client_id": self.client_id}, headers
         data = {"client_id": self.client_id}
         if self.token_endpoint_auth_method == "client_secret_post":
             data["client_secret"] = self.client_secret
