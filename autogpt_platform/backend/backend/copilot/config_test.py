@@ -4,7 +4,7 @@ import pytest
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
-from .config import ChatConfig, _host_matches
+from .config import LOCAL_CONTEXT_FALLBACK, ChatConfig, _host_matches
 
 # Env vars that the ChatConfig validators read — must be cleared so they don't
 # override the explicit constructor values we pass in each test.  Includes the
@@ -432,14 +432,14 @@ class TestTransportProfile:
         cfg = ChatConfig(use_local=True, api_key="ollama", base_url="http://h:11434/v1")
         p = cfg.transport
         assert p.name == "local"
-        assert p.supports_sdk is False
+        assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is True
         assert p.cost_log_provider == "ollama"
         assert p.dispatch_provider == "ollama"
         assert p.supports_flex_tier is False
-        assert p.sdk_context_window == 200_000
+        assert p.sdk_context_window == LOCAL_CONTEXT_FALLBACK == 32_768
 
     def test_openrouter_profile_shape(self):
         cfg = ChatConfig(
@@ -578,6 +578,8 @@ class TestLocalAuxModels:
         assert cfg.title_model == "qwen3:0.6b"
         assert cfg.simulation_model == "qwen3:4b"
         assert cfg.fast_advanced_model == "llama3.1:70b"
+        assert cfg.thinking_standard_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.thinking_advanced_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_non_default_cloud_slug_rewritten_under_local(self):
         """Any ``provider/slug`` value is rewritten to ``fast_standard_model``
@@ -598,6 +600,8 @@ class TestLocalAuxModels:
         assert cfg.title_model == "llama3.1:8b-instruct-q4_K_M"
         assert cfg.simulation_model == "llama3.1:8b-instruct-q4_K_M"
         assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.thinking_standard_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.thinking_advanced_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
@@ -655,13 +659,12 @@ class TestLocalRequirementsValidator:
 
 class TestLocalTransport:
     """``use_local=True`` exposes a 4th ``effective_transport`` value
-    (``'local'``) for self-hosted OpenAI-compatible endpoints (Ollama et al.).
+    (``'local'``) for self-hosted LLM endpoints (Ollama et al.).
 
-    Local transport is mutually exclusive with the SDK path because the
-    Claude Agent SDK CLI speaks Anthropic's wire protocol and Ollama
-    doesn't implement it. ``thinking_available`` reports this so the
-    request layer can downgrade gracefully (see
-    ``executor.processor.resolve_use_sdk``)."""
+    Local runs the SDK path: the CLI is pointed at the backend's
+    Anthropic-compatible Messages endpoint, so ``thinking_available``
+    is True and no request-layer downgrade fires (see
+    ``sdk/env.build_sdk_env`` mode 2)."""
 
     def test_local_transport_overrides_subscription(self):
         """An operator opting into local self-hosting must not have their
@@ -690,13 +693,15 @@ class TestLocalTransport:
         )
         assert cfg.effective_transport == "local"
 
-    def test_thinking_available_false_under_local(self):
+    def test_thinking_available_true_under_local(self):
+        """Local backends serve the Messages endpoint the CLI needs, so
+        local serves SDK turns like every other transport."""
         cfg = ChatConfig(
             use_local=True,
             api_key="ollama",
             base_url="http://localhost:11434/v1",
         )
-        assert cfg.thinking_available is False
+        assert cfg.thinking_available is True
 
     def test_thinking_available_true_otherwise(self):
         """Every non-local transport can serve SDK turns — the Claude
@@ -715,8 +720,9 @@ class TestLocalTransport:
             assert cfg.thinking_available is True
 
     def test_local_skips_sdk_vendor_validator(self):
-        """Operators on local transport must not be forced to set
-        anthropic/* placeholders for SDK fields they will never use."""
+        """Bare local tags (``llama3.2:3b``) aren't vendor-validatable —
+        any tag the backend serves is legitimate there, so the cloud
+        vendor check is skipped and SDK slugs pass through verbatim."""
         cfg = ChatConfig(
             use_local=True,
             use_openrouter=False,

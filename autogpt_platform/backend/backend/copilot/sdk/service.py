@@ -50,6 +50,7 @@ from backend.copilot.model_router import (
 )
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.local_context_probe import probe_local_window_for_sdk
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -2145,7 +2146,7 @@ def _resolve_sdk_model() -> str | None:
     """
     if config.claude_agent_model:
         return config.claude_agent_model
-    if config.use_claude_code_subscription:
+    if config.use_claude_code_subscription and config.transport.name != "local":
         return None
     return _normalize_model_name(config.thinking_standard_model)
 
@@ -2236,6 +2237,9 @@ async def _resolve_sdk_model_for_request(
         not ld_overrides_default
         and tier_name == "standard"
         and config.use_claude_code_subscription
+        # On local there is no subscription default to pick — the CLI
+        # talks to the operator backend, which needs a real slug.
+        and config.transport.name != "local"
     ):
         logger.info(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
@@ -4941,6 +4945,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             fallback_model = _resolve_fallback_model()
 
+        # On the local transport the CLI pin comes from the backend's
+        # probed window (fail-fast below the SDK floor — see the probe).
+        # Skipped on the Codex route, which bypasses the profile.
+        local_window: int | None = None
+        if codex_gateway is None and config.transport.name == "local":
+            local_window = await probe_local_window_for_sdk(
+                config.base_url or "",
+                sdk_model or "",
+                explicit_window=config.claude_agent_context_window,
+            )
+
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
         sdk_env = build_sdk_env(
@@ -4950,6 +4965,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=_resolve_env_model(sdk_model, fallback_model),
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
+            local_context_window=local_window,
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -6108,14 +6124,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 cache_read_tokens=turn_cache_read_tokens,
                 cache_creation_tokens=turn_cache_creation_tokens,
                 log_prefix=log_prefix,
-                cost_usd=turn_cost_usd,
+                # Local turns cost the platform nothing (operator hardware);
+                # the CLI-reported number is meaningless there.
+                cost_usd=(0.0 if config.transport.name == "local" else turn_cost_usd),
                 model=effective_model,
                 # ``provider`` labels the cost-analytics row; the cost
                 # value still comes from the SDK-reported number.
-                # Tracks the actual upstream so the row matches reality:
-                # OpenRouter when ``openrouter_active``, Anthropic
-                # otherwise.
-                provider=("open_router" if config.openrouter_active else "anthropic"),
+                # Tracks the actual upstream so the row matches reality.
+                provider=config.transport.cost_log_provider,
             )
 
         # --- Persist session messages ---

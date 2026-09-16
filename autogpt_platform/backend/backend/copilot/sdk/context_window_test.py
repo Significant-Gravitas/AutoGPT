@@ -7,6 +7,7 @@ from backend.copilot.config import (
     CLI_DEFAULT_CONTEXT_WINDOW,
     CODEX_ENGINE_AUTOCOMPACT_PCT,
     CODEX_ENGINE_CONTEXT_WINDOW,
+    LOCAL_CONTEXT_FALLBACK,
     ChatConfig,
 )
 from backend.copilot.sdk.context_window import autocompact_pct, pinned_context_window
@@ -145,6 +146,55 @@ class TestPinnedContextWindow:
         assert pinned_context_window(cfg, None, codex_route=False) == 1_000_000
 
 
+class TestPinnedContextWindowLocal:
+    def _local_config(self, **overrides):
+        defaults = {
+            "use_local": True,
+            "api_key": "ollama",
+            "base_url": "http://h:11434/v1",
+        }
+        defaults.update(overrides)
+        return _make_config(**defaults)
+
+    def test_probed_window_pins_local_route(self):
+        cfg = self._local_config()
+        assert cfg.transport.name == "local"
+        assert (
+            pinned_context_window(
+                cfg, "llama3.2:3b", codex_route=False, local_window=131_072
+            )
+            == 131_072
+        )
+
+    def test_unprobed_local_falls_back_to_blind_constant(self):
+        cfg = self._local_config()
+        assert (
+            pinned_context_window(cfg, "llama3.2:3b", codex_route=False)
+            == LOCAL_CONTEXT_FALLBACK
+            == 32_768
+        )
+
+    def test_explicit_window_wins_over_probe(self):
+        cfg = self._local_config(claude_agent_context_window=300_000)
+        assert (
+            pinned_context_window(
+                cfg, "llama3.2:3b", codex_route=False, local_window=131_072
+            )
+            == 300_000
+        )
+
+    def test_moonshot_cap_still_applies_on_local(self):
+        """The Moonshot min() is route-agnostic — a moonshot-shaped slug
+        over a huge probed window still pins to the SKU's real window."""
+        cfg = self._local_config()
+        assert (
+            pinned_context_window(
+                cfg, "moonshotai/kimi-k2.5", codex_route=False, local_window=1_000_000
+            )
+            == 262_144
+        )
+
+
 class TestAutocompactPct:
     def test_codex_route_uses_engine_trigger(self):
         cfg = _openrouter_config()
@@ -173,3 +223,14 @@ class TestAutocompactPct:
         assert (
             autocompact_pct(cfg, "anthropic/claude-sonnet-5", codex_route=False) == 90
         )
+
+    @pytest.mark.parametrize("model", ["llama3.2:3b", "anthropic/claude-sonnet-5"])
+    def test_local_returns_zero_for_any_slug(self, model):
+        """Operator hardware has no Anthropic cache costs to cap, so the
+        local route sets no trigger override — not even the Sonnet-5
+        scaling applies (the local check runs first)."""
+        cfg = _make_config(
+            use_local=True, api_key="ollama", base_url="http://h:11434/v1"
+        )
+        assert cfg.transport.name == "local"
+        assert autocompact_pct(cfg, model, codex_route=False) == 0

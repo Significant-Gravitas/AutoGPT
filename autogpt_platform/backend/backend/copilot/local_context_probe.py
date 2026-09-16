@@ -26,6 +26,7 @@ turn has already loaded the model.
 
 import logging
 import time
+from dataclasses import dataclass
 
 import httpx
 
@@ -49,6 +50,15 @@ LOCAL_CONTEXT_FALLBACK = 32_768
 # Below this, the ~19k floor leaves almost no room for conversation — the
 # operator's backend window is misconfigured for Otto.
 _MINIMUM_SAFE_WINDOW = 24_576
+
+# Below this, the SDK CLI cannot run at all: its fixed floor of system
+# prompt plus tool definitions measures ~65-110k tokens, so a backend
+# reporting less has no room even before any conversation. Only enforced
+# against windows a backend positively reports — an unknown window (no
+# report, nothing remembered) proceeds on the fallback instead, because
+# failing closed there would deadlock first turns: the turn itself is
+# what loads the model.
+SDK_MINIMUM_CONTEXT_WINDOW = 65_000
 
 _PROBE_TIMEOUT_S = 2.0
 _CACHE_TTL_S = 300.0
@@ -91,8 +101,25 @@ def _server_root(base_url: str) -> str:
     return url.rstrip("/")
 
 
-async def probe_local_context_window(base_url: str, model: str) -> int:
-    """Return the loaded context window (tokens) for ``model`` at ``base_url``.
+@dataclass(frozen=True)
+class LocalWindowProbe:
+    """Probed local-backend window plus its provenance.
+
+    ``detected`` is True when a backend positively reported the window
+    (freshly, from cache, or remembered from an earlier turn) and False
+    when it is the blind ``LOCAL_CONTEXT_FALLBACK``. The SDK floor guard
+    only fires on detected windows — failing closed on unknown ones
+    would deadlock first turns (see ``SDK_MINIMUM_CONTEXT_WINDOW``).
+    """
+
+    window: int
+    detected: bool
+
+
+async def probe_local_context_window_status(
+    base_url: str, model: str
+) -> LocalWindowProbe:
+    """Like :func:`probe_local_context_window`, plus provenance.
 
     Cached per ``(base_url, model)`` for 5 minutes so it never fires on every
     turn. When a probe can't determine the window (e.g. the model isn't loaded
@@ -104,11 +131,13 @@ async def probe_local_context_window(base_url: str, model: str) -> int:
     key = (base_url, model)
     cached = _cache_get(key)
     if cached is not None:
-        return cached
+        return LocalWindowProbe(window=cached, detected=True)
 
     detected = await _detect_window(base_url, model)
     if detected is None:
-        return _last_window.get(key, LOCAL_CONTEXT_FALLBACK)
+        if key in _last_window:
+            return LocalWindowProbe(window=_last_window[key], detected=True)
+        return LocalWindowProbe(window=LOCAL_CONTEXT_FALLBACK, detected=False)
 
     _last_window[key] = detected
     if detected < _MINIMUM_SAFE_WINDOW:
@@ -124,7 +153,43 @@ async def probe_local_context_window(base_url: str, model: str) -> int:
             _MINIMUM_SAFE_WINDOW,
         )
     _probe_cache[key] = (detected, time.monotonic())
-    return detected
+    return LocalWindowProbe(window=detected, detected=True)
+
+
+async def probe_local_context_window(base_url: str, model: str) -> int:
+    """Return the loaded context window (tokens) for ``model`` at ``base_url``.
+
+    See :func:`probe_local_context_window_status` for caching and fallback
+    behavior; this is the provenance-free wrapper the baseline path uses.
+    """
+    return (await probe_local_context_window_status(base_url, model)).window
+
+
+async def probe_local_window_for_sdk(
+    base_url: str, model: str, *, explicit_window: int | None
+) -> int:
+    """Window to pin the SDK CLI to on the local transport.
+
+    An explicit operator pin wins as-is (the operator asserts the probe is
+    wrong, so no probe fires at all). Otherwise probes the backend and
+    raises ``RuntimeError`` with operator remediation when the backend
+    positively reports a window below ``SDK_MINIMUM_CONTEXT_WINDOW``.
+    Unknown windows proceed on the fallback — see the constant.
+    """
+    if explicit_window is not None:
+        return explicit_window
+    probe = await probe_local_context_window_status(base_url, model)
+    if probe.detected and probe.window < SDK_MINIMUM_CONTEXT_WINDOW:
+        raise RuntimeError(
+            f"Local backend at {base_url} reports a {probe.window}-token "
+            f"context window for {model!r} — below the ~65k-token floor the "
+            "SDK needs for its system prompt + tools alone. Use a "
+            "128k-context model (e.g. set OLLAMA_CONTEXT_LENGTH=131072 or a "
+            "Modelfile NUM_CTX, and keep a model loaded), or override with "
+            "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW if the probe under-reports "
+            "your backend."
+        )
+    return probe.window
 
 
 async def _detect_window(base_url: str, model: str) -> int | None:

@@ -29,19 +29,25 @@ if TYPE_CHECKING:
 
 
 def pinned_context_window(
-    config: ChatConfig, model: str | None, *, codex_route: bool
+    config: ChatConfig,
+    model: str | None,
+    *,
+    codex_route: bool,
+    local_window: int | None = None,
 ) -> int:
     """Window (tokens) to pin the SDK subprocess to on this route.
 
     Precedence: an explicit ``claude_agent_context_window`` wins
-    everywhere; otherwise the Codex route takes the Codex engine default
-    and every other route takes its transport profile's engine default.
-    Moonshot routes then take the lower of that pin and the SKU's real
-    window — a pin past the point the provider rejects the turn would put
-    the compaction trigger where it never fires. Anthropic routes take
-    the pin as given: the catalog holds every Anthropic entry at 200K
-    pending the Claude-5 tokenizer soak, which would cancel a legitimate
-    raise.
+    everywhere; otherwise the Codex route takes the Codex engine default,
+    the local route takes the probed backend window (``local_window``,
+    falling back to the profile's blind constant when the caller has
+    none), and every other route takes its transport profile's engine
+    default. Moonshot routes then take the lower of that pin and the
+    SKU's real window — a pin past the point the provider rejects the
+    turn would put the compaction trigger where it never fires. Anthropic
+    routes take the pin as given: the catalog holds every Anthropic entry
+    at 200K pending the Claude-5 tokenizer soak, which would cancel a
+    legitimate raise.
 
     The Codex branch must not read ``config.transport``: a connected
     Codex account wins over the deployment-wide profile, including
@@ -52,6 +58,12 @@ def pinned_context_window(
         window = config.claude_agent_context_window
     elif codex_route:
         window = CODEX_ENGINE_CONTEXT_WINDOW
+    elif config.transport.name == "local":
+        window = (
+            local_window
+            if local_window is not None
+            else config.transport.sdk_context_window
+        )
     else:
         window = config.transport.sdk_context_window
     if not codex_route and is_moonshot_model(model):
@@ -75,7 +87,9 @@ def autocompact_pct(config: ChatConfig, model: str | None, *, codex_route: bool)
     The Codex route mirrors the engine's own 90%-of-window trigger (its
     costs accrue to the connected ChatGPT account, so the Anthropic
     cache-cost rationale behind the configured default does not apply
-    there). A configured 0 still omits the override on every route.
+    there). A configured 0 still omits the override on every route. The
+    local route returns 0 (no override: the operator's backend has no
+    Anthropic cache costs to cap, so the CLI default applies).
     Elsewhere the base value comes from config; Sonnet 5 is scaled up by
     the tokenizer-inflation factor (capped at 90, below the CLI's ~93%
     internal ceiling) so its compaction fires at the same
@@ -85,6 +99,8 @@ def autocompact_pct(config: ChatConfig, model: str | None, *, codex_route: bool)
         if config.claude_agent_autocompact_pct_override == 0:
             return 0
         return CODEX_ENGINE_AUTOCOMPACT_PCT
+    if config.transport.name == "local":
+        return 0
     pct = config.claude_agent_autocompact_pct_override
     if model and "claude-sonnet-5" in model:
         pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)

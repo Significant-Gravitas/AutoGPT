@@ -15,6 +15,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.copilot.local_context_probe import LOCAL_CONTEXT_FALLBACK
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.providers import ProviderLiteral
 
@@ -54,6 +55,8 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
+_DEFAULT_THINKING_STANDARD_MODEL = "anthropic/claude-sonnet-5"
+_DEFAULT_THINKING_ADVANCED_MODEL = "anthropic/claude-opus-5"
 
 # Context windows (tokens) the SDK subprocess is pinned to (see
 # ``sdk/context_window.py``). Non-platform routes are held to their coding
@@ -98,14 +101,14 @@ class TransportProfile(BaseModel):
     name: TransportName
     # Whether the Claude Agent SDK CLI can be invoked under this transport.
     # The CLI speaks Anthropic's wire protocol, so only Anthropic-compatible
-    # transports qualify. ``local`` (Ollama et al.) → False, downgraded to
-    # baseline at request time.
+    # transports qualify — including ``local``, whose backends serve an
+    # Anthropic-compatible Messages endpoint.
     supports_sdk: bool
     # If set, the SDK model slug must come from this provider — otherwise
     # ``_validate_sdk_model_vendor_compatibility`` raises at config load.
     # ``None`` means "no vendor constraint" (OpenRouter accepts any slug;
-    # subscription resolves to None and bypasses the check; local skips
-    # the SDK entirely).
+    # subscription resolves to None and bypasses the check; local slugs
+    # pass through verbatim).
     sdk_model_vendor_constraint: str | None
     # Env vars consulted in order when ``CHAT_API_KEY`` is unset. Empty
     # tuple = no fallback — the transport requires CHAT_API_KEY explicitly
@@ -186,14 +189,14 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
     "local": TransportProfile(
         name="local",
-        supports_sdk=False,
+        supports_sdk=True,
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=True,
         cost_log_provider="ollama",
         dispatch_provider="ollama",
         supports_flex_tier=False,
-        sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
+        sdk_context_window=LOCAL_CONTEXT_FALLBACK,
     ),
 }
 
@@ -250,7 +253,7 @@ class ChatConfig(BaseSettings):
         "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default=_DEFAULT_THINKING_STANDARD_MODEL,
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
@@ -259,7 +262,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-5",
+        default=_DEFAULT_THINKING_ADVANCED_MODEL,
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -527,16 +530,17 @@ class ChatConfig(BaseSettings):
     )
     claude_agent_context_window: int | None = Field(
         default=None,
-        ge=100_000,
+        ge=8_000,
         le=1_000_000,
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="Context window the SDK subprocess is held to, in tokens "
         "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see "
         "``sdk/context_window.py``). None (default) means the route's "
         "coding-engine default: 1M on Claude-engine routes (subscription, "
-        "direct_anthropic), 272K on the Codex route, 200K on the platform "
-        "(openrouter) route. An explicit value wins on every route. Moonshot "
-        "routes use the lower of the resolved pin and the SKU's catalog window.",
+        "direct_anthropic), 272K on the Codex route, the probed backend "
+        "window on the local route, 200K on the platform (openrouter) "
+        "route. An explicit value wins on every route. Moonshot routes "
+        "use the lower of the resolved pin and the SKU's catalog window.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
@@ -697,19 +701,19 @@ class ChatConfig(BaseSettings):
     )
     use_local: bool = Field(
         default=False,
-        description="Route chat through a self-hosted, OpenAI-compatible LLM "
-        "endpoint (typically Ollama at ``http://host:11434/v1``). When True: "
-        "(a) ``effective_transport`` is ``'local'`` regardless of OpenRouter "
-        "or subscription credentials; (b) ``thinking_available`` is False — "
-        "the Claude Agent SDK CLI speaks Anthropic's wire protocol and cannot "
-        "route to Ollama, so requests with ``mode='extended_thinking'`` are "
-        "downgraded to ``'fast'`` with a logged warning; (c) the "
-        "``CHAT_*_MODEL`` fields should be set to bare names served by the "
-        "local backend (e.g. ``llama3.2:3b``) — OpenRouter-style "
-        "``provider/model`` slugs are passed through verbatim and will not "
-        "resolve. ``CHAT_BASE_URL`` and ``CHAT_API_KEY`` must still be set "
-        "(api_key can be any non-empty string for Ollama). Override via "
-        "``CHAT_USE_LOCAL``.",
+        description="Route chat through a self-hosted LLM endpoint (typically "
+        "Ollama at ``http://host:11434/v1``). When True: (a) "
+        "``effective_transport`` is ``'local'`` regardless of OpenRouter or "
+        "subscription credentials; (b) SDK turns run the CLI against the "
+        "backend's Anthropic-compatible ``/v1/messages`` endpoint with tool "
+        "use (Ollama 0.14+, vLLM, llama.cpp server, LiteLLM proxy) — the "
+        "loaded model needs a 128k context, and turns fail fast below the "
+        "SDK context floor; (c) the ``CHAT_*_MODEL`` fields should be set "
+        "to bare names served by the local backend (e.g. ``llama3.2:3b``) "
+        "— OpenRouter-style ``provider/model`` slugs are passed through "
+        "verbatim and will not resolve. ``CHAT_BASE_URL`` and "
+        "``CHAT_API_KEY`` must still be set (api_key can be any non-empty "
+        "string for Ollama). Override via ``CHAT_USE_LOCAL``.",
     )
     test_mode: bool = Field(
         default=False,
@@ -1165,13 +1169,13 @@ class ChatConfig(BaseSettings):
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
         field is still at the cloud default — explicit overrides win.
 
-        Covers ``title_model`` + ``simulation_model`` (aux call sites)
-        AND ``fast_advanced_model`` (the "advanced" baseline tier);
-        without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
-        and gets a model-not-found 404. The boot-time vendor validator
-        is skipped under local transport so this misconfig wouldn't
-        surface until the first advanced-tier turn.
+        Covers ``title_model`` + ``simulation_model`` (aux call sites),
+        ``fast_advanced_model`` (the "advanced" baseline tier) AND the
+        ``thinking_*`` SDK tiers; without the SDK derivation, an SDK turn
+        sends the cloud Sonnet/Opus slug to Ollama and gets a
+        model-not-found 404. The boot-time vendor validator is skipped
+        under local transport so this misconfig wouldn't surface until
+        the first turn.
 
         Overrides fire when the field still carries the cloud default
         OR carries a known cloud-vendor prefix (``openai/``,
@@ -1223,6 +1227,8 @@ class ChatConfig(BaseSettings):
             ("title_model", _DEFAULT_TITLE_MODEL),
             ("simulation_model", _DEFAULT_SIMULATION_MODEL),
             ("fast_advanced_model", _DEFAULT_FAST_ADVANCED_MODEL),
+            ("thinking_standard_model", _DEFAULT_THINKING_STANDARD_MODEL),
+            ("thinking_advanced_model", _DEFAULT_THINKING_ADVANCED_MODEL),
         ):
             current = getattr(self, field_name)
             if _is_cloud_default(current, default):
@@ -1265,7 +1271,8 @@ class ChatConfig(BaseSettings):
         catches the credential-missing path on the first SDK turn.
 
         Skipped when:
-        - ``use_local=True`` — SDK never invoked under local transport.
+        - ``use_local=True`` — local slugs aren't vendor-validatable
+          (any bare tag is legitimate there).
         - ``use_claude_code_subscription=True`` — subscription resolves
           the static config to ``None`` (CLI default) and bypasses
           ``_normalize_model_name``. An LD-served override under

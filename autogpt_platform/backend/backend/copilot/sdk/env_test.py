@@ -49,7 +49,7 @@ def _make_config(**overrides) -> ChatConfig:
 
 
 # ---------------------------------------------------------------------------
-# Mode 1 — Subscription auth
+# Mode 3 — Subscription auth
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ class TestBuildSdkEnvSubscription:
 
 
 # ---------------------------------------------------------------------------
-# Mode 2 — Direct Anthropic (no OpenRouter)
+# Mode 4 — Direct Anthropic (no OpenRouter)
 # ---------------------------------------------------------------------------
 
 
@@ -126,7 +126,7 @@ class TestBuildSdkEnvDirectAnthropic:
 
 
 # ---------------------------------------------------------------------------
-# Mode 3 — OpenRouter proxy
+# Mode 5 — OpenRouter proxy
 # ---------------------------------------------------------------------------
 
 
@@ -492,30 +492,93 @@ class TestAutocompactPctOverrideConfigurable:
 
 
 # ---------------------------------------------------------------------------
-# Defensive guard — local transport must never reach the SDK env builder
+# Mode 2 — Local backend's Anthropic-compatible Messages endpoint
 # ---------------------------------------------------------------------------
 
 
-class TestBuildSdkEnvLocalTransportGuard:
-    """``use_local=True`` is incompatible with the SDK CLI's Anthropic
-    wire protocol, so reaching ``build_sdk_env`` under that transport
-    indicates an upstream routing bug (the request layer should have
-    downgraded to baseline). The builder fails loudly rather than
-    constructing a doomed subprocess env."""
+class TestBuildSdkEnvLocal:
+    """Under ``use_local=True`` the CLI is pointed at the operator
+    backend's ``/v1/messages`` endpoint (chat URL minus the OpenAI-compat
+    version suffix, chat API key as the auth token) — the same shape as
+    the OpenRouter proxy mode, minus the trace headers (no proxy hop)."""
 
-    def test_local_transport_raises(self):
-        cfg = _make_config(
-            use_local=True,
-            api_key="ollama",
-            base_url="http://host.docker.internal:11434/v1",
-        )
+    def _local_config(self, **overrides):
+        defaults = {
+            "use_local": True,
+            "api_key": "ollama",
+            "base_url": "http://host.docker.internal:11434/v1",
+        }
+        defaults.update(overrides)
+        return _make_config(**defaults)
+
+    def test_points_cli_at_backend_messages_endpoint(self):
+        cfg = self._local_config()
+        assert cfg.transport.name == "local"
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
-            with pytest.raises(
-                RuntimeError, match=r"transport 'local'.*doesn't support the SDK"
-            ):
-                build_sdk_env()
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://host.docker.internal:11434"
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "ollama"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert result["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+
+    def test_base_url_without_version_suffix_passes_through(self):
+        """Backends configured without ``/v1`` (vLLM, some proxies) keep
+        their URL untouched — only a trailing ``/v1`` is stripped."""
+        cfg = self._local_config(base_url="http://host:8000")
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://host:8000"
+
+    def test_no_trace_headers_without_proxy_hop(self):
+        """Session/user trace headers exist so OpenRouter can forward
+        them to Langfuse — with no proxy hop there is nothing to
+        forward them, so local carries only the common gzip-disable
+        header even when IDs are passed."""
+        cfg = self._local_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(session_id="sess-1", user_id="user-1")
+
+        assert result["ANTHROPIC_CUSTOM_HEADERS"] == "Accept-Encoding: identity"
+
+    def test_probed_window_pins_compaction(self):
+        cfg = self._local_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(local_context_window=131_072)
+
+        assert result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "131072"
+
+    def test_unprobed_window_falls_back_to_blind_constant(self):
+        """No probe (nothing loaded yet) → the profile's blind 32K
+        constant, not the CLI's guess."""
+        cfg = self._local_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "32768"
+
+    def test_autocompact_override_omitted(self):
+        """No Anthropic cache costs on operator hardware → no trigger
+        override; the CLI default applies."""
+        cfg = self._local_config(claude_agent_autocompact_pct_override=50)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
 
     def test_codex_override_runs_sdk_under_local_transport(self):
         cfg = _make_config(
@@ -707,12 +770,14 @@ class TestContextWindowPin:
         assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
 
     def test_context_window_rejects_out_of_range(self):
-        """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
-        a typo'd env var and the CLI's own clamps."""
+        """Pydantic bounds (ge=8_000, le=1_000_000) are the only guard between
+        a typo'd env var and the CLI's own clamps. The floor sits below
+        the smallest plausible local pin so operators can match a
+        small-window backend by hand."""
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_context_window=99_999)
+            _make_config(claude_agent_context_window=7_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
 
