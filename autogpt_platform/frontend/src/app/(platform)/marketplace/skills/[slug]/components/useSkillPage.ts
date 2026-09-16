@@ -33,6 +33,9 @@ export function useSkillPage(slug: string) {
   const { toast } = useToast();
   const flag = useFlagStatus(Flag.SKILLS_HUB);
   const [isConnectOpen, setIsConnectOpen] = useState(false);
+  // Page state rather than the list's: a relative link in the body opens the
+  // same viewer the package list does.
+  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
 
   const query = useGetV2GetMarketplaceSkill(slug, {
     query: { select: (response) => okData(response) ?? null },
@@ -140,6 +143,10 @@ export function useSkillPage(slug: string) {
       .filter((provider) => !connected.has(provider))
       .map(formatProviderName),
     moreSkills: (more.data ?? []).filter((skill) => skill.slug !== slug),
+    files: query.data?.files ?? [],
+    openFilePath,
+    openFile: (path: string) => setOpenFilePath(path),
+    closeFile: () => setOpenFilePath(null),
     isConnectOpen,
     openConnect: () => setIsConnectOpen(true),
     setIsConnectOpen,
