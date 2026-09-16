@@ -102,7 +102,11 @@ class InstalledSkill(pydantic.BaseModel):
 
 
 # A body's title is its first heading, so anything before one rules it out.
-_TITLE_HEADING_RE = re.compile(r"\s*#\s+(\S.*?)\s*(?:\n|$)")
+# ATX rules: horizontal space after the `#`, and a trailing run of `#` is a
+# closing marker rather than part of the title.
+_TITLE_HEADING_RE = re.compile(
+    r"\s*#[ \t]+(\S(?:.*?\S)?)(?:[ \t]+#+)?[ \t]*(?:\r?\n|$)"
+)
 
 
 def skill_title(name: str, body: str) -> str:

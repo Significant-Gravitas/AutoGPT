@@ -14,6 +14,9 @@ from backend.api.features.store.skill_model import skill_title
             "SEO content brief",
         ),
         ("on-page-seo-audit", "# On-page SEO audit\n", "On-page SEO audit"),
+        # A closed ATX heading: the trailing run is a marker, not the title.
+        ("seo-playbook", "# SEO Playbook #\n", "SEO Playbook"),
+        ("seo-playbook", "# SEO Playbook ###\r\n", "SEO Playbook"),
         (
             "icp-and-positioning",
             "\n\n#   ICP and positioning  \n",
@@ -31,6 +34,8 @@ def test_the_authors_heading_is_the_title_acronyms_and_all(name, body, expected)
         ("brand-voice-guide", "Start with the voice, not the words.\n\n# Later\n"),
         ("brand-voice-guide", "## Not the top heading\n"),
         ("brand-voice-guide", "#no-space-is-not-a-heading\n"),
+        # `#` alone is an empty heading; the line under it is a paragraph.
+        ("brand-voice-guide", "#\nBrand voice, not a heading\n"),
         ("brand_voice_guide", ""),
     ],
 )
