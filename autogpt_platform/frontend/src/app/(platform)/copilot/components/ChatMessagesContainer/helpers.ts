@@ -405,13 +405,13 @@ export function resolveWorkspaceUrls(
   // Use an absolute URL so Streamdown's "Copy link" button copies the full
   // URL (including host) rather than just the path.
   resolved = resolved.replace(
-    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
-    (_match, linkText: string, fileId: string) => {
+    /(^|[^!])\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
+    (_match, prefix: string, linkText: string, fileId: string) => {
       const url = fileUrlBuilder(fileId);
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
       const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
-      return `[${linkText || "Download file"}](${absoluteUrl})`;
+      return `${prefix}[${linkText || "Download file"}](${absoluteUrl})`;
     },
   );
 
