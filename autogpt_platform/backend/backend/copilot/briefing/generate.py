@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.data.db_accessors import (
     execution_db,
