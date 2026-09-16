@@ -888,6 +888,18 @@ class TestCodexRouteContext:
         assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
 
+    def test_codex_moonshot_slug_still_gets_engine_trigger(self):
+        """A moonshot-shaped slug over the gateway runs on Codex infra, not
+        the Moonshot endpoint — the Moonshot skip must not apply."""
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="moonshotai/kimi-k2.5", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
     def test_codex_zero_pct_still_omits_override(self):
         """The 0 kill-switch omits the trigger var on the Codex route too."""
         cfg = self._codex_config(claude_agent_autocompact_pct_override=0)

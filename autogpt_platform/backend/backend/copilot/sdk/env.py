@@ -200,9 +200,10 @@ def build_sdk_env(
     # ``cache_create=0`` (no cache writes happen, so there's no cost to cap)
     # and an aggressive trigger cascades into 3+ compactions per turn.
     # The Codex route instead mirrors the engine's own 90% trigger (see
-    # ``sdk/context_window.py``).  Operators can also set the config to 0
-    # to disable globally.
-    if not is_moonshot_model(model):
+    # ``sdk/context_window.py``) — including for a moonshot-shaped slug,
+    # which still runs on Codex infra there, not the Moonshot endpoint.
+    # Operators can also set the config to 0 to disable globally.
+    if codex_route or not is_moonshot_model(model):
         pct = autocompact_pct(config, model, codex_route=codex_route)
         if pct > 0:
             env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(pct)
