@@ -523,6 +523,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 api_key=credentials.api_key.get_secret_value(),
                 code=input_data.setup_code,
                 language=input_data.language,
+                execution_context=execution_context,
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,

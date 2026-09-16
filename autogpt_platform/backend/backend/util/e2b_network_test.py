@@ -143,6 +143,25 @@ class TestPinned:
         assert seen == [1]
 
     @pytest.mark.asyncio
+    async def test_a_box_whose_bookkeeping_fails_is_killed_not_leaked(self):
+        """After create the box is on the meter; if its record cannot be
+        written the caller never gets the handle, so nobody else could."""
+        box, redis = _box("sb-1"), _redis()
+        box.kill = AsyncMock()
+        cls = _sdk(box)
+        minted = ProxyCredential(username="box-a1", secret="s")
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._mint", return_value=minted),
+            patch(f"{_M}._bind", AsyncMock(side_effect=ConnectionError("redis"))),
+        ):
+            with pytest.raises(ConnectionError):
+                await create_sandbox(cls, _OWNER, template="t")
+        box.kill.assert_awaited_once()
+        assert "e2b:egress:cred:box-a1" not in redis.store
+
+    @pytest.mark.asyncio
     async def test_reconnect_repins_under_a_fresh_credential_and_forgets_the_old(self):
         box, redis = _box("sb-1"), _redis()
         cls = _sdk(box)

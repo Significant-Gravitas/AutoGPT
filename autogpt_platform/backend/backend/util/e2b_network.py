@@ -32,6 +32,8 @@ DNS and QUIC leave the box directly.  QUIC is turned off in the browsers by
 policy in the image; DNS stays an accepted side channel.
 """
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -56,6 +58,7 @@ _BOX_KEY_PREFIX = "e2b:egress:box:"
 # A credential lives as long as a paused box can (E2B's paused-sandbox
 # lifetime); every reconnect replaces it anyway.
 _CREDENTIAL_TTL = 48 * 3600
+_KILL_TIMEOUT_SECONDS = 10
 
 S = TypeVar("S", bound=AsyncSandbox)
 
@@ -120,8 +123,17 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     credential = _mint()
     await _remember(credential, owner, sandbox_id=None)
     sandbox = await sandbox_cls.create(network=_network(address, credential), **kwargs)
-    await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
-    await _bind(sandbox.sandbox_id, credential.username)
+    try:
+        await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
+        await _bind(sandbox.sandbox_id, credential.username)
+    except BaseException:
+        # The box is on the meter and its handle is about to be lost: kill
+        # it rather than leak it, and take its credential with it.
+        with contextlib.suppress(BaseException):
+            await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+        with contextlib.suppress(BaseException):
+            await _forget(credential.username)
+        raise
     logger.info(
         "[E2B] Created %.12s for %s pinned to the egress proxy",
         sandbox.sandbox_id,
@@ -208,6 +220,11 @@ async def _remember(
         json.dumps(record),
         ex=_CREDENTIAL_TTL,
     )
+
+
+async def _forget(username: str) -> None:
+    redis = await get_redis_async()
+    await redis.delete(_CREDENTIAL_KEY_PREFIX + username)
 
 
 async def _bind(sandbox_id: str, username: str) -> None:
