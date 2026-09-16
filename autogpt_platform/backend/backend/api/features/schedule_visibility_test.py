@@ -7,7 +7,7 @@ from backend.api.features.schedule_visibility import (
     is_visible_schedule,
     visible_graph_schedules,
 )
-from backend.api.features.v1 import (
+from backend.api.features.schedules.routes import (
     list_all_graphs_execution_schedules,
     list_graph_execution_schedules,
 )
@@ -34,13 +34,13 @@ async def test_rest_lists_paused_active_expert_schedules(graph_only):
 
     with (
         patch(
-            "backend.api.features.v1.get_scheduler_client",
+            "backend.api.features.schedules.routes.get_scheduler_client",
             return_value=MagicMock(
                 get_graph_execution_schedules=AsyncMock(side_effect=list_schedules)
             ),
         ),
         patch(
-            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            "backend.api.features.experts.experts_db.active_expert_ids",
             AsyncMock(return_value={"expert-a"}),
         ),
     ):
@@ -79,7 +79,7 @@ async def test_paused_archived_expert_schedules_stay_hidden():
         update={"id": "archived", "expert_id": "archived-expert"}
     )
     with patch(
-        "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+        "backend.api.features.experts.experts_db.active_expert_ids",
         AsyncMock(return_value=set()),
     ) as active:
         result = await visible_graph_schedules([base, archived], "owner")

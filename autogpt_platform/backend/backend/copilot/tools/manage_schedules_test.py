@@ -489,7 +489,7 @@ async def test_an_archived_experts_paused_schedule_is_out_of_reach(
     with (
         patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
         patch(
-            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            "backend.api.features.experts.experts_db.active_expert_ids",
             AsyncMock(return_value=set()),
         ),
     ):
@@ -514,7 +514,7 @@ async def test_a_live_experts_paused_schedule_is_still_reachable(session):
     with (
         patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
         patch(
-            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            "backend.api.features.experts.experts_db.active_expert_ids",
             AsyncMock(return_value={"expert-a"}),
         ),
     ):
@@ -540,7 +540,7 @@ async def test_list_hides_an_archived_experts_paused_schedule(list_tool, session
     with (
         patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
         patch(
-            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            "backend.api.features.experts.experts_db.active_expert_ids",
             AsyncMock(return_value={"expert-a"}),
         ),
     ):
@@ -563,7 +563,7 @@ async def test_list_keeps_a_live_experts_paused_schedule(list_tool, session):
     with (
         patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
         patch(
-            "backend.api.features.schedule_visibility.experts_db.active_expert_ids",
+            "backend.api.features.experts.experts_db.active_expert_ids",
             AsyncMock(return_value={"expert-a"}),
         ),
     ):
