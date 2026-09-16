@@ -878,7 +878,14 @@ def create_copilot_mcp_server(
         # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
-        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
+        # ``is_available`` is the env check the baseline path applies in
+        # ``get_available_tools``; without it this engine offers browser
+        # tools on a box with no agent-browser binary.
+        if (
+            tool_name in hidden
+            or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or not base_tool.is_available
+        ):
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)

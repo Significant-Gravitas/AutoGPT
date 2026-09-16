@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
@@ -132,9 +133,18 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
     kickoff_turn_disabled_tools,
+    origin_disabled_tools,
+)
+from backend.copilot.tools.e2b_sandbox import (
+    count_expert_turn,
+    get_or_create_sandbox,
+    pause_sandbox_direct,
 )
 from backend.copilot.tools.session_context import build_session_context
-from backend.copilot.tools.skills import build_skills_context
+from backend.copilot.tools.skills import (
+    build_skills_context,
+    build_skills_update_notice,
+)
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -174,6 +184,25 @@ logger = logging.getLogger(__name__)
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _pause_uncounted_box(
+    sandbox: Any, session_id: str, expert_id: str | None
+) -> asyncio.Task[Any] | None:
+    """Pause a box opened for a turn that ended before its turn was counted.
+
+    A session's box has nobody else on it, so it is paused straight away
+    (fire-and-forget, like the turn-end pause).  An expert's box may be
+    carrying another turn and this one never counted itself, so it is left
+    for the lifecycle timeout rather than paused under someone else.
+    """
+    if expert_id:
+        return None
+    task = asyncio.create_task(pause_sandbox_direct(sandbox, session_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 # Hint appended on the last tool round so the model wraps up with a summary
 # instead of issuing another tool call that gets cut off cold. The shared
@@ -771,6 +800,27 @@ def _apply_skills_cache_breakpoint(
     new_msg["content"] = target_blocks
     cached_messages[target_index] = new_msg
     return cached_messages
+
+
+def _prepend_skills_notice_to_current_message(
+    openai_messages: list[dict[str, Any]], notice: str
+) -> None:
+    """Prepend a ``<skills_update>`` drift notice to the current turn.
+
+    Reverse scan so the notice lands on the current turn's user message,
+    not an older one when pending messages were drained. Mutates in place
+    (mirrors the builder-context prepend just below the call site) and is
+    query-only — callers must not copy this into the persisted transcript.
+    No-op for an empty notice.
+    """
+    if not notice:
+        return
+    for msg in reversed(openai_messages):
+        if msg["role"] == "user":
+            existing = msg.get("content", "")
+            if isinstance(existing, str):
+                msg["content"] = notice + existing
+            break
 
 
 def _mark_system_message_with_cache_control(
@@ -1799,14 +1849,22 @@ async def stream_chat_completion_baseline(
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
-            from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
-
+            # An expert session runs on the expert's own persistent box;
+            # everything else gets a per-session sandbox.
             e2b_sandbox = await get_or_create_sandbox(
                 session_id,
                 api_key=e2b_api_key,
                 template=config.e2b_sandbox_template,
                 timeout=config.e2b_sandbox_timeout,
                 on_timeout=config.e2b_sandbox_on_timeout,
+                volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
+                expert_id=session.expert_id,
+                user_id=user_id,
+                # Counted just before the try/finally that releases it, below:
+                # everything between here and there can still fail or be
+                # stopped, and a count with no release keeps the expert's box
+                # unpaused at every later turn end.
+                count_turn=False,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
@@ -2124,6 +2182,28 @@ async def stream_chat_completion_baseline(
                         msg["content"] = builder_block + existing
                     break
 
+    # Skill-drift notice — same query-only contract as the builder block
+    # above: prepended to the live model input, never to
+    # ``user_message_for_transcript``, so the persisted history keeps the
+    # session-start baseline the next turn diffs against. On the first
+    # turn ``inject_user_context`` just wrote a fresh index into history,
+    # so the diff is empty by construction and this is a no-op.
+    if is_user_message and user_id:
+        try:
+            skills_notice = await build_skills_update_notice(
+                user_id,
+                expert_id=session.expert_id,
+                prior_contents=[
+                    m.content or "" for m in session.messages if m.role == "user"
+                ],
+            )
+        except Exception:
+            logger.exception("[skills] failed to build skills update notice")
+            skills_notice = ""
+        _prepend_skills_notice_to_current_message(openai_messages, skills_notice)
+        # NOTE: keep the helper above in sync with _maybe_prepend_skills_update
+        # in sdk/service.py — both engines share the query-only contract.
+
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
     # even on duplicate-suppressed retries (is_new_message=False).
@@ -2210,10 +2290,11 @@ async def stream_chat_completion_baseline(
     )
     # A hire's kickoff turn is a server-sent control message, so nothing on
     # it was asked for: narrow it to the onboarding card and nothing else.
+    # Otherwise hide what the origin gate would refuse anyway.
     disabled_tools = (
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
-        else frozenset()
+        else origin_disabled_tools(session.metadata.origin)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
@@ -2236,7 +2317,18 @@ async def stream_chat_completion_baseline(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
+    try:
+        yield StreamStart(messageId=message_id, sessionId=session_id)
+    except BaseException:
+        # Closed or cancelled while suspended on the first yield: the finally
+        # that pauses the box sits further down and would never run.
+        if e2b_sandbox is not None:
+            _pause_uncounted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
+
+    if e2b_sandbox is not None:
+        # From here the finally below always runs, so the turn can be counted.
+        await count_expert_turn(session_id, session.expert_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.
@@ -2608,6 +2700,19 @@ async def stream_chat_completion_baseline(
         # run unconditionally.
         session.clear_inflight_tool_calls()
         state.tool_persistence.finish(state.session_messages)
+
+        # --- Pause E2B sandbox to stop billing between turns (parity with
+        # the SDK path). Fire-and-forget: best-effort and must not block the
+        # cleanup below. An expert's box is left running while another of
+        # its turns is still active.
+        if e2b_sandbox is not None:
+            pause_task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox, session_id, expert_id=session.expert_id
+                )
+            )
+            _background_tasks.add(pause_task)
+            pause_task.add_done_callback(_background_tasks.discard)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.

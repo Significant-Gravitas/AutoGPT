@@ -144,7 +144,7 @@ async def test_briefing_anchors_on_todays_persisted_row(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -174,7 +174,7 @@ async def test_briefing_rejects_a_row_with_negative_totals(
     otherwise taken as canonical — a negative total is a corrupt row, so it
     has to fail validation and drop home onto the live path."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     corrupt = _stored_briefing().model_dump(mode="json") | {"completed_total": -3}
@@ -194,7 +194,7 @@ async def test_briefing_anchors_on_a_row_the_job_could_not_deliver(
     failed. The job redelivers that same stored content, so it is still the
     canonical story — going live here would drift from the pending message."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -223,7 +223,7 @@ async def test_briefing_falls_back_to_live_when_the_stored_row_is_malformed(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     _patch_stored_briefing(mocker, {"unexpected": "shape"})
@@ -241,7 +241,7 @@ async def test_briefing_falls_back_to_live_when_the_lookup_raises(
     """A briefing the page cannot read is not worth a 500 — /home is the
     landing page, and every other tile on it is still fine."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -261,7 +261,7 @@ async def test_briefing_is_live_when_no_row_exists_yet(
 ) -> None:
     """A user who signed up after 9am has no briefing to anchor on."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -291,7 +291,7 @@ async def test_briefing_date_comes_from_the_requests_own_clock(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date", lookup
     )
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -308,7 +308,7 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     """Summaries are stored regardless of the flag, so the persisted path has
     to scrub them too — otherwise the card leaks what the gate hides."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
     mocker.patch(
@@ -333,7 +333,7 @@ async def test_activity_summary_surfaces_when_flag_enabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -347,7 +347,7 @@ async def test_activity_summary_hidden_when_flag_disabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
 
@@ -361,7 +361,7 @@ async def test_schedules_stay_owner_scoped_inside_an_organization(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()
@@ -389,7 +389,7 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()

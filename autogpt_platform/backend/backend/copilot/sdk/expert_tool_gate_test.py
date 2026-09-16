@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 from backend.util.feature_flag import Flag
 
@@ -61,6 +61,10 @@ def _make_session() -> ChatSession:
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         messages=[ChatMessage(role="user", content="hello")],
+        # Stated, not defaulted: the staffing tools this file asserts on are
+        # also hidden off an interactive origin, so a session that left it
+        # unset would pass the flag-off case for the wrong reason.
+        metadata=ChatSessionMetadata(origin="interactive"),
     )
 
 

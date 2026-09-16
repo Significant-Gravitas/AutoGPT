@@ -22,6 +22,33 @@ describe("buildLDContext", () => {
     });
   });
 
+  it("keys the anonymous context by the shared anonymous id when available", () => {
+    expect(buildLDContext(null, "anon-123")).toEqual({
+      kind: "user",
+      key: "anon-123",
+      anonymous: true,
+    });
+  });
+
+  it("adds a device context carrying the anonymous id for a signed-in user", () => {
+    const ctx = buildLDContext(userFixture(), "anon-123");
+
+    expect(ctx).toEqual({
+      kind: "multi",
+      user: {
+        kind: "user",
+        key: "00000000-0000-0000-0000-000000000001",
+        anonymous: false,
+        email: "user@example.com",
+        email_domain: "example.com",
+        role: "authenticated",
+        created_at: "2026-05-08T12:00:00Z",
+        custom: { role: "authenticated" },
+      },
+      device: { kind: "device", key: "anon-123", anonymous: true },
+    });
+  });
+
   it("includes email, email_domain, role, created_at, and custom.role for a full user", () => {
     const ctx = buildLDContext(userFixture());
 

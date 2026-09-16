@@ -11,7 +11,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisClusterException, ResponseError
 
-from backend.api.features import credits_rate_limit as rate_limit
+from backend.api.features.billing import credits_rate_limit as rate_limit
 
 
 class FakeRedis:
@@ -44,7 +44,7 @@ def fake_redis(mocker):
     executes the limiter's script semantics."""
     redis = FakeRedis()
     mocker.patch(
-        "backend.api.features.credits_rate_limit.get_redis_async",
+        "backend.api.features.billing.credits_rate_limit.get_redis_async",
         new=AsyncMock(return_value=redis),
     )
     return redis
@@ -57,7 +57,7 @@ def mock_redis(mocker):
     redis = MagicMock()
     redis.eval = AsyncMock()
     mocker.patch(
-        "backend.api.features.credits_rate_limit.get_redis_async",
+        "backend.api.features.billing.credits_rate_limit.get_redis_async",
         new=AsyncMock(return_value=redis),
     )
     return redis
@@ -159,7 +159,7 @@ async def test_fails_open_on_redis_errors_from_the_command(mock_redis, error):
 async def test_fails_open_when_connect_fails(mocker):
     """Trouble reaching Redis at all also fails open."""
     mocker.patch(
-        "backend.api.features.credits_rate_limit.get_redis_async",
+        "backend.api.features.billing.credits_rate_limit.get_redis_async",
         new=AsyncMock(side_effect=RedisClusterException("cluster down")),
     )
     await rate_limit.enforce_subscription_status_rate_limit("u1")

@@ -3,7 +3,7 @@
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import ListToolsRequest, ToolAnnotations
@@ -1264,15 +1264,13 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
         # Other tools still register.
-        assert len(registered) >= len(TOOL_REGISTRY) - 1
+        assert self._expected_registry_names() - {hidden_name} <= registered
 
     @pytest.mark.asyncio
-    async def test_no_hidden_tools_registers_all(self):
+    async def test_no_hidden_tools_registers_every_available_tool(self):
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
 
     @pytest.mark.asyncio
@@ -1308,10 +1306,79 @@ class TestCreateCopilotMcpServerHidden:
         )
         registered = await self._registered_tool_names(server)
         # All real tools still register.
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_automation_origin_tools_not_registered(self):
+        """The origin gate reaches the MCP server, not just the schema list.
+
+        ``origin_disabled_tools`` is what both engines feed in; on this one
+        hiding IS the enforcement, since an unregistered tool does not exist
+        for the CLI. A legacy ``origin=None`` counts as automation.
+        """
+        from backend.copilot.tools import (
+            INTERACTIVE_ORIGIN_TOOLS,
+            origin_disabled_tools,
+        )
+
+        for origin in ("automation", None):
+            server = create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools(origin)
+            )
+            registered = await self._registered_tool_names(server)
+            assert not (INTERACTIVE_ORIGIN_TOOLS & registered), (
+                f"origin={origin!r} registered "
+                f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
+            )
+            # Narrow by design: the work an automation exists to do stays.
+            assert {"run_agent", "run_block", "run_sub_session"} <= registered
+
+        interactive = await self._registered_tool_names(
+            create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools("interactive")
+            )
+        )
+        assert INTERACTIVE_ORIGIN_TOOLS <= interactive, (
+            "an interactive session lost "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS - interactive)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_env_unavailable_tools_not_registered(self):
+        """``is_available`` is honoured here as it is on the baseline path.
+
+        Without it the model is offered browser tools on a box with no
+        ``agent-browser`` binary, and they fail on first use.
+        """
+        browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value="/x"
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert browser_tools <= registered
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value=None
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert not (browser_tools & registered)
+
+    @staticmethod
+    def _expected_registry_names() -> set[str]:
+        """Registry tools the SDK server should register in this environment.
+
+        ``is_available`` is read here rather than asserted over the whole
+        registry: the chat-platform, browser and E2B tools depend on env the
+        test box may not have, and registering one the environment cannot
+        serve is the bug, not the invariant.
+        """
+        return {
+            name
+            for name, tool in TOOL_REGISTRY.items()
+            if name not in BASELINE_ONLY_MCP_TOOLS and tool.is_available
+        }
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
