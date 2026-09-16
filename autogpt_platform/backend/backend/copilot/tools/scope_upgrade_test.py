@@ -17,7 +17,6 @@ from backend.blocks.linear._config import LinearScope
 from backend.blocks.linear.comment import LinearCreateCommentBlock
 from backend.copilot.tools import helpers as block_helpers
 from backend.copilot.tools import utils as tool_utils
-from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.models import SetupRequirementsResponse
 from backend.data.model import (
     CredentialsFieldInfo,
@@ -26,6 +25,8 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.sdk import SecretStr
+
+from ._test_data import make_session
 
 _NARROW_ROW_ID = "cred-narrow-linear-1"
 
