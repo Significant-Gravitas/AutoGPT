@@ -63,6 +63,11 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-to-linkedin-post-converter",
     "youtube-transcription-scraper",
 }
+# Personas that deliberately ship no workflows, so the 2-4 preload bound below
+# stays a real check on everyone else. Remy is here because neither lifecycle
+# email listing is published under the official marketplace creator, and
+# _resolve_roster_preloads fails the whole seed on a slug it cannot resolve.
+PERSONAS_WITHOUT_WORKFLOWS = {"Remy"}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
@@ -3153,16 +3158,17 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_preloads_and_scheduled_cadences():
-    """Launch invariant, checked without a DB: every persona has at most four
-    preloads, and every scheduled cadence on the roster is one we declared —
-    so a cron added to a persona that acts outside the platform fails here
-    rather than firing unattended on someone's account."""
+def test_roster_preload_counts_and_scheduled_cadences():
+    """Launch invariant, checked without a DB: every persona ships 2-4 preloads
+    unless it is one we deliberately ship without workflows, and every
+    scheduled cadence on the roster is one we declared — so a cron added to a
+    persona that acts outside the platform fails here rather than firing
+    unattended on someone's account."""
     for entry in seed.ROSTER:
-        assert len(entry["preloads"]) <= 4, entry["name"]
-
-    remy = next(entry for entry in seed.ROSTER if entry["name"] == "Remy")
-    assert remy["preloads"] == []
+        if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
+            assert entry["preloads"] == [], entry["name"]
+        else:
+            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
