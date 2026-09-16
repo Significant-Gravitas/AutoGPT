@@ -22,6 +22,10 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 const PRIVATE_SERVER_URL = "https://private.example.com/mcp";
@@ -130,6 +134,91 @@ describe("MCPToolDialog credential binding", () => {
     expect(await screen.findByText(/issuer does not match/i)).toBeDefined();
     expect(screen.queryByLabelText("API token")).toBeNull();
     expect(screen.queryByText(/does not support OAuth/)).toBeNull();
+  });
+
+  // #14532: the sign-in window has to be opened before the initiate request is
+  // awaited — after an await iOS Safari blocks window.open() outright. Both
+  // cells drive the auto-start path (discovery answers 401), which is the only
+  // one this file's harness reaches; the button path shares the same code.
+  it("opens the sign-in window before the initiate await and hands it over", async () => {
+    const callOrder: string[] = [];
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+      async () => {
+        callOrder.push("initiate");
+        return apiResponse(200, {
+          login_url: "https://auth.example.com/authorize",
+          state_token: "st",
+        });
+      },
+    );
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+    // The ordering IS the fix — asserting only that it was called would pass
+    // on a version that called it after the await, which is the bug.
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://auth.example.com/authorize",
+      expect.objectContaining({ preOpenedWindow: fakeWindow }),
+    );
+    expect(fakeWindow.close).not.toHaveBeenCalled();
+  });
+
+  it("closes the sign-in window when the server has no OAuth", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, { detail: "OAuth not supported" }),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    // openOAuthPopup never runs on this path, so nothing else can reach the
+    // about:blank window it left behind.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
+    expect(await screen.findByLabelText("API token")).toBeDefined();
   });
 
   it("attaches a manually stored credential to a tool from the same server", async () => {

@@ -33,7 +33,7 @@ import {
   getErrorStatus,
 } from "@/lib/mcp-errors";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 interface Props {
@@ -55,8 +55,23 @@ export function McpConnectPanel({ onSuccess }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const isSubmittingRef = useRef(false);
+  const isUnmountedRef = useRef(false);
+  const preOpenedWindowRef = useRef<Window | null>(null);
 
-  useEffect(() => () => oauthAbortRef.current?.(), []);
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      oauthAbortRef.current?.();
+      // Close a window pre-opened by a flow still fetching the login URL —
+      // its abort isn't registered yet, so the line above can't reach it.
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
+    };
+  }, []);
 
   const trimmedUrl = serverUrl.trim();
   const trimmedToken = token.trim();
@@ -86,9 +101,24 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
   async function handleConnect() {
     if (!canConnect) return;
+    // Re-entrancy contract: BLOCK. `canConnect` reads `isSubmitting` state,
+    // which is not readable synchronously, so a rapid double-tap fires again
+    // before the re-render and a second flow would overwrite
+    // preOpenedWindowRef out from under the first. Same contract as
+    // useOAuthConnect.connect in this directory — one button, one flow target.
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setError(null);
     setIsSubmitting(true);
     oauthAbortRef.current?.();
+
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback, so
+    // nothing would open at all. The login URL is only known after the
+    // initiate request, which is exactly the await this has to precede.
+    const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     try {
       // Only a 400 from the *initiate* call means "server doesn't support
@@ -118,10 +148,17 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
       const { login_url, state_token } = loginRes.data as MCPOAuthLoginResponse;
 
+      // Unmounted while the login URL was being fetched — the cleanup
+      // already closed the window; don't adopt it or touch state.
+      if (isUnmountedRef.current) return;
+
       const { promise, cleanup } = openOAuthPopup(login_url, {
         stateToken: state_token,
+        preOpenedWindow,
         useCrossOriginListeners: true,
       });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
       oauthAbortRef.current = cleanup.abort;
 
       const result = await promise;
@@ -145,6 +182,17 @@ export function McpConnectPanel({ onSuccess }: Props) {
         setError(message);
       }
     } finally {
+      // Close the dangling about:blank window only while this flow still owns
+      // it — every exit that did not reach openOAuthPopup passes here,
+      // including the manual-token fallback's early return. After handoff the
+      // ref is null, so this is a no-op and the helper owns the window.
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
+      }
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
       oauthAbortRef.current = null;
     }
