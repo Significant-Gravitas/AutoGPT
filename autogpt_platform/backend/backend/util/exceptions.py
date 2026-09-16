@@ -354,4 +354,5 @@ class ExpertRunPausedError(ValueError):
 
 
 class ConflictError(Exception):
-    """The request lost to a concurrent change of the same resource; retrying may succeed."""
+    """The request conflicts with the resource's current state — including
+    losing to a concurrent change of it, where retrying may succeed."""
