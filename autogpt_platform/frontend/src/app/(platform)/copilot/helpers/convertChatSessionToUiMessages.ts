@@ -302,9 +302,9 @@ export function convertChatSessionMessagesToUiMessages(
     /** ``active_stream.started_at`` of the turn the backend is still
      *  running. Rows persisted at/after it belong to that turn, so they are
      *  kept out of the preceding turn's bubble and the first of them is
-     *  reported as ``activeTurnStartId``. A backend-started turn (engine
-     *  switch continuation) has no user row to separate it, so this is the
-     *  only boundary the resume path can trim against. */
+     *  reported as ``activeTurnStartId``. A backend-started turn has no
+     *  user row to separate it, so this is the only boundary the resume
+     *  path can trim against. */
     activeTurnStartedAt?: string | null;
   },
 ): {

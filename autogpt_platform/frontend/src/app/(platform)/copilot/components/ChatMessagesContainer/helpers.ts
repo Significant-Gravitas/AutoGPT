@@ -37,7 +37,7 @@ export function isChainableToolPart(part: MessagePart): boolean {
 const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);
 
 // All `data-*` parts are transient bookkeeping (status, cursor,
-// pending-drained, mode-changed, …) — none of them is content that settles
+// pending-drained, status, …) — none of them is content that settles
 // a compaction row, and neither may any future one. Enumerating them here
 // would silently kill the bar the day a new data part ships mid-compaction.
 function isCompactionTransparentPart(part: MessagePart): boolean {
