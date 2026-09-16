@@ -1264,15 +1264,13 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
         # Other tools still register.
-        assert len(registered) >= len(TOOL_REGISTRY) - 1
+        assert self._expected_registry_names() - {hidden_name} <= registered
 
     @pytest.mark.asyncio
-    async def test_no_hidden_tools_registers_all(self):
+    async def test_no_hidden_tools_registers_every_available_tool(self):
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
 
     @pytest.mark.asyncio
@@ -1308,10 +1306,23 @@ class TestCreateCopilotMcpServerHidden:
         )
         registered = await self._registered_tool_names(server)
         # All real tools still register.
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
+
+    @staticmethod
+    def _expected_registry_names() -> set[str]:
+        """Registry tools the SDK server should register in this environment.
+
+        ``is_available`` is read here rather than asserted over the whole
+        registry: the chat-platform, browser and E2B tools depend on env the
+        test box may not have, and registering one the environment cannot
+        serve is the bug, not the invariant.
+        """
+        return {
+            name
+            for name, tool in TOOL_REGISTRY.items()
+            if name not in BASELINE_ONLY_MCP_TOOLS and tool.is_available
+        }
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
