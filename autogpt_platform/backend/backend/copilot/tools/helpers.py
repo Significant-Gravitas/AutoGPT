@@ -784,6 +784,15 @@ async def prepare_block_for_execution(
                 "picked before it can run. Select in the card below; the "
                 "tool will re-run automatically."
             )
+        # TEMP DEBUG HOTFIX (investigation/click-button-correlation): remove before merge.
+        # Per-turn anchor: joins setup-card emission to block/user/session.
+        logger.warning(
+            "[SCOPEDEBUG] setup-card block=%s user=%s session=%s missing=%s",
+            block_id,
+            user_id,
+            session_id,
+            sorted(missing_creds_dict),
+        )
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
