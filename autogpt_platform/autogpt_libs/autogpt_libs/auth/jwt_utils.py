@@ -97,8 +97,16 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
 
-    if header.get("alg", "").startswith("HS"):
+    # Validate the algorithm before touching the JWK set: a non-string or
+    # unsupported `alg` must fail as a 401, not surface as a server error or
+    # trigger a JWKS fetch for a token that can never verify.
+    algorithm = header.get("alg")
+    if not isinstance(algorithm, str):
+        raise ValueError("Invalid token: signing algorithm is not accepted")
+    if algorithm.startswith("HS"):
         raise ValueError("Invalid token: symmetric tokens are not accepted")
+    if algorithm not in settings.JWT_JWKS_ALGORITHMS:
+        raise ValueError("Invalid token: signing algorithm is not accepted")
 
     try:
         key = _get_jwks_client().get_signing_key_from_jwt(token).key

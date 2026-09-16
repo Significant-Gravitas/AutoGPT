@@ -6,6 +6,8 @@ Verification is JWKS-only: the platform auth service issues asymmetric
 (ES256) tokens, and symmetric (HS*) tokens are rejected outright.
 """
 
+import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -340,6 +342,45 @@ def test_parse_jwt_token_none_algorithm_rejected():
 
     with pytest.raises(ValueError, match="Invalid token"):
         jwt_utils.parse_jwt_token(token)
+
+
+def _token_with_header(header: dict) -> str:
+    """Build a syntactically valid JWT with an arbitrary (unsigned) header.
+
+    jwt.encode() always writes a string `alg`, so malformed headers have to be
+    assembled by hand. The signature is garbage: these tokens must be rejected
+    before verification is ever attempted.
+    """
+    segments = [
+        json.dumps(header).encode(),
+        json.dumps(TEST_USER_PAYLOAD).encode(),
+        b"not-a-signature",
+    ]
+    return ".".join(base64.urlsafe_b64encode(s).rstrip(b"=").decode() for s in segments)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        pytest.param({"alg": None, "kid": _SIGNING_KID}, id="null-alg"),
+        pytest.param({"alg": 256, "kid": _SIGNING_KID}, id="numeric-alg"),
+        pytest.param({"kid": _SIGNING_KID}, id="missing-alg"),
+        pytest.param({"alg": "none", "kid": _SIGNING_KID}, id="none-alg"),
+        pytest.param({"alg": "ES384", "kid": _SIGNING_KID}, id="unlisted-alg"),
+    ],
+)
+def test_parse_jwt_token_bad_algorithm_rejected_before_jwks(
+    mocker: MockerFixture, header: dict
+):
+    """A non-string, missing or unlisted `alg` fails as an auth error (401 at
+    the HTTP layer), not an AttributeError → 500, and never reaches the JWK
+    set — so junk headers can't trigger a JWKS fetch."""
+    jwks_client = mocker.patch.object(jwt_utils, "_get_jwks_client")
+    token = _token_with_header(header)
+
+    with pytest.raises(ValueError, match="signing algorithm is not accepted"):
+        jwt_utils.parse_jwt_token(token)
+    jwks_client.assert_not_called()
 
 
 # ==================== JWKS (ASYMMETRIC) VERIFICATION ==================== #
