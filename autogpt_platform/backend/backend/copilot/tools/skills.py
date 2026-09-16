@@ -102,6 +102,8 @@ MAX_PACKAGE_PATH_DEPTH = 8
 # An E2B write is a 200 ms round trip and a workspace read a blob fetch, so
 # 60 of either in series is seconds of a turn.  Bounded, not unlimited.
 _COPY_CONCURRENCY = 16
+# Attempts at reading a package whose tree keeps moving under the read.
+_PACKAGE_READ_ATTEMPTS = 3
 # Passes delete_user_skill will make over a folder, each one page deep.
 # Bounded so a file that cannot be deleted can never spin the loop.
 _DELETE_PASSES = 20
@@ -1194,21 +1196,52 @@ async def read_user_skill_package(
     Only a missing skill answers ``None``: a storage failure or an undecodable
     file raises, because a download that quietly omits part of the tree is worse
     than one that fails.
+
+    The read is bracketed by a fingerprint of the tree and retried when it
+    moves, because ``store_user_skill`` writes the siblings before the root: a
+    concurrent store caught mid-write would otherwise hand back one version's
+    ``SKILL.md`` with another's files. Exhausting the attempts raises rather
+    than serving a package that may be mixed.
     """
     slug = name.strip().lower()
     if not slug:
         return None
     manager = await _get_user_skill_manager(user_id, scope)
-    try:
-        raw = await manager.read_file(_skill_md_path(slug, expert_id))
-    except FileNotFoundError:
-        return None
-    return SkillPackage(
-        skill_md=raw.decode("utf-8"),
-        files=await _read_package_files(
-            manager, skill_folder(expert_id), slug, complete=True
-        ),
+    folder = skill_folder(expert_id)
+    root_path = _skill_md_path(slug, expert_id)
+    for _ in range(_PACKAGE_READ_ATTEMPTS):
+        before = await _package_fingerprint(manager, folder, slug, root_path)
+        if before is None:
+            return None
+        try:
+            raw = await manager.read_file(root_path)
+        except FileNotFoundError:
+            return None
+        # Only a moved fingerprint retries; any other failure in here is this
+        # caller's answer, not a concurrent write.
+        files = await _read_package_files(manager, folder, slug, complete=True)
+        if await _package_fingerprint(manager, folder, slug, root_path) == before:
+            return SkillPackage(skill_md=raw.decode("utf-8"), files=files)
+    raise ConflictError(
+        f"Skill '{slug}' was being changed while it was read. Try again."
     )
+
+
+async def _package_fingerprint(
+    manager: WorkspaceManager, folder: str, slug: str, root_path: str
+) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    """Row ids of a package's ``SKILL.md`` and every sibling, ``None`` when the
+    skill is not there.
+
+    Sound only because ``write_file`` mints a fresh id per write and overwrites
+    by deleting and recreating rather than updating in place, so no write to
+    this tree can leave the ids untouched.
+    """
+    root = await manager.get_file_info_by_path(root_path)
+    if root is None:
+        return None
+    files = await _list_package_files(manager, folder, slug, cap=None)
+    return root.id, tuple(sorted((f.path, f.file_id) for f in files))
 
 
 async def list_user_skill_files(
