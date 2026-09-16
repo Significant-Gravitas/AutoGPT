@@ -537,11 +537,10 @@ class TestOrgDbMembers:
         self.prisma.teammember.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_add_member_to_personal_org_is_refused(self):
+    async def test_add_member_to_personal_org_raises_value_error(self):
         """A personal org bills the owner's own user wallet, so a second
         member would spend it without holding MANAGE_BILLING anywhere."""
         from backend.api.features.orgs.db import add_org_member
-        from backend.util.exceptions import ConflictError
 
         self.prisma.organization.find_first = AsyncMock(
             return_value=_make_org(isPersonal=True)
@@ -552,7 +551,7 @@ class TestOrgDbMembers:
         self.prisma.team.find_first = AsyncMock(return_value=None)
         self.prisma.teammember.create = AsyncMock()
 
-        with pytest.raises(ConflictError, match="Convert it to a team"):
+        with pytest.raises(ValueError, match="Cannot add a member to a personal"):
             await add_org_member(org_id=ORG_ID, user_id=OTHER_USER_ID)
 
         self.prisma.orgmember.create.assert_not_called()
@@ -1262,11 +1261,12 @@ class TestInvitationAcceptance:
         assert "accepted" in data["message"].lower()
 
     @pytest.mark.asyncio
-    async def test_accept_invitation_into_a_personal_org_is_refused(self, test_user_id):
+    async def test_accept_invitation_into_a_personal_org_raises_value_error(
+        self, test_user_id
+    ):
         """Accepting creates the same OrgMember row POST /members does, so the
         personal-org guard has to cover this path too."""
         from backend.api.features.orgs.invitation_routes import accept_invitation
-        from backend.util.exceptions import ConflictError
 
         self.prisma.orginvitation.find_unique = AsyncMock(
             return_value=self._make_invitation(email="test@example.com")
@@ -1283,7 +1283,7 @@ class TestInvitationAcceptance:
         self.prisma.team.find_first = AsyncMock(return_value=None)
         self.prisma.orginvitation.update = AsyncMock()
 
-        with pytest.raises(ConflictError, match="Convert it to a team"):
+        with pytest.raises(ValueError, match="Cannot add a member to a personal"):
             await accept_invitation("tok-abc", user_id=test_user_id)
 
         self.prisma.orgmember.create.assert_not_called()

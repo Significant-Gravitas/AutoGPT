@@ -12,7 +12,7 @@ from backend.data.org_migration import (
     _soft_delete_blocking_orphan,
     create_personal_org,
 )
-from backend.util.exceptions import ConflictError, NotFoundError
+from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
 
@@ -480,9 +480,8 @@ async def add_org_member(
     # A personal org bills the owner's own wallet, so a second member would
     # spend it with no billing permission of their own.
     if await prisma.organization.find_first(where={"id": org_id, "isPersonal": True}):
-        raise ConflictError(
-            "Cannot add members to a personal organization. Convert it to a "
-            "team organization first."
+        raise ValueError(
+            "Cannot add a member to a personal organization. Convert it first."
         )
 
     member = await prisma.orgmember.create(
