@@ -5530,7 +5530,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "List Stripe invoices",
-        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "description": "Recent Stripe invoices for the caller's active org, for billing managers.\n\nThe invoices belong to the org the request resolves to (the caller's\npersonal org when no ``X-Org-Id`` is supplied), so this is restricted to\norg roles holding ``MANAGE_BILLING``.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the org has no Stripe customer yet.",
         "operationId": "getV1List stripe invoices",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14113,6 +14113,49 @@
         "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
       }
     },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin Read Skill Submission File",
+        "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
+        "operationId": "getV2Admin read skill submission file",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
@@ -15287,6 +15330,67 @@
             }
           },
           "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}/files/{path}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Read marketplace skill file",
+        "description": "One file's text, for reading a package before installing it.",
+        "operationId": "getV2Read marketplace skill file",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "File's path relative to the skill folder",
+              "title": "Path"
+            },
+            "description": "File's path relative to the skill folder"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it.",
+              "title": "Version Id"
+            },
+            "description": "Read this version instead of the live one. A pending submission is readable only by the creator who submitted it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "404": { "description": "Skill, version or file not found" },
+          "413": { "description": "File is too large to view" },
+          "415": { "description": "File is not text" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -24729,6 +24833,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "default": []
           }
         },
         "type": "object",
@@ -26982,7 +27092,7 @@
         "type": "object",
         "required": ["kind", "source", "id"],
         "title": "RaiseAttachment",
-        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace workflow), a library\nagent UUID (library workflow), or a skill slug — the caller's own skill\nfor ``library``, a Hub :class:`SkillListing` slug for ``marketplace``.\nEither skill slug ends up on ``Expert.skills``."
       },
       "RaiseAttachmentFailure": {
         "properties": {
@@ -28362,6 +28472,25 @@
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
       },
+      "SkillPackageFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "is_executable": {
+            "type": "boolean",
+            "title": "Is Executable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "size_bytes"],
+        "title": "SkillPackageFile",
+        "description": "One file beside the published ``SKILL.md``, by its path relative to the\nskill folder. The contents are not inlined — a package runs to 20 MiB."
+      },
       "SkillReviewRequest": {
         "properties": {
           "is_approved": { "type": "boolean", "title": "Is Approved" },
@@ -28405,6 +28534,12 @@
             "type": "boolean",
             "title": "Is Live",
             "description": "Whether this version is the one the marketplace serves."
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SkillPackageFile" },
+            "type": "array",
+            "title": "Files",
+            "description": "Files beside the submitted SKILL.md, so a reviewer sees what a package ships before approving it."
           }
         },
         "type": "object",

@@ -80,6 +80,7 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
@@ -130,7 +131,10 @@ from backend.copilot.tools import (
     kickoff_turn_disabled_tools,
 )
 from backend.copilot.tools.session_context import build_session_context
-from backend.copilot.tools.skills import build_skills_context
+from backend.copilot.tools.skills import (
+    build_skills_context,
+    build_skills_update_notice,
+)
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -767,6 +771,27 @@ def _apply_skills_cache_breakpoint(
     new_msg["content"] = target_blocks
     cached_messages[target_index] = new_msg
     return cached_messages
+
+
+def _prepend_skills_notice_to_current_message(
+    openai_messages: list[dict[str, Any]], notice: str
+) -> None:
+    """Prepend a ``<skills_update>`` drift notice to the current turn.
+
+    Reverse scan so the notice lands on the current turn's user message,
+    not an older one when pending messages were drained. Mutates in place
+    (mirrors the builder-context prepend just below the call site) and is
+    query-only — callers must not copy this into the persisted transcript.
+    No-op for an empty notice.
+    """
+    if not notice:
+        return
+    for msg in reversed(openai_messages):
+        if msg["role"] == "user":
+            existing = msg.get("content", "")
+            if isinstance(existing, str):
+                msg["content"] = notice + existing
+            break
 
 
 def _mark_system_message_with_cache_control(
@@ -1894,6 +1919,9 @@ async def stream_chat_completion_baseline(
     team_building_supplement = get_team_building_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
     )
+    chat_platform_supplement = get_chat_platform_supplement(
+        session.metadata.source_platform
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1906,6 +1934,7 @@ async def stream_chat_completion_baseline(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + chat_platform_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -2102,6 +2131,28 @@ async def stream_chat_completion_baseline(
                     if isinstance(existing, str):
                         msg["content"] = builder_block + existing
                     break
+
+    # Skill-drift notice — same query-only contract as the builder block
+    # above: prepended to the live model input, never to
+    # ``user_message_for_transcript``, so the persisted history keeps the
+    # session-start baseline the next turn diffs against. On the first
+    # turn ``inject_user_context`` just wrote a fresh index into history,
+    # so the diff is empty by construction and this is a no-op.
+    if is_user_message and user_id:
+        try:
+            skills_notice = await build_skills_update_notice(
+                user_id,
+                expert_id=session.expert_id,
+                prior_contents=[
+                    m.content or "" for m in session.messages if m.role == "user"
+                ],
+            )
+        except Exception:
+            logger.exception("[skills] failed to build skills update notice")
+            skills_notice = ""
+        _prepend_skills_notice_to_current_message(openai_messages, skills_notice)
+        # NOTE: keep the helper above in sync with _maybe_prepend_skills_update
+        # in sdk/service.py — both engines share the query-only contract.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,

@@ -13,7 +13,8 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import list_user_skills, store_user_skill
+from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
+from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -58,7 +59,94 @@ async def get_marketplace_skills(
 
 async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetails:
     listing = await _find_live_listing(slug)
-    return skill_model.MarketplaceSkillDetails.from_db(listing)
+    version = skill_model.active_version(listing)
+    return skill_model.MarketplaceSkillDetails.from_db(
+        listing, files=await _list_version_file_meta(version.id)
+    )
+
+
+async def find_readable_version(
+    slug: str, *, version_id: str | None, user_id: str | None
+) -> prisma.models.SkillListingVersion:
+    """The version of *slug* whose package *user_id* may read.
+
+    Without a version id the live one, which is public like the listing it
+    serves. With one, the live version stays public and any other — a pending
+    submission — is the submitter's alone, so a stranger cannot read a package
+    the marketplace has not approved. Admins come through the admin router,
+    which carries its own check.
+    """
+    if version_id is None:
+        return skill_model.active_version(await _find_live_listing(slug))
+
+    version = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": version_id}, include={"SkillListing": True}
+    )
+    listing = version.SkillListing if version is not None else None
+    if version is None or listing is None or listing.slug != slug:
+        raise NotFoundError(f"Skill '{slug}' has no version {version_id}")
+    if listing.activeVersionId == version.id:
+        # Through the same query the anonymous path uses, so a listing taken
+        # down keeps its pointer without keeping its visibility.
+        await _find_live_listing(slug)
+        return version
+    if user_id is None or listing.owningUserId != user_id:
+        raise NotFoundError(f"Skill '{slug}' has no version {version_id}")
+    return version
+
+
+async def get_package_file_meta(
+    skill_listing_version_id: str, relative_path: str
+) -> skill_model.SkillPackageFile | None:
+    """One published file's metadata, bytes excluded.
+
+    The size cap is decided on this, so refusing an oversized file never
+    reads it.
+    """
+    rows = await query_raw_with_schema(
+        _FILE_META_SELECT + 'WHERE "skillListingVersionId" = $1 '
+        'AND "relativePath" = $2',
+        skill_listing_version_id,
+        relative_path,
+    )
+    return _to_file_meta(rows[0]) if rows else None
+
+
+async def read_package_file_bytes(
+    skill_listing_version_id: str, relative_path: str
+) -> bytes | None:
+    """The file's stored bytes, once the caps have let it through."""
+    row = await prisma.models.SkillListingFile.prisma().find_unique(
+        where={
+            "skillListingVersionId_relativePath": {
+                "skillListingVersionId": skill_listing_version_id,
+                "relativePath": relative_path,
+            }
+        }
+    )
+    return row.content.decode() if row is not None else None
+
+
+async def file_meta_by_version(
+    version_ids: list[str],
+) -> dict[str, list[skill_model.SkillPackageFile]]:
+    """Every version's file list in one query, keyed by version id."""
+    if not version_ids:
+        return {}
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(version_ids)))
+    rows = await query_raw_with_schema(
+        _FILE_META_SELECT
+        + 'WHERE "skillListingVersionId" IN ('
+        + placeholders
+        + ') ORDER BY "relativePath"',
+        *version_ids,
+    )
+    by_version: dict[str, list[skill_model.SkillPackageFile]] = {}
+    for row in rows:
+        by_version.setdefault(row["skillListingVersionId"], []).append(
+            _to_file_meta(row)
+        )
+    return by_version
 
 
 async def get_live_skills(
@@ -80,7 +168,7 @@ async def get_live_skills(
 async def install_marketplace_skill(
     user_id: str, slug: str, *, expert_id: str | None = None
 ) -> skill_model.InstalledSkill:
-    """Copy a listing's SKILL.md into *expert_id*'s skill folder, or the
+    """Copy a listing's whole package into *expert_id*'s skill folder, or the
     caller's own library when ``None``.
 
     The listing's slug becomes the installed skill's name, so an install is
@@ -99,6 +187,9 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        # `[]`, never `None` — which means "leave the folder alone" and would
+        # keep a sibling only the previously installed version had.
+        files=await _read_version_files(active.id),
         expert_id=expert_id,
     )
     if is_new:
@@ -107,6 +198,47 @@ async def install_marketplace_skill(
         )
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
+    )
+
+
+async def _read_version_files(skill_listing_version_id: str) -> list[SkillFile]:
+    """The published package's files, contents included, ready to install."""
+    rows = await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": skill_listing_version_id},
+        order={"relativePath": "asc"},
+    )
+    return [
+        SkillFile(
+            relative_path=row.relativePath,
+            content=row.content.decode(),
+            is_executable=row.isExecutable,
+        )
+        for row in rows
+    ]
+
+
+async def _list_version_file_meta(
+    skill_listing_version_id: str,
+) -> list[skill_model.SkillPackageFile]:
+    return (await file_meta_by_version([skill_listing_version_id])).get(
+        skill_listing_version_id, []
+    )
+
+
+# Raw because prisma-client-py always selects every column, and a page that
+# pulled `content` would carry the whole package per request.
+_FILE_META_SELECT = (
+    'SELECT "skillListingVersionId", "relativePath", "sizeBytes", "mimeType", '
+    '"isExecutable" FROM {schema_prefix}"SkillListingFile" '
+)
+
+
+def _to_file_meta(row: dict) -> skill_model.SkillPackageFile:
+    return skill_model.SkillPackageFile(
+        path=row["relativePath"],
+        size_bytes=row["sizeBytes"],
+        mime_type=row["mimeType"],
+        is_executable=row["isExecutable"],
     )
 
 
