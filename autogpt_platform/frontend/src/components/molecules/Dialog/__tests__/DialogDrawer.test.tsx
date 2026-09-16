@@ -31,7 +31,7 @@ describe("Dialog as Drawer (small screen)", () => {
     renderDrawerDialog({ title: "Drawer Title" });
 
     const dialog = screen.getByRole("dialog");
-    const heading = within(dialog).getByText("Drawer Title");
+    const heading = within(dialog).getByRole("heading", { name: "Drawer Title" });
     expect(heading).toBeDefined();
     expect(heading.classList.contains("sr-only")).toBe(false);
   });
@@ -40,7 +40,7 @@ describe("Dialog as Drawer (small screen)", () => {
     renderDrawerDialog({});
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
@@ -49,7 +49,7 @@ describe("Dialog as Drawer (small screen)", () => {
     renderDrawerDialog({ title: "" });
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
