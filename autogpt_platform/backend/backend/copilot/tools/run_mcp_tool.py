@@ -614,9 +614,18 @@ class RunMCPToolTool(BaseTool):
         service = _service_name(host)
         if rejection:
             status = f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+            # The provider usually says why, and it is often something no
+            # amount of signing in again will fix — Brevo answers "API Key is
+            # not enabled" for a key created without the MCP option, and names
+            # its IP allow-list for a call from an unrecognised address.
+            # Dropping that left the card telling the user to retry the one
+            # thing that cannot work.
+            reason = (rejection.detail or "").strip()
             message = (
-                f"{service} rejected the saved credential{status}. "
-                "Sign in again to continue."
+                f"{service} rejected the saved credential{status}."
+                + (f" {reason[:300]}" if reason else "")
+                + " Sign in again if the credential is simply stale; otherwise "
+                "fix what the service reported first."
             )
         elif connected:
             message = f"You're connected to {service}. Use Reconnect to swap accounts."
