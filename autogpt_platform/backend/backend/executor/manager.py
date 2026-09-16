@@ -730,23 +730,11 @@ def _observe_funnel_emission(future: Future) -> None:
         logger.exception("Expert run funnel emission failed after submission")
 
 
-def _persist_graph_completion_and_emit_funnel(
-    db_client: "DatabaseManagerClient",
+def _emit_expert_run_completed(
     graph_exec: GraphExecutionEntry,
-    status: ExecutionStatus,
-    stats: GraphExecutionStats,
+    run_event: dict,
     event_loop: asyncio.AbstractEventLoop,
 ) -> None:
-    update_graph_execution_state(
-        db_client=db_client,
-        graph_exec_id=graph_exec.graph_exec_id,
-        status=status,
-        stats=stats,
-    )
-
-    run_event = _expert_run_completed_event(graph_exec, status)
-    if run_event is None:
-        return
     try:
         future = asyncio.run_coroutine_threadsafe(
             get_db_async_client().emit_funnel_event(
@@ -1155,13 +1143,19 @@ class ExecutionProcessor:
             )
             product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
-            _persist_graph_completion_and_emit_funnel(
-                db_client,
-                graph_exec,
-                exec_meta.status,
-                exec_stats,
-                self.node_execution_loop,
+            update_graph_execution_state(
+                db_client=db_client,
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=exec_meta.status,
+                stats=exec_stats,
             )
+            # Only once the terminal state is persisted, and only for a run
+            # that has an expert — a plain run must not touch the loop at all.
+            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
+            if run_event is not None:
+                _emit_expert_run_completed(
+                    graph_exec, run_event, self.node_execution_loop
+                )
 
     async def charge_node_usage(
         self,

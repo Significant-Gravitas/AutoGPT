@@ -1,14 +1,13 @@
 from concurrent.futures import Future
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from backend.data.execution import ExecutionStatus
-from backend.data.model import GraphExecutionStats
 from backend.executor import manager
 from backend.executor.manager import (
+    _emit_expert_run_completed,
     _expert_run_completed_event,
     _observe_funnel_emission,
-    _persist_graph_completion_and_emit_funnel,
 )
 
 
@@ -73,36 +72,22 @@ def test_skips_non_terminal_status():
     assert _expert_run_completed_event(_graph_exec(), ExecutionStatus.RUNNING) is None
 
 
-def test_persists_before_scheduling_funnel_emission():
-    calls: list[str] = []
-    rpc_client = MagicMock(emit_funnel_event=AsyncMock())
-    submitted: Future = Future()
-    submitted.set_result(None)
-
-    def submit(coroutine, event_loop):
-        calls.append("emit")
-        coroutine.close()
-        assert event_loop is loop
-        return submitted
-
+def test_emission_submits_to_the_given_loop_with_a_dedup_key():
+    rpc_client = MagicMock(emit_funnel_event=MagicMock(return_value="coro"))
+    submitted = MagicMock()
     loop = MagicMock()
     graph_exec = _graph_exec()
-    stats = GraphExecutionStats()
-    with (
-        patch.object(
-            manager,
-            "update_graph_execution_state",
-            side_effect=lambda **kwargs: calls.append("persist"),
-        ) as persist,
-        patch.object(manager, "get_db_async_client", return_value=rpc_client),
-        patch.object(manager.asyncio, "run_coroutine_threadsafe", side_effect=submit),
-    ):
-        _persist_graph_completion_and_emit_funnel(
-            MagicMock(), graph_exec, ExecutionStatus.COMPLETED, stats, loop
-        )
+    run_event = _expert_run_completed_event(graph_exec, ExecutionStatus.COMPLETED)
+    assert run_event is not None
 
-    assert calls == ["persist", "emit"]
-    persist.assert_called_once()
+    with (
+        patch.object(manager, "get_db_async_client", return_value=rpc_client),
+        patch.object(
+            manager.asyncio, "run_coroutine_threadsafe", return_value=submitted
+        ) as submit,
+    ):
+        _emit_expert_run_completed(graph_exec, run_event, loop)
+
     rpc_client.emit_funnel_event.assert_called_once_with(
         "u-1",
         "expert_run_completed",
@@ -113,30 +98,26 @@ def test_persists_before_scheduling_funnel_emission():
         },
         "expert_run_completed:run-1",
     )
+    submit.assert_called_once_with("coro", loop)
+    submitted.add_done_callback.assert_called_once_with(
+        manager._observe_funnel_emission
+    )
 
 
-def test_non_expert_run_persists_without_scheduling_an_emission():
-    rpc_client = MagicMock(emit_funnel_event=MagicMock())
-    submitted = MagicMock()
-
+def test_emission_swallows_a_failed_submission():
+    """A dead loop must not sink the run whose completion was just persisted."""
     with (
-        patch.object(manager, "update_graph_execution_state") as persist,
-        patch.object(manager, "get_db_async_client", return_value=rpc_client),
+        patch.object(manager, "get_db_async_client", return_value=MagicMock()),
         patch.object(
-            manager.asyncio, "run_coroutine_threadsafe", return_value=submitted
-        ) as submit,
+            manager.asyncio,
+            "run_coroutine_threadsafe",
+            side_effect=RuntimeError("loop is closed"),
+        ),
+        patch.object(manager.logger, "exception") as log_exception,
     ):
-        _persist_graph_completion_and_emit_funnel(
-            MagicMock(),
-            _graph_exec(expert_id=None),
-            ExecutionStatus.COMPLETED,
-            GraphExecutionStats(),
-            MagicMock(),
-        )
+        _emit_expert_run_completed(_graph_exec(), {"expert_id": "e-1"}, MagicMock())
 
-    persist.assert_called_once()
-    submit.assert_not_called()
-    rpc_client.emit_funnel_event.assert_not_called()
+    log_exception.assert_called_once()
 
 
 def test_observe_funnel_emission_logs_background_failure():
