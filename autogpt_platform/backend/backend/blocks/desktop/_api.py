@@ -29,9 +29,15 @@ PERSISTENT_HOME_DIRS = ("Downloads", "Desktop", "Documents")
 DISPLAY = ":0"
 VNC_PORT = 5900
 STREAM_PORT = 6080
-# The stream password lives next to x11vnc's hashed one so a resume can hand
-# back the URL the user already holds instead of restarting the proxy.
-STREAM_PASSWORD_PATH = f"{HOME_PATH}/.vnc/agpt_stream_password"
+# The VNC stack runs as root.  The model's shell runs as ``user``, and a
+# password that shell can read is a password it can print into a transcript,
+# where the chat's share link would then carry a working desktop URL.  x11vnc
+# takes its password from a root-only file that it deletes the moment it has
+# read it, so once the stream is up nothing on the box holds the credential.
+# What a resume needs to hand back the same URL is kept by the caller, off the
+# box (see ``backend.copilot.computer``).
+VNC_USER = "root"
+VNC_PASSWORD_PATH = "/root/.vnc/stream_password"
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
@@ -123,63 +129,66 @@ class DesktopSession:
         )
         return cls(sandbox)
 
-    async def start_stream(self) -> DesktopStream:
-        """Return the live stream URL, starting the VNC stack only if needed.
+    async def start_stream(
+        self, password: Optional[str] = None
+    ) -> tuple[DesktopStream, str]:
+        """Return the live stream URL and its password, starting the VNC stack
+        only if needed.
 
-        A resume (or a second ``start_desktop`` call) must not restart x11vnc
-        and noVNC: that would sever the stream the user is watching and rotate
-        the password baked into the URL they already hold. When the proxy is
-        still serving — E2B's pause/resume restores processes — the saved
-        password is reused and the same URL comes back.
+        *password* is the one this caller issued last time.  While noVNC is
+        still serving it (E2B's pause/resume restores processes) the same URL
+        comes back: restarting x11vnc and noVNC would sever the stream the
+        user is watching.  Without it, or once the proxy is gone, the stack is
+        (re)started under a fresh password, and whoever held the old URL is
+        locked out.  The caller decides when to forget the password (after a
+        pause, say) and so when a URL that may have leaked stops working.
         """
-        password = await self._running_stream_password()
-        if password is None:
+        if password is None or not await self._stream_listening():
             password = "".join(
                 secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
             )
-            await self.run_command(
+            await self._vnc_command(
                 "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
             )
-            await self.run_command(
-                f"mkdir -p ~/.vnc && x11vnc -storepasswd {password} ~/.vnc/passwd"
+            await self._vnc_command(
+                f"umask 077 && mkdir -p {shlex.quote(VNC_PASSWORD_PATH.rsplit('/', 1)[0])}"
+                f" && printf %s {shlex.quote(password)} > {shlex.quote(VNC_PASSWORD_PATH)}"
             )
-            await self.run_command(
+            await self._vnc_command(
                 f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
-                f"-rfbport {VNC_PORT} -usepw >/tmp/x11vnc.log 2>/tmp/x11vnc_stderr.log"
+                f"-rfbport {VNC_PORT} -passwdfile rm:{VNC_PASSWORD_PATH} "
+                ">/tmp/x11vnc.log 2>/tmp/x11vnc_stderr.log"
             )
             await self.sandbox.commands.run(
                 f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
                 f"--listen {STREAM_PORT} --web /opt/noVNC > /tmp/novnc.log 2>&1",
                 background=True,
+                user=VNC_USER,
             )
             await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
-            await self.run_command(
-                f"umask 077 && printf %s {shlex.quote(password)} "
-                f"> {shlex.quote(STREAM_PASSWORD_PATH)}"
-            )
         host = self.sandbox.get_host(STREAM_PORT)
         url = (
             f"https://{host}/vnc.html"
             f"?autoconnect=true&resize=scale&password={password}"
         )
-        return DesktopStream(url=url, sandbox_id=self.sandbox_id)
+        return DesktopStream(url=url, sandbox_id=self.sandbox_id), password
 
-    async def _running_stream_password(self) -> Optional[str]:
-        """The saved stream password, only while noVNC is actually listening."""
-        if not await self._check(f'netstat -tuln | grep -q ":{STREAM_PORT} "'):
-            return None
-        try:
-            saved = await self.sandbox.files.read(STREAM_PASSWORD_PATH)
-        except Exception:
-            return None
-        saved = saved.strip() if isinstance(saved, str) else ""
-        return saved or None
+    async def _stream_listening(self) -> bool:
+        """Whether noVNC is still serving the stream (it survives a pause)."""
+        return await self._check(f'netstat -tuln | grep -q ":{STREAM_PORT} "')
+
+    async def _vnc_command(self, command: str):
+        return await self.run_command(command, user=VNC_USER)
 
     async def run_command(
-        self, command: str, cwd: Optional[str] = None, timeout: int = 60
+        self,
+        command: str,
+        cwd: Optional[str] = None,
+        timeout: int = 60,
+        user: Optional[str] = None,
     ):
         return await self.sandbox.commands.run(
-            command, cwd=cwd, timeout=timeout, envs={"DISPLAY": DISPLAY}
+            command, cwd=cwd, timeout=timeout, envs={"DISPLAY": DISPLAY}, user=user
         )
 
     async def is_workspace_mounted(self) -> bool:

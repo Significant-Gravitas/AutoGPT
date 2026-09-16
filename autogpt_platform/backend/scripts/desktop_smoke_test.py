@@ -49,7 +49,7 @@ async def main() -> None:
     try:
         print("2) start stream")
         t = time.monotonic()
-        stream = await session.start_stream()
+        stream, _password = await session.start_stream()
         timed("stream_start", t, timings)
         # The URL carries the VNC password; log where it points, not the secret.
         print(
