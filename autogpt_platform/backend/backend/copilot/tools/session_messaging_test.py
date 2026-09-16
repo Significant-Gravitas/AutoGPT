@@ -17,14 +17,15 @@ from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult
 from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
 from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
-from backend.copilot.tools.find_session import MAX_RESULTS, FindSessionTool
-from backend.copilot.tools.message_session import MessageSessionTool
+from backend.copilot.tools.find_session import _SCAN_LIMIT, MAX_RESULTS, FindSessionTool
+from backend.copilot.tools.message_session import MAX_MESSAGE_CHARS, MessageSessionTool
 from backend.copilot.tools.models import (
     ErrorResponse,
     SessionListResponse,
     SessionMessageResponse,
 )
 from backend.copilot.tree import TurnEnvelope
+from backend.copilot.turn_queue import InflightCapExceeded
 
 _FIND = "backend.copilot.tools.find_session"
 _MSG = "backend.copilot.tools.message_session"
@@ -304,6 +305,69 @@ class TestWakeCarriesTheTargetsOwnExecutionContext:
         )
         assert kwargs["llm_auth_provider"] == "codex"
         assert kwargs["llm_credential_id"] == "cred-9"
+
+
+class TestEmptinessIsHonest:
+    """``task`` is matched after the scan, so an empty result off a full scan
+    means 'not among the recent ones', not 'you have none'."""
+
+    async def test_empty_off_a_full_scan_says_recent_only(self) -> None:
+        rows = [_info(f"s{i}", purpose="unrelated") for i in range(_SCAN_LIMIT)]
+        with patch(
+            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+        ):
+            result = await FindSessionTool()._execute(
+                OWNER, _session(), task="nothing matches this"
+            )
+        assert isinstance(result, SessionListResponse)
+        assert "recent" in result.message
+
+    async def test_empty_off_a_short_scan_does_not_claim_a_window(self) -> None:
+        with patch(
+            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+        ):
+            result = await FindSessionTool()._execute(OWNER, _session(), task="x")
+        assert isinstance(result, SessionListResponse)
+        assert "recent" not in result.message
+
+
+class TestMessageLimitsAndCaps:
+    async def test_an_overlong_message_is_refused_before_delivery(self) -> None:
+        with patch(f"{_MSG}.get_chat_session_metadata", new=AsyncMock()) as fetch:
+            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+                result = await MessageSessionTool()._execute(
+                    OWNER,
+                    _session(),
+                    session_id=TARGET_SESSION,
+                    message="x" * (MAX_MESSAGE_CHARS + 1),
+                )
+        assert isinstance(result, ErrorResponse)
+        # Refused on its own length, before the target is even looked up.
+        fetch.assert_not_awaited()
+        deliver.assert_not_awaited()
+
+    async def test_over_the_inflight_cap_reports_rather_than_raises(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=0, max_buffer_length=10, turn_in_flight=False
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION)),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ):
+                with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="idle"),
+                ), patch(
+                    f"{_MSG}.try_enqueue_turn",
+                    new=AsyncMock(side_effect=InflightCapExceeded()),
+                ):
+                    result = await MessageSessionTool()._execute(
+                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                    )
+        assert isinstance(result, ErrorResponse)
 
 
 class TestQueuedTargetRidesItsOwnTurn:

@@ -166,6 +166,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     dev + this branch's consult_teammate           71,751 (86 tools)
 #     + find_session, message_session  +1,251        73,002 (88 tools)
 #
+# Bumped 73_003 -> 73_030 for one sentence in find_session's description
+# saying `task` searches recent sessions only — 27 chars. A description edit
+# costs the same on both brakes (see below); only a tool's SHAPE makes them
+# differ.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
@@ -210,7 +215,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 #     + #14207 multi-expert-teams  +981          71,751 (86 tools)
 # consult_teammate has measured +981 at every dev tip since 2026-09-09; what
 # moves this line is dev, not this branch.
-_CHAR_BUDGET = 73_003
+_CHAR_BUDGET = 73_030
 
 
 @pytest.fixture(scope="module")
@@ -358,10 +363,14 @@ def test_total_schema_char_budget() -> None:
 # here: 65,602, +1,109. That is less than the 1,251 they add to _CHAR_BUDGET
 # above — the two brakes never move in step, so measure each.
 #
+# Raised 65_603 -> 65_630 for the same sentence: 65,629, +27, exactly the
+# registry's delta. Prose lands byte-for-byte in both, so the two brakes only
+# diverge on tool shape — `required` and separators — not on wording.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 65_603
+_SESSION_WIRE_BUDGET = 65_630
 
 
 def test_largest_declared_session_wire_budget() -> None:

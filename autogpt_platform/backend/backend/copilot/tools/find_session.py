@@ -53,7 +53,7 @@ class FindSessionTool(BaseTool):
                 },
                 "task": {
                     "type": "string",
-                    "description": "Match against what the session is for, and its title.",
+                    "description": "Match what the session is for, or its title. Searches your recent sessions only.",
                     "default": "",
                 },
                 "status": {
@@ -100,7 +100,11 @@ class FindSessionTool(BaseTool):
         ]
         shown = matched[:MAX_RESULTS]
         return SessionListResponse(
-            message=_summary(len(shown), truncated=len(matched) > MAX_RESULTS),
+            message=_summary(
+                len(shown),
+                truncated=len(matched) > MAX_RESULTS,
+                window_full=len(rows) == _SCAN_LIMIT,
+            ),
             sessions=[
                 SessionSummary(
                     session_id=row.session_id,
@@ -122,10 +126,17 @@ def _matches_task(row: ChatSessionInfo, task: str) -> bool:
     return task.lower() in haystack
 
 
-def _summary(shown: int, *, truncated: bool) -> str:
+def _summary(shown: int, *, truncated: bool, window_full: bool) -> str:
     """Count what was returned, not what matched: a number larger than the
-    list reads as authoritative and is not."""
+    list reads as authoritative and is not.
+
+    Nothing found is the same trap one step further on. ``task`` is matched
+    after the scan, so an empty result off a full scan means "not among the
+    recent ones", which is not the same answer as "you have none".
+    """
     if not shown:
+        if window_full:
+            return "No match among your recent sessions. Try expert_id or status."
         return "No other sessions of yours match."
     plural = "s" if shown != 1 else ""
     more = " Narrow it with expert_id, task or status." if truncated else ""
