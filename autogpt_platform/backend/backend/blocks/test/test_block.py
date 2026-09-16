@@ -3,8 +3,9 @@ from typing import Any, Type
 import pytest
 
 from backend.blocks import get_blocks
-from backend.blocks._base import Block, BlockSchemaInput
+from backend.blocks._base import Block, BlockEffect, BlockSchemaInput, BlockType
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
 from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
@@ -48,9 +49,175 @@ async def test_available_blocks(block: Type[Block]):
     await execute_block_test(block_instance)
 
 
+# Blocks that predate the ``effect`` declaration and have not been classified
+# yet. The runtime default for an unclassified block is to ask, so an entry here
+# costs friction, never safety. MAY ONLY SHRINK: a new block must declare its
+# effect, and a follow-up that classifies a provider family deletes its rows.
+_EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
+    """
+    AddAudioToVideoBlock AddLeadToCampaignBlock AddMemoryBlock
+    AddToLibraryFromStoreBlock AgentDateInputBlock AgentDropdownInputBlock
+    AgentExecutorBlock AgentFileInputBlock AgentGoogleDriveFileInputBlock
+    AgentInputBlock AgentLongTextInputBlock AgentMailCreateDraftBlock
+    AgentMailCreateInboxBlock AgentMailCreatePodBlock AgentMailCreatePodInboxBlock
+    AgentMailUpdateDraftBlock AgentMailUpdateInboxBlock AgentMailUpdateMessageBlock
+    AgentNumberInputBlock AgentOutputBlock AgentShortTextInputBlock AgentTableInputBlock
+    AgentTimeInputBlock AgentToggleInputBlock AirtableCreateBaseBlock
+    AirtableCreateFieldBlock AirtableCreateRecordsBlock AirtableCreateTableBlock
+    AirtableUpdateFieldBlock AirtableUpdateRecordsBlock AirtableUpdateTableBlock
+    AirtableWebhookTriggerBlock AllQuietIncidentTriggerBlock AllQuietUpdateIncidentBlock
+    AutoPilotBlock BaasBotJoinMeetingBlock BaasBotLeaveMeetingBlock
+    BlockInstallationBlock ClaudeCodeBlock CodeGenerationBlock CompanyEnrichmentBlock
+    CompassAITriggerBlock CreateCampaignBlock CreateRedditPostBlock
+    DataForSeoKeywordSuggestionsBlock DataForSeoRelatedKeywordsBlock
+    DiscordGetCurrentUserBlock EditRedditPostBlock EditTelegramMessageBlock
+    ExaBulkWebsetItemsBlock ExaCancelEnrichmentBlock ExaCancelWebsetBlock
+    ExaCancelWebsetSearchBlock ExaCodeContextBlock ExaCreateEnrichmentBlock
+    ExaCreateImportBlock ExaCreateMonitorBlock ExaCreateOrFindWebsetBlock
+    ExaCreateResearchBlock ExaCreateWebsetBlock ExaCreateWebsetSearchBlock
+    ExaExportWebsetBlock ExaFindOrCreateSearchBlock ExaGetImportBlock
+    ExaUpdateEnrichmentBlock ExaUpdateMonitorBlock ExaUpdateWebsetBlock
+    ExaWaitForEnrichmentBlock ExaWaitForResearchBlock ExaWaitForWebsetBlock
+    ExaWebsetItemsSummaryBlock ExaWebsetSummaryBlock ExaWebsetWebhookBlock
+    ExecuteCodeBlock ExecuteCodeStepBlock FileStoreBlock GenericWebhookTriggerBlock
+    GetRedditCommentBlock GetRedditCommentRepliesBlock GetRedditInboxBlock
+    GetRedditPostBlock GetRedditPostCommentsBlock GetRedditPostsBlock
+    GetRedditUserInfoBlock GetStoreAgentDetailsBlock GetSubredditFlairsBlock
+    GetSubredditInfoBlock GetSubredditRulesBlock GetUserPostsBlock GithubAddLabelBlock
+    GithubAssignIssueBlock GithubAssignPRReviewerBlock GithubCreateCheckRunBlock
+    GithubCreateRepositoryBlock GithubCreateStatusBlock GithubDiscussionTriggerBlock
+    GithubForkRepositoryBlock GithubIssuesTriggerBlock GithubMakeBranchBlock
+    GithubMakeIssueBlock GithubMakePullRequestBlock
+    GithubMarkNotificationThreadAsDoneBlock GithubMarkNotificationThreadAsReadBlock
+    GithubMarkNotificationsAsReadBlock GithubMultiFileCommitBlock
+    GithubPullRequestTriggerBlock GithubReleaseTriggerBlock GithubRemoveLabelBlock
+    GithubResolveReviewDiscussionBlock GithubStarRepositoryBlock GithubStarTriggerBlock
+    GithubUnassignIssueBlock GithubUnassignPRReviewerBlock
+    GithubUnsubscribeNotificationThreadBlock GithubUpdateCheckRunBlock
+    GithubUpdateCommentBlock GmailAddLabelBlock GmailCreateDraftBlock
+    GmailDraftReplyBlock GmailForwardBlock GmailRemoveLabelBlock
+    GoogleCalendarCreateEventBlock GoogleDocsAppendMarkdownBlock
+    GoogleDocsAppendPlainTextBlock GoogleDocsCreateBlock GoogleDocsDeleteContentBlock
+    GoogleDocsExportBlock GoogleDocsFindReplacePlainTextBlock GoogleDocsFormatTextBlock
+    GoogleDocsInsertMarkdownAtBlock GoogleDocsInsertPageBreakBlock
+    GoogleDocsInsertPlainTextBlock GoogleDocsInsertTableBlock
+    GoogleDocsReplaceAllWithMarkdownBlock GoogleDocsReplaceContentWithMarkdownBlock
+    GoogleDocsReplaceRangeWithMarkdownBlock GoogleSheetsAddColumnBlock
+    GoogleSheetsAddDropdownBlock GoogleSheetsAddNoteBlock GoogleSheetsAppendRowBlock
+    GoogleSheetsBatchOperationsBlock GoogleSheetsClearBlock
+    GoogleSheetsCopyToSpreadsheetBlock GoogleSheetsCreateNamedRangeBlock
+    GoogleSheetsCreateSpreadsheetBlock GoogleSheetsDeleteColumnBlock
+    GoogleSheetsDeleteRowsBlock GoogleSheetsExportCsvBlock GoogleSheetsFindReplaceBlock
+    GoogleSheetsFormatBlock GoogleSheetsImportCsvBlock GoogleSheetsInsertRowBlock
+    GoogleSheetsManageSheetBlock GoogleSheetsMetadataBlock GoogleSheetsProtectRangeBlock
+    GoogleSheetsRemoveDuplicatesBlock GoogleSheetsSortBlock GoogleSheetsUpdateCellBlock
+    GoogleSheetsUpdateRowBlock GoogleSheetsWriteBlock HubSpotCompanyBlock
+    HubSpotContactBlock HubSpotEngagementBlock HumanInTheLoopBlock
+    InstantiateCodeSandboxBlock LinearCreateCommentBlock LinearCreateIssueBlock
+    LoopVideoBlock MCPToolBlock MediaDurationBlock ModQueueBlock NoteBlock
+    NotionCreatePageBlock NotionReadDatabaseBlock NotionReadPageBlock
+    NotionReadPageMarkdownBlock NotionSearchBlock OrchestratorBlock
+    PersistInformationBlock PineconeInitBlock PineconeInsertBlock PostRedditCommentBlock
+    PostToBlueskyBlock PostToFacebookBlock PostToGMBBlock PostToPinterestBlock
+    PostToRedditBlock PostToSnapchatBlock PostToTelegramBlock PostToThreadsBlock
+    ProfileEnrichmentBlock RMFGAnalyzeDesignBlock RMFGCreateCartBlock
+    RMFGCreateDFMReportBlock RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock
+    RMFGEventTriggerBlock RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock
+    ReplyToRedditCommentBlock RetrieveInformationBlock SQLQueryBlock
+    SaveCampaignSequencesBlock SearchRedditBlock SearchStoreAgentsBlock
+    SendAuthenticatedWebRequestBlock SendRedditMessageBlock SendWebRequestBlock
+    Slant3DEstimateOrderBlock Slant3DEstimateShippingBlock Slant3DFilamentBlock
+    Slant3DOrderWebhookBlock Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock
+    StagehandExtractBlock StagehandObserveBlock StripeLinkCreateCardSpendRequestBlock
+    StripeLinkCreateTokenSpendRequestBlock StripeLinkGetPaymentChallengeBlock
+    StripeLinkRetrieveCardBlock StripeSubscriptionTriggerBlock
+    TelegramMessageReactionTriggerBlock TelegramMessageTriggerBlock
+    TodoistCloseTaskBlock TodoistCreateCommentBlock TodoistCreateLabelBlock
+    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistDeleteCommentBlock
+    TodoistDeleteLabelBlock TodoistDeleteProjectBlock TodoistDeleteSectionBlock
+    TodoistDeleteTaskBlock TodoistGetCommentBlock TodoistGetCommentsBlock
+    TodoistGetLabelBlock TodoistGetProjectBlock TodoistGetSectionBlock
+    TodoistGetSharedLabelsBlock TodoistGetTaskBlock TodoistGetTasksBlock
+    TodoistListCollaboratorsBlock TodoistListLabelsBlock TodoistListProjectsBlock
+    TodoistListSectionsBlock TodoistRemoveSharedLabelsBlock
+    TodoistRenameSharedLabelsBlock TodoistReopenTaskBlock TodoistUpdateCommentBlock
+    TodoistUpdateLabelBlock TodoistUpdateProjectBlock TodoistUpdateTaskBlock
+    TwitterAddListMemberBlock TwitterBookmarkTweetBlock TwitterCreateListBlock
+    TwitterDeleteListBlock TwitterDeleteTweetBlock TwitterFollowListBlock
+    TwitterFollowUserBlock TwitterGetBlockedUsersBlock TwitterGetBookmarkedTweetsBlock
+    TwitterGetFollowersBlock TwitterGetFollowingBlock TwitterGetHomeTimelineBlock
+    TwitterGetLikedTweetsBlock TwitterGetLikingUsersBlock TwitterGetListBlock
+    TwitterGetListMembersBlock TwitterGetListMembershipsBlock TwitterGetListTweetsBlock
+    TwitterGetMutedUsersBlock TwitterGetOwnedListsBlock TwitterGetPinnedListsBlock
+    TwitterGetQuoteTweetsBlock TwitterGetRetweetersBlock TwitterGetSpaceBuyersBlock
+    TwitterGetSpaceByIdBlock TwitterGetSpaceTweetsBlock TwitterGetSpacesBlock
+    TwitterGetTweetBlock TwitterGetTweetsBlock TwitterGetUserBlock
+    TwitterGetUserMentionsBlock TwitterGetUserTweetsBlock TwitterGetUsersBlock
+    TwitterHideReplyBlock TwitterLikeTweetBlock TwitterMuteUserBlock TwitterPinListBlock
+    TwitterPostTweetBlock TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
+    TwitterRemoveRetweetBlock TwitterRetweetBlock TwitterSearchRecentTweetsBlock
+    TwitterSearchSpacesBlock TwitterUnfollowListBlock TwitterUnfollowUserBlock
+    TwitterUnhideReplyBlock TwitterUnlikeTweetBlock TwitterUnmuteUserBlock
+    TwitterUnpinListBlock TwitterUpdateListBlock VideoClipBlock VideoConcatBlock
+    VideoDownloadBlock VideoNarrationBlock VideoTextOverlayBlock
+    """.split()
+)
+
+
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
-    """A sensitive-action block's whole input dict becomes the review payload.
+def test_block_declares_an_effect(block: Type[Block]):
+    """A new block declares ``effect`` or CI fails; the allowlist is frozen."""
+    name = block.__name__
+    if block().effect is not None:
+        assert name not in _EFFECT_UNCLASSIFIED, (
+            f"{name} declares an effect, so delete it from "
+            f"_EFFECT_UNCLASSIFIED — that list may only shrink."
+        )
+        return
+    assert name in _EFFECT_UNCLASSIFIED, (
+        f"{name} declares no effect. Pass effect=BlockEffect.NONE (pure "
+        f"computation), READ (changes nothing outside the platform) or WRITE. "
+        f"Do not add it to _EFFECT_UNCLASSIFIED."
+    )
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
+    """NONE claims pure computation, and a mock exists only to stub I/O out.
+
+    A filter rather than a proof — it rejects every block a credentials-derived
+    classifier would have waved through, and four media downloaders pass it.
+    """
+    instance = block()
+    if instance.effect is not BlockEffect.NONE:
+        return
+
+    name = instance.name
+    assert not instance.test_mock, f"{name} is effect=NONE but mocks I/O in tests."
+    assert (
+        not instance.input_schema.get_credentials_fields()
+    ), f"{name} is effect=NONE but takes credentials."
+    assert instance.webhook_config is None, f"{name} is effect=NONE but has a webhook."
+    assert (
+        instance.block_type is BlockType.STANDARD
+    ), f"{name} is effect=NONE but is a {instance.block_type.name} block."
+    assert instance.id not in BLOCK_COSTS, f"{name} is effect=NONE but costs money."
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_irreversible_blocks_declare_write(block: Type[Block]):
+    instance = block()
+    if not instance.is_irreversible_action:
+        return
+    assert instance.effect is BlockEffect.WRITE, (
+        f"{instance.name} is irreversible, so its effect must be WRITE, not "
+        f"{instance.effect.name if instance.effect else 'undeclared'}."
+    )
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
+    """An irreversible-action block's whole input dict becomes the review payload.
 
     `data` is the key the approval card historically unwrapped to, rendering
     that one field in place of the arguments the block goes on to execute.
@@ -59,7 +226,7 @@ def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
     delete this case once the render path is re-checked.
     """
     block_instance = block()
-    if not block_instance.is_sensitive_action:
+    if not block_instance.is_irreversible_action:
         return
 
     assert "data" not in block_instance.input_schema.model_fields, (

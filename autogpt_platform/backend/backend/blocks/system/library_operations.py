@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -223,6 +224,7 @@ class ListLibraryAgentsBlock(Block):
                     "total_pages": 1,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

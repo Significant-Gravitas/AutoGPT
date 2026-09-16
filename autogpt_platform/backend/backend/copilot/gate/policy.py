@@ -101,7 +101,7 @@ ALWAYS_ASK_TOOLS: frozenset[str] = frozenset(
 
 # Only the completion of a review ``check_hitl_review`` already opened.
 # ``run_agent`` / ``run_block`` are ALWAYS_ASK: that gate is reached from
-# ``run_block`` alone and covers 17 of 573 blocks; nothing reviews a graph run.
+# ``run_block`` alone and covers 66 of 602 blocks; nothing reviews a graph run.
 DEFER_TOOLS: frozenset[str] = frozenset({"continue_run_block"})
 
 # Flip to ASK once untrusted content is in the session. Deliberately NOT every

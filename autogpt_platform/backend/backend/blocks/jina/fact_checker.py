@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -50,6 +51,7 @@ class FactCheckerBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=FactCheckerBlock.Input,
             output_schema=FactCheckerBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -56,6 +56,19 @@ app_config = Config()
 BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
 
 
+class BlockEffect(Enum):
+    """What running this block does to the world outside the caller.
+
+    Declared per block, never derived: neither the credentials field nor the
+    category is a proxy for I/O. Undeclared (``None``) means unclassified, and
+    every consumer must treat that as WRITE.
+    """
+
+    NONE = "none"  # pure computation: no network, no disk, no database
+    READ = "read"  # fetches or computes; changes nothing outside the platform
+    WRITE = "write"  # changes state somewhere outside the platform
+
+
 class BlockType(Enum):
     STANDARD = "Standard"
     INPUT = "Input"
@@ -568,7 +581,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
-        is_sensitive_action: bool = False,
+        is_irreversible_action: bool = False,
+        effect: BlockEffect | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -586,6 +600,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            is_irreversible_action: True when the effect has already reached someone
+                outside the platform by the time the block returns, so undoing the
+                state does not undo the act: sends, public posts, payments and
+                orders, moderation, permanent deletes, and grants of access to
+                outsiders. An ordinary external write the user can edit back —
+                a spreadsheet cell, a draft, a label — is not one; declare that
+                ``effect=BlockEffect.WRITE`` instead. Pauses the run for human
+                review when the graph has ``sensitive_action_safe_mode`` on, and
+                makes ``GraphModel.has_sensitive_action`` true.
+            effect: What running the block does outside the caller; see BlockEffect.
+                Undeclared means unclassified, which every consumer reads as WRITE.
         """
         self.id = id
         self.input_schema = input_schema
@@ -601,7 +626,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.is_sensitive_action = is_sensitive_action
+        self.is_irreversible_action = is_irreversible_action
+        self.effect = effect
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -774,7 +800,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
         if not (
-            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
         ):
             return False, input_data
 
