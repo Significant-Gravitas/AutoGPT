@@ -652,3 +652,19 @@ class TestStoreMediaFileExpertScope:
 
         workspace_db.assert_not_called()
         manager_cls.assert_called_once_with("user-1", "ws-1", "sess-1", scope=None)
+
+
+@pytest.mark.parametrize(
+    "graph_exec_id",
+    [
+        "",
+        ".",
+        "child/..",
+    ],
+)
+def test_get_exec_file_path_rejects_sandbox_root(graph_exec_id):
+    with pytest.raises(
+        ValueError,
+        match="escapes execution directory",
+    ):
+        get_exec_file_path(graph_exec_id, "secret.txt")
