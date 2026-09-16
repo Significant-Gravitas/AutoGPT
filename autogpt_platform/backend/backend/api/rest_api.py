@@ -32,6 +32,7 @@ import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
 import backend.api.features.billing.subscriptions.routes as subscriptions_routes
+import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -429,6 +430,11 @@ app.include_router(
 app.include_router(
     subscriptions_routes.router,
     tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    blocks_routes.router,
+    tags=["v1"],
     prefix="/api",
 )
 app.include_router(

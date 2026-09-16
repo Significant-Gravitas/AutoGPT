@@ -98,7 +98,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
+    from backend.copilot.model import ChatSession, ChatSessionOrigin
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +293,35 @@ def expert_tool_disabled_groups(
     if not experts_enabled:
         return ["experts", "expert_admin", "delegation", "expert_resources"]
     return ["expert_admin"] if expert_id else ["experts"]
+
+
+# The tools ``autopilot_session_guard`` refuses off an interactive origin:
+# hidden there rather than declared and then refused.  Not a ``ToolGroup`` —
+# that says what a tool does, and each of these already holds ``expert_admin``
+# — and not a wider "needs a person" set either, because ``automation`` marks
+# a machine-authored PROMPT, not an empty chat: a dream pass and a scheduled
+# brief both carry it and both expect the user to read and reply.  So what is
+# safe to withhold on this seam is what the runtime already withholds, no
+# more.  ``tool_schema_test`` asserts the two stay equal.
+INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
+    {
+        "hire_expert",
+        "raise_expert",
+        "update_expert",
+        "confirm_expert_change",
+    }
+)
+
+
+def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
+    """Tools to hide from a session *origin* no person is driving.
+
+    Positive match, so a legacy ``None`` is hidden from too — an unknown
+    origin cannot prove a human is here, and ``autopilot_session_guard``
+    takes the same side of the same unknown, which is the point: whatever
+    it would refuse, this stops us declaring.
+    """
+    return frozenset() if origin == "interactive" else INTERACTIVE_ORIGIN_TOOLS
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
