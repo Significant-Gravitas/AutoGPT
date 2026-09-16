@@ -476,10 +476,12 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
     )
 
     assert [skill.id for skill in linked.bundled_skills] == [first.id, hub_listing.id]
+    # The title is the body's heading — `_make_listing` writes "# body" — and
+    # never the version's `name`, which is a slug.
     assert linked.bundled_skills[1] == ExpertBundledSkill(
         id=hub_listing.id,
         slug=hub_listing.slug,
-        name=hub_listing.slug.replace("-", " ").title(),
+        title="body",
         description=f"{hub_listing.slug} description",
     )
     assert unlinked.bundled_skills == []
