@@ -474,6 +474,47 @@ describe("managing an expert's integrations", () => {
     expect(within(list).queryByRole("button", { name: /Slack/ })).toBeNull();
   });
 
+  it("excludes MCP presets from the native-method picker", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+          {
+            name: "mcp_airtable",
+            display_name: "Airtable",
+            supported_auth_types: [],
+            mcp_server: {
+              server_url: "https://mcp.airtable.com/mcp",
+              documentation_url: "https://support.airtable.com",
+              setup_instructions: "Sign in to Airtable.",
+              connection_mode: "hosted",
+              auth_methods: ["oauth"],
+            },
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const list = await within(dialog).findByRole("list", { name: "Services" });
+
+    expect(within(list).queryByRole("button", { name: /Airtable/ })).toBeNull();
+    await userEvent.click(within(list).getByRole("button", { name: /Notion/ }));
+    expect(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    ).toBeDefined();
+  });
+
   it("grants only the credential the dialog created", async () => {
     const workLinkedin = {
       id: "cred-linkedin",
