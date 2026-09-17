@@ -181,7 +181,8 @@ def format_report(report: PrefixReport) -> str:
             f"  today:    {report.today_tools:3d} tools  {report.today_tokens:6,d} tokens",
             f"  registry: {report.registry_tools:3d} tools  {report.registry_tokens:6,d} tokens",
             f"  saved:    {report.saved_tokens:,d} tokens per cold prefix"
-            f"  (${report.saved_usd_per_cold_prefix():.3f} at ${CACHE_WRITE_USD_PER_M}/M cache write)",
+            + f"  (${report.saved_usd_per_cold_prefix():.3f}"
+            + f" at ${CACHE_WRITE_USD_PER_M}/M cache write)",
         ]
     )
 

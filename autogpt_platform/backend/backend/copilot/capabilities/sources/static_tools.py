@@ -33,7 +33,6 @@ EAGER_CORE: frozenset[str] = frozenset(
         "read_workspace_file",
         "write_workspace_file",
         "run_sub_session",
-        "continue_run_block",
         "delegate_to_expert",
         "handoff_to_expert",
         "TodoWrite",

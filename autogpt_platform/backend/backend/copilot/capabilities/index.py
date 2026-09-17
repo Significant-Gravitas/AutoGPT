@@ -25,7 +25,8 @@ if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
 
 _UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
 )
 # Exact-name hits sit above every lexical hit; a name match is unambiguous.
 _EXACT_BONUS = 100.0
@@ -216,12 +217,22 @@ class CapabilityIndex:
         return [idx for idx in dict.fromkeys(indices) if idx in allowed]
 
     def _service_query(self, query: str) -> tuple[str | None, set[int] | None]:
-        """A query token that names a service restricts the main list to it."""
+        """Services named in the query restrict the main list to them.
+
+        Every named service counts, not just the first: "send a linear issue
+        to notion" needs both, and stopping at the first match returned only
+        Linear and hid Notion entirely.
+        """
         raw = re.split(r"[^a-z0-9.]+", query.lower())
+        named: list[str] = []
+        indices: set[int] = set()
         for token in [*raw, *tokenize(query)]:
-            if token and token in self._service_tags:
-                return token, set(self._service_tags[token])
-        return None, None
+            if token and token in self._service_tags and token not in named:
+                named.append(token)
+                indices.update(self._service_tags[token])
+        if not named:
+            return None, None
+        return " ".join(named), indices
 
 
 def _coverage(groups: list[list[str]], doc: frozenset[str]) -> float:
@@ -250,7 +261,14 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
     if entry.connection.key_type == "provider" and entry.connection.key:
         yield entry.connection.key.lower()
     if entry.kind == "mcp_server":
-        marker = entry.tags.index("mcp") if "mcp" in entry.tags else len(entry.tags)
+        # The marker is appended last, so find it from the end: a display
+        # name that tokenises to "mcp" would otherwise be mistaken for it
+        # and drag the whole sorted prefix in as service names.
+        marker = (
+            len(entry.tags) - 1 - entry.tags[::-1].index("mcp")
+            if "mcp" in entry.tags
+            else len(entry.tags)
+        )
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
 
 
@@ -262,10 +280,9 @@ def _ranked(hits: list[SearchHit]) -> list[SearchHit]:
         hits,
         key=lambda h: (
             -h.coverage,
-            not h.connected,
+            tier(h.entry, h.connected),
             h.entry.kind != "tool",
             -h.score,
-            tier(h.entry, h.connected),
             h.entry.name.lower(),
         ),
     )
