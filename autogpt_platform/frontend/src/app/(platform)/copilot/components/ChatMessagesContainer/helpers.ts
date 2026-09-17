@@ -404,14 +404,33 @@ export function resolveWorkspaceUrls(
   // "[blocked]" to appear next to the link text.
   // Use an absolute URL so Streamdown's "Copy link" button copies the full
   // URL (including host) rather than just the path.
+  //
+  // Safari (<16.4) doesn't support lookbehind assertions, so this can't use
+  // `(?<!!)` to exclude image syntax. It also can't fold a `(^|[^!])` prefix
+  // group into the match: that group *consumes* a character, and when two
+  // workspace links sit back-to-back with nothing between them (e.g.
+  // `[a](workspace://x)[b](workspace://y)`), there is no spare character
+  // left for the second match's prefix group to consume, so it silently
+  // fails to match and the second link stays unresolved. Checking the
+  // preceding character via the match `offset` instead never consumes
+  // anything, so adjacent links each match independently.
   resolved = resolved.replace(
-    /(^|[^!])\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
-    (_match, prefix: string, linkText: string, fileId: string) => {
+    /\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
+    (
+      match: string,
+      linkText: string,
+      fileId: string,
+      offset: number,
+      fullString: string,
+    ) => {
+      if (fullString[offset - 1] === "!") {
+        return match;
+      }
       const url = fileUrlBuilder(fileId);
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
       const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
-      return `${prefix}[${linkText || "Download file"}](${absoluteUrl})`;
+      return `[${linkText || "Download file"}](${absoluteUrl})`;
     },
   );
 

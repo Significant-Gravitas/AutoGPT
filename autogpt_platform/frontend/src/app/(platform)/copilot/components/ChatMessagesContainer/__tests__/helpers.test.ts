@@ -222,6 +222,26 @@ describe("resolveWorkspaceUrls with custom fileUrlBuilder", () => {
     const out = resolveWorkspaceUrls(text, builder);
     expect(out).toBe(`![video:demo](/share/files/${FILE_ID}.mp4)`);
   });
+
+  it("rewrites both links when two workspace links are directly adjacent", () => {
+    const idA = "aaaaaaaa-e29b-41d4-a716-446655440000";
+    const idB = "bbbbbbbb-e29b-41d4-a716-446655440000";
+    const text = `[a](workspace://${idA})[b](workspace://${idB})`;
+    const builder = (id: string) => `/share/files/${id}.dl`;
+    const out = resolveWorkspaceUrls(text, builder);
+    expect(out).toContain(`(http://localhost:3000/share/files/${idA}.dl)`);
+    expect(out).toContain(`(http://localhost:3000/share/files/${idB}.dl)`);
+    expect(out).not.toContain("workspace://");
+  });
+
+  it("rewrites a link directly adjacent to an image with no separator", () => {
+    const linkId = "cccccccc-e29b-41d4-a716-446655440000";
+    const text = `![img](workspace://${FILE_ID}#image/png)[link](workspace://${linkId})`;
+    const builder = (id: string) => `/share/files/${id}.dl`;
+    const out = resolveWorkspaceUrls(text, builder);
+    expect(out).toContain(`(http://localhost:3000/share/files/${linkId}.dl)`);
+    expect(out).not.toContain("workspace://");
+  });
 });
 
 describe("filePartToArtifactRef with custom pattern", () => {
