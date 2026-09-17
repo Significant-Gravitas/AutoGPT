@@ -17,7 +17,12 @@ from typing import Literal, Mapping, Optional
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
 
-from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
@@ -117,7 +122,9 @@ class DesktopSession:
             # rather than leak a sandbox that would bill until timeout and
             # then sit paused forever.
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+                await asyncio.wait_for(
+                    kill_sandbox(sandbox), timeout=_KILL_TIMEOUT_SECONDS
+                )
             raise
         return session, persistence
 
@@ -231,7 +238,7 @@ class DesktopSession:
         await self.sandbox.pause()
 
     async def kill(self) -> None:
-        await self.sandbox.kill()
+        await kill_sandbox(self.sandbox)
 
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):

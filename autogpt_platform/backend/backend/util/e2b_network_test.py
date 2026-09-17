@@ -18,6 +18,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     credential_record,
     forget_sandbox,
+    kill_sandbox,
     secret_digest,
 )
 
@@ -336,6 +337,30 @@ class TestPinned:
             await forget_sandbox("sb-1")
             assert redis.store == {}
             await forget_sandbox("sb-never-pinned")
+
+    @pytest.mark.asyncio
+    async def test_killing_through_the_handle_revokes_too(self):
+        box, redis = _box("sb-1"), _redis()
+        box.kill = AsyncMock()
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            await kill_sandbox(box)
+        box.kill.assert_awaited_once()
+        assert redis.store == {}
+
+    @pytest.mark.asyncio
+    async def test_a_kill_that_fails_keeps_the_credential_of_a_box_still_running(self):
+        box, redis = _box("sb-1"), _redis()
+        box.kill = AsyncMock(side_effect=RuntimeError("e2b error"))
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            with pytest.raises(RuntimeError):
+                await kill_sandbox(box)
+        assert redis.store["e2b:egress:box:sb-1"]
 
     @pytest.mark.asyncio
     async def test_a_revocation_that_fails_does_not_fail_the_kill_it_follows(self):

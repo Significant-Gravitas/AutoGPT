@@ -209,6 +209,14 @@ async def connect_sandbox(
     return sandbox
 
 
+async def kill_sandbox(sandbox: AsyncSandbox) -> None:
+    """Kill a box and revoke its proxy credential: the kill for any caller
+    that holds the handle.  A kill that raises leaves the credential alone,
+    since the box may still be running."""
+    await sandbox.kill()
+    await forget_sandbox(sandbox.sandbox_id)
+
+
 async def forget_sandbox(sandbox_id: str) -> None:
     """Revoke a box's proxy credential: call when the box is paused or killed.
 

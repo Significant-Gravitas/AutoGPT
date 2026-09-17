@@ -21,7 +21,12 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -508,7 +513,7 @@ class ClaudeCodeBlock(Block):
 
         finally:
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""

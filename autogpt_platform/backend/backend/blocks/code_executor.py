@@ -23,7 +23,12 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -191,7 +196,7 @@ class BaseE2BExecutorMixin:
                 code,
                 language=language.value,
                 envs=envs or {},
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
+                on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
             if execution.error:
@@ -223,7 +228,7 @@ class BaseE2BExecutorMixin:
         finally:
             # Dispose of sandbox if requested to reduce usage costs
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
