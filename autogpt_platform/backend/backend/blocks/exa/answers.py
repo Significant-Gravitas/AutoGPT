@@ -8,6 +8,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -86,6 +87,7 @@ class ExaAnswerBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaAnswerBlock.Input,
             output_schema=ExaAnswerBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

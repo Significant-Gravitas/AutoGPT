@@ -560,7 +560,7 @@ def test_moderator_free_text_inputs_are_length_bounded():
 
 
 # The human-in-the-loop gate for automated moderation. `data/graph.py` reads
-# `block.is_sensitive_action` to decide whether a run needs approval, so a block
+# `block.is_irreversible_action` to decide whether a run needs approval, so a block
 # silently losing the flag would start banning and removing without a prompt.
 # Nothing else in the suite pins it.
 @pytest.mark.parametrize(
@@ -577,7 +577,7 @@ def test_moderator_free_text_inputs_are_length_bounded():
     ],
 )
 def test_state_changing_moderation_blocks_are_gated(block_cls, is_sensitive):
-    assert block_cls().is_sensitive_action is is_sensitive
+    assert block_cls().is_irreversible_action is is_sensitive
 
 
 @pytest.mark.asyncio

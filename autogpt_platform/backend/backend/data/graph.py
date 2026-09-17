@@ -258,7 +258,7 @@ class BaseGraph(GraphBaseMeta):
     @property
     def has_sensitive_action(self) -> bool:
         return any(
-            node.block_id for node in self.nodes if node.block.is_sensitive_action
+            node.block_id for node in self.nodes if node.block.is_irreversible_action
         )
 
     @property

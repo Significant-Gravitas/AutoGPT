@@ -1,4 +1,5 @@
 import type { ToolUIPart } from "ai";
+import { beautifyString } from "@/lib/utils";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
@@ -82,6 +83,7 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
 const ACTION_RESPONSE_TYPES = new Set([
   "setup_requirements",
   "review_required",
+  "approval_required",
   "need_login",
   "trigger_config_required",
   "suggested_goal",
@@ -114,6 +116,12 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
+  }
+  if (data.type === "approval_required") {
+    const name = data.tool_name;
+    return typeof name === "string" && name.trim()
+      ? `Approve ${beautifyString(name.trim())}`
+      : "Approve this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()

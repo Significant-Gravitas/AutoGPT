@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -117,6 +118,7 @@ class GithubListPullRequestsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -340,6 +342,7 @@ class GithubReadPullRequestBlock(Block):
                 "read_pr": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -636,6 +639,7 @@ class GithubListPRReviewersBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -755,7 +759,8 @@ class GithubMergePullRequestBlock(Block):
                     "Pull Request successfully merged",
                 )
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.WRITE,
         )
 
     @staticmethod

@@ -12,6 +12,7 @@ from youtube_transcript_api.proxies import WebshareProxyConfig
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -96,6 +97,7 @@ class TranscribeYoutubeVideoBlock(Block):
                 ],
                 "format_transcript": lambda transcript: "Never gonna give you up\nNever gonna let you down",
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

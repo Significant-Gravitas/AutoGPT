@@ -265,6 +265,19 @@ class ChatConfig(BaseSettings):
         "``fast_standard_model`` under ``use_local`` when left at the "
         "cloud default — see ``_apply_local_aux_models``.",
     )
+    gate_model: str = Field(
+        default="anthropic/claude-haiku-4-5",
+        description="Model backing the auto-mode action gate classifier "
+        "(``copilot/gate``). Deliberately NOT routed through "
+        "``_apply_local_aux_models``: silently swapping a security "
+        "classifier for whichever small model a local operator happens to "
+        "run is exactly the substitution nobody would notice.",
+    )
+    gate_timeout_s: float = Field(
+        default=6.0,
+        description="Hard timeout for one gate classification. Expiry is not "
+        "an error path — it resolves to 'ask'.",
+    )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
         default=OPENROUTER_BASE_URL,

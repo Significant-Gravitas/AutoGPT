@@ -20,6 +20,9 @@ interface PendingReviewsListProps {
   emptyMessage?: string;
 }
 
+// Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
+const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
+
 export function PendingReviewsList({
   reviews,
   onReviewComplete,
@@ -298,17 +301,19 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <Switch
-                      checked={autoApproveFutureMap[nodeId] || false}
-                      onCheckedChange={(enabled: boolean) =>
-                        handleAutoApproveFutureToggle(nodeId, enabled)
-                      }
-                    />
-                    <Text variant="small" className="text-gray-700">
-                      Auto-approve future executions of this node
-                    </Text>
-                  </div>
+                  {!nodeId.startsWith(COPILOT_GATE_NODE_PREFIX) && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        checked={autoApproveFutureMap[nodeId] || false}
+                        onCheckedChange={(enabled: boolean) =>
+                          handleAutoApproveFutureToggle(nodeId, enabled)
+                        }
+                      />
+                      <Text variant="small" className="text-gray-700">
+                        Auto-approve future executions of this node
+                      </Text>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button
