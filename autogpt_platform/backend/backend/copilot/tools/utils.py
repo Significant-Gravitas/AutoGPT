@@ -14,6 +14,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
 )
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -352,24 +353,34 @@ def find_matching_credential(
     field_info: CredentialsFieldInfo,
 ) -> Credentials | None:
     """Find a credential that matches the required provider, type, scopes, host,
-    and — for MCP OAuth credentials — the server URL."""
-    for cred in available_creds:
-        if cred.provider not in field_info.provider:
-            continue
-        if cred.type not in field_info.supported_types:
-            continue
-        if cred.type == "oauth2" and not _credential_has_required_scopes(
-            cred, field_info
-        ):
-            continue
-        if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
-            continue
-        if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
-            cred, field_info
-        ):
-            continue
-        return cred
-    return None
+    and — for MCP OAuth credentials — the server URL.
+
+    Among the user's own credentials the newest match wins: the store lists
+    them oldest first, and the account someone just connected is the one they
+    mean — taking the first fit handed every run to the oldest credential, even
+    right after a reconnect. Platform system credentials remain the fallback.
+    """
+    matches = [c for c in available_creds if _credential_fits(c, field_info)]
+    own = [c for c in matches if not is_system_credential(c.id)]
+    if own:
+        return own[-1]
+    return matches[0] if matches else None
+
+
+def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
+    if cred.provider not in field_info.provider:
+        return False
+    if cred.type not in field_info.supported_types:
+        return False
+    if cred.type == "oauth2" and not _credential_has_required_scopes(cred, field_info):
+        return False
+    if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
+        return False
+    if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
+        cred, field_info
+    ):
+        return False
+    return True
 
 
 def create_credential_meta_from_match(
