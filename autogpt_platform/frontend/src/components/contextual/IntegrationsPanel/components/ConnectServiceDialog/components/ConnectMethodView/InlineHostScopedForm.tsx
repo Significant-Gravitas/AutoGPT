@@ -48,12 +48,15 @@ type HostScopedConnectFormValues = z.infer<typeof hostScopedConnectSchema>;
 
 interface Props {
   provider: string;
+  /** The host the requesting block will call. Absent where no block is in
+   *  scope — the settings dialog and the copilot connect card. */
+  host?: string;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 // Host pattern plus the headers to attach to requests matching it. Carries its
 // own submit, because the panel footer's Continue only drives OAuth and API key.
-export function InlineHostScopedForm({ provider, onSuccess }: Props) {
+export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
   const [headerPairs, setHeaderPairs] = useState<HeaderPair[]>([
     { key: "", value: "" },
   ]);
@@ -66,14 +69,19 @@ export function InlineHostScopedForm({ provider, onSuccess }: Props) {
 
   const form = useForm<HostScopedConnectFormValues>({
     resolver: zodResolver(hostScopedConnectSchema),
-    defaultValues: { host: "" },
+    defaultValues: { host: host ?? "" },
     mode: "onChange",
   });
 
   const headers = headerPairsToRecord(headerPairs);
+  // Parsed rather than read off formState, which stays invalid until the
+  // first change and so would reject a host we prefilled.
+  const hostIsValid = hostScopedConnectSchema.safeParse({
+    host: form.watch("host"),
+  }).success;
   // A host-scoped credential with no headers adds nothing to a request, so
   // saving one would silently produce a credential that does nothing.
-  const canSubmit = form.formState.isValid && Object.keys(headers).length > 0;
+  const canSubmit = hostIsValid && Object.keys(headers).length > 0;
 
   function handleSubmit(values: HostScopedConnectFormValues) {
     submit({
@@ -101,10 +109,16 @@ export function InlineHostScopedForm({ provider, onSuccess }: Props) {
                 label="Host"
                 labelVariant="small-medium"
                 size="small"
+                readOnly={Boolean(host)}
                 placeholder="api.example.com"
                 wrapperClassName="!mb-0"
               />
             </FormControl>
+            <Text variant="small" className="!text-zinc-500">
+              {host
+                ? "Taken from the URL this block calls."
+                : "The host of the URL this block will call."}
+            </Text>
             <FormMessage />
           </FormItem>
         )}

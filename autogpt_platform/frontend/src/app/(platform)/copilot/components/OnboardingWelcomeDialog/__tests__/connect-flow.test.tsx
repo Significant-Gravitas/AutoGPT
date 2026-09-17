@@ -245,6 +245,12 @@ describe("ConnectToolsPanel — inline host-scoped flow", () => {
     expect(screen.getByLabelText("Header name")).toBeDefined();
     expect(screen.getByLabelText("Header value")).toBeDefined();
     expect(screen.queryByText("No connection method available")).toBeNull();
+    // No block is in scope here, so the field says what to type rather than
+    // presenting an unexplained empty box.
+    expect(
+      screen.getByText("The host of the URL this block will call."),
+    ).toBeDefined();
+    expect(screen.getByLabelText("Host")).toHaveProperty("readOnly", false);
     // The card submits itself, so the footer's Continue stays away.
     expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
 

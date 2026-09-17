@@ -33,6 +33,8 @@ interface Props {
   onSelectMethod: (method: AuthMethod) => void;
   apiKeyForm: UseFormReturn<ApiKeyConnectFormValues>;
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
+  /** The host the requesting block will call, when one is in scope. */
+  hostScopedHost?: string;
   /** A method that completes inside this view rather than through the
    *  panel footer's Continue: device auth, host-scoped, user/password. */
   onInlineConnectSuccess: (credential?: CredentialsMetaResponse) => void;
@@ -92,6 +94,7 @@ export function ConnectMethodView({
   onSelectMethod,
   apiKeyForm,
   onApiKeySubmit,
+  hostScopedHost,
   onInlineConnectSuccess,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
@@ -214,6 +217,7 @@ export function ConnectMethodView({
                         ) : method === AuthType.host_scoped ? (
                           <InlineHostScopedForm
                             provider={provider.id}
+                            host={hostScopedHost}
                             onSuccess={onInlineConnectSuccess}
                           />
                         ) : method === AuthType.user_password ? (

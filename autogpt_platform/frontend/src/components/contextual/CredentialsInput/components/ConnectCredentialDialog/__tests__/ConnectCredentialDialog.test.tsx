@@ -26,11 +26,13 @@ vi.mock(
       provider,
       selectedMethod,
       onSelectMethod,
+      hostScopedHost,
       onInlineConnectSuccess,
     }: {
       provider: { id: string; name: string; supportedAuthTypes: string[] };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
+      hostScopedHost?: string;
       onInlineConnectSuccess: () => void;
     }) => (
       <div data-testid="connect-method-view">
@@ -39,6 +41,7 @@ vi.mock(
           {provider.supportedAuthTypes.join(",")}
         </span>
         <span data-testid="selected-method">{selectedMethod ?? "none"}</span>
+        <span data-testid="host-scoped-host">{hostScopedHost ?? "none"}</span>
         {provider.supportedAuthTypes.map((method) => (
           <button key={method} onClick={() => onSelectMethod(method)}>
             {`select-${method}`}
@@ -146,6 +149,55 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ConnectCredentialDialog", () => {
+  it("takes the host-scoped host from the requesting node's URL input", () => {
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+        discriminator: "url",
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+      siblingInputs: { url: "https://api.example.com/v1/orders" },
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe(
+      "api.example.com",
+    );
+  });
+
+  it("falls back to the schema's discriminator for a saved graph's pinned URL", () => {
+    // A run of a saved agent passes no sibling inputs; the aggregated
+    // credentials schema carries the node's URL instead.
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+        discriminator: "url",
+        discriminator_values: ["https://api.stripe.com/v1/charges"],
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe(
+      "api.stripe.com",
+    );
+  });
+
+  it("leaves the host unset where no block is in scope", () => {
+    renderDialog({
+      schema: {
+        credentials_provider: ["http"],
+        credentials_types: ["host_scoped"],
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "http",
+      displayName: "Http",
+    });
+
+    expect(screen.getByTestId("host-scoped-host").textContent).toBe("none");
+  });
+
   it("renders nothing while closed", () => {
     renderDialog({ open: false });
     expect(screen.queryByTestId("connect-method-view")).toBeNull();
