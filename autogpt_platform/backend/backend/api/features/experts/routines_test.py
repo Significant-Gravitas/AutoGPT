@@ -10,7 +10,7 @@ account.
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.features.experts import seed
-from backend.api.features.experts.routines import _spread_cron
+from backend.api.features.experts.routines import _session_mode, _spread_cron
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     unattended_routine_disabled_tools,
@@ -157,3 +157,21 @@ def test_roster_routines_ask_for_a_timezone():
         for routine in entry["routines"]:
             asks = " ".join(routine["asks"]).lower()
             assert "timezone" in asks, (entry["name"], routine["key"])
+
+
+def test_every_session_mode_is_reachable_by_name():
+    """The three modes are the tool's enum, so a name that stopped parsing here
+    would silently collapse every routine onto THREAD."""
+    for name in ["THREAD", "HERE", "FRESH"]:
+        assert _session_mode(name).value == name
+
+
+def test_session_mode_is_case_insensitive():
+    assert _session_mode("thread").value == "THREAD"
+
+
+def test_an_unknown_session_mode_falls_back_to_thread():
+    """It arrives as a model argument. A typo should give the routine its own
+    thread — the mode that keeps its memory — not fail a call the owner already
+    agreed to."""
+    assert _session_mode("pinned").value == "THREAD"

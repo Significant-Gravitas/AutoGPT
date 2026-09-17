@@ -128,7 +128,8 @@ async def enable_routine(
     *,
     prompt: str | None = None,
     crons: list[str] | None = None,
-    session_id: str | None = None,
+    session_mode: str | None = None,
+    here_session_id: str | None = None,
     grants_credentials: bool = False,
 ) -> ExpertRoutine:
     """Switch a routine on, resolving the proposal into what actually runs.
@@ -136,6 +137,11 @@ async def enable_routine(
     *prompt* and *crons* are the owner's answers. Passing either marks the row
     customized, which takes it out of reach of every later roster edit — from
     here on what this routine does is the owner's, not the template's.
+
+    *session_mode* rewrites the row, not just its ``sessionId``: a row whose
+    mode still read THREAD while its id pointed at the caller's chat fired
+    correctly by luck and described itself wrongly everywhere else — in this
+    tool's confirmation, in the context block, and in any UI reading the row.
 
     Creates one scheduler job per cron. A partial failure leaves nothing
     behind: a routine that fires at 08:30 but not at 13:00 is a quieter lie
@@ -161,13 +167,17 @@ async def enable_routine(
     for cron in resolved_crons:
         CronTrigger.from_crontab(cron, timezone=user_timezone)
 
+    mode = _session_mode(session_mode or row.sessionMode.value)
+    # Only HERE pins a session up front. THREAD leaves it null for the first
+    # fire to mint; FRESH leaves it null for good.
+    pinned = here_session_id if mode == prisma.enums.ExpertRoutineSession.HERE else None
     schedule_ids = await _create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
         row=row,
         prompt=resolved_prompt,
         crons=resolved_crons,
-        session_id=session_id,
+        session_id=pinned,
         user_timezone=user_timezone,
     )
     now = datetime.now(timezone.utc)
@@ -175,7 +185,8 @@ async def enable_routine(
         "prompt": resolved_prompt,
         "crons": resolved_crons,
         "scheduleIds": schedule_ids,
-        "sessionId": session_id,
+        "sessionMode": mode,
+        "sessionId": pinned,
         "enabledAt": now,
         "grantsCredentials": grants_credentials,
     }
@@ -187,6 +198,57 @@ async def enable_routine(
     if updated is None:
         raise RoutineNotFoundError(routine_id)
     return to_model(updated)
+
+
+def _session_mode(value: str) -> prisma.enums.ExpertRoutineSession:
+    """Parse a mode name, defaulting to THREAD rather than raising.
+
+    The value arrives as a model argument, and a typo should give the routine
+    its own thread — the safe, memory-keeping default — rather than fail a call
+    the owner has already agreed to.
+    """
+    try:
+        return prisma.enums.ExpertRoutineSession(value.upper())
+    except ValueError:
+        logger.warning("Unknown routine session mode %r; using THREAD", value)
+        return prisma.enums.ExpertRoutineSession.THREAD
+
+
+async def create_routine(
+    user_id: str,
+    expert_id: str,
+    *,
+    title: str,
+    prompt: str,
+    crons: list[str],
+    session_mode: str | None = None,
+) -> ExpertRoutine:
+    """Record standing work an expert worked out with its owner in conversation.
+
+    ``key`` stays null: this came from a conversation rather than a roster, so
+    nothing syncs it and no roster edit can ever reach it. It is created OFF for
+    the same reason a seeded one is — agreeing what a routine should say is not
+    agreeing that it should start running, and enabling is a second step the
+    owner can still stop.
+
+    ``customizedAt`` is stamped at birth: there was no proposal to resolve, so
+    the row is the owner's from its first moment.
+    """
+    await _owned_expert(user_id, expert_id)
+    if not title.strip() or not prompt.strip():
+        raise ValueError("A routine needs a title and a prompt.")
+    if not crons:
+        raise ValueError("A routine needs at least one cadence.")
+    data: prisma.types.ExpertRoutineCreateInput = {
+        "expertId": expert_id,
+        "title": title.strip(),
+        "prompt": prompt.strip(),
+        "crons": crons,
+        "sessionMode": _session_mode(session_mode or "THREAD"),
+        "customizedAt": datetime.now(timezone.utc),
+    }
+    created = await prisma.models.ExpertRoutine.prisma().create(data=data)
+    return to_model(created)
 
 
 async def disable_routine(
@@ -370,6 +432,20 @@ async def _enabled_routines(expert_id: str) -> list[prisma.models.ExpertRoutine]
     return await prisma.models.ExpertRoutine.prisma().find_many(
         where={"expertId": expert_id, "NOT": [{"enabledAt": None}]}
     )
+
+
+async def _owned_expert(user_id: str, expert_id: str) -> None:
+    """The ownership check ``_owned_routine`` gets for free from its join."""
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    if expert is None:
+        raise RoutineNotFoundError(expert_id)
 
 
 async def _owned_routine(

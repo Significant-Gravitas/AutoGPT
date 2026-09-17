@@ -534,6 +534,7 @@ class DatabaseManager(AppService):
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
+    create_routine = _(experts_db.create_routine)
     list_routines = _(experts_db.list_routines)
     enable_routine = _(experts_db.enable_routine)
     disable_routine = _(experts_db.disable_routine)
@@ -940,6 +941,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
+    create_routine = d.create_routine
     list_routines = d.list_routines
     enable_routine = d.enable_routine
     disable_routine = d.disable_routine

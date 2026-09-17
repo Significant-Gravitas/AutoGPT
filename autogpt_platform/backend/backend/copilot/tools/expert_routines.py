@@ -106,10 +106,11 @@ class SetExpertRoutineTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Switch one of this expert's routines on or off. ON commits to "
-            "what it will do: answer its 'asks' with the user first (never "
-            "guess), pass the 'prompt' you rewrote from the proposal and the "
-            "'crons' for the time they chose, and show them the wording "
+            "Create a routine, or switch one on or off. Omit 'routine_id' and "
+            "pass 'title'/'prompt'/'crons' to set up new standing work you "
+            "agreed with the user. ON commits to what it will do: answer any "
+            "'asks' with the user first (never guess), pass the 'prompt' and "
+            "the 'crons' for the time THEY chose, and show them the wording "
             "before calling."
         )
 
@@ -124,7 +125,17 @@ class SetExpertRoutineTool(BaseTool):
             "properties": {
                 "routine_id": {
                     "type": "string",
-                    "description": "Routine id from list_expert_routines.",
+                    "description": (
+                        "Routine id from list_expert_routines. Omit to create "
+                        "a new one from 'title'/'prompt'/'crons'."
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Short name, for a new routine. Required when there "
+                        "is no routine_id."
+                    ),
                 },
                 "enabled": {
                     "type": "boolean",
@@ -143,15 +154,21 @@ class SetExpertRoutineTool(BaseTool):
                     "items": {"type": "string"},
                     "description": (
                         "5-field crons in the user's timezone, one per fire "
-                        "time. Pass when they name a time; omit for the "
-                        "routine's own suggested cadence."
+                        "time. A minute of 'H' means any minute in that hour, "
+                        "picked once and kept — use it when the user says "
+                        "'some time in the morning' rather than a real time, "
+                        "so several routines do not land together."
                     ),
                 },
-                "pin_to_this_chat": {
-                    "type": "boolean",
+                "session_mode": {
+                    "type": "string",
+                    "enum": ["THREAD", "HERE", "FRESH"],
                     "description": (
-                        "Run it in THIS chat instead of its own thread. "
-                        "Default false, which is almost always right."
+                        "Where each run lands. THREAD (default) gives it one "
+                        "thread of its own that it keeps reusing, which is "
+                        "also how it remembers what it already reported. HERE "
+                        "runs it in this chat. FRESH starts a new chat every "
+                        "time and remembers nothing between runs."
                     ),
                 },
                 "grants_credentials": {
@@ -166,7 +183,7 @@ class SetExpertRoutineTool(BaseTool):
                 },
                 "expert_id": _EXPERT_ID_PARAM,
             },
-            "required": ["routine_id", "enabled"],
+            "required": ["enabled"],
         }
 
     def activity_event(
@@ -204,10 +221,13 @@ class SetExpertRoutineTool(BaseTool):
                 error="auth_required",
                 session_id=session_id,
             )
-        if not routine_id:
+        if not routine_id and not kwargs.get("title"):
             return ErrorResponse(
-                message="`routine_id` is required.",
-                error="missing_routine_id",
+                message=(
+                    "Give a `routine_id` to change an existing routine, or a "
+                    "`title`, `prompt` and `crons` to create one."
+                ),
+                error="missing_routine",
                 session_id=session_id,
             )
         target = await resolve_target_expert(user_id, session, expert_id)
@@ -251,16 +271,30 @@ class SetExpertRoutineTool(BaseTool):
         session: ChatSession,
         kwargs: dict[str, Any],
     ) -> ExpertRoutine:
+        if not routine_id:
+            created = await experts_db().create_routine(
+                user_id,
+                expert_id,
+                title=kwargs.get("title") or "",
+                prompt=kwargs.get("prompt") or "",
+                crons=kwargs.get("crons") or [],
+                session_mode=kwargs.get("session_mode"),
+            )
+            if not enabled:
+                return created
+            routine_id = created.id
         if not enabled:
             return await experts_db().disable_routine(user_id, expert_id, routine_id)
-        pin_here = bool(kwargs.get("pin_to_this_chat"))
         return await experts_db().enable_routine(
             user_id,
             expert_id,
             routine_id,
             prompt=kwargs.get("prompt"),
             crons=kwargs.get("crons"),
-            session_id=session.session_id if pin_here else None,
+            session_mode=kwargs.get("session_mode"),
+            # Only read when the mode is HERE; passed always so the tool never
+            # has to know which modes want it.
+            here_session_id=session.session_id,
             grants_credentials=bool(kwargs.get("grants_credentials")),
         )
 

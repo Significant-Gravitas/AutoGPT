@@ -65,6 +65,7 @@ from backend.api.features.experts.models import (
     decode_day_one,
     decode_voice_preferences,
 )
+from backend.api.features.experts.routines import create_routine as create_routine
 from backend.api.features.experts.routines import disable_routine as disable_routine
 from backend.api.features.experts.routines import enable_routine as enable_routine
 from backend.api.features.experts.routines import get_routine as get_routine

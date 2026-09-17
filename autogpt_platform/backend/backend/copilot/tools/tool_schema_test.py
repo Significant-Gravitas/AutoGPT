@@ -217,12 +217,12 @@ from ._test_data import make_session
 #     + #14207 multi-expert-teams  +981          71,751 (86 tools)
 # consult_teammate has measured +981 at every dev tip since 2026-09-09; what
 # moves this line is dev, not this branch.
-# Bumped 73_030 -> 74_722 for the two tools this PR adds: set_expert_routine
-# measures 1,285 (seven parameters, because switching a routine on is where the
-# owner's answers, their cadence and their grant all land at once) and
-# list_expert_routines 403. Measured on the branch merged with dev (74,722),
-# which is what CI builds, plus one — this line carries no margin by design.
-_CHAR_BUDGET = 74_723
+# Bumped 73_030 -> 75_260 for the two tools this PR adds: set_expert_routine
+# measures 1,823 (nine parameters, because it both creates standing work and
+# switches it on, and because the modes and the credential grant are each a
+# decision the owner makes out loud) and list_expert_routines 403. Measured on
+# the branch merged with dev, plus one — this line carries no margin by design.
+_CHAR_BUDGET = 75_261
 
 
 @pytest.fixture(scope="module")
@@ -377,10 +377,11 @@ def test_total_schema_char_budget() -> None:
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-# Raised 65_630 -> 67_224 for the same two tools. They ride the
+# Raised 65_630 -> 67_767 for the same two tools. They ride the
 # ``expert_resources`` group, so they are declared in every session that can
-# manage an expert's resources — which is the largest one. Measured 67,224 plus one.
-_SESSION_WIRE_BUDGET = 67_225
+# manage an expert's resources — which is the largest one. Measured 67,767,
+# plus one.
+_SESSION_WIRE_BUDGET = 67_768
 
 
 def test_largest_declared_session_wire_budget() -> None:
