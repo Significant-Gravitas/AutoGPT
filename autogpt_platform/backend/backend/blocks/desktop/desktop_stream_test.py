@@ -58,6 +58,11 @@ async def test_a_fresh_stream_keeps_its_password_out_of_the_shells_reach():
     # Root's x11vnc and the user's Xvfb cannot share memory: with MIT-SHM on,
     # x11vnc exits 1 (BadAccess on ShmAttach) and no desktop ever opens.
     assert " -noshm " in x11vnc
+    # Root's logs stay out of /tmp, where the box's user could own a file of
+    # the same name (a box that once ran its stream as the user does) and the
+    # kernel would refuse root the open.
+    (novnc,) = [cmd for cmd, _ in commands if "novnc_proxy --vnc" in cmd]
+    assert "/tmp/" not in x11vnc and "/tmp/" not in novnc
 
 
 @pytest.mark.asyncio
@@ -115,3 +120,32 @@ async def test_a_failed_x11vnc_says_why_in_its_own_words():
         await DesktopSession(sandbox).start_stream(None)
     (tail,) = [(c, u) for c, u in _commands(run) if c.startswith("tail")]
     assert tail[1] == VNC_USER
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tail, said",
+    [
+        (MagicMock(stdout="  \n"), "(empty log)"),
+        (RuntimeError("gone"), "(log unreadable)"),
+    ],
+    ids=["empty", "unreadable"],
+)
+async def test_a_failed_x11vnc_with_no_log_to_show_still_raises(tail, said):
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith(("netstat", "x11vnc")):
+            raise RuntimeError("Command exited with code 1 and error:")
+        if command.startswith("tail"):
+            if isinstance(tail, Exception):
+                raise tail
+            return tail
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with pytest.raises(RuntimeError, match="x11vnc did not start") as raised:
+        await DesktopSession(sandbox).start_stream(None)
+    assert said in str(raised.value)
