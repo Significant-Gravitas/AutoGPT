@@ -2747,6 +2747,44 @@
         }
       }
     },
+    "/api/analytics/attribution": {
+      "post": {
+        "tags": ["analytics"],
+        "summary": "Report user attribution",
+        "description": "Store where this user came from. Fields are only ever filled once.\n\nThe DataFast ids come from the request headers the frontend attaches to\nevery call, so the body never has to carry them.",
+        "operationId": "postAnalyticsReport user attribution",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserAttributionInput" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserAttribution" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -4232,7 +4270,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session Computer",
-        "description": "The computer behind this chat.\n\nA plain chat has its own boxes; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
+        "description": "The computer behind this chat.\n\nA plain chat has its own box; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
         "operationId": "getV2GetSessionComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4567,9 +4605,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__chat__share__ShareResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/ChatShareResponse" }
               }
             }
           },
@@ -6965,7 +7001,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
-        "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "description": "The expert's own computer: its box as E2B lists it, and whether its\nscreen is on. E2B knows nothing about the screen; that flag is ours,\nkept beside the box id, because asking the box would wake it.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
         "operationId": "getV2GetExpertComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7540,7 +7576,7 @@
       "post": {
         "tags": ["v1", "files"],
         "summary": "Upload file to cloud storage",
-        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
+        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7571,7 +7607,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                  "$ref": "#/components/schemas/CloudStorageUploadResponse"
                 }
               }
             }
@@ -8027,7 +8063,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShareRequest",
+                "$ref": "#/components/schemas/ExecutionShareRequest",
                 "default": {}
               }
             }
@@ -8039,7 +8075,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__graph_executions__model__ShareResponse"
+                  "$ref": "#/components/schemas/ExecutionShareResponse"
                 }
               }
             }
@@ -16303,7 +16339,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                  "$ref": "#/components/schemas/WorkspaceFileUploadResponse"
                 }
               }
             }
@@ -18814,6 +18850,15 @@
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
+      "ChatShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ChatShareResponse"
+      },
       "ChatShareStateResponse": {
         "properties": {
           "is_shared": {
@@ -18927,6 +18972,24 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CloudStorageUploadResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "CloudStorageUploadResponse"
       },
       "CoPilotUsagePublic": {
         "properties": {
@@ -19155,17 +19218,16 @@
           },
           "owner_id": { "type": "string", "title": "Owner Id" },
           "e2b_active": { "type": "boolean", "title": "E2B Active" },
-          "shell": {
+          "box": {
             "anyOf": [
               { "$ref": "#/components/schemas/SandboxSummary" },
               { "type": "null" }
             ]
           },
-          "desktop": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/SandboxSummary" },
-              { "type": "null" }
-            ]
+          "screen_on": {
+            "type": "boolean",
+            "title": "Screen On",
+            "default": false
           },
           "mounts": {
             "additionalProperties": { "type": "string" },
@@ -19187,7 +19249,7 @@
         "type": "object",
         "required": ["owner_kind", "owner_id", "e2b_active"],
         "title": "ComputerInfo",
-        "description": "The owner's computer: its boxes and the volumes they mount."
+        "description": "The owner's computer: its one box, whether its screen is on, its volumes."
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -21259,6 +21321,22 @@
         "title": "ExecutionOutputInfo",
         "description": "Summary of a single execution's outputs."
       },
+      "ExecutionShareRequest": {
+        "properties": {},
+        "type": "object",
+        "title": "ExecutionShareRequest",
+        "description": "Optional request body for share endpoint."
+      },
+      "ExecutionShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ExecutionShareResponse",
+        "description": "Response from share endpoints."
+      },
       "ExecutionStartedResponse": {
         "properties": {
           "type": {
@@ -21495,11 +21573,11 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" }
         },
         "type": "object",
-        "required": ["id", "slug", "name", "description"],
+        "required": ["id", "slug", "title", "description"],
         "title": "ExpertBundledSkill",
         "description": "A live Skills Hub listing a roster template comes with."
       },
@@ -25024,6 +25102,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25049,6 +25128,7 @@
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
@@ -25060,6 +25140,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25106,6 +25187,7 @@
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
@@ -27776,6 +27858,7 @@
           "platform_info",
           "chat_platform_channel_list",
           "chat_platform_posted",
+          "chat_platform_edited",
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
@@ -27960,11 +28043,6 @@
       },
       "SandboxSummary": {
         "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["shell", "desktop"],
-            "title": "Kind"
-          },
           "sandbox_id": { "type": "string", "title": "Sandbox Id" },
           "state": {
             "type": "string",
@@ -27983,7 +28061,6 @@
         },
         "type": "object",
         "required": [
-          "kind",
           "sandbox_id",
           "state",
           "started_at",
@@ -27993,7 +28070,7 @@
           "mounts_attached"
         ],
         "title": "SandboxSummary",
-        "description": "One of the owner's sandboxes as E2B reports it, without waking it."
+        "description": "The owner's box as E2B reports it, without waking it."
       },
       "ScheduleCleanupRequest": {
         "properties": {
@@ -28597,12 +28674,6 @@
         "required": ["message", "setup_info"],
         "title": "SetupRequirementsResponse",
         "description": "Response for validate action."
-      },
-      "ShareRequest": {
-        "properties": {},
-        "type": "object",
-        "title": "ShareRequest",
-        "description": "Optional request body for share endpoint."
       },
       "SharedChatLinkedExecution": {
         "properties": {
@@ -31996,6 +32067,165 @@
         "required": ["graph_id", "cost_cents", "run_count"],
         "title": "UserAgentCostRollup"
       },
+      "UserAttribution": {
+        "properties": {
+          "anonymous_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Anonymous Id"
+          },
+          "posthog_distinct_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Posthog Distinct Id"
+          },
+          "datafast_visitor_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Visitor Id"
+          },
+          "datafast_session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Session Id"
+          },
+          "landing_path": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Landing Path"
+          },
+          "referrer": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Referrer"
+          },
+          "utm_source": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Source"
+          },
+          "utm_medium": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Medium"
+          },
+          "utm_campaign": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Campaign"
+          },
+          "signup_method": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Signup Method"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "created_at"],
+        "title": "UserAttribution"
+      },
+      "UserAttributionInput": {
+        "properties": {
+          "anonymous_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Anonymous Id"
+          },
+          "posthog_distinct_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Posthog Distinct Id"
+          },
+          "datafast_visitor_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Visitor Id"
+          },
+          "datafast_session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Session Id"
+          },
+          "landing_path": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Landing Path"
+          },
+          "referrer": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Referrer"
+          },
+          "utm_source": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Source"
+          },
+          "utm_medium": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Medium"
+          },
+          "utm_campaign": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Campaign"
+          },
+          "signup_method": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Signup Method"
+          }
+        },
+        "type": "object",
+        "title": "UserAttributionInput"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -32703,6 +32933,18 @@
         ],
         "title": "WorkspaceFileItem"
       },
+      "WorkspaceFileUploadResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "WorkspaceFileUploadResponse"
+      },
       "WorkspaceFolder": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -32816,55 +33058,6 @@
         "required": ["content"],
         "title": "WriteSummary",
         "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
-      },
-      "backend__api__features__chat__share__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse"
-      },
-      "backend__api__features__graph_executions__model__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse",
-        "description": "Response from share endpoints."
-      },
-      "backend__api__features__workspace__routes__UploadFileResponse": {
-        "properties": {
-          "file_id": { "type": "string", "title": "File Id" },
-          "name": { "type": "string", "title": "Name" },
-          "path": { "type": "string", "title": "Path" },
-          "mime_type": { "type": "string", "title": "Mime Type" },
-          "size_bytes": { "type": "integer", "title": "Size Bytes" }
-        },
-        "type": "object",
-        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
-        "title": "UploadFileResponse"
-      },
-      "backend__api__model__UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

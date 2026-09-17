@@ -42,7 +42,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandboxes
+from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -379,7 +379,9 @@ async def get_expert_computer(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ComputerInfo:
-    """The expert's own computer: its shell and desktop boxes as E2B lists them.
+    """The expert's own computer: its box as E2B lists it, and whether its
+    screen is on. E2B knows nothing about the screen; that flag is ours,
+    kept beside the box id, because asking the box would wake it.
 
     Listing never wakes a paused box, so the Computer tab can refresh freely.
     """
@@ -674,10 +676,10 @@ async def archive_expert(
     # deliberately kept — files outlive the machine.
     if api_key := ChatConfig().active_e2b_api_key:
         try:
-            await kill_expert_sandboxes(expert_id, api_key)
+            await kill_expert_sandbox(expert_id, api_key)
         except Exception:
             logger.warning(
-                "[E2B] Failed to kill sandboxes for archived expert %s",
+                "[E2B] Failed to kill the sandbox for archived expert %s",
                 expert_id[:12],
                 exc_info=True,
             )

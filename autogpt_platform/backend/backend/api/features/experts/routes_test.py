@@ -200,7 +200,7 @@ def test_list_expert_templates_links_live_hub_skills(
         {
             "id": "listing-1",
             "slug": "brand-voice-guide",
-            "name": "brand-voice-guide",
+            "title": "Brand voice guide",
             "description": "Keeps every draft on-brand.",
         }
     ]
@@ -249,6 +249,7 @@ def _mock_templates_with_hub_skill(
             "listing-1": MarketplaceSkill(
                 slug="brand-voice-guide",
                 name="brand-voice-guide",
+                title="Brand voice guide",
                 description="Keeps every draft on-brand.",
                 categories=[],
                 required_providers=[],

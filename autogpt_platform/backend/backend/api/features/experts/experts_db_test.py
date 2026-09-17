@@ -57,14 +57,18 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "business-ownerceo-finder",
     "email-address-finder",
     "lead-finder-local-businesses",
-    "lifecycle-email-sequence-builder",
     "linkedin-post-generator",
     "personalized-morning-coffee-newsletter",
     "smart-meeting-brief",
-    "winback-email-writer",
     "youtube-to-linkedin-post-converter",
     "youtube-transcription-scraper",
 }
+# Personas that deliberately ship no workflows, so the 2-4 preload bound below
+# stays a real check on everyone else. Remy is here because neither of her
+# lifecycle-email listings was ever published under the official marketplace
+# creator, and _resolve_roster_preloads fails the whole seed on a slug it
+# cannot resolve.
+PERSONAS_WITHOUT_WORKFLOWS = {"Remy"}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
@@ -171,6 +175,56 @@ async def absorb_a_stale_event_loop(server: SpinTestServer):
     except RuntimeError as error:
         if "Event loop is closed" not in str(error):
             raise
+
+
+# Read at import, before any test can monkeypatch seed.ROSTER.
+LIVE_ROSTER_NAMES = frozenset(entry["name"] for entry in seed.ROSTER)
+
+
+@pytest.fixture(autouse=True)
+def refuse_to_seed_the_live_roster(monkeypatch):
+    """Fail a test that writes a roster template under its shipped name.
+
+    ``seed._upsert_template`` resolves a template by name, so seeding the real
+    names against a shared database adopts the live roster rows and rewrites
+    them and every hire made from them — four sessions have done it by
+    accident. Tests that need the seed take ``fixture_roster``.
+    """
+    upsert = seed._upsert_template
+
+    async def guarded(entry: seed.RosterEntry) -> prisma.models.Expert:
+        if entry["name"] in LIVE_ROSTER_NAMES:
+            pytest.fail(
+                f"seeding '{entry['name']}' would rewrite the live roster template "
+                "and its hires; seed through the fixture_roster fixture"
+            )
+        return await upsert(entry)
+
+    monkeypatch.setattr(seed, "_upsert_template", guarded)
+
+
+@pytest.fixture
+async def fixture_roster(monkeypatch):
+    """Point ``seed_roster`` at the shipped roster under non-colliding names.
+
+    Only ``name`` differs from ``seed.ROSTER``, so a test still checks the
+    personas, preloads and copy we ship. Returns shipped name -> its entry.
+    """
+    suffix = uuid.uuid4().hex[:8]
+
+    def rename(entry: seed.RosterEntry) -> seed.RosterEntry:
+        return {**entry, "name": f"{entry['name']} {suffix}"}
+
+    roster = {entry["name"]: rename(entry) for entry in seed.ROSTER}
+    monkeypatch.setattr(seed, "ROSTER", list(roster.values()))
+    yield roster
+    seeded = await prisma.models.Expert.prisma().find_many(
+        where={
+            "isTemplate": True,
+            "name": {"in": [entry["name"] for entry in roster.values()]},
+        }
+    )
+    _seeded_template_ids.extend(template.id for template in seeded)
 
 
 @pytest.fixture
@@ -340,6 +394,7 @@ async def _load_roster_store_assets() -> dict[str, str]:
 
 
 async def _hire_roster_and_assert_preloads(
+    roster: dict[str, seed.RosterEntry],
     hire_user: User,
     templates: dict[str, prisma.models.Expert],
     expected: dict[str, str],
@@ -350,7 +405,7 @@ async def _hire_roster_and_assert_preloads(
     )
     results: dict[str, HireResult] = {}
     with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
-        for entry in seed.ROSTER:
+        for persona, entry in roster.items():
             result = await experts_db.hire_expert(
                 hire_user.id, templates[entry["name"]].id, None
             )
@@ -358,7 +413,7 @@ async def _hire_roster_and_assert_preloads(
             assert {w.store_listing_version_id for w in result.expert.workflows} == {
                 expected[p["slug"]] for p in entry["preloads"]
             }
-            results[entry["name"]] = result
+            results[persona] = result
     return results
 
 
@@ -472,10 +527,12 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
     )
 
     assert [skill.id for skill in linked.bundled_skills] == [first.id, hub_listing.id]
+    # The title is the body's heading — `_make_listing` writes "# body" — and
+    # never the version's `name`, which is a slug.
     assert linked.bundled_skills[1] == ExpertBundledSkill(
         id=hub_listing.id,
         slug=hub_listing.slug,
-        name=hub_listing.slug.replace("-", " ").title(),
+        title="body",
         description=f"{hub_listing.slug} description",
     )
     assert unlinked.bundled_skills == []
@@ -2287,12 +2344,12 @@ async def test_hire_from_template_with_samples_stores_plain_voice(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_exposes_two_voice_samples_per_template(
-    server: SpinTestServer,
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
     ids = await seed.seed_roster()
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
-    for entry in seed.ROSTER:
+    for entry in fixture_roster.values():
         template = seeded[entry["name"]]
         assert len(template.voice_samples) == 2
         assert template.voice_preferences == entry["voice_preferences"]
@@ -3117,15 +3174,17 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_seed_roster_round_trip(server: SpinTestServer):
+async def test_seed_roster_round_trip(
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
+):
     await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
-    assert len(first_ids) == len(seed.ROSTER)
+    assert len(first_ids) == len(fixture_roster)
 
     templates = await experts_db.list_templates()
     seeded = {t.name: t for t in templates if t.id in first_ids}
-    assert {e["name"] for e in seed.ROSTER} == set(seeded)
-    for entry in seed.ROSTER:
+    assert {e["name"] for e in fixture_roster.values()} == set(seeded)
+    for entry in fixture_roster.values():
         template = seeded[entry["name"]]
         assert template.is_template
         assert template.role == entry["role"]
@@ -3136,7 +3195,7 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
 
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
-    assert len(seeded_after) == len(seed.ROSTER)
+    assert len(seeded_after) == len(fixture_roster)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3155,13 +3214,17 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_assigns_two_to_four_workflows_with_scheduled_cadences():
-    """Launch invariant, checked without a DB: every persona ships 2-4
-    preloads, and every scheduled cadence on the roster is one we declared —
-    so a cron added to a persona that acts outside the platform fails here
-    rather than firing unattended on someone's account."""
+def test_roster_preload_counts_and_scheduled_cadences():
+    """Launch invariant, checked without a DB: every persona ships 2-4 preloads
+    unless it is one we deliberately ship without workflows, and every
+    scheduled cadence on the roster is one we declared — so a cron added to a
+    persona that acts outside the platform fails here rather than firing
+    unattended on someone's account."""
     for entry in seed.ROSTER:
-        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+        if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
+            assert entry["preloads"] == [], entry["name"]
+        else:
+            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
@@ -3252,6 +3315,8 @@ def test_roster_day_one_is_marias_two_rows_and_hidden_for_the_rest():
 async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
     maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
     too_many = maria.copy()
+    # Not the shipped "Maria": refuse_to_seed_the_live_roster guards that name.
+    too_many["name"] = f"Maria {uuid.uuid4().hex[:8]}"
     # One past the cap, however many rows the roster currently gives her —
     # deriving the list from len(maria["day_one"]) + 1 made this test pass
     # silently (and then fail on a MagicMock await) the moment her row count
@@ -3268,7 +3333,7 @@ async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_roster_preloads_resolve_and_hire_installs_cleanly(
-    server: SpinTestServer,
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     """Launch acceptance gate against the real checked-in store assets: every
     ROSTER preload slug resolves to the exact StoreListingVersion the CSV
@@ -3285,7 +3350,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     templates = {
         t.name: t for t in await experts_db.list_templates() if t.id in template_ids
     }
-    for entry in seed.ROSTER:
+    for entry in fixture_roster.values():
         expected_versions = {expected[p["slug"]] for p in entry["preloads"]}
         assert len(expected_versions) == len(entry["preloads"])
         assert templates[entry["name"]].day_one == entry["day_one"]
@@ -3296,7 +3361,9 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     # A fresh user per run: a reused fixture user would make hire_expert
     # short-circuit to a previous run's copy and skip _install_preloads.
     hire_user = await _create_seed_user()
-    results = await _hire_roster_and_assert_preloads(hire_user, templates, expected)
+    results = await _hire_roster_and_assert_preloads(
+        fixture_roster, hire_user, templates, expected
+    )
 
     frankie_crons = [
         w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
@@ -3896,6 +3963,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
             "isTemplate": True,
         }
     )
+    _seeded_template_ids.append(template.id)
     untouched = await experts_db.hire_expert(test_user.id, template.id, None)
     edited = await experts_db.hire_expert(other_user.id, template.id, None)
     await prisma.models.Expert.prisma().update(
@@ -3986,6 +4054,7 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
     }
     monkeypatch.setattr(seed, "ROSTER", [entry])
     (template_id,) = await seed.seed_roster()
+    _seeded_template_ids.append(template_id)
     untouched = await experts_db.hire_expert(test_user.id, template_id, None)
     edited = await experts_db.hire_expert(other_user.id, template_id, None)
     await prisma.models.Expert.prisma().update(
@@ -5250,12 +5319,12 @@ async def test_hire_copies_the_template_categories(server: SpinTestServer, test_
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_files_every_template_under_a_canonical_category(
-    server: SpinTestServer,
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
     ids = await seed.seed_roster()
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
 
-    for entry in seed.ROSTER:
+    for entry in fixture_roster.values():
         assert seeded[entry["name"]].categories == entry["categories"]
         assert set(entry["categories"]) <= {c.value for c in StoreCategory}

@@ -1,5 +1,6 @@
+"""Tests for the block and file-upload routes."""
+
 import json
-from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -10,13 +11,12 @@ import pytest_mock
 import starlette.datastructures
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException, UploadFile
+from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.rest_api import handle_internal_http_error
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.util.exceptions import ConflictError, InsufficientBalanceError
-
-from .v1 import upload_file, v1_router
+from backend.api.features.blocks.routes import router, upload_file
+from backend.api.rest_api import app as real_app
+from backend.util.exceptions import InsufficientBalanceError
 
 
 def _test_ctx(user_id: str) -> RequestContext:
@@ -34,33 +34,18 @@ def _test_ctx(user_id: str) -> RequestContext:
 
 
 app = fastapi.FastAPI()
-app.include_router(v1_router)
-# Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
-# tests below verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
-# Same reason: ConflictError is mapped app-wide, never on the route, so without
-# this a conflict reads here as an unhandled error rather than the 409 a client
-# actually gets.
-app.add_exception_handler(ConflictError, handle_internal_http_error(409))
-
+app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
-    """Setup auth overrides for all tests in this module"""
+def setup_app_auth(mock_jwt_user, test_user_id):
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
     from autogpt_libs.auth.models import RequestContext
 
-    # setup_test_user fixture already executed and user is created in database
-    # It returns the user_id which we don't need to await
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
-    # Override get_request_context too — the real one queries Prisma to
-    # resolve the user's personal org when no X-Org-Id header is set,
-    # which closes/leaks the test event loop across sync TestClient calls.
     async def _fake_request_context() -> RequestContext:
         return RequestContext(
             user_id=test_user_id,
@@ -79,94 +64,59 @@ def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
     app.dependency_overrides.clear()
 
 
-# Auth endpoints tests
-def test_get_or_create_user_route(
-    mocker: pytest_mock.MockFixture,
-    configured_snapshot: Snapshot,
-    test_user_id: str,
-) -> None:
-    """Test get or create user endpoint"""
-    mock_user = Mock()
-    mock_user.created_at = datetime.now(timezone.utc)
-    mock_user.model_dump.return_value = {
-        "id": test_user_id,
-        "email": "test@example.com",
-        "name": "Test User",
-    }
-    mock_result = Mock(user=mock_user, was_created=False)
+# Tags differ across the three, so they stay per-route and the mount supplies
+# only ["v1"]; execute keeps its paywall on top of the router's auth.
+EXPECTED_OPERATIONS = {
+    ("get", "/api/blocks"): ["v1", "blocks"],
+    ("post", "/api/blocks/{block_id}/execute"): ["v1", "blocks"],
+    ("post", "/api/files/upload"): ["v1", "files"],
+}
 
-    mocker.patch(
-        "backend.api.features.v1.get_or_create_user_with_status",
-        return_value=mock_result,
+
+@pytest.mark.parametrize(
+    "method,path,tags", [(m, p, t) for (m, p), t in EXPECTED_OPERATIONS.items()]
+)
+def test_block_operation_is_published(method: str, path: str, tags: list[str]):
+    operation = real_app.openapi()["paths"][path][method]
+    assert operation["tags"] == tags
+
+
+@pytest.mark.parametrize("path", sorted({p for _, p in EXPECTED_OPERATIONS}))
+def test_block_route_requires_an_authenticated_user(path: str):
+    """`security` in the schema does not prove this — each handler's own
+    Security(get_user_id) puts it there. Assert the dependency."""
+    for route in real_app.routes:
+        if isinstance(route, APIRoute) and route.path == path:
+            assert "requires_user" in {
+                d.call.__name__ for d in route.dependant.dependencies if d.call
+            }
+
+
+def test_execute_block_is_behind_the_payment_paywall():
+    """The only one of the three with a dependency beyond auth, and it gates
+    spending."""
+    route = next(
+        r
+        for r in real_app.routes
+        if isinstance(r, APIRoute) and r.path == "/api/blocks/{block_id}/execute"
     )
-
-    response = client.post("/auth/user")
-
-    assert response.status_code == 200
-    assert response.headers["X-AutoGPT-User-Created"] == "false"
-    response_data = response.json()
-
-    configured_snapshot.assert_match(
-        json.dumps(response_data, indent=2, sort_keys=True),
-        "auth_user",
-    )
-
-
-def test_get_or_create_user_route_reports_creation(
-    mocker: pytest_mock.MockFixture,
-    test_user_id: str,
-) -> None:
-    mock_user = Mock()
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
-    mock_user.model_dump.return_value = {
-        "id": test_user_id,
-        "email": "test@example.com",
-    }
-
-    mocker.patch(
-        "backend.api.features.v1.get_or_create_user_with_status",
-        return_value=Mock(user=mock_user, was_created=True),
-    )
-
-    response = client.post("/auth/user")
-
-    assert response.status_code == 200
-    assert response.headers["X-AutoGPT-User-Created"] == "true"
-
-
-def test_get_or_create_user_route_documents_creation_header() -> None:
-    response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
-
-    assert response_schema["headers"]["X-AutoGPT-User-Created"] == {
-        "description": "Whether this request created a new user",
-        "schema": {"type": "string", "enum": ["true", "false"]},
+    assert "enforce_payment_paywall" in {
+        d.call.__name__ for d in route.dependant.dependencies if d.call
     }
 
 
-def test_update_user_email_route(
-    mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
-) -> None:
-    """Test update user email endpoint"""
-    mocker.patch(
-        "backend.api.features.v1.update_user_email",
-        return_value=None,
-    )
-
-    response = client.post("/auth/user/email", json="newemail@example.com")
-
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["email"] == "newemail@example.com"
-
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response_data, indent=2, sort_keys=True),
-        "auth_email",
-    )
+def test_block_surface_has_no_other_operations():
+    served = {
+        (method.lower(), route.path)
+        for route in real_app.routes
+        if isinstance(route, APIRoute)
+        and route.endpoint.__module__ == "backend.api.features.blocks.routes"
+        for method in route.methods
+        if method != "HEAD"
+    }
+    assert served == set(EXPECTED_OPERATIONS)
 
 
-# Blocks endpoints tests
 def test_get_graph_blocks(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -185,7 +135,7 @@ def test_get_graph_blocks(
 
     # Mock get_blocks
     mocker.patch(
-        "backend.api.features.v1.get_blocks",
+        "backend.api.features.blocks.routes.get_blocks",
         return_value={"test-block": lambda: mock_block},
     )
 
@@ -226,7 +176,7 @@ def test_execute_graph_block(
     mock_block.execute = mock_execute
 
     mocker.patch(
-        "backend.api.features.v1.get_block",
+        "backend.api.features.blocks.routes.get_block",
         return_value=mock_block,
     )
 
@@ -235,7 +185,7 @@ def test_execute_graph_block(
     mock_user.timezone = "UTC"
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.blocks.routes.get_user_by_id",
         return_value=mock_user,
     )
 
@@ -244,7 +194,7 @@ def test_execute_graph_block(
     # charging test below patches the same target — so "not awaited" is a
     # claim about the code path rather than about an unrelated mock.
     cost_mock = mocker.patch(
-        "backend.api.features.v1.execution_utils.block_usage_cost",
+        "backend.api.features.blocks.routes.execution_utils.block_usage_cost",
         return_value=(0, {}),
     )
     mock_credit_model = mocker.AsyncMock()
@@ -294,19 +244,19 @@ def test_execute_graph_block_forwards_execution_context(
     mock_block.execute = mock_execute
 
     mocker.patch(
-        "backend.api.features.v1.get_block",
+        "backend.api.features.blocks.routes.get_block",
         return_value=mock_block,
     )
 
     mock_user = Mock()
     mock_user.timezone = "America/New_York"
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.blocks.routes.get_user_by_id",
         return_value=mock_user,
     )
 
     mocker.patch(
-        "backend.api.features.v1.execution_utils.block_usage_cost",
+        "backend.api.features.blocks.routes.execution_utils.block_usage_cost",
         return_value=(0, {}),
     )
 
@@ -334,13 +284,13 @@ def test_execute_graph_block_charges_when_cost_positive(
     mock_block.execute = mock_execute
 
     mocker.patch(
-        "backend.api.features.v1.get_block",
+        "backend.api.features.blocks.routes.get_block",
         return_value=mock_block,
     )
     mock_user = Mock()
     mock_user.timezone = "UTC"
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.blocks.routes.get_user_by_id",
         return_value=mock_user,
     )
 
@@ -382,13 +332,13 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
     mock_block.execute = AsyncMock()
 
     mocker.patch(
-        "backend.api.features.v1.get_block",
+        "backend.api.features.blocks.routes.get_block",
         return_value=mock_block,
     )
     mock_user = Mock()
     mock_user.timezone = "UTC"
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.blocks.routes.get_user_by_id",
         return_value=mock_user,
     )
     mocker.patch(
@@ -421,7 +371,7 @@ def test_execute_graph_block_not_found(
 ) -> None:
     """Test execute block with non-existent block"""
     mocker.patch(
-        "backend.api.features.v1.get_block",
+        "backend.api.features.blocks.routes.get_block",
         return_value=None,
     )
 
@@ -429,17 +379,6 @@ def test_execute_graph_block_not_found(
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
-
-
-# Invalid request tests
-def test_invalid_json_request() -> None:
-    """Test endpoint with invalid JSON"""
-    response = client.post(
-        "/auth/user/email",
-        content="invalid json",
-        headers={"Content-Type": "application/json"},
-    )
-    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -456,9 +395,9 @@ async def test_upload_file_success(test_user_id: str):
 
     # Mock dependencies
     with (
-        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch("backend.api.features.blocks.routes.scan_content_safe") as mock_scan,
         patch(
-            "backend.api.features.v1.get_cloud_storage_handler"
+            "backend.api.features.blocks.routes.get_cloud_storage_handler"
         ) as mock_handler_getter,
     ):
         mock_scan.return_value = None
@@ -509,9 +448,9 @@ async def test_upload_file_no_filename(test_user_id: str):
     )
 
     with (
-        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch("backend.api.features.blocks.routes.scan_content_safe") as mock_scan,
         patch(
-            "backend.api.features.v1.get_cloud_storage_handler"
+            "backend.api.features.blocks.routes.get_cloud_storage_handler"
         ) as mock_handler_getter,
     ):
         mock_scan.return_value = None
@@ -578,7 +517,7 @@ async def test_upload_file_virus_scan_failure(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan:
+    with patch("backend.api.features.blocks.routes.scan_content_safe") as mock_scan:
         # Mock virus scan to raise exception
         mock_scan.side_effect = RuntimeError("Virus detected!")
 
@@ -604,9 +543,9 @@ async def test_upload_file_cloud_storage_failure(test_user_id: str):
     )
 
     with (
-        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch("backend.api.features.blocks.routes.scan_content_safe") as mock_scan,
         patch(
-            "backend.api.features.v1.get_cloud_storage_handler"
+            "backend.api.features.blocks.routes.get_cloud_storage_handler"
         ) as mock_handler_getter,
     ):
         mock_scan.return_value = None
@@ -661,9 +600,9 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
     )
 
     with (
-        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch("backend.api.features.blocks.routes.scan_content_safe") as mock_scan,
         patch(
-            "backend.api.features.v1.get_cloud_storage_handler"
+            "backend.api.features.blocks.routes.get_cloud_storage_handler"
         ) as mock_handler_getter,
     ):
         mock_scan.return_value = None

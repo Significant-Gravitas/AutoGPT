@@ -11,6 +11,8 @@ This module contains:
 import asyncio
 import logging
 import re
+import threading
+import time
 from typing import Any
 
 from langfuse import get_client
@@ -74,6 +76,15 @@ def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
 _main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
+
+# The system prompt this process last fetched, the monotonic timestamp of that
+# fetch, and the lock that hands the next window to one caller.
+# See _get_prompt_bounded_stale().
+_cached_prompt: str | None = None
+_last_prompt_revalidation = 0.0
+_prompt_revalidation_lock = threading.Lock()
+
+_PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
 
 
 def _get_main_client() -> LangfuseAsyncOpenAI:
@@ -558,34 +569,98 @@ async def _fetch_langfuse_prompt() -> str | None:
     if not _is_langfuse_configured():
         return None
     try:
-        label = (
-            None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
-        )
-        prompt = await asyncio.to_thread(
-            _get_langfuse().get_prompt,
-            config.langfuse_prompt_name,
-            label=label,
-            cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
-        )
-        compiled = prompt.compile(users_information="")
-        # Guard the caching contract: if the Langfuse template is ever updated
-        # to re-embed the {users_information} placeholder, the compiled text
-        # will contain a literal "{users_information}" (because we passed an
-        # empty string). That would mean user-specific text is back in the
-        # system prompt, defeating cross-session caching. Log an error so the
-        # regression is immediately visible in production observability.
-        if "{users_information}" in compiled:
-            logger.error(
-                "Langfuse prompt still contains {users_information} placeholder — "
-                "user context has been re-embedded in the system prompt, which "
-                "breaks cross-session LLM prompt caching. Remove the placeholder "
-                "from the Langfuse template and inject user context via "
-                "inject_user_context() instead."
-            )
-        return compiled
+        return await _get_prompt_bounded_stale()
     except Exception as e:
         logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
         return None
+
+
+async def _get_prompt_bounded_stale() -> str:
+    """Return the prompt, never a copy this process has held longer than the TTL.
+
+    The SDK's own cache cannot give that bound. It answers an expired entry with
+    the stale value and queues a refresh on a background thread
+    (``langfuse/_client/client.py:3650-3674``), and that refresh can stop for the
+    life of the process: a queued key is cleared only by its task running, so a
+    consumer that is not running wedges the key and nothing is ever queued again
+    (``langfuse/_utils/prompt_cache.py:92-115``), while a refresh that fails every
+    time leaves the entry expired forever. Both are silent to us, because the call
+    still returns a value, and both made Dev pods serve one prompt version for as
+    long as they lived (2026-09-11).
+
+    So the copy and the clock are ours and the SDK cache is bypassed entirely.
+    A revalidation that fails keeps the window and serves the copy we hold: it is
+    the freshest thing available while Langfuse is unreachable, and retrying on
+    every turn would hammer an endpoint that is already failing.
+    """
+    claimed = _claim_prompt_revalidation()
+    cached = _cached_prompt
+    if not claimed and cached is not None:
+        return cached
+    try:
+        return await _revalidate_prompt()
+    except Exception as e:
+        cached = _cached_prompt
+        if cached is None:
+            raise
+        logger.warning(f"Langfuse prompt revalidation failed, serving cached: {e}")
+        return cached
+
+
+def _claim_prompt_revalidation() -> bool:
+    """Whether this caller should re-fetch rather than serve the cached copy.
+
+    The window is marked used before the fetch, so concurrent turns serve the
+    cached copy instead of stampeding Langfuse. A TTL of 0 disables caching, so
+    every caller re-fetches.
+    """
+    global _last_prompt_revalidation
+    ttl = config.langfuse_prompt_cache_ttl
+    if ttl == 0:
+        return True
+    with _prompt_revalidation_lock:
+        now = time.monotonic()
+        if now - _last_prompt_revalidation < ttl:
+            return False
+        _last_prompt_revalidation = now
+        return True
+
+
+async def _revalidate_prompt() -> str:
+    """Fetch the prompt from Langfuse past the SDK cache, and keep the result.
+
+    ``cache_ttl_seconds=0`` makes the SDK skip its cache and its background
+    refresh altogether (``langfuse/_client/client.py:3607``), so neither failure
+    above can reach us. One attempt, because the copy we hold covers a failure
+    and a chat turn should not wait out a retry chain.
+    """
+    global _cached_prompt
+    label = None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
+    prompt = await asyncio.to_thread(
+        _get_langfuse().get_prompt,
+        config.langfuse_prompt_name,
+        label=label,
+        cache_ttl_seconds=0,
+        max_retries=0,
+        fetch_timeout_seconds=_PROMPT_REVALIDATION_TIMEOUT_SECONDS,
+    )
+    compiled = prompt.compile(users_information="")
+    # Guard the caching contract: if the Langfuse template is ever updated
+    # to re-embed the {users_information} placeholder, the compiled text
+    # will contain a literal "{users_information}" (because we passed an
+    # empty string). That would mean user-specific text is back in the
+    # system prompt, defeating cross-session caching. Log an error so the
+    # regression is immediately visible in production observability.
+    if "{users_information}" in compiled:
+        logger.error(
+            "Langfuse prompt still contains {users_information} placeholder — "
+            "user context has been re-embedded in the system prompt, which "
+            "breaks cross-session LLM prompt caching. Remove the placeholder "
+            "from the Langfuse template and inject user context via "
+            "inject_user_context() instead."
+        )
+    _cached_prompt = compiled
+    return compiled
 
 
 async def _build_system_prompt(

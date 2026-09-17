@@ -870,7 +870,7 @@ async def get_session_computer(
 ) -> ComputerInfo:
     """The computer behind this chat.
 
-    A plain chat has its own boxes; a chat that runs as a hired expert reports
+    A plain chat has its own box; a chat that runs as a hired expert reports
     the expert's persistent computer instead. Listing never wakes a paused box.
     """
     # Metadata only: the panel polls this, and the history is not needed.

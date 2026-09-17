@@ -21,7 +21,7 @@ bot via their DM link — enforced bridge-side.
 
 import logging
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal, cast
 
 from backend.copilot.model import ChatSession
 from backend.platform_linking.models import Platform
@@ -32,6 +32,7 @@ from .base import BaseTool
 from .models import (
     ChatPlatformChannelListResponse,
     ChatPlatformChannelSummary,
+    ChatPlatformEditedResponse,
     ChatPlatformPostedResponse,
     ErrorResponse,
     ToolResponseBase,
@@ -92,6 +93,32 @@ _ERROR_MESSAGES: dict[str, str] = {
     ),
     "dm_unavailable": (
         "The bot couldn't open a DM with the user's linked account on that " "platform."
+    ),
+    "edit_unsupported": (
+        "This platform doesn't support editing a message after it's " "posted."
+    ),
+    "message_not_found": (
+        "That message could not be found — it may have been deleted or is too "
+        "old to edit."
+    ),
+    "edit_failed": (
+        "The platform rejected the edit — the bot may lack permission, or the "
+        "message wasn't posted by the bot."
+    ),
+    "not_sender": (
+        "That message isn't one this account had the bot post, so it can't be "
+        "edited. Only a message from an earlier post_to_chat_platform call in "
+        "this account can be edited, and only for 30 days. Post a new message "
+        "instead."
+    ),
+    "edit_chunked": (
+        "That post was too long for one message and was split across several, "
+        "so editing it would rewrite only the first part and leave the rest "
+        "stale. Post a shorter replacement instead."
+    ),
+    "edit_unsupported_ref": (
+        "That thread was created but its opening message never posted, so "
+        "there is nothing to edit. Post into the thread instead."
     ),
 }
 
@@ -203,7 +230,11 @@ class PostToChatPlatformTool(BaseTool):
             "target='dm' only; its channels cannot be posted to yet. Pair "
             "with schedule_followup for recurring posts; call "
             "list_chat_platform_channels if a Discord/Slack channel won't "
-            "resolve."
+            "resolve. Whatever this posts can later be changed with "
+            "edit_chat_platform_message using the channel_id and ref_id it "
+            "returns — for mode='thread' those address the body message "
+            "inside the new thread, so posting again with that channel_id "
+            "continues the thread."
         )
 
     @property
@@ -381,6 +412,166 @@ class PostToChatPlatformTool(BaseTool):
             channel_id=result.channel_id or channel,
             ref_id=result.ref_id,
             url=result.url,
+            session_id=session_id,
+        )
+
+
+class EditChatPlatformMessageTool(BaseTool):
+    """Edit a message the bot previously posted via ``post_to_chat_platform``."""
+
+    @property
+    def name(self) -> str:
+        return "edit_chat_platform_message"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Edit a message the bot previously sent with post_to_chat_platform "
+            "on Discord, Slack, Telegram or Microsoft Teams. Pass the same "
+            "`channel_id` and `ref_id` that call returned (and the same "
+            "`target`/`platform` it used) along with the new `content` — the "
+            "old content is replaced entirely. Only a message this account "
+            "itself had the bot post is editable, and only for 30 days — not "
+            "the bot's replies to anyone, not another user's posts, and not a "
+            "long post that was split across several messages. A failure "
+            "(message too old, deleted, not yours, or the platform rejecting "
+            "the edit) is always reported, never silent."
+        )
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def is_available(self) -> bool:
+        return _any_chat_platform_configured()
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "platform": _platform_param(),
+                "target": {
+                    "type": "string",
+                    "enum": ["channel", "dm"],
+                    "description": (
+                        "Must match the `target` used in the original "
+                        "post_to_chat_platform call."
+                    ),
+                },
+                "channel_id": {
+                    "type": "string",
+                    "description": (
+                        "The `channel_id` post_to_chat_platform returned for "
+                        "the message being edited."
+                    ),
+                },
+                "ref_id": {
+                    "type": "string",
+                    "description": (
+                        "The `ref_id` post_to_chat_platform returned for the "
+                        "message being edited."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "New message body, replacing the original content.",
+                },
+            },
+            "required": ["channel_id", "ref_id", "content"],
+        }
+
+    @staticmethod
+    def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
+        _platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if _platform is None:
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
+        target: str = kwargs.get("target") or _default_target(platform_name)
+        if target not in ("channel", "dm"):
+            return ErrorResponse(
+                message="`target` must be 'channel' or 'dm'.",
+                error="invalid_target",
+                session_id=session_id,
+            )
+        channel_id = kwargs.get("channel_id")
+        if not channel_id or not str(channel_id).strip():
+            return ErrorResponse(
+                message="`channel_id` is required.",
+                error="missing_channel_id",
+                session_id=session_id,
+            )
+        ref_id = kwargs.get("ref_id")
+        if not ref_id or not str(ref_id).strip():
+            return ErrorResponse(
+                message="`ref_id` is required.",
+                error="missing_ref_id",
+                session_id=session_id,
+            )
+        content = kwargs.get("content")
+        if not content or not content.strip():
+            return ErrorResponse(
+                message="`content` is required.",
+                error="missing_content",
+                session_id=session_id,
+            )
+        return None
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id if session else None
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required.",
+                error="auth_required",
+                session_id=session_id,
+            )
+        invalid = self._validate_params(session_id, **kwargs)
+        if invalid is not None:
+            return invalid
+
+        platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if platform is None:  # already validated; narrows the type
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
+        target_value: str = kwargs.get("target") or _default_target(platform_name)
+        # Already validated to be one of these two literals above.
+        target = cast(Literal["channel", "dm"], target_value)
+        channel_id = str(kwargs["channel_id"])
+        ref_id = str(kwargs["ref_id"])
+        content: str = kwargs["content"]
+
+        client = get_copilot_chat_bridge_client()
+        result = await client.edit_message_in_channel(
+            platform=platform,
+            user_id=user_id,
+            target=target,
+            channel_id=channel_id,
+            ref_id=ref_id,
+            content=content,
+        )
+        if not result.ok:
+            return ErrorResponse(
+                message=_error_message(result.error, platform_name),
+                error=result.error or "chat_platform_edit_failed",
+                session_id=session_id,
+            )
+        return ChatPlatformEditedResponse(
+            message=f"Edited the message on {platform_name}.",
+            platform=platform_name,
+            channel_id=channel_id,
+            ref_id=ref_id,
             session_id=session_id,
         )
 
