@@ -28,11 +28,15 @@ import { latestExpertSessionParams } from "./expertSessionQuery";
 interface UseChatSessionOptions {
   dryRun?: boolean;
   expertId?: string | null;
+  /** Off = keep the fresh new-task state addressed to the expert instead of
+   *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
+  adoptLatestExpertThread?: boolean;
 }
 
 export function useChatSession({
   dryRun = false,
   expertId = null,
+  adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
@@ -113,6 +117,7 @@ export function useChatSession({
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
   const canAdoptExpertSession =
+    adoptLatestExpertThread &&
     !!expertId &&
     !sessionId &&
     expertId === mountExpertIdRef.current &&
@@ -236,9 +241,9 @@ export function useChatSession({
     if (chatTransports !== undefined && availableTransports.length === 0) {
       toast({
         variant: "destructive",
-        title: "AutoPilot needs an AI connection",
+        title: "Your expert needs an AI connection",
         description:
-          "Sign in with ChatGPT under OpenAI in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
       });
       throw new Error("chat_transport_not_configured");
     }
@@ -251,7 +256,7 @@ export function useChatSession({
           : "Choose an AI connection",
         description: connectionsAreLoading
           ? "Wait a moment and try again."
-          : "Select the connection AutoPilot should use before starting a new task.",
+          : "Select the connection your expert should use before starting a new task.",
       });
       throw new Error(
         connectionsAreLoading
@@ -267,7 +272,7 @@ export function useChatSession({
       toast({
         title: "AI connections changed",
         description:
-          "The next AutoPilot task will resolve the currently available connection before it starts.",
+          "The next task will use the available connection when it starts.",
       });
     }
 
@@ -281,7 +286,7 @@ export function useChatSession({
       // user actually picks, and null means "use whatever the server says".
       if (copilotLlmAuth !== null) {
         sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
-        if (resolvedLLMAuth.authProvider === "codex") {
+        if (resolvedLLMAuth.authProvider !== "platform") {
           sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
         }
       }
@@ -353,12 +358,20 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
-  const sessionLlmAuthProvider: "platform" | "codex" | null =
-    sessionId && sessionQuery.data?.status === 200
-      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
-        ? "codex"
-        : "platform"
+  const storedLlmAuthProvider =
+    sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider
       : null;
+  const sessionLlmAuthProvider:
+    | "platform"
+    | "codex"
+    | "microsoft_365_copilot"
+    | null = sessionId
+    ? storedLlmAuthProvider === "codex" ||
+      storedLlmAuthProvider === "microsoft_365_copilot"
+      ? storedLlmAuthProvider
+      : "platform"
+    : null;
   const sessionLlmCredentialId =
     sessionId && sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)

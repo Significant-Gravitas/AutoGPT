@@ -39,6 +39,11 @@ are allowed.
 
 ``blocks_exclude`` follows the same pattern for ``blocks``.
 
+Denying a capability denies the tools that extend it (see
+``_IMPLIED_DENIALS``). A blacklist is written against the tools that exist
+when it is written, so a later tool that reaches the same resource would
+otherwise be silently regained by every existing blacklist.
+
 Recursion inheritance
 ---------------------
 :meth:`CopilotPermissions.merged_with_parent` produces a new instance that
@@ -73,6 +78,7 @@ ToolName = Literal[
     "add_understanding",
     "ask_question",
     "bash_exec",
+    "start_desktop",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
@@ -92,7 +98,9 @@ ToolName = Literal[
     "delete_skill",
     "delete_workspace_file",
     "edit_agent",
+    "edit_chat_platform_message",
     "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
     "find_block",
     "find_library_agent",
@@ -102,10 +110,15 @@ ToolName = Literal[
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "grant_expert_credential",
     "handoff_to_expert",
     "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_expert_chats",
+    "list_expert_credentials",
+    "list_expert_workflows",
     "list_folders",
     "list_presets",
     "list_schedules",
@@ -118,10 +131,16 @@ ToolName = Literal[
     "memory_store",
     "move_agents_to_folder",
     "move_folder",
+    "pause_schedule",
     "post_to_chat_platform",
     "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "remove_expert_workflow",
+    "request_credential_grant",
+    "resume_schedule",
+    "revoke_expert_credential",
     "run_agent",
     "run_block",
     "run_mcp_tool",
@@ -187,6 +206,25 @@ _FULL_UUID_RE = re.compile(
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
 
+# Tools that a blacklist entry must deny alongside the capability named.
+#
+# A blacklist is written against the tools that existed when it was written,
+# so a tool added later that reaches the same resource is silently regained
+# by every blacklist already out there. An operator who revoked proactive
+# posting to their chat platforms should not find the agent able to rewrite
+# everything the bot has already said in them.
+_IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
+    "post_to_chat_platform": ("edit_chat_platform_message",),
+}
+
+
+def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
+    """Expand a deny set with the tools its entries imply."""
+    return denied.union(
+        implied for name in denied for implied in _IMPLIED_DENIALS.get(name, ())
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helper — block identifier matching
 # ---------------------------------------------------------------------------
@@ -250,7 +288,7 @@ class CopilotPermissions(BaseModel):
             return frozenset(all_tools)
         tool_set = frozenset(self.tools)
         if self.tools_exclude:
-            return all_tools - tool_set
+            return all_tools - _with_implied_denials(tool_set)
         return all_tools & tool_set
 
     # ------------------------------------------------------------------
@@ -487,8 +525,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names

@@ -437,6 +437,10 @@ class AutoPilotBlock(Block):
                 permissions=effective_permissions,
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
+                # Never ride an in-flight turn: the prompt would execute under
+                # THAT turn's envelope and permissions, dropping this block's
+                # own filter. Same hole the three spawn tools close.
+                allow_queue=False,
             )
             if outcome == "rejected_concurrent_turn_cap":
                 # No session record / transcript was created — the slot
@@ -454,6 +458,11 @@ class AutoPilotBlock(Block):
                     f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
                     f"{session_id}"
                 )
+            if outcome == "refused":
+                # Terminal, like the branches above: nothing ran, so the
+                # SessionResult carries only the refusal and its empty
+                # response_text would otherwise render as a successful turn.
+                raise RuntimeError(result.refusal or "AutoPilot turn was refused")
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-
@@ -846,6 +855,7 @@ async def _enqueue_for_recovery(
             enqueue_copilot_turn,
         )
         from backend.copilot.model import get_chat_session
+        from backend.copilot.tree import root_envelope
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -855,14 +865,21 @@ async def _enqueue_for_recovery(
             )
             return
 
+        recovery_turn_id = str(uuid.uuid4())
         await asyncio.wait_for(
             enqueue_copilot_turn(
                 session_id=session_id,
                 user_id=user_id,
                 message=message,
-                turn_id=str(uuid.uuid4()),
+                turn_id=recovery_turn_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
+                # The orphaned turn's envelope died with its worker and is not
+                # recoverable, so this re-dispatch roots a fresh tree — which
+                # is what an AutoPilotBlock turn already gets, the graph
+                # executor being a separate process.
+                # TODO(#14244-f5): revisit together with run_agent's tree reset.
+                envelope=root_envelope(recovery_turn_id),
             ),
             timeout=10,
         )

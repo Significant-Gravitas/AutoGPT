@@ -60,6 +60,50 @@ describe("toConnectorRows", () => {
     expect(rows[0].provider).toBe("github");
   });
 
+  it("asks for the union of the scopes every card needs", () => {
+    const first = connectorRequest({
+      id: "req-1",
+      fields: [
+        [
+          "credentials",
+          {
+            credentials_provider: ["github"],
+            credentials_types: ["oauth2"],
+            credentials_scopes: ["repo"],
+          },
+        ],
+      ],
+    });
+    const second = connectorRequest({
+      id: "req-2",
+      fields: [
+        [
+          "credentials",
+          {
+            credentials_provider: ["github"],
+            credentials_types: ["oauth2"],
+            credentials_scopes: ["repo", "workflow"],
+          },
+        ],
+      ],
+    });
+
+    const [row] = toConnectorRows([first, second], []);
+
+    // Keeping only the first card's scopes leaves the second permanently
+    // unsatisfiable, and with auto-proceed it never sends.
+    expect(row.schema.credentials_scopes).toEqual(["repo", "workflow"]);
+  });
+
+  it("leaves the schema alone when no card asks for scopes", () => {
+    const first = connectorRequest({ id: "req-1" });
+    const second = connectorRequest({ id: "req-2" });
+
+    const [row] = toConnectorRows([first, second], []);
+
+    expect(row.schema.credentials_scopes).toBeUndefined();
+  });
+
   it("fans a selection out to every request asking for the provider", () => {
     const first = connectorRequest({ id: "req-1" });
     const second = connectorRequest({ id: "req-2" });

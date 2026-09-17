@@ -6,6 +6,8 @@ import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -14,7 +16,6 @@ import {
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
-import { ExpertChangeCard, ExpertChangeCardSkeleton } from "./ExpertCards";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -193,7 +194,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -277,14 +282,6 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
     }
-    case "hire_expert":
-    case "raise_expert":
-    case "update_expert":
-    case "confirm_expert_change":
-      if (output) return <ExpertChangeCard output={output} />;
-      // The expert is still being written — hold the card's shape so the
-      // real one swaps in without the row jumping.
-      return row.state === "running" ? <ExpertChangeCardSkeleton /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);
@@ -394,6 +391,16 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop": {
+      // The live desktop is the whole point of the tool: embed the stream
+      // instead of letting the payload fall through to a truncated key/value
+      // dump. The same renderer serves block outputs and attachments.
+      const stream = output ? output.desktop_stream : null;
+      if (stream && desktopStreamRenderer.canRender(stream)) {
+        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+      }
+      return null;
+    }
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -408,9 +415,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -439,7 +447,7 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, readOnly);
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;

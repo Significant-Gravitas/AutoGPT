@@ -18,6 +18,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
+    _current_envelope,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -55,11 +56,13 @@ from .e2b_file_tools import (
     get_read_tool_handler,
     get_write_tool_handler,
 )
+from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -139,6 +143,7 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
+        envelope: The turn's tree envelope; spawn tools derive children from it.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -146,6 +151,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
@@ -315,7 +321,7 @@ async def _execute_tool_sync(
 
     The call runs to completion — no per-handler timeout, no parking. The
     stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
-    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    is pending, so a long sub-Otto / graph execution doesn't trip the
     30-min idle safety net (SECRT-2247). A genuine hang is handled by the
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
@@ -722,6 +728,7 @@ def _make_truncating_wrapper(
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -741,7 +748,7 @@ def _make_truncating_wrapper(
     Swapping this order would cause the frontend to lose ``is_dry_run``.
     """
 
-    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+    async def execute(args: dict[str, Any]) -> dict[str, Any]:
         # Detect empty-args truncation: args is empty AND the original tool
         # declared at least one *required* property. Tools whose params are all
         # optional (filters-only tools like list_schedules) legitimately accept
@@ -825,6 +832,12 @@ def _make_truncating_wrapper(
 
         return truncated
 
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        if tool_display_bridge is None:
+            return await execute(args)
+        with tool_display_bridge.execution_context(tool_name, args) as clean_args:
+            return await execute(clean_args)
+
     return wrapper
 
 
@@ -832,6 +845,7 @@ def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -864,7 +878,14 @@ def create_copilot_mcp_server(
         # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
-        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
+        # ``is_available`` is the env check the baseline path applies in
+        # ``get_available_tools``; without it this engine offers browser
+        # tools on a box with no agent-browser binary.
+        if (
+            tool_name in hidden
+            or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or not base_tool.is_available
+        ):
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
@@ -880,7 +901,11 @@ def create_copilot_mcp_server(
             annotations=_PARALLEL_ANNOTATION,
         )(
             _make_truncating_wrapper(
-                handler, tool_name, input_schema=schema, required_args=required
+                handler,
+                tool_name,
+                input_schema=schema,
+                required_args=required,
+                tool_display_bridge=tool_display_bridge,
             )
         )
         sdk_tools.append(decorated)
@@ -1023,6 +1048,13 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   prod without issues.
 # ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
 #   {"scheduledFor": 0} and nothing is scheduled.
+# CronCreate/CronList/CronDelete: same failure mode as ScheduleWakeup, but
+#   worse because CronCreate *confirms* success ("Persisted to
+#   .claude/scheduled_tasks.json").  Those jobs belong to the CLI process,
+#   which exits with the turn; nothing here ever reads or runs that file, and
+#   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
+#   exposed lets the model promise unattended monitoring that silently never
+#   fires — `schedule_followup` is the primitive that actually persists.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1032,6 +1064,9 @@ SDK_DISALLOWED_TOOLS = [
     "Edit",
     "Read",
     "ScheduleWakeup",
+    "CronCreate",
+    "CronList",
+    "CronDelete",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1148,3 +1183,13 @@ def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
     if not use_e2b:
         return list(SDK_DISALLOWED_TOOLS)
     return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+
+
+def get_sdk_builtin_tools() -> list[str]:
+    """Every Claude Code built-in this module knows about, blocked or kept.
+
+    For callers that want *no* built-ins at all — the orchestrator block hands
+    its model graph MCP tools only — so a built-in that is new here (a CLI
+    scheduler, say) is blocked there without a second, hand-synced edit.
+    """
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS]))

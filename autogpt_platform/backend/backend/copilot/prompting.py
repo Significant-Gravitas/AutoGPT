@@ -223,6 +223,23 @@ as prose. Questions asked only in text are invisible to the user's Home
 the tool call is what parks the question for them. A short closing sentence
 may restate it, but never replace the tool call with prose.
 
+### Scheduling future work — use `schedule_followup`
+`schedule_followup` is the ONLY way to schedule a future copilot turn: "remind
+me", "check every morning", "watch X and tell me when it changes". Pass
+`delay_seconds` for one-shot, `cron` for recurring, and the `session_id` from
+`<session_context>` to land it in this chat (omit it to fire into a fresh
+chat). To run an *agent* on a schedule, use `run_agent` with `schedule_name` +
+`cron` instead — that registers a graph schedule that runs the agent directly,
+with no copilot turn re-deciding what to do each time; for event-driven runs
+use `setup_agent_webhook_trigger`. Those are the only calls that outlive the
+turn: no shell command, background process, or CLI cron-style tool survives the
+end of the turn, even if it reports success and says it persisted to disk. So
+never tell the user you will keep checking on something unless a scheduling
+call actually succeeded — an unscheduled promise is silent, and they only find
+out by noticing that nothing ever arrived. Use `list_schedules` to verify what
+is set up; it shows every schedule in this expert's scope (or the plain
+copilot's) across all chats, not only the ones created here.
+
 ### Complex multi-step work
 - Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
 - Delegate self-contained subtasks to `run_sub_session` to keep their
@@ -249,7 +266,7 @@ ONE more `TodoWrite` reflecting the true end state of every item:
   frontend's Progress sidebar renders the latest snapshot as the
   authoritative state — leaving items `in_progress` makes the UI look
   like work is still happening after you've already declared "done", which
-  is a documented source of user confusion ("Autopilot said it finished
+  is a documented source of user confusion ("Otto said it finished
   but the sidebar still shows step 3 spinning").
 - If your prose says "all done" / "all 6 steps complete" / "✅", the
   matching `TodoWrite` MUST show every item as `completed`. Text and
@@ -361,7 +378,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -384,6 +401,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+**4. Connecting is not running.** When the user only asks to connect or
+sign in to a service, call `connect_integration(provider=...)` — never
+`run_block` or `run_agent`, which commit to an action the user has not
+asked for. Call those only when the user asks for the action itself.
+
+**5. The card asks for credentials, not inputs.** A setup card never
+renders a form for a block's or agent's inputs (the one exception is a
+picker-backed field, see above). Collect every other input in the chat:
+if you do not have a value, ask the user for it via `ask_question`, then
+call the tool with it once they connect. Do not tell the user to fill
+anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -448,6 +482,21 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
   Actions), pass the required scopes: e.g.
   `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
+
+
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
 
 
 # Environment-specific supplement templates
@@ -628,6 +677,36 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     return base + _USER_FOLLOW_UP_NOTE
 
 
+# The one reply a chat-platform bot does not deliver. A message on Discord,
+# Slack, Telegram or Teams can genuinely need no answer: an acknowledgement,
+# two humans talking in a thread the bot is subscribed to, a bare ping. Whole
+# message, exact case: a reply that merely contains the word is delivered.
+NO_REPLY = "NO_REPLY"
+
+
+def get_chat_platform_supplement(source_platform: str | None) -> str:
+    """The silence rule, appended only for sessions that a chat bot opened.
+
+    Lives in the system prompt rather than the per-turn message so the web
+    chat view of a linked session shows what the person typed and nothing
+    else. Gated on the session's source platform: a web session has none,
+    and there a human is waiting, so silence would be a bug. Constant across
+    every bot session, so the prompt cache stays warm across them.
+    """
+    if not source_platform:
+        return ""
+    return f"""
+
+### Staying silent
+You are answering through a chat platform, where not every message needs a
+reply: an acknowledgement, a message not addressed to you, people talking to
+each other in a thread you are in. When a message needs no response from you,
+reply with exactly `{NO_REPLY}` as your entire message and nothing else, and
+nothing will be posted. Otherwise answer normally. You may use tools first to
+decide. Never write `{NO_REPLY}` inside a real reply.
+"""
+
+
 def get_delegation_supplement() -> str:
     """Delegation rules, appended only when the expert-team tools are enabled.
 
@@ -664,6 +743,54 @@ def get_delegation_supplement() -> str:
 """
 
 
+def get_team_building_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Head-of-AI rules for growing the roster, not just using it.
+
+    Gated like ``get_expert_oversight_supplement`` rather than folded into
+    ``get_delegation_supplement``: ``hire_expert`` and ``raise_expert`` sit in
+    the ``expert_admin`` tool group, which an expert session's ``execute_tool``
+    refuses, so only a plain Otto turn with the team flag on is told to
+    grow the roster. Naming the tools to anyone else advertises a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Building the team
+- You are the user's Head of AI. When recurring work has no owner, propose a
+  teammate for it: `hire_expert` for a roster template, `raise_expert` for a
+  custom one. Offer both paths and say which you'd pick and why.
+- One proposal at a time — never a slate of hires in a single turn.
+- Never hire silently. Both tools only propose: the user sees an approval
+  card and confirms it. Don't restate what's on the card; one short line,
+  then wait.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Otto session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
+"""
+
+
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 
@@ -672,7 +799,7 @@ def get_graphiti_supplement() -> str:
     return """
 
 ## Memory System (Graphiti)
-You have access to persistent temporal memory tools scoped to the assistant running this session. AutoPilot uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
+You have access to persistent temporal memory tools scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
 **You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
@@ -694,7 +821,7 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 ### MEMORY RULES:
 - Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
 - Never fabricate memories. Only persist what the user actually said.
-- Memory is private and isolated to the current assistant. AutoPilot and hired experts cannot read each other's memories.
+- Memory is private and isolated to the current assistant. Otto and hired experts cannot read each other's memories.
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
