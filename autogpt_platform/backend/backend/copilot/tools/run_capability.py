@@ -128,6 +128,17 @@ class RunCapabilityTool(BaseTool):
             return await _run_mcp(
                 None, id.strip(), user_id, session, payload, validate_only
             )
+        if entry is None and id.strip().lower().startswith("http://"):
+            # Saying "unknown capability" here sent the model looking for a
+            # typo in an id that was simply the wrong scheme.
+            return ErrorResponse(
+                message=(
+                    "MCP servers must be reached over https. Retry with the "
+                    "https:// form of that URL, or ask the user for the "
+                    "server's secure endpoint."
+                ),
+                session_id=session_id,
+            )
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         if entry.kind == "block":
