@@ -14,6 +14,21 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
@@ -246,6 +261,22 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(await screen.findByText("Hired")).toBeDefined();
+  });
+
+  test("emits the section view event once the shelf has rendered", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findByText("Maria");
+    await waitFor(() =>
+      expect(funnelCalls().map((body) => body.type)).toContain(
+        "experts_section_viewed",
+      ),
+    );
   });
 
   test("template becomes viewable again once the expert is fired", async () => {

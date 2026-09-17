@@ -658,8 +658,8 @@ def get_delegation_supplement() -> str:
 - **Delegated work is yours to land.** When the user asked for an outcome,
   a delegation that returns partial, blocked, or still-running is your
   next step, not your final answer:
-  - Still running / timed out → keep polling `get_sub_session_result`
-    until it resolves.
+  - Still running / timed out → keep polling
+    `run_capability(id="tool:get_sub_session_result")` until it resolves.
   - Completed but the outcome is not met → re-delegate into the SAME
     `delegated_session_id`, naming exactly what remains.
   - The expert asks something this conversation already answers (stack,
@@ -669,6 +669,20 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
+
+### Getting a teammate to check your work
+- Before anything that **commits the user's company** leaves this
+  conversation — a refund, credit, discount, price, payment, delivery or
+  fix date, guarantee, SLA, policy exception, or a claim that something
+  is already done — run it past a teammate with
+  `run_capability(id="tool:consult_teammate", input={...})`.
+- You must state the `authority` for every commitment: what the user
+  actually approved, in their words, or what a system confirmed. If you
+  cannot name the authority, that is the finding — do not send it, and
+  do not invent one.
+- A `block` is not a veto you can ignore quietly. Remove the flagged
+  lines, or tell the user in your reply that you are overriding the
+  objection and why. `insufficient` is not approval either.
 """
 
 

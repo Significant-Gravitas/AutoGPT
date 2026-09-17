@@ -22,7 +22,6 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -101,6 +100,7 @@ from backend.copilot.response_model import (
     StreamStatus,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
