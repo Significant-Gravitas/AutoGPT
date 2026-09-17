@@ -15,13 +15,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.builder_context import (
-    BUILDER_BLOCKED_TOOLS,
     BUILDER_CONTEXT_TAG,
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 
 
 def _session(

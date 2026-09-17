@@ -139,6 +139,9 @@ class ResponseType(str, Enum):
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
     EXPERT_ONBOARDING = "expert_onboarding"
+    TEAM_CONSULT = "team_consult"
+    SESSION_LIST = "session_list"
+    SESSION_MESSAGE = "session_message"
 
 
 # Base response model
@@ -681,6 +684,67 @@ class ExpertChatTranscriptResponse(ToolResponseBase):
     messages: list[ExpertChatMessage] = Field(default_factory=list)
     has_more: bool = False
     next_before_sequence: int | None = None
+
+
+class ConsultingExpertInfo(BaseModel):
+    """Identity of the teammate who gave a verdict, for the ToolChain card."""
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ConsultVerdictResponse(ToolResponseBase):
+    """One teammate's ruling on another's work, from ``consult_teammate``.
+
+    ``verdict`` is the machine-readable half of ``message`` and the two never
+    disagree: the card reads this field, the model reads the fenced prose.
+    """
+
+    type: ResponseType = ResponseType.TEAM_CONSULT
+    verdict: Literal["pass", "block", "insufficient"]
+    reason: str = ""
+    quotes: list[str] = Field(default_factory=list)
+    reviewer: ConsultingExpertInfo
+
+
+class SessionSummary(BaseModel):
+    """One row of ``find_session`` — enough to decide who to message."""
+
+    session_id: str
+    # The id, not the name: resolving names here would import the experts
+    # package back into ``copilot.tools`` and close an import cycle. The
+    # roster in <team_context> already maps id to name for the model.
+    expert_id: str | None = None
+    title: str | None = None
+    purpose: str | None = None
+    # "idle" | "queued" | "running": a running session takes a message into
+    # its current turn, an idle one has to be woken.
+    status: str
+    updated_at: datetime
+
+
+class SessionListResponse(ToolResponseBase):
+    """The caller's own live sessions, from ``find_session``."""
+
+    type: ResponseType = ResponseType.SESSION_LIST
+    sessions: list[SessionSummary] = Field(default_factory=list)
+
+
+class SessionMessageResponse(ToolResponseBase):
+    """What ``message_session`` did with the message.
+
+    ``delivery`` is the half the model must read: "injected" reached a turn
+    already running and costs nothing extra, "queued" rode a turn already
+    waiting, "woke" started one and costs a turn. There is no reply here —
+    an answer arrives as its own message.
+    """
+
+    type: ResponseType = ResponseType.SESSION_MESSAGE
+    delivery: Literal["injected", "queued", "woke"]
+    target_session_id: str
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):
