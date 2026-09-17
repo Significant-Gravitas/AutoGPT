@@ -128,7 +128,7 @@ export function ExpertPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
-      <ExpertPageHeader expert={expert} accent={accent} actions={actions} />
+      <ExpertPageHeader expert={expert} actions={actions} />
       <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
         <ExpertDayOne
           name={firstName}
