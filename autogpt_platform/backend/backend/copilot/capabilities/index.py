@@ -81,6 +81,12 @@ class CapabilityIndex:
             if entry.klass == "service" and entry.kind != "tool":
                 for tag in _service_tags(entry):
                     self._service_tags[tag].add(idx)
+        # Longest service name in words ("azure_cosmos_db" is three), so
+        # `_service_query` knows how far to look ahead when rejoining a
+        # multi-word name the query spelled out with spaces.
+        self._service_words = max(
+            (tag.count("_") + 1 for tag in self._service_tags), default=1
+        )
         documents = [_document(e) for e in self.entries]
         self._token_sets = [frozenset(doc) for doc in documents]
         self._bm25 = BM25Okapi(documents or [[""]])
@@ -223,13 +229,36 @@ class CapabilityIndex:
         to notion" needs both, and stopping at the first match returned only
         Linear and hid Notion entirely.
         """
-        raw = re.split(r"[^a-z0-9.]+", query.lower())
+        raw = [token for token in re.split(r"[^a-z0-9.]+", query.lower()) if token]
         named: list[str] = []
         indices: set[int] = set()
-        for token in [*raw, *tokenize(query)]:
-            if token and token in self._service_tags and token not in named:
-                named.append(token)
-                indices.update(self._service_tags[token])
+
+        def take(tag: str) -> None:
+            if tag not in named:
+                named.append(tag)
+                indices.update(self._service_tags[tag])
+
+        # Service names are stored raw, so a two-word one — "google maps",
+        # keyed ``google_maps`` — never matched a single query token. The
+        # query matched the bare "google" instead and restricted the search
+        # to the Google-provider entries, which is precisely the set that
+        # excludes the Maps block: asking for Google Maps returned Docs and
+        # Sheets and dropped the one block that was asked for. Rejoin
+        # adjacent words and let the longest name win.
+        position = 0
+        while position < len(raw):
+            for size in range(min(self._service_words, len(raw) - position), 0, -1):
+                candidate = "_".join(raw[position : position + size])
+                if candidate in self._service_tags:
+                    take(candidate)
+                    position += size
+                    break
+            else:
+                position += 1
+        # Stemmed matches still count, for a query that inflects the name.
+        for token in tokenize(query):
+            if token in self._service_tags:
+                take(token)
         if not named:
             return None, None
         return " ".join(named), indices
