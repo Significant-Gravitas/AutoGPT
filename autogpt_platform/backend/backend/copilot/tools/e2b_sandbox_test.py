@@ -924,6 +924,33 @@ class TestConnectOwned:
         )
 
     @pytest.mark.parametrize(
+        "reconnecting, pinned_for",
+        [("user-a", "user-a"), ("user-b", None), (None, None)],
+        ids=["its own user", "another user", "nobody"],
+    )
+    def test_a_box_is_pinned_only_for_the_user_it_was_created_for(
+        self, reconnecting, pinned_for
+    ):
+        """Its creator's processes may still be running in it: re-pinned for
+        whoever reconnects, they would get to act with that user's accounts.
+        A mismatch keeps the box's egress and swaps nothing in."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        sb = MagicMock()
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=sb),
+            ) as connect,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(connect_owned("sb-1", owner, _API_KEY, user_id=reconnecting))
+        egress_owner = connect.await_args.args[2]
+        assert egress_owner.user_id == pinned_for
+        assert egress_owner.label == f"expert:{_EXPERT_ID}"
+
+    @pytest.mark.parametrize(
         "stamp",
         [
             {"autogpt_owner": "expert:someone-else", "autogpt_kind": "shell"},

@@ -96,7 +96,7 @@ from backend.util.e2b_network import (
     forget_sandbox,
 )
 from backend.util.e2b_template import ensure_template, forget_template
-from backend.util.sandbox_metadata import MountState, SandboxMetadata
+from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
 logger = logging.getLogger(__name__)
 
@@ -309,10 +309,23 @@ async def connect_owned(
     stamped = info.metadata or {}
     if any(stamped.get(key) != value for key, value in expected.items()):
         raise SandboxNotOwnedError(f"Sandbox {sandbox_id[:12]} is not {owner}'s box")
+    # Whose credentials the proxy may swap in is the box's own record too,
+    # not the caller's word: processes of the user it was created for may
+    # still be running in it.  An expert has one owner today, but nothing at
+    # this layer says so, and a box re-pinned for whoever reconnects would
+    # let those processes act as them.  A mismatch pins the box with no user:
+    # it keeps its egress and gets nothing swapped in.
+    swap_user_id = user_id if owned_by_user(stamped, user_id) else None
+    if pin_egress and user_id and swap_user_id is None:
+        logger.warning(
+            "[E2B] Sandbox %.12s was not created for the user reconnecting to "
+            "it; pinning it without credentials",
+            sandbox_id,
+        )
     return await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
-        owner.egress_owner(user_id),
+        owner.egress_owner(swap_user_id),
         apply_network=pin_egress,
         api_key=api_key,
         timeout=timeout,
