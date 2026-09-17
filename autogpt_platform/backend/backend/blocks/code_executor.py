@@ -342,6 +342,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
+            capability_kind="primitive",
             description="Executes code in a sandbox environment with internet access.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeBlock.Input,
@@ -479,6 +480,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
+            capability_kind="primitive",
             description=(
                 "Instantiate a sandbox environment with internet access "
                 "in which you can execute code with the Execute Code Step block."
@@ -592,6 +594,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="82b59b8e-ea10-4d57-9161-8b169b0adba6",
+            capability_kind="primitive",
             description="Execute code in a previously instantiated sandbox.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeStepBlock.Input,

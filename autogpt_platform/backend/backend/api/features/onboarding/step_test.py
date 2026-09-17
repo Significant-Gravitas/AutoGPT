@@ -4,13 +4,13 @@ import fastapi
 import fastapi.testclient
 import pytest
 
-from backend.api.features.v1 import v1_router
+from backend.api.features.onboarding.routes import router
 from backend.data import onboarding as onboarding_module
 from backend.data.model import UserOnboarding
 from backend.data.onboarding import OnboardingStep
 
 app = fastapi.FastAPI()
-app.include_router(v1_router)
+app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -34,7 +34,7 @@ def test_complete_step_rejects_invalid_step(invalid_step):
 
 def test_complete_step_accepts_renamed_complete_value(mocker):
     mock_complete = mocker.patch(
-        "backend.api.features.v1.complete_onboarding_step",
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -61,7 +61,7 @@ def test_complete_step_accepts_tab_intros(step, mocker):
     # Each tab's first-visit card records its own step; without all three on
     # FrontendOnboardingStep the card would 422 and reappear forever.
     mock_complete = mocker.patch(
-        "backend.api.features.v1.complete_onboarding_step",
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -86,7 +86,7 @@ def test_complete_step_rejects_rewarded_backend_only_steps(step, mocker):
     # the only thing standing between an authenticated user and self-awarding
     # credits, so it gets its own test.
     mock_complete = mocker.patch(
-        "backend.api.features.v1.complete_onboarding_step",
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -126,7 +126,7 @@ async def test_tab_intro_steps_grant_no_reward(step, mocker):
 
 def test_is_onboarding_completed_true_when_complete_step_present(mocker):
     mock_get = mocker.patch(
-        "backend.api.features.v1.get_user_onboarding",
+        "backend.api.features.onboarding.routes.get_user_onboarding",
         new_callable=AsyncMock,
     )
     mock_get.return_value = UserOnboarding.model_construct(
@@ -141,7 +141,7 @@ def test_is_onboarding_completed_true_when_complete_step_present(mocker):
 
 def test_is_onboarding_completed_false_without_complete_step(mocker):
     mock_get = mocker.patch(
-        "backend.api.features.v1.get_user_onboarding",
+        "backend.api.features.onboarding.routes.get_user_onboarding",
         new_callable=AsyncMock,
     )
     mock_get.return_value = UserOnboarding.model_construct(
@@ -187,7 +187,7 @@ def test_user_onboarding_response_model_accepts_deprecated_stored_values():
 
 def test_update_onboarding_rejects_invalid_notified_step(mocker):
     mock_update = mocker.patch(
-        "backend.api.features.v1.update_user_onboarding",
+        "backend.api.features.onboarding.routes.update_user_onboarding",
         new_callable=AsyncMock,
     )
 

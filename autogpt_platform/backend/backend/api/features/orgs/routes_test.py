@@ -498,6 +498,7 @@ class TestOrgDbMembers:
         from backend.api.features.orgs.db import add_org_member
 
         new_member = _make_member(userId=OTHER_USER_ID, user_email="bob@example.com")
+        self.prisma.organization.find_first = AsyncMock(return_value=None)
         self.prisma.orgmember.create = AsyncMock(return_value=new_member)
         default_ws = _make_workspace(id="ws-default", isDefault=True)
         self.prisma.team.find_first = AsyncMock(return_value=default_ws)
@@ -525,6 +526,7 @@ class TestOrgDbMembers:
         from backend.api.features.orgs.db import add_org_member
 
         new_member = _make_member(userId=OTHER_USER_ID)
+        self.prisma.organization.find_first = AsyncMock(return_value=None)
         self.prisma.orgmember.create = AsyncMock(return_value=new_member)
         self.prisma.team.find_first = AsyncMock(return_value=None)
         self.prisma.teammember.create = AsyncMock()
@@ -532,6 +534,27 @@ class TestOrgDbMembers:
         await add_org_member(org_id=ORG_ID, user_id=OTHER_USER_ID)
 
         # No workspace member should have been created
+        self.prisma.teammember.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_member_to_personal_org_raises_value_error(self):
+        """A personal org bills the owner's own user wallet, so a second
+        member would spend it without holding MANAGE_BILLING anywhere."""
+        from backend.api.features.orgs.db import add_org_member
+
+        self.prisma.organization.find_first = AsyncMock(
+            return_value=_make_org(isPersonal=True)
+        )
+        self.prisma.orgmember.create = AsyncMock(
+            return_value=_make_member(userId=OTHER_USER_ID)
+        )
+        self.prisma.team.find_first = AsyncMock(return_value=None)
+        self.prisma.teammember.create = AsyncMock()
+
+        with pytest.raises(ValueError, match="Cannot add a member to a personal"):
+            await add_org_member(org_id=ORG_ID, user_id=OTHER_USER_ID)
+
+        self.prisma.orgmember.create.assert_not_called()
         self.prisma.teammember.create.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1225,6 +1248,7 @@ class TestInvitationAcceptance:
 
         # Mock add_org_member chain
         new_member = _make_member(userId=test_user_id)
+        self.prisma.organization.find_first = AsyncMock(return_value=None)
         self.prisma.orgmember.create = AsyncMock(return_value=new_member)
         self.prisma.team.find_first = AsyncMock(return_value=None)
         self.prisma.orginvitation.update = AsyncMock()
@@ -1235,6 +1259,34 @@ class TestInvitationAcceptance:
         data = resp.json()
         assert data["orgId"] == ORG_ID
         assert "accepted" in data["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_accept_invitation_into_a_personal_org_raises_value_error(
+        self, test_user_id
+    ):
+        """Accepting creates the same OrgMember row POST /members does, so the
+        personal-org guard has to cover this path too."""
+        from backend.api.features.orgs.invitation_routes import accept_invitation
+
+        self.prisma.orginvitation.find_unique = AsyncMock(
+            return_value=self._make_invitation(email="test@example.com")
+        )
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(id=test_user_id, email="test@example.com")
+        )
+        self.prisma.organization.find_first = AsyncMock(
+            return_value=_make_org(isPersonal=True)
+        )
+        self.prisma.orgmember.create = AsyncMock(
+            return_value=_make_member(userId=test_user_id)
+        )
+        self.prisma.team.find_first = AsyncMock(return_value=None)
+        self.prisma.orginvitation.update = AsyncMock()
+
+        with pytest.raises(ValueError, match="Cannot add a member to a personal"):
+            await accept_invitation("tok-abc", user_id=test_user_id)
+
+        self.prisma.orgmember.create.assert_not_called()
 
     def test_accept_expired_invitation_raises(self, _app_and_client):
         _, client = _app_and_client

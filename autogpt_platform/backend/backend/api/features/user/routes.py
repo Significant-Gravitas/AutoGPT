@@ -1,33 +1,15 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, get_args
+from typing import Annotated
 
-import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Body, HTTPException, Query, Response, Security
 from prisma.enums import BriefingFrequency
 
 from backend.api.model import TimezoneResponse, UpdateTimezoneRequest
-from backend.data.model import UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
-from backend.data.onboarding import (
-    FrontendOnboardingStep,
-    OnboardingStep,
-    UserOnboardingUpdate,
-    complete_onboarding_step,
-    format_onboarding_for_extraction,
-    get_recommended_agents,
-    get_user_onboarding,
-    reset_user_onboarding,
-    update_user_onboarding,
-)
-from backend.data.tally import extract_business_understanding
-from backend.data.understanding import (
-    BusinessUnderstandingInput,
-    upsert_business_understanding,
-)
 from backend.data.user import (
     get_or_create_user,
     get_or_create_user_with_status,
@@ -39,26 +21,21 @@ from backend.data.user import (
 )
 from backend.util.settings import Settings
 
-from .store.model import StoreAgentDetails
-
 settings = Settings()
 logger = logging.getLogger(__name__)
 
-
-# Define the API routes
-v1_router = APIRouter()
-
-
-########################################################
-##################### Auth #############################
-########################################################
+# Nothing is hoisted onto this router, tags included. Six of the seven routes
+# take Security(requires_user); POST /auth/user/preferences/from-email takes
+# none — it is reached from an email link and verifies its own signed token —
+# so a router-level dependency would silently authenticate it.
+router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
 USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
-@v1_router.post(
+@router.post(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
@@ -99,7 +76,7 @@ async def get_or_create_user_route(
     return user.model_dump()
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/email",
     summary="Update user email",
     tags=["auth"],
@@ -113,7 +90,7 @@ async def update_user_email_route(
     return {"email": email}
 
 
-@v1_router.get(
+@router.get(
     "/auth/user/timezone",
     summary="Get user timezone",
     tags=["auth"],
@@ -127,7 +104,7 @@ async def get_user_timezone_route(
     return TimezoneResponse(timezone=user.timezone)
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/timezone",
     summary="Update user timezone",
     tags=["auth"],
@@ -141,7 +118,7 @@ async def update_user_timezone_route(
     return TimezoneResponse(timezone=user.timezone)
 
 
-@v1_router.get(
+@router.get(
     "/auth/user/preferences",
     summary="Get notification preferences",
     tags=["auth"],
@@ -154,7 +131,7 @@ async def get_preferences(
     return preferences
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/preferences",
     summary="Update notification preferences",
     tags=["auth"],
@@ -168,7 +145,7 @@ async def update_preferences(
     return output
 
 
-@v1_router.post(
+@router.post(
     "/auth/user/preferences/from-email",
     summary="Apply a volume-knob choice from a Briefing footer link",
     tags=["auth"],
@@ -219,132 +196,3 @@ def _preference_with_choice(
         store_verdicts_enabled=current.store_verdicts_enabled,
         daily_limit=current.daily_limit,
     )
-
-
-########################################################
-##################### Onboarding #######################
-########################################################
-
-
-@v1_router.get(
-    "/onboarding",
-    summary="Onboarding state",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-    response_model=UserOnboarding,
-)
-async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
-    return await get_user_onboarding(user_id)
-
-
-@v1_router.patch(
-    "/onboarding",
-    summary="Update onboarding state",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-    response_model=UserOnboarding,
-)
-async def update_onboarding(
-    user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
-):
-    return await update_user_onboarding(user_id, data)
-
-
-@v1_router.post(
-    "/onboarding/step",
-    summary="Complete onboarding step",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-)
-async def onboarding_complete_step(
-    user_id: Annotated[str, Security(get_user_id)], step: FrontendOnboardingStep
-):
-    if step not in get_args(FrontendOnboardingStep):
-        raise HTTPException(status_code=400, detail="Invalid onboarding step")
-    return await complete_onboarding_step(user_id, step)
-
-
-@v1_router.get(
-    "/onboarding/agents",
-    summary="Recommended onboarding agents",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-)
-async def get_onboarding_agents(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> list[StoreAgentDetails]:
-    return await get_recommended_agents(user_id)
-
-
-class OnboardingProfileRequest(pydantic.BaseModel):
-    """Request body for onboarding profile submission."""
-
-    user_name: str = pydantic.Field(min_length=1, max_length=100)
-    user_role: str = pydantic.Field(min_length=1, max_length=100)
-    pain_points: list[str] = pydantic.Field(default_factory=list, max_length=20)
-
-
-class OnboardingStatusResponse(pydantic.BaseModel):
-    """Response for onboarding completion check."""
-
-    is_completed: bool
-
-
-@v1_router.get(
-    "/onboarding/completed",
-    summary="Check if onboarding is completed",
-    tags=["onboarding", "public"],
-    response_model=OnboardingStatusResponse,
-    dependencies=[Security(requires_user)],
-)
-async def is_onboarding_completed(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> OnboardingStatusResponse:
-    user_onboarding = await get_user_onboarding(user_id)
-    return OnboardingStatusResponse(
-        is_completed=OnboardingStep.ONBOARDING_COMPLETE
-        in user_onboarding.completedSteps,
-    )
-
-
-@v1_router.post(
-    "/onboarding/reset",
-    summary="Reset onboarding progress",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-    response_model=UserOnboarding,
-)
-async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
-    return await reset_user_onboarding(user_id)
-
-
-@v1_router.post(
-    "/onboarding/profile",
-    summary="Submit onboarding profile",
-    tags=["onboarding"],
-    dependencies=[Security(requires_user)],
-)
-async def submit_onboarding_profile(
-    data: OnboardingProfileRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-):
-    formatted = format_onboarding_for_extraction(
-        user_name=data.user_name,
-        user_role=data.user_role,
-        pain_points=data.pain_points,
-    )
-
-    try:
-        understanding_input = await extract_business_understanding(formatted)
-    except Exception:
-        understanding_input = BusinessUnderstandingInput.model_construct()
-
-    # Ensure the direct fields are set even if LLM missed them
-    understanding_input.user_name = data.user_name
-    understanding_input.user_role = data.user_role
-    if not understanding_input.pain_points:
-        understanding_input.pain_points = data.pain_points
-
-    await upsert_business_understanding(user_id, understanding_input)
-
-    return {"status": "ok"}

@@ -232,6 +232,7 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         Block.__init__(
             self,
             id="fff86bcd-e001-4bad-a7f6-2eae4720c8dc",
+            capability_kind="primitive",
             description="Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart).",
             categories={BlockCategory.OUTPUT},
             input_schema=SendAuthenticatedWebRequestBlock.Input,

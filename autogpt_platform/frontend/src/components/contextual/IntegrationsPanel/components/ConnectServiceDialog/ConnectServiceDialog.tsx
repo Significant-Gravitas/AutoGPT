@@ -22,11 +22,12 @@ interface Props {
   title?: React.ReactNode;
   description?: string;
   onConnected?: (credential: CredentialsMetaResponse) => void;
+  initialProviderId?: string | null;
 }
 
 const DEFAULT_TITLE = "Connect a service";
 const DEFAULT_DESCRIPTION =
-  "Pick a service to connect an API key or authorize with OAuth.";
+  "Choose a service to connect your account or view its setup instructions.";
 
 const TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 const HEIGHT_TRANSITION = {
@@ -52,6 +53,7 @@ export function ConnectServiceDialog({
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
   onConnected,
+  initialProviderId,
 }: Props) {
   const {
     query,
@@ -67,7 +69,12 @@ export function ConnectServiceDialog({
     handleSelect,
     handleBack,
     handleSuccess,
-  } = useConnectServiceDialog({ open, onOpenChange, onConnected });
+  } = useConnectServiceDialog({
+    open,
+    onOpenChange,
+    onConnected,
+    initialProviderId,
+  });
 
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
