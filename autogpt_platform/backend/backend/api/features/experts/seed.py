@@ -66,12 +66,19 @@ class RoutineSeed(TypedDict):
     # time it runs. Not what runs — switching the routine on rewrites this with
     # the owner's answers before anything is scheduled.
     prompt: str
-    # Suggested fire times. Several because one routine can legitimately have
-    # more than one (a callback sweep at 08:30 and again at 13:00 is one thing
-    # the owner turned on). Each is 5-field and resolves in the owner's
-    # timezone. These are defaults: `_spread_cron` nudges the minute at
-    # install so a roster-wide "Monday 9am" doesn't arrive as one pile-up, and
-    # a time the owner names replaces them outright.
+    # Suggested fire times, 5-field and resolved in the owner's timezone.
+    # Several because one routine can legitimately have more than one (a
+    # callback sweep at 08:30 and again at 13:00 is one thing the owner turned
+    # on).
+    #
+    # A minute of `H` means "some minute inside this hour" — plain cron has no
+    # way to say that, so this borrows Jenkins's spelling, and `_spread_cron`
+    # picks the real minute per owner and routine at install. Use it whenever
+    # the hour is what matters, which for a standing job it almost always is:
+    # five personas that all literally say `0 9` arrive on one account as a
+    # 09:00 pile-up against the cap on concurrent turns, and the runs that lose
+    # are dropped rather than retried. Write a real minute only when that exact
+    # minute is the point.
     crons: list[str]
     # What the expert must ask before this can run — which repo, which inbox,
     # what hour. Straight from the source package's installer block. A routine
@@ -164,7 +171,23 @@ You are direct about trade-offs. If a page is already ranking you look for the s
             {"slug": "ai-webpage-copy-improver", "cron": None},
             {"slug": "ai-youtube-to-blog-converter", "cron": None},
         ],
-        "routines": [],
+        "routines": [
+            {
+                "key": "content-pipeline-check",
+                "title": "What ships this week, and what is stuck",
+                "prompt": """Read the editorial calendar and your last check, then report in this order: what ships in the next seven days with the owner on each line, what is late and by how far, what is stuck waiting on one person or one missing proof point, and what has no owner or no ship date.
+
+Never flag the same stuck row two runs running unless it got worse. If nothing ships this week, nothing is late, and nothing has changed since your last run, say so in one line and stop — no filler. Speak up when something newly slips even if nothing else moved.
+
+One line per item, no preamble. Never invent an approval, a draft, or a date.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Where is your editorial calendar?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Jules",
@@ -201,7 +224,24 @@ You space posts out and change the angle each time — a result, a mistake, a qu
                 "cron": None,
             },
         ],
-        "routines": [],
+        "routines": [
+            {
+                "key": "repurposing-queue-check",
+                "title": "What landed this week that is worth cutting up",
+                "prompt": """Look over the work that shipped since your last run — posts, talks, calls, launches, anything the team published — and pick out what is worth repurposing. For each one, name the three to six ideas inside it that could stand on their own, ranked by how much someone would disagree with them, and say which platform each idea belongs on and why.
+
+Leave the source untouched when nothing in it survives on its own, and say so. If nothing new landed and nothing has changed since your last run, say the week was quiet in one line and stop.
+
+Nothing goes out from here: these are drafts waiting for a yes.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Where should I look for what shipped — a calendar, a folder, a feed?",
+                    "Which platforms are actually in play for you?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Nadia",
@@ -244,7 +284,25 @@ You mark every claim as observed or inferred, and you name what you inferred it 
             {"slug": "personalized-morning-coffee-newsletter", "cron": "0 8 * * 1"},
             {"slug": "youtube-transcription-scraper", "cron": None},
         ],
-        "routines": [],
+        "routines": [
+            {
+                "key": "competitor-brief",
+                "title": "What competitors shipped, said, or changed",
+                "prompt": """Work the tiered watch list: Tier 1 direct competitors get a deep read, Tier 2 adjacent a skim, Tier 3 aspirational a monthly look. Fetch each one's public pages, blog, and pricing, and log every URL you fetched — including the ones that failed.
+
+Open with one line: the date range, and how many material changes you found. Then one block per competitor, every line ending in its source URL and date. A competitor with nothing material gets no block.
+
+Close each block with two to four lines on what it means here: a launch gets a positioning read, a pricing move a packaging read, a content push a calendar read. Say it is unclear when it is unclear.
+
+Never brief the same change twice. A week with nothing material is one line saying the week was quiet, not a brief. No change without a link, and never pad it to look busy.""",
+                "crons": ["H 8 * * 5"],
+                "asks": [
+                    "Who is on the watch list, and which tier is each one?",
+                    "What day and hour should the brief land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Remy",
@@ -286,7 +344,26 @@ You treat deliverability as a list problem before a technical one. You will ask 
         # workflow first, then dropping her from PERSONAS_WITHOUT_WORKFLOWS in
         # the roster contract test.
         "preloads": [],
-        "routines": [],
+        "routines": [
+            {
+                "key": "lifecycle-performance-read",
+                "title": "How last week's lifecycle email actually did",
+                "prompt": """Fix the period: the last seven full days against the seven before. Pull the numbers from the source the user trusts, plus the send calendar and your previous read.
+
+Report what sent, what it did — opens, clicks, replies, unsubscribes, and whatever conversion the user actually cares about — and what moved against the week before. Every number carries its source. A move you cannot explain from evidence gets written as unclear, not guessed at.
+
+Then the three to five things worth doing about it: a subject line worth retiring, a segment worth splitting, a flow with a step nobody reaches. One line each.
+
+Never report the same week twice. A quiet week gets the headline, the table, and one line saying it was quiet.""",
+                "crons": ["H 8 * * 1"],
+                "asks": [
+                    "Where do the email numbers come from?",
+                    "Where is the send calendar?",
+                    "What day and hour should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Max",
@@ -320,7 +397,61 @@ You are rigorous about data quality. You flag when contact information looks sta
             {"slug": "business-ownerceo-finder", "cron": None},
             {"slug": "email-address-finder", "cron": None},
         ],
-        "routines": [],
+        "routines": [
+            {
+                "key": "weekday-prospecting-batch",
+                "title": "The next few names, researched with drafts waiting",
+                "prompt": """Take the next batch off the target list at the size the user set, five by default, preferring strong-fit rows that are new or enriched and have never been touched.
+
+Research each one on the public web, then write its opening message for the channel the user picked. Hold the no-invented-facts rule: an unverified field stays blank, and a contact enters only from a published source you can link. Post the drafts in one message, each with its sources underneath and one line on what you left out.
+
+Name any row you could not verify, with the reason, at the end. Never re-draft a row you drafted in the last seven days. When there is nothing left worth drafting, say so in one line and say where the next ten names should come from.
+
+Nothing sends. These are drafts waiting on a yes, and the list rows stay as they are until the user says to mark them.""",
+                "crons": ["H 8 * * 1-5"],
+                "asks": [
+                    "Where is the target list?",
+                    "How many should I work per run? (five by default)",
+                    "Which channel are the first touches for?",
+                    "What time should the batch land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "monday-list-top-up",
+                "title": "Tops up the target list before it runs dry",
+                "prompt": """Audit the target list: count the untouched strong-fit rows, and check for duplicates, stale ownership, and suppression conflicts. Name what is wrong rather than quietly fixing it.
+
+If ten or more untouched strong-fit rows remain, say the list is healthy with the count and stop. Otherwise research up to ten fresh rows at the same bar as the original build — scored fit, verified titles, no guessed contacts — and never re-add a person-and-company pair that came off the list in the last 30 days.
+
+Put the new rows here with the fit reason on each, and wait. Writing them back to the list is the user's call, not this run's.""",
+                "crons": ["H 9 * * 1"],
+                "asks": [
+                    "Where is the target list?",
+                    "What does a strong-fit row look like for you?",
+                    "What day and hour should this run, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "friday-pipeline-recap",
+                "title": "The week's pipeline movement and what is stuck",
+                "prompt": """Pull the week's movement from the numbers source the user trusts, confirming its shape before you read it. Never carry last week forward as news.
+
+A deal already recapped with no change since gets one rollup line, not a repeat block. If nothing moved and nothing is newly stuck, say the week was quiet in one line, add a one-line stalled-age rollup naming the oldest stuck deal and its age, and stop.
+
+Otherwise one block per deal that moved or stalled: the movement with its evidence, your forecast grade, and the one next action with an owner. Label every load-bearing claim FACT, INFERENCE, or UNKNOWN.
+
+Close with the outreach tally — drafted, sent, replies split positive, neutral and negative, meetings booked — graded against a 3-5% reply rate and two to three meetings per hundred sent, then the top three actions for Monday.""",
+                "crons": ["H 16 * * 5"],
+                "asks": [
+                    "Where do the pipeline numbers live?",
+                    "Where are the deal notes?",
+                    "What day and hour should the recap land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Frankie",
@@ -357,7 +488,38 @@ You are conservative about commitments. You never promise a delivery date, refun
             # are research-only (see PreloadSeed.cron).
             {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
         ],
-        "routines": [],
+        "routines": [
+            {
+                "key": "day-ahead-brief",
+                "title": "Today's meetings, and what still needs you",
+                "prompt": """Read today's calendar and report in this order: what is on today with who is attending, which of those need prep you have not done, what is waiting on someone else, and anything double-booked or missing a location or an agenda.
+
+For each meeting that needs it, say what a good outcome looks like and the one thing to have ready. Keep it scannable: one line per item, owners in bold, times explicit, and a one-line summary at the top for anyone with thirty seconds.
+
+If the day is clear and nothing has changed since your last run, say so in one line. Never invent an attendee, an agenda, or a commitment.""",
+                "crons": ["H 8 * * 1-5"],
+                "asks": [
+                    "Which calendar should I read?",
+                    "What time should the brief land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "week-ahead-review",
+                "title": "What moved last week, and what is stuck",
+                "prompt": """Fix the period: the last seven full days against the seven before. Compare like with like — a holiday week goes against the prior holiday week, not the one before it.
+
+Report what moved, then what is stuck, in this order: overdue actions, slipped milestones, anything breaching a commitment, and anything with no owner. One line per item with the owner on it. Every number carries its source, and a move you cannot explain from evidence is written as unclear.
+
+Never report the same week twice. A quiet week gets the headline, the summary, and one line saying it was quiet — plus the stuck list, if anything is stuck.""",
+                "crons": ["H 8 * * 1"],
+                "asks": [
+                    "Where do I read what moved — a tracker, a board, a sheet?",
+                    "What day and hour should the review land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
 ]
 

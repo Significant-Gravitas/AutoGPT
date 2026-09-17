@@ -34,6 +34,11 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 
+# Jenkins's spelling for "some minute inside this hour, consistently" —
+# a thing plain cron has no syntax for. Resolved to a real minute at
+# install time by ``_spread_cron``; never persisted or handed to APScheduler.
+_SPREAD_MINUTE = "H"
+
 
 def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
     return ExpertRoutine(
@@ -146,15 +151,13 @@ async def enable_routine(
 
     user = await get_user_by_id(user_id)
     user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
-    if crons is not None:
-        resolved_crons = crons
-    else:
-        # Only a template's suggested hour gets nudged. A time the owner named
-        # is used exactly as given.
-        resolved_crons = [
-            _spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
-            for index, cron in enumerate(row.crons)
-        ]
+    # Resolved on both paths, so an ``H`` that reaches here from the template or
+    # straight back from the model never gets as far as APScheduler, which has
+    # no idea what it means.
+    resolved_crons = [
+        _spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
+        for index, cron in enumerate(crons if crons is not None else row.crons)
+    ]
     for cron in resolved_crons:
         CronTrigger.from_crontab(cron, timezone=user_timezone)
 
@@ -277,25 +280,27 @@ async def record_routine_thread(routine_id: str, session_id: str) -> None:
 
 
 def _spread_cron(cron: str, *, seed: str) -> str:
-    """Move a suggested fire time to its own minute inside the same hour.
+    """Resolve a Jenkins-style ``H`` minute to a concrete one.
 
-    Five different experts all say "Monday at 9". Someone who hires three of
-    them has three routines waking in the same minute, against a cap on how
-    many chat turns can run at once — and the ones that miss out do not fail
-    loudly, they simply never happen, so the owner's Monday briefing is just
-    absent with nothing on screen to explain it.
+    Five different experts all want "Monday at 9". Someone who hires three of
+    them has three routines waking in the same minute, against a cap on how many
+    chat turns can run at once — and the ones that miss out do not fail loudly,
+    they simply never happen, so the owner's Monday briefing is just absent with
+    nothing on screen to explain it.
 
-    So each routine gets a minute of its own, picked from who the owner is and
-    which routine it is. The same routine for the same person lands on the same
-    minute every week; two people's morning sweeps land on different minutes;
-    two routines on one account never collide with each other.
+    Plain cron cannot express "some minute in this hour": ``*`` means all sixty.
+    So a roster cron says ``H 9 * * 1`` — borrowing Jenkins's ``H`` — and this
+    picks the minute from who the owner is and which routine it is. The same
+    routine for the same person lands on the same minute every week; two
+    people's morning sweeps land on different minutes; two routines on one
+    account never collide with each other.
 
-    Only a plain numeric minute is moved. Anything else — ``*``, a list, a
-    step — is an intent we cannot rewrite without changing what it means, so it
-    is left exactly as written. A time the owner named never reaches here.
+    Only ``H`` is resolved. A cron that names a minute means that minute, from a
+    roster author who wrote 07:40 on purpose as much as from an owner who asked
+    for 10am — the implicit version of this used to move both.
     """
     fields = cron.split()
-    if len(fields) != 5 or not fields[0].isdigit():
+    if len(fields) != 5 or fields[0] != _SPREAD_MINUTE:
         return cron
     # hashlib, not hash(): Python salts the builtin per process, which would
     # give the same routine a different minute after every deploy.
