@@ -311,6 +311,20 @@ class TestRequiredScopes:
         assert scoped not in _token_cache
         assert _USER not in _gh_identity_cache
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_credential_picked_in_the_chat_is_the_only_candidate(self):
+        # Without scopes asked for, stored order would hand over the older one.
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            token = await get_provider_token(
+                _USER, _PROVIDER, credential_id=self.newer.id
+            )
+            env = await get_integration_env_vars(
+                _USER, selected={"github": self.newer.id}
+            )
+        assert token == "tok-newer"
+        assert env["GH_TOKEN"] == "tok-newer"
+
     def test_invalidation_drops_scoped_entries_too(self):
         scoped = (_USER, _PROVIDER, frozenset({"repo", "read:org"}))
         _token_cache[scoped] = "tok"

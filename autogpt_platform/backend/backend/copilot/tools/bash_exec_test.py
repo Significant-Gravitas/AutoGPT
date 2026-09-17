@@ -10,6 +10,17 @@ from .bash_exec import BashExecTool
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
+_PICKED = {"github": "cred-picked"}
+
+
+@pytest.fixture(autouse=True)
+def picked_credentials():
+    """The chat's credential picks, which live in Redis outside these tests."""
+    with patch(
+        "backend.copilot.tools.bash_exec.selected_credentials",
+        new=AsyncMock(return_value=_PICKED),
+    ):
+        yield
 
 
 def _make_tool() -> BashExecTool:
@@ -54,7 +65,8 @@ class TestBashExecE2BTokenInjection:
                 user_id=_USER,
             )
 
-        mock_get_env.assert_awaited_once_with(_USER, None)
+        # The session's picks reach the token lookup, not just its scopes.
+        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED)
         call_kwargs = sandbox.commands.run.call_args[1]
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"

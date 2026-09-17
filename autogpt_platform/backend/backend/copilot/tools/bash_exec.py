@@ -27,6 +27,7 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
@@ -206,7 +207,9 @@ class BashExecTool(BaseTool):
         # Collect injected secret values so we can scrub them from output.
         secret_values: list[str] = []
         if user_id is not None:
-            integration_env = await get_integration_env_vars(user_id, required_scopes)
+            integration_env = await get_integration_env_vars(
+                user_id, required_scopes, await selected_credentials(session_id)
+            )
             secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
 

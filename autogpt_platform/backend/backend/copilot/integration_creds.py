@@ -101,7 +101,7 @@ class _LockedTTLCache(TTLCache):
 
 # (user_id, provider) → token string, or (user_id, provider, required_scopes)
 # when the caller asked for specific scopes.  TTLCache handles expiry + eviction.
-_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str]]
+_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str], str | None]
 _token_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
@@ -171,12 +171,19 @@ except RuntimeError:
 _manager = IntegrationCredentialsManager()
 
 
-def _cache_key(user_id: str, provider: str, required: frozenset[str]) -> _CacheKey:
-    return (user_id, provider, required) if required else (user_id, provider)
+def _cache_key(
+    user_id: str, provider: str, required: frozenset[str], credential_id: str | None
+) -> _CacheKey:
+    if required or credential_id:
+        return (user_id, provider, required, credential_id)
+    return (user_id, provider)
 
 
 async def get_provider_token(
-    user_id: str, provider: str, required_scopes: frozenset[str] = frozenset()
+    user_id: str,
+    provider: str,
+    required_scopes: frozenset[str] = frozenset(),
+    credential_id: str | None = None,
 ) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -185,11 +192,13 @@ async def get_provider_token(
     *required_scopes* wins: that is the credential the connect card shows as
     connected, so injecting any other would send the model back to a card that
     already says "Connected".
+    *credential_id* is the credential the user picked for this provider in the
+    chat; when it is still stored, it is the only candidate.
     Both found tokens and "not connected" results are cached for 60 s, and a
     credential write in any process evicts the entry before that lapses.
     """
     _ensure_cache_invalidation_listener()
-    cache_key = _cache_key(user_id, provider, required_scopes)
+    cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
 
     if cache_key in _null_cache:
         return None
@@ -207,6 +216,9 @@ async def get_provider_token(
             exc_info=True,
         )
         return None
+
+    if picked := [c for c in creds_list if c.id == credential_id]:
+        creds_list = picked
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
     # Credentials covering the requested scopes come first, then ones with
@@ -295,19 +307,24 @@ _listener_thread: threading.Thread | None = None
 
 
 async def get_integration_env_vars(
-    user_id: str, required_scopes: Mapping[str, frozenset[str]] | None = None
+    user_id: str,
+    required_scopes: Mapping[str, frozenset[str]] | None = None,
+    selected: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Return env vars for all providers the user has connected.
 
     Iterates :data:`PROVIDER_ENV_VARS`, fetches each token, and builds a flat
     ``{env_var: token}`` dict ready to pass to a subprocess or E2B sandbox.
     Only providers with a stored credential contribute entries.
-    *required_scopes* maps a provider to the scopes its token should carry.
+    *required_scopes* maps a provider to the scopes its token should carry, and
+    *selected* to the credential the user picked for it in this chat.
     """
     env: dict[str, str] = {}
     for provider, var_names in PROVIDER_ENV_VARS.items():
         scopes = (required_scopes or {}).get(provider, frozenset())
-        token = await get_provider_token(user_id, provider, scopes)
+        token = await get_provider_token(
+            user_id, provider, scopes, (selected or {}).get(provider)
+        )
         if token:
             for var in var_names:
                 env[var] = token
