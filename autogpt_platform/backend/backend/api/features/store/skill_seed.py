@@ -330,6 +330,45 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["operations", "content"],
         "required_providers": [],
     },
+    *[
+        {"slug": slug, "categories": ["development"], "required_providers": []}
+        for slug in (
+            "dependency-security-getting-started",
+            "dependency-inventory",
+            "outdated-dependency-review",
+            "vulnerability-triage",
+            "cve-stack-relevance",
+            "dependency-upgrade-plan",
+            "dependency-upgrade-pr",
+            "dependency-change-risk-review",
+        )
+    ],
+    *[
+        {"slug": slug, "categories": ["support"], "required_providers": []}
+        for slug in (
+            "customer-success-getting-started",
+            "customer-onboarding-plan",
+            "customer-health-score",
+            "churn-risk-review",
+            "renewal-readiness-review",
+            "renewal-touchpoint-draft",
+            "expansion-opportunity-brief",
+            "customer-success-plan",
+        )
+    ],
+    *[
+        {"slug": slug, "categories": ["sales"], "required_providers": []}
+        for slug in (
+            "deal-desk-getting-started",
+            "proposal-draft",
+            "statement-of-work-draft",
+            "pipeline-stage-aging-review",
+            "deal-risk-review",
+            "renewal-negotiation-brief",
+            "pricing-and-terms-approval-brief",
+            "proposal-quality-check",
+        )
+    ],
 ]
 
 

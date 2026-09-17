@@ -74,6 +74,41 @@ PERSONAS_WITHOUT_WORKFLOWS = {
     "Harper",
     "Vera",
     "Ellis",
+    "Devon",
+    "Riley",
+    "Jordan",
+}
+EXPECTED_SKILLS_ONLY_ROSTER = {
+    "Devon": [
+        "dependency-security-getting-started",
+        "dependency-inventory",
+        "outdated-dependency-review",
+        "vulnerability-triage",
+        "cve-stack-relevance",
+        "dependency-upgrade-plan",
+        "dependency-upgrade-pr",
+        "dependency-change-risk-review",
+    ],
+    "Riley": [
+        "customer-success-getting-started",
+        "customer-onboarding-plan",
+        "customer-health-score",
+        "churn-risk-review",
+        "renewal-readiness-review",
+        "renewal-touchpoint-draft",
+        "expansion-opportunity-brief",
+        "customer-success-plan",
+    ],
+    "Jordan": [
+        "deal-desk-getting-started",
+        "proposal-draft",
+        "statement-of-work-draft",
+        "pipeline-stage-aging-review",
+        "deal-risk-review",
+        "renewal-negotiation-brief",
+        "pricing-and-terms-approval-brief",
+        "proposal-quality-check",
+    ],
 }
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
@@ -3299,6 +3334,21 @@ def test_operations_experts_bundle_their_eight_skills_in_work_order():
         assert roster[name]["preloads"] == []
 
 
+def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected_skills in EXPECTED_SKILLS_ONLY_ROSTER.items():
+        assert roster[name]["bundled_skills"] == expected_skills
+        assert roster[name]["preloads"] == []
+    assert {
+        name: (roster[name]["role"], roster[name]["categories"])
+        for name in EXPECTED_SKILLS_ONLY_ROSTER
+    } == {
+        "Devon": ("Dependency & Security Hygiene", ["development"]),
+        "Riley": ("Customer Success & Retention", ["support"]),
+        "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
+    }
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
     server: SpinTestServer, hub_listing, monkeypatch
@@ -3376,6 +3426,18 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
     ]
     for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
         assert day_one[name] == [], name
+    assert [item.timing for item in day_one["Devon"]] == [
+        "after access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Riley"]] == [
+        "after data access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Jordan"]] == [
+        "after deal input",
+        "on request",
+    ]
 
 
 def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
