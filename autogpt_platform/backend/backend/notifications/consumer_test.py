@@ -99,7 +99,11 @@ async def test_messages_are_worked_concurrently_up_to_the_prefetch():
         return True
 
     messages = [_message() for _ in range(total)]
-    await manager._consume_queue(_queue(messages), slow, "q")
+    # A real queue name, not a placeholder: the audience queue is serialised
+    # for ordering and the other three must not be dragged down with it.
+    await manager._consume_queue(
+        _queue(messages), slow, delivery.USER_NOTIFICATIONS_QUEUE
+    )
 
     assert peak == delivery.CONSUMER_CONCURRENCY, (
         "the consumer must keep exactly as many messages in flight as the "
@@ -334,3 +338,51 @@ async def test_postmark_rejections_that_cannot_succeed_go_straight_to_the_dlq(
     assert sleep.await_count == attempts - 1
     message.reject.assert_awaited_once_with(requeue=False)
     message.ack.assert_not_awaited()
+
+
+# ── ordering within a queue ────────────────────────────────────────────────
+
+
+def _audience(action: delivery.AudienceAction, email: str) -> MagicMock:
+    return _message(
+        delivery.AudienceEventModel(
+            action=action, email=email, user_id="u"
+        ).model_dump_json()
+    )
+
+
+@pytest.mark.asyncio
+async def test_audience_changes_for_one_email_keep_their_published_order():
+    """Concurrency drops FIFO within a queue, and the audience handlers are
+    the ones that are not commutative: add_to_changelog and
+    remove_from_changelog for the same address leave the subscriber in
+    whichever group won the race. Churn then resubscribe is one Stripe burst
+    apart, so the two are published back to back."""
+    manager = _manager()
+    applied: list[str] = []
+
+    async def remove(_: str) -> None:
+        # A removal is a lookup and then a delete; an add is one call.
+        await asyncio.sleep(0.02)
+        applied.append("remove")
+
+    async def add(_: str) -> None:
+        applied.append("add")
+
+    messages = [
+        _audience(delivery.AudienceAction.REMOVE_CHANGELOG, "churned@example.com"),
+        _audience(delivery.AudienceAction.ADD_CHANGELOG, "churned@example.com"),
+    ]
+
+    with (
+        patch.object(delivery.mailerlite, "remove_from_changelog", remove),
+        patch.object(delivery.mailerlite, "add_to_changelog", add),
+    ):
+        await manager._consume_queue(
+            _queue(messages), manager._process_audience_change, delivery.AUDIENCE_QUEUE
+        )
+
+    assert applied == ["remove", "add"], (
+        "the resubscribe must land after the churn removal it was published "
+        "after; reordered, the returning customer is left out of the changelog"
+    )

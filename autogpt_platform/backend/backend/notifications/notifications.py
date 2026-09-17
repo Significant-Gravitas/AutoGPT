@@ -86,6 +86,10 @@ def _is_permanent_delivery_failure(error: ClientError) -> bool:
     return error.error_code in PERMANENT_POSTMARK_ERROR_CODES
 
 
+def _concurrency_for(queue_name: str) -> int:
+    return 1 if queue_name in SERIAL_QUEUES else CONSUMER_CONCURRENCY
+
+
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
 # Messages a consumer works on at once, and the broker prefetch to match. The
@@ -93,15 +97,39 @@ CONSUMER_RETRY_BACKOFF_SECONDS = 2
 # other prefetched messages waiting in memory, and a large fan-out from one
 # scheduled pass drained at a fraction of the rate the pass published it.
 CONSUMER_CONCURRENCY = 10
+# Queues whose messages have to be applied in the order they were published,
+# and so are worked one at a time however many the broker prefetches.
+# Concurrency is safe wherever two messages commute, which is why the other
+# three queues keep it: a second briefing or a second ops mail is its own
+# unit of work. The audience queue is the exception. ADD_CHANGELOG and
+# REMOVE_CHANGELOG for one address are a resubscribe and a churn, MailerLite
+# is left in whichever state finished last, and a removal is a lookup then a
+# delete while an add is one call — so a churn-then-resubscribe pair, one
+# Stripe burst apart, reorders and leaves a paying customer out of the
+# changelog. Volume here is one message per subscription lifecycle event.
+SERIAL_QUEUES = frozenset({AUDIENCE_QUEUE})
 # Hard ceiling on one message's processing. RabbitMQ closes the channel when a
 # delivered message goes unacknowledged for its consumer timeout (30 minutes
 # by default), and every other in-flight ack on that channel then fails too;
 # a bounded wait turns one hung call into one retried message instead.
 MESSAGE_PROCESSING_TIMEOUT_SECONDS = 300
 # On shutdown, how long in-flight handlers get to settle before they are
-# cancelled. A handler cancelled between its send and its ack leaves an
-# email delivered and the message unacked, which the broker then redelivers.
-# Must fit inside SHUTDOWN_TIMEOUT_SECONDS with room for the cancel itself.
+# cancelled. A handler cancelled between its send and its ack leaves an email
+# delivered and the message unacked, which the broker then redelivers.
+#
+# The guarantee is narrower than that reads, so state it plainly: a handler
+# that finishes inside the grace is acked, and a handler still running at the
+# end of it is cancelled and redelivered exactly as it was before. The second
+# case is not hypothetical — a briefing pass does DatabaseManager RPCs, then
+# renders, then calls Postmark, whose own client timeout is 30s — so this
+# narrows the double-send window rather than closing it.
+#
+# It is not simply raised to cover that: the grace has to fit inside
+# SHUTDOWN_TIMEOUT_SECONDS with room for the cancel itself, and that sets
+# CLEANUP_TIMEOUT_SECONDS, the whole budget the process gets before its
+# supervisor stops waiting and kills it. Covering a 30s send means pushing all
+# three past a typical termination grace, trading a rare redelivered email for
+# a reliable hard kill mid-send.
 HANDLER_SHUTDOWN_GRACE_SECONDS = 5
 # Postmark error codes that will never succeed on retry: 300 is a malformed
 # request (bad address), 406 an inactive recipient (hard bounce, spam
@@ -406,13 +434,15 @@ class NotificationManager(AppService):
         process_func: Callable[[str], Awaitable[bool]],
         queue_name: str,
     ):
-        """Work up to CONSUMER_CONCURRENCY messages at once.
+        """Work up to this queue's concurrency in messages at once.
 
         The prefetch already delivered that many; handling them one after
-        another only kept the rest waiting in memory.
+        another only kept the rest waiting in memory. A queue in
+        SERIAL_QUEUES stays at one, because its messages are not commutative
+        and have to be applied in the order they were published.
         """
         logger.info(f"Starting consumer for queue: {queue_name}")
-        slots = asyncio.Semaphore(CONSUMER_CONCURRENCY)
+        slots = asyncio.Semaphore(_concurrency_for(queue_name))
         in_flight: set[asyncio.Task[None]] = set()
 
         async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
@@ -477,7 +507,13 @@ class NotificationManager(AppService):
 
         ``process_func`` MUST be idempotent: the same body is replayed on each
         attempt, so a partial success (Postmark accepted the email but a later
-        write failed) re-runs on retry.
+        write failed) re-runs on retry. The processing timeout is a second,
+        quieter way to get one: it cancels the coroutine, but a Postmark send
+        runs in a worker thread via ``asyncio.to_thread`` and cancelling the
+        await does not stop the thread, so a send that is merely slow can
+        still land and then be retried. It takes a stall ten times Postmark's
+        own 30s client timeout to reach that, which is why the bound is worth
+        having anyway.
         """
         # Only the handler runs inside the retried block. Settling happens in
         # the `else` and after the loop, so an ack or reject that fails for a
