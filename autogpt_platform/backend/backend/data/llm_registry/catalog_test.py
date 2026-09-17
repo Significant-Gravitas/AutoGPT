@@ -337,9 +337,7 @@ def test_mercury_2_5_bills_at_authored_rates():
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[mercury].max_output_tokens == 65536
-    mercury_entry = next(
-        m for m in CATALOG.models if m.slug == "inception/mercury-2.5"
-    )
+    mercury_entry = next(m for m in CATALOG.models if m.slug == "inception/mercury-2.5")
     assert mercury_entry.price_tier == 1
     assert mercury_entry.context_window == 260000
     assert mercury_entry.supports_tools is True
