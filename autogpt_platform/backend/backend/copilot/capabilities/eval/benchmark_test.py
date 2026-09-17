@@ -57,4 +57,7 @@ def test_registry_returns_something_far_more_often(report: Report):
 
 def test_named_cases(report: Report):
     assert report.named_failures() == {}, format_report(report)
-    assert set(report.named) == set(NAMED_CASES)
+    # A pinned case sits out when every block that would answer it is absent
+    # from this index, which happens when its provider OAuth is unconfigured.
+    assert set(report.named) | set(report.skipped_named) == set(NAMED_CASES)
+    assert set(report.named) & set(report.skipped_named) == set()
