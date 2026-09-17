@@ -10,12 +10,14 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
+import * as Sentry from "@sentry/nextjs";
 import { Key, storage } from "../local-storage";
 import { environment } from "@/services/environment";
 
 describe("storage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.mocked(Sentry.captureException).mockClear();
     vi.mocked(environment.isServerSide).mockReturnValue(false);
   });
 
@@ -52,6 +54,31 @@ describe("storage", () => {
         if (original) {
           Object.defineProperty(window, "localStorage", original);
         }
+      }
+    });
+  });
+
+  describe("unexpected write failures", () => {
+    it("reports them to Sentry when storage is available", () => {
+      const error = new Error("QuotaExceededError");
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      const removeItem = vi
+        .spyOn(window.localStorage, "removeItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      try {
+        storage.set(Key.COPILOT_MODE, "fast");
+        storage.clean(Key.COPILOT_MODE);
+        expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+        expect(Sentry.captureException).toHaveBeenCalledWith(error);
+      } finally {
+        setItem.mockRestore();
+        removeItem.mockRestore();
       }
     });
   });
