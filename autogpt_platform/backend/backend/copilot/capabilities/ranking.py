@@ -51,6 +51,11 @@ def tier(entry: CapabilityEntry, connected: bool | None) -> int:
     """0 = connected service ... 3 = bare primitive; used for tie-breaks."""
     if entry.klass == "service":
         return 0 if connected else 1
+    # A host-keyed primitive resolves its credential from the request URL at
+    # call time, so ``connected`` is None rather than False. Reading that as
+    # "no credentials" ranked it below primitives that genuinely have none.
+    if connected is None and entry.connection.key_type == "host":
+        return 2
     return 2 if connected else 3
 
 
