@@ -14,6 +14,7 @@ _SDK_WIRE_MESSAGE = "%(method)s %(url)s %(arrow)s headers=%(headers)s body=%(bod
 class WireCapture(BaseModel):
     request: bytes | None = None
     response: bytes | None = None
+    request_id: str = ""
 
 
 @contextmanager
@@ -34,6 +35,7 @@ def capture_wire() -> Iterator[WireCapture]:
 class _WireArguments(TypedDict):
     arrow: str
     body: bytes | None
+    headers: dict[str, str]
 
 
 class _SDKTransportLogging(Protocol):
@@ -61,6 +63,7 @@ class _CaptureLogger(logging.Logger):
                 capture.request = args["body"]
             elif args["arrow"] == "<-":
                 capture.response = args["body"]
+                capture.request_id = args["headers"].get("x-typesafe-request-id", "")
         # Wire bodies stay in this context and never reach logging handlers.
 
 

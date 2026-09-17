@@ -1,3 +1,4 @@
+import base64
 import json
 from time import perf_counter
 from typing import Any
@@ -66,6 +67,16 @@ async def call_jev(
                     started,
                     "Jev connection failed or timed out; no HTTP response was received.",
                 )
+            except UnicodeDecodeError:
+                if wire.response is None:
+                    raise
+                return _failure(
+                    wire,
+                    prepared,
+                    started,
+                    "Jev returned an invalid response.",
+                    wire.request_id,
+                )
             return _success(result, wire, prepared, started)
 
 
@@ -133,10 +144,16 @@ def _result(
         raise RuntimeError(
             "Jev SDK wire capture failed; request transparency is unavailable."
         )
+    response, encoded = _response_body(wire.response)
+    if encoded:
+        error = (
+            f"{error} Response body is not valid UTF-8; "
+            "response contains the exact bytes as a Base64 data URL."
+        ).strip()
     return JevCallResult(
         answers=answers,
         request=wire.request.decode("utf-8"),
-        response=wire.response.decode("utf-8") if wire.response is not None else None,
+        response=response,
         latency_ms=(perf_counter() - started) * 1_000,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
@@ -145,3 +162,13 @@ def _result(
         truncation_note=prepared.truncation_note,
         error=error,
     )
+
+
+def _response_body(body: bytes | None) -> tuple[str | None, bool]:
+    if body is None:
+        return None, False
+    try:
+        return body.decode("utf-8"), False
+    except UnicodeDecodeError:
+        encoded = base64.b64encode(body).decode("ascii")
+        return f"data:application/octet-stream;base64,{encoded}", True

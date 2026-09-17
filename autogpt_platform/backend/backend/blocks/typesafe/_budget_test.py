@@ -1,16 +1,23 @@
 import json
+import os
 
 import pytest
 from typesafe_sdk import Choice, Noul
 from typesafe_sdk._core.json import serialize
-from typesafe_sdk.constants import DEFAULT_MODEL
+from typesafe_sdk.constants import DEFAULT_MODEL, DEFAULT_MODEL_ENV
 
 from backend.blocks.typesafe._budget import MAX_REQUEST_BYTES, prepare_state
 
 
 def request_size(state: str, questions: dict) -> int:
     return len(
-        serialize({"state": state, "model": DEFAULT_MODEL, "questions": questions})
+        serialize(
+            {
+                "state": state,
+                "model": os.environ.get(DEFAULT_MODEL_ENV, "").strip() or DEFAULT_MODEL,
+                "questions": questions,
+            }
+        )
     )
 
 
@@ -73,3 +80,15 @@ def test_truncated_structured_state_is_an_explicit_text_prefix():
     assert result.truncated
     assert json.dumps(original, separators=(",", ":")).startswith(result.state)
     assert "JSON text" in result.truncation_note
+
+
+@pytest.mark.parametrize(
+    "configured_model", ["", "   ", "x", "  x  ", "jev-custom-" + "x" * 100]
+)
+def test_boundary_helper_uses_configured_model(monkeypatch, configured_model):
+    monkeypatch.setenv("TYPESAFE_DEFAULT_MODEL", configured_model)
+    questions = {"q": Noul(instructions="Relevant?")}
+    text = "x" * 40_000
+    result = prepare_state(text, questions)
+    assert request_size(result.state, questions) <= MAX_REQUEST_BYTES
+    assert request_size(text[: len(result.state) + 1], questions) > MAX_REQUEST_BYTES

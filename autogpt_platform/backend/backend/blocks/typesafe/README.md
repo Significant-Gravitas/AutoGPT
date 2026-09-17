@@ -32,6 +32,10 @@ HTTP body strings, plus `latency_ms: float`, `input_tokens: int | None`,
 `output_tokens: int | None`, `request_id: str`, `truncated: bool`, and
 `truncation_note: str`. On failure, unavailable response/usage values are null
 and an `error: str` pin explains the failure; no decision or routing pins fire.
+Valid UTF-8 responses remain verbatim. If a response contains invalid UTF-8,
+`response` preserves its exact bytes as a `data:application/octet-stream;base64,`
+URL, and `error` explains this encoding. Decode the portion after the comma
+with Base64 to recover the original bytes; no replacement characters are used.
 Timing is measured around the
 call, and token counts come from the API. Headers containing credentials are
 never outputs. Inspect these pins to see precisely which evidence and rubric

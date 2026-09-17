@@ -32,7 +32,10 @@ class JevInput(BlockSchemaInput):
 class JevOutput(BlockSchemaOutput):
     request: str = SchemaField(description="Verbatim JSON request body sent to Jev.")
     response: str | None = SchemaField(
-        description="Verbatim JSON response body from Jev, or null if no response arrived."
+        description=(
+            "Verbatim UTF-8 response body from Jev, or null if no response arrived. "
+            "Invalid UTF-8 is preserved as a lossless Base64 data URL with an error."
+        )
     )
     latency_ms: float = SchemaField(description="Wall-clock API call duration in ms.")
     input_tokens: int | None = SchemaField(

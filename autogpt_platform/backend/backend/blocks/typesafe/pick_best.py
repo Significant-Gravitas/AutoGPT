@@ -104,21 +104,16 @@ class JevPickBestBlock(JevBlockBase):
 
 
 def candidate_options(candidates: list[Any]) -> tuple[dict[str, str], str]:
-    descriptions = [
-        json.dumps(
+    options: dict[str, str] = {}
+    shortened: list[str] = []
+    for index, candidate in enumerate(candidates):
+        label = f"candidate_{index + 1}"
+        text = json.dumps(
             candidate, ensure_ascii=False, separators=(",", ":"), allow_nan=False
         )
-        for candidate in candidates
-    ]
-    options = {
-        f"candidate_{index + 1}": text[:CANDIDATE_DESCRIPTION_LIMIT]
-        for index, text in enumerate(descriptions)
-    }
-    shortened = [
-        f"candidate_{index + 1}"
-        for index, text in enumerate(descriptions)
-        if len(text) > CANDIDATE_DESCRIPTION_LIMIT
-    ]
+        options[label] = text[:CANDIDATE_DESCRIPTION_LIMIT]
+        if len(text) > CANDIDATE_DESCRIPTION_LIMIT:
+            shortened.append(label)
     note = (
         f"Candidate descriptions capped at {CANDIDATE_DESCRIPTION_LIMIT} characters: {', '.join(shortened)}."
         if shortened
