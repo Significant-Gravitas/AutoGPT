@@ -365,6 +365,29 @@ def test_pareto_bills_at_authored_rates():
     assert pareto_entry.supports_tools is True
 
 
+def test_ling_3_0_flash_vl_bills_at_authored_rates():
+    """InclusionAI Ling 3.0 Flash VL (OpenRouter, list price $0.06/$0.18
+    per 1M) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    ling = LLMModel("inclusionai/ling-3.0-flash-vl")
+    assert MODEL_COST[ling] == 1
+    assert TOKEN_COST[ling].model_dump() == {
+        "input": 9.0,
+        "output": 27.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[ling].max_output_tokens == 32768
+    ling_entry = next(
+        m for m in CATALOG.models if m.slug == "inclusionai/ling-3.0-flash-vl"
+    )
+    assert ling_entry.price_tier == 1
+    assert ling_entry.context_window == 131072
+    assert ling_entry.supports_tools is True
+    assert ling_entry.supports_json_output is True
+    assert ling_entry.supports_reasoning is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
