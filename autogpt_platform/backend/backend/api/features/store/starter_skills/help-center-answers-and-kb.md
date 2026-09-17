@@ -1,7 +1,7 @@
 ---
 name: "help-center-answers-and-kb"
 description: "Use for how-to questions, repeat issues, and onboarding guidance: docs-first answers with citations, plus the saved reply or KB entry the next ticket reuses."
-triggers: ["how do I", "help center article", "knowledge base", "saved reply", "repeat question", "onboarding help", "where are the docs"]
+triggers: ["customer asks how do I", "help center article", "knowledge base answer", "saved reply", "repeat customer question", "docs-first answer", "where are the help docs"]
 version: "1"
 ---
 
@@ -27,7 +27,8 @@ the repeat history showing how often it recurs.
    what success looks like, and what to send back if it fails. Unwritten
    answers say so and skip the citation rather than faking one.
 3. When the question repeats, mint the asset: a saved reply for the queue
-   and, for true gaps, a KB draft with title, steps, and date. Show both in
+   and, for true gaps, a knowledge-base (KB) draft with title, steps, and
+   date. Show both in
    chat, take one round of edits, then file them as drafts for the owner's
    yes before anything publishes.
 4. Log the answer against the ticket with its citation and mark whether it

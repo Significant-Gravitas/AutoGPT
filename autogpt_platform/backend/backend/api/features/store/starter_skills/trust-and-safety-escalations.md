@@ -1,7 +1,7 @@
 ---
 name: "trust-and-safety-escalations"
 description: "Use when abuse, self-harm, youth safety, or illegal content appears in a case or on the platform: severity-triage fast, protect people first, hand off warm."
-triggers: ["abuse report", "self-harm", "youth safety", "illegal content", "harassment", "safety escalation", "threat"]
+triggers: ["abuse report", "self-harm in a ticket", "youth safety", "illegal content report", "harassment report", "safety escalation", "credible threat"]
 version: "1"
 ---
 
@@ -18,9 +18,9 @@ prefs.
 ## Severity-triage in one pass
 
 Imminent harm to a person outranks everything and goes to a human now
-with a one-line packet — who, what, where, time. CSAM, trafficking,
-and credible threats follow the same now-path. Harassment, scams, and
-policy violations queue by impact and reach.
+with a one-line packet — who, what, where, time. Child sexual abuse
+material, trafficking, and credible threats follow the same now-path.
+Harassment, scams, and policy violations queue by impact and reach.
 
 ## Protect first
 

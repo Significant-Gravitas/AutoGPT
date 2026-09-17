@@ -1,7 +1,7 @@
 ---
 name: "technical-diagnostics-with-tools"
 description: "Use when the breakage needs proof from the systems, not guesses: query the account, check the API and logs, and hand engineering a complete repro."
-triggers: ["diagnose", "repro", "API error", "check logs", "root cause", "defect", "request ID"]
+triggers: ["check the logs for this ticket", "customer hit an API error", "pull the request ID", "query the account record", "prove the defect with data", "engineering repro packet", "tool-backed diagnosis"]
 version: "1"
 ---
 

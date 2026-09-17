@@ -1,7 +1,7 @@
 ---
 name: "fraud-and-chargeback-defense"
 description: "Use when a fraud alert fires, a payment looks stolen, an account looks taken over, or a chargeback notice lands: verify, hold-or-clear, and defend with evidence."
-triggers: ["fraud alert", "stolen payment", "account takeover", "chargeback", "friendly fraud", "hold funds", "representment"]
+triggers: ["fraud alert fired", "stolen payment", "account takeover", "chargeback notice", "friendly fraud", "put a hold on funds", "fight this chargeback"]
 version: "1"
 ---
 
@@ -40,7 +40,8 @@ accuse the customer before the owner says yes.
 Look up the reason code first and match compelling evidence to that code: the
 order receipt, delivery or usage proof, the customer's own messages, and the
 policy quote with its source, plus a short rebuttal letter. File it only
-after approval, then diary the representment date. Track win rate per code;
+after approval, then diary the representment date — the deadline for
+resubmitting evidence to the card network. Track win rate per code;
 after a loss, stage the second-chargeback or pre-arbitration path.
 
 ## Log it

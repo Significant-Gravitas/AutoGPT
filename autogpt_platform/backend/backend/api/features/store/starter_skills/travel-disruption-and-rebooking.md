@@ -13,8 +13,9 @@ front desk. Rebook fast and keep the traveler moving.
 
 ## What you need first
 
-The booking record (PNR, flights, hotel), the disruption notice with
-times, traveler location and documents, and rebook or refund policy.
+The booking record (the PNR booking reference, flights, hotel), the
+disruption notice with times, traveler location and documents, and the
+rebook or refund policy.
 
 ## Locate, option, rebook, brief
 

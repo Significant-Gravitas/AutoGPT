@@ -1,14 +1,14 @@
 ---
 name: "regional-category-gtm-strategy"
-description: "Use when owning how a region or category wins: GTM strategy, operating model, market entry, and category ownership."
+description: "Use when owning how a region or category wins: go-to-market strategy, operating model, market entry, and category ownership."
 triggers: ["GTM strategy", "market entry", "regional plan", "operating model", "category ownership", "territory strategy", "P&L plan"]
 version: "1"
 ---
 
 # Regional category GTM strategy
 
-Run this when owning how a region or category wins — the strategy,
-the operating model, market entry, and category ownership.
+Run this when owning how a region or category wins — the go-to-market
+(GTM) strategy, the operating model, market entry, and category ownership.
 
 ## Inputs
 
@@ -25,8 +25,8 @@ number is a wish.
 ## Design the operating model
 
 Coverage by segment, deal governance per region, the partner attach
-motion, and the RevOps, product, and marketing owners. Every line has
-one owner and one date.
+motion, and the revenue-operations, product, and marketing owners.
+Every line has one owner and one date.
 
 ## Map regulation before pipeline on entry
 
@@ -39,7 +39,7 @@ Publish how we win the vertical with proof, battlecards, and
 reference wins. Review quarterly against win rate and cycle time; a
 category with no proof gets no plays.
 
-## Run the annual regional plan with the P&L
+## Run the annual regional plan with the profit and loss
 
 Budget, volume, margin, and headcount. Read progress monthly in one
 GTM read: pipeline created, coverage, and the resource moves the

@@ -101,8 +101,13 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": ["google"],
     },
     {
-        "slug": "getting-started",
+        "slug": "support-getting-started",
         "categories": ["support", "operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "sales-getting-started",
+        "categories": ["sales"],
         "required_providers": ["google", "notion", "slack"],
     },
     {

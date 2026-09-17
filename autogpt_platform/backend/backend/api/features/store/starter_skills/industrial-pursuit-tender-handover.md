@@ -9,7 +9,8 @@ version: "1"
 
 Use this for engineered or project-based deals. Start from the project or
 tender, the consultants or architects shaping the spec, the bid deadline and
-bond or qualification needs, the distributor or EPC partners involved, and the
+bond or qualification needs, the distributor or engineering, procurement and
+construction (EPC) partners involved, and the
 handover site and date if known.
 
 ## Shape the spec before it freezes
@@ -20,8 +21,8 @@ work is dated like any close step.
 
 ## Validate the solution with the buyer
 
-Confirm the design meets the spec, prep the bill of quantities with quantities
-the buyer has confirmed, and price only against the validated BoQ.
+Confirm the design meets the spec, prep the bill of quantities (BoQ) with
+quantities the buyer has confirmed, and price only against the validated BoQ.
 
 ## Run the stage plan to handover
 

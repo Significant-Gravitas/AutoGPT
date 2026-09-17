@@ -1,7 +1,7 @@
 ---
 name: "escalations-and-incidents"
 description: "Use when a case is hot, VIP, legal, safety, fraud, or breaching: rate the severity, build the packet, and page the right path — never a guess upward."
-triggers: ["escalate", "SEV1", "severity rating", "incident packet", "page on-call", "VIP escalation", "handoff"]
+triggers: ["escalate this ticket", "SEV1 incident", "severity rating", "build an incident packet", "page on-call", "VIP escalation", "escalation handoff packet"]
 version: "1"
 ---
 
@@ -40,8 +40,9 @@ levels, exec/VIP path, on-call), the SLA clock, and the customer history.
 
 ## Output
 
-The escalation packet plus the staged handoff. Offer to file it as a Linear
-issue and ping Slack when connected, as drafts they approve first.
+The escalation packet plus the staged handoff. Offer to file it as a tracked
+issue in Linear and post it to Slack when connected, as drafts they approve
+first.
 
 ## Fallbacks
 

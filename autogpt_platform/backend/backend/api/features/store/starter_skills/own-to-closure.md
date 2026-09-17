@@ -1,7 +1,7 @@
 ---
 name: "own-to-closure"
 description: "Use for every open case that must not drift: end-to-end ownership from ack to confirmed fix, follow-up drafts, and resolution tracking."
-triggers: ["follow up", "closure board", "overdue ticket", "customer confirmation", "stale case", "nudge draft"]
+triggers: ["follow up on an open ticket", "closure board", "overdue ticket", "waiting on customer confirmation", "stale support case", "draft a nudge to the customer", "own this case to closure"]
 version: "1"
 ---
 
@@ -37,8 +37,8 @@ and the CRM or ticket records behind them.
 
 ## Output
 
-The closure board plus staged follow-up drafts. Offer to log touches to
-Salesforce or the ticket when connected, as drafts they approve first.
+The closure board plus staged follow-up drafts. Offer to log touches to your
+ticket store or CRM when connected, as drafts they approve first.
 
 ## Fallbacks
 

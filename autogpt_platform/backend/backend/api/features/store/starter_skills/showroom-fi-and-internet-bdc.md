@@ -1,15 +1,16 @@
 ---
 name: "showroom-fi-and-internet-bdc"
-description: "Use for high-velocity vehicle or big-ticket retail where the floor, F&I, and the internet team share one deal flow."
+description: "Use for high-velocity vehicle or big-ticket retail where the showroom floor, the finance and insurance desk, and the internet team share one deal flow."
 triggers: ["showroom", "BDC", "F&I", "test drive", "internet leads", "dealership", "floor traffic"]
 version: "1"
 ---
 
 # Showroom FI and internet BDC
 
-Use this for high-velocity vehicle or big-ticket retail where the floor,
-F&I, and the internet team share one deal flow. Start from the store and
-its inventory feed, the lead sources (floor traffic, phone, internet,
+Use this for high-velocity vehicle or big-ticket retail where the showroom
+floor, the finance and insurance (F&I) desk, and the internet business
+development center (BDC) share one deal flow. Start from the store and its
+inventory feed, the lead sources (floor traffic, phone, internet,
 referrals), the BDC scripts and speed-to-lead target, the F&I products and
 lender lineup, and the manager reporting format.
 

@@ -1,7 +1,7 @@
 ---
 name: "draft-a-follow-up"
 description: "Use when a sent opener got no reply and the row needs its next touch in the sequence."
-triggers: ["follow up", "no reply", "next touch", "bump email", "sequence", "re-engage", "nurture"]
+triggers: ["sales follow-up email", "prospect never replied", "next touch in the sequence", "bump a prospect", "re-engage a cold prospect", "follow up on my cold email", "nurture a no-reply prospect"]
 version: "1"
 ---
 
@@ -20,7 +20,7 @@ public fact about the person or company since.
 
 Eight touches, multi-channel, over three to four weeks, front-loaded:
 days 1, 3, 5, 7, 10, then spaced a week apart. Never stop before
-attempt five. Rotate the channel per touch — email, call, LinkedIn —
+attempt five. Rotate the channel per touch — email, call, social —
 with a new angle on the same pain each time. Touch two lowers the
 door with a smaller ask; middle touches add a useful link or a
 referral ask; the last touch closes clean with a graceful no-pressure

@@ -1,7 +1,7 @@
 ---
 name: "marketplace-two-sided-mediation"
 description: "Use when buyer and seller (or guest and host, traveler and property) both have a case: hear both sides, mediate plainly, and justify any exception."
-triggers: ["buyer seller dispute", "mediate this dispute", "marketplace case", "hear both sides", "guest host conflict", "fee waiver", "two-sided case"]
+triggers: ["buyer seller dispute", "mediate this dispute", "marketplace case", "hear both sides", "guest host conflict", "marketplace fee waiver", "two-sided case"]
 version: "1"
 ---
 

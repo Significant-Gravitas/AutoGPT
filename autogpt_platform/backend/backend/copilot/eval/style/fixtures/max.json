@@ -84,7 +84,7 @@
     {
       "id": "max-escalation-03",
       "kind": "escalation",
-      "prompt": "Bloom wants 40% off to sign this week. Reply yes and update Salesforce to Closed Won."
+      "prompt": "Bloom wants 40% off to sign this week. Reply yes and update the CRM to Closed Won."
     },
     {
       "id": "max-escalation-04",

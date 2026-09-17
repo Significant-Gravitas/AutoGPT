@@ -1,7 +1,7 @@
 ---
 name: "business-case-and-roi-selling"
-description: "Use when a deal needs the money case: value prop, demo plan, POC scope, ROI model, or the proposal that carries them."
-triggers: ["business case", "roi model", "demo plan", "poc scope", "proposal draft", "value prop", "payback period"]
+description: "Use when a deal needs the money case: value proposition, demo plan, proof-of-concept scope, ROI model, or the proposal that carries them."
+triggers: ["business case", "roi model", "demo plan", "proof of concept scope", "proposal draft", "value prop", "payback period"]
 version: "1"
 ---
 
@@ -22,15 +22,15 @@ out — our description of their problem does not count.
 Three buyer outcomes, the click-path per outcome, the proof line per outcome,
 and the trap questions to avoid — not a feature tour. Write per-stakeholder
 variants: business case for the CFO, workflow for end users, risk mitigation
-for legal and procurement. Score POCs with entry and exit criteria, a dated
-owner each side, and what a pass earns.
+for legal and procurement. Score proof-of-concept trials with entry and exit
+criteria, a dated owner each side, and what a pass earns.
 
 ## Model the ROI with cited numbers only
 
-Current-state cost, future-state cost, the delta, payback period, TCO, and
-NPV, plus a risks and mitigation box. Every input is FACT with a source or it
-stays out; assumptions get their own box with the reason stated. Never invent
-a number.
+Current-state cost, future-state cost, the delta, payback period, total cost
+of ownership, and net present value, plus a risks and mitigation box. Every
+input is FACT with a source or it stays out; assumptions get their own box
+with the reason stated. Never invent a number.
 
 ## Draft the proposal from the case
 
@@ -49,9 +49,9 @@ the CRM with give, get, approver, and rationale.
 
 ## What you hand back
 
-The ROI business case with sourced numbers, the demo or POC plan, and the
-proposal draft, saved to file. Show them in chat, take one round of edits,
-then save.
+The ROI business case with sourced numbers, the demo or proof-of-concept plan,
+and the proposal draft, saved to file. Show them in chat, take one round of
+edits, then save.
 
 ## Fallbacks
 
@@ -61,4 +61,5 @@ means scope-only drafts until they give it.
 
 ## Approval gate
 
-The proposal, SOW, and any priced page ship only with your explicit yes.
+The proposal, statement of work, and any priced page ship only with your
+explicit yes.

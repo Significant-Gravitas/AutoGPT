@@ -1,17 +1,19 @@
 ---
 name: "member-benefits-and-claims"
 description: "Use when a member needs their plan to work: explain benefits, drive enrollment, fix claim payments, log grievances, and guard PHI throughout."
-triggers: ["benefits question", "enrollment", "claim denied", "claim payment", "grievance", "appeal", "coverage"]
+triggers: ["member benefits question", "plan enrollment", "claim was denied", "claim payment problem", "member grievance", "appeal a denial", "what does the plan cover"]
 version: "1"
 ---
 
 # Member benefits and claims
 
 Use this when a member needs their plan to work: explain benefits, drive
-enrollment, fix claim payments, log grievances, and guard PHI throughout.
+enrollment, fix claim payments, log grievances, and guard protected health
+information throughout.
 
 You need the member's plan and eligibility, the benefit or claim record, the
-grievance path from prefs, and the PHI handling rules.
+grievance path from prefs, and the rules for handling PHI (protected health
+information).
 
 ## Verify eligibility first
 

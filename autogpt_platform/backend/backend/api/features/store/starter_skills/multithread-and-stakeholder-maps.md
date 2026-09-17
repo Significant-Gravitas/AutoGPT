@@ -28,7 +28,7 @@ blocker, coach, or unknown. A champion proves out only when they sell
 inside the room and open the buyer door — enthusiasm alone is a coach.
 Economic buyer needs a named person plus a buyer quote. Mark per-person
 sentiment (champion, neutral, skeptical, blocker) plus an influence band,
-and hold empty roles as TBD placeholders.
+and hold empty roles open as named placeholders.
 
 ## Name the gaps
 

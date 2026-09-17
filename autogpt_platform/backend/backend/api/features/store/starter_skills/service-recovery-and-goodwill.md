@@ -1,7 +1,7 @@
 ---
 name: "service-recovery-and-goodwill"
 description: "Use when the company erred — delays, outages, broken promises, botched orders: recover the service, make it right within limit, and resolve in one touch."
-triggers: ["service recovery", "make it right", "botched order", "goodwill credit", "apology note", "broken promise", "recover this case"]
+triggers: ["service recovery", "make it right for the customer", "botched order", "goodwill credit", "apology note to a customer", "we broke a promise", "recover this case"]
 version: "1"
 ---
 

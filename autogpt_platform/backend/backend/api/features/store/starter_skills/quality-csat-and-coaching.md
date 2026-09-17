@@ -1,15 +1,15 @@
 ---
 name: "quality-csat-and-coaching"
-description: "Use when the team needs a report card, not a feeling: score real threads, track CSAT and AHT from the records, and draft the one fix per rep."
-triggers: ["score these threads", "CSAT report", "QA scorecard", "coach this rep", "sample review", "AHT tracking", "quality audit"]
+description: "Use when the support team needs a report card, not a feeling: score real threads, track CSAT and average handle time from the records, and draft the one fix per rep."
+triggers: ["score these support threads", "CSAT report", "QA scorecard", "coach this rep", "review a thread sample", "average handle time trend", "support quality audit"]
 version: "1"
 ---
 
 # Quality CSAT and coaching
 
 Use this when the team needs a report card, not a feeling. Score real
-threads, track CSAT and AHT from the records, and draft the one fix
-per rep.
+threads, track CSAT and average handle time (AHT) from the records,
+and draft the one fix per rep.
 
 ## What you need first
 
@@ -30,7 +30,7 @@ period, and the QA scorecard or talk track in play.
 ## Output
 
 The scored sample with trends plus per-rep coaching drafts. Offer to
-save the fixes as macros or KB entries.
+save the fixes as macros or knowledge-base (KB) entries.
 
 ## When the records are thin
 

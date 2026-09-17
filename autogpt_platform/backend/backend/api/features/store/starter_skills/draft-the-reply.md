@@ -1,7 +1,7 @@
 ---
 name: "draft-the-reply"
 description: "Use when a customer waits for an answer on any channel: a reply in company voice, grounded in docs, staged for the owner's yes."
-triggers: ["draft reply", "answer customer", "email response", "angry customer", "apology", "de-escalate", "ticket reply"]
+triggers: ["draft a customer reply", "answer this ticket", "reply to this customer", "angry customer email", "de-escalate this thread", "apology to a customer", "ticket reply"]
 version: "1"
 ---
 
@@ -17,8 +17,8 @@ voice notes.
 ## Ground the answer first
 
 Find the governing help-center or policy passage and cite it; anything
-unwritten is marked as such and becomes a KB candidate, never a quoted
-rule.
+unwritten is marked as such and becomes a knowledge-base (KB) candidate,
+never a quoted rule.
 
 ## Draft in company voice
 

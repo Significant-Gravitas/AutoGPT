@@ -1,7 +1,7 @@
 ---
 name: "research-an-account"
 description: "Use when the user names one company to go deep on before outreach, a first call, or a deal review."
-triggers: ["account research", "company brief", "research a company", "stakeholder map", "meeting prep", "talking points", "account deep dive"]
+triggers: ["research this account", "account brief before a sales call", "prospect company research", "account deep dive", "pre-call prospect brief", "brief me on this prospect", "who matters at this account"]
 version: "1"
 ---
 
@@ -48,4 +48,4 @@ no numbers means UNKNOWN, never an estimate dressed as fact.
 
 ## Approval gate
 
-The brief is research only. Outreach drafts from it wait for your yes.
+The brief is research only. Any outreach drafted from it waits for your yes.

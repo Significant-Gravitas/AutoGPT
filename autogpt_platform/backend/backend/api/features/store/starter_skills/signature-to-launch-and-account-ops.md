@@ -9,8 +9,9 @@ version: "1"
 
 Use this after signature to run onboarding, implementation, and standing
 account ops. Start from the signed scope and start date, the owners on both
-sides, the implementation or onboarding milestones, the current SOP, rate
-file, and contact list if any exist, and the KPIs the account is judged on.
+sides, the implementation or onboarding milestones, the current standard
+operating procedure (SOP), rate file, and contact list if any exist, and the
+metrics the account is judged on.
 
 ## Turn signature into a launch plan within days
 
@@ -21,7 +22,8 @@ when its exit test passes.
 
 ## Orchestrate onboarding across teams
 
-Ops, implementation, CS, and customs or compliance where they apply. You run
+Ops, implementation, customer success, and customs or compliance where they
+apply. You run
 the tracker; each team owns its steps. The buyer sees one plan, not five
 queues.
 
@@ -38,7 +40,7 @@ activation date. The stuck site gets the attention, not the average.
 
 ## Hold account-health guardrails in every review
 
-KPI performance, revenue quality, and pay and contract-terms adherence. A
+Metric performance, revenue quality, and pay and contract-terms adherence. A
 breach gets a dated correction with a named owner.
 
 ## Feed expansion back, then build white-space
@@ -61,7 +63,8 @@ corrections.
 
 ## Fallbacks
 
-No buyer owners named means you draft the RACI with your side filled and the
+No buyer owners named means you draft the responsibility grid with your side
+filled and the
 buyer side blank for them to confirm. No existing artifacts means you start
 the SOP and rate file from the signed scope and mark every line that needs
 buyer confirmation.

@@ -51,8 +51,9 @@ rules, objective adjustment triggers, and a transparent appeals process.
 
 ## Draft comp to the behavior you want
 
-Base and variable mix, accelerators past 100 percent, SPIFs for the quarter's
-push motion, and clawback rules for churned or slipped deals. Every comp line
+Base and variable mix, accelerators past 100 percent, sales incentive bonuses
+(SPIFs) for the quarter's push motion, and clawback rules for churned or
+slipped deals. Every comp line
 names what it pays for and what it refuses to pay for.
 
 ## Run CRM hygiene tiered
@@ -65,14 +66,15 @@ date is blocked until it has one.
 
 ## Report up in one exec read
 
-Dashboards for the week, WBR and MBR write-ups for the month, QBR readouts
-for the quarter. Open with variance before wins, keep live time for decisions
-only.
+Dashboards for the week, weekly and monthly business-review write-ups, and QBR
+readouts for the quarter. Open with variance before wins, keep live time for
+decisions only.
 
 ## What you hand back
 
 The coverage model with tiered books, the capacity model, the quota allocation
-with the gap resolved, the comp draft with SPIFs, the CRM exceptions list, and
+with the gap resolved, the comp draft with its incentive bonuses, the CRM
+exceptions list, and
 the exec reporting read.
 
 ## Fallbacks
@@ -84,5 +86,5 @@ quarters and confirm before allocating.
 ## Approval gate
 
 Nothing rep-facing or exec-facing sends and no quota, comp, or book change is
-final without your explicit yes. Play-level SPIF tracking lives in the
-enablement skill.
+final without your explicit yes. Play-level incentive-bonus tracking lives in
+the enablement skill.

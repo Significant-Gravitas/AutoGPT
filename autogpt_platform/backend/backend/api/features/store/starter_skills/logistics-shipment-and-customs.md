@@ -1,7 +1,7 @@
 ---
 name: "logistics-shipment-and-customs"
 description: "Use when goods are moving: trace and expedite shipments, file customs entries, and liaise with carriers and warehouses."
-triggers: ["track shipment", "late delivery", "customs entry", "HTS code", "carrier escalation", "delivery ETA", "warehouse"]
+triggers: ["track this shipment", "late delivery", "customs entry", "HTS code", "carrier escalation", "delivery ETA", "warehouse escalation"]
 version: "1"
 ---
 
@@ -28,8 +28,9 @@ Never promise a date the carrier has not given.
 
 ## Classify and file customs by the book
 
-File each line item with its HTS code, value and origin from the
-invoice, through the broker or portal. A classification you cannot
+File each line item with its HTS code — the Harmonized Tariff Schedule
+classification — plus value and origin from the invoice, through the
+broker or portal. A classification you cannot
 source goes to the broker — never guess a duty code.
 
 ## Liaise in one thread per shipment

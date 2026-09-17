@@ -1,6 +1,6 @@
 ---
 name: "sales-team-leadership"
-description: "Use when hiring, onboarding, coaching, or performance-managing sellers: loops, ramp plans, 1:1s, PIPs, and succession."
+description: "Use when hiring, onboarding, coaching, or performance-managing sellers: hiring loops, ramp plans, 1:1s, improvement plans, and succession."
 triggers: ["hire sellers", "ramp plan", "coach a rep", "1:1", "PIP", "onboarding", "succession"]
 version: "1"
 ---
@@ -40,10 +40,11 @@ quarter.
 
 ## Improvement plans
 
-For an at-risk rep, first diagnose the gap type — skill, will, or fit —
-and check selling time and structural causes before judging the rep. Then
-co-write a dated 30-60-day improvement plan with the rep: SMART goals with
-metrics, the productive activities that close the FACT gap, named support
+For an at-risk rep, first diagnose the gap type — skill, will, or fit — and
+check selling time and structural causes before judging the rep. Then
+co-write a dated 30-60-day improvement plan with the rep: goals that are
+specific, measurable, achievable, relevant, and time-bound, each with its
+metric, the productive activities that close the FACT gap, named support
 and resources, weekly evidence check-ins, and an agreed review point,
 typically 6-8 weeks. The plan carries start and end dates plus the rep's
 written acknowledgement. Name the verdict plainly at the end: on pace,
@@ -67,4 +68,5 @@ improvement plan with decision date, and a succession bench.
 No call record means you coach from CRM activity and shadow notes and ask
 for one transcript. No scorecard means you draft the bar from the top rep's
 profile and get a yes before any loop. Nothing rep-facing sends and no
-hire, PIP, or exit decision is communicated without your explicit yes.
+hire, improvement-plan, or exit decision is communicated without your
+explicit yes.

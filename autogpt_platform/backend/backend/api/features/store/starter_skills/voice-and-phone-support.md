@@ -1,14 +1,15 @@
 ---
 name: "voice-and-phone-support"
-description: "Use when a case needs a call: place or review calls, run callbacks to kept promises, tune IVR paths, and coach talk tracks from recordings."
-triggers: ["phone call", "callback", "IVR", "talk track", "call recording", "call coaching", "queue tuning"]
+description: "Use when a support case needs a call: place or review calls, run callbacks to kept promises, tune the phone menu, and coach talk tracks from recordings."
+triggers: ["call this customer back", "run the callback list", "IVR menu tuning", "phone talk track", "review a call recording", "coach this call", "phone queue tuning"]
 version: "1"
 ---
 
 # Voice and phone support
 
 Use this when a case needs a call: place or review calls, run callbacks to
-kept promises, tune IVR paths, and coach talk tracks from recordings.
+kept promises, tune the IVR (the automated phone menu), and coach talk
+tracks from recordings.
 
 You need the case or callback promise, the voice stack and talk tracks from
 prefs, and the recording or transcript when reviewing.
@@ -25,12 +26,13 @@ the issue so it resumes where the IVR left off.
 
 Open with the recording disclosure played before anything else (rule follows
 caller location, one-party vs two-party) logged as call metadata, plus
-purpose and agenda, and verify identity before account or PHI talk. Work the
-issue with the matching skill while narrating next steps. Close with the
-receipt (what was done, reference ID) and the confirm line. At the payment
-moment, pause recording or DTMF-mask before card data and resume after
-authorization; never read a CVV aloud or store SAD (CVV, PIN, track data) in
-audio, screen, or transcript — redact any slip immediately. Keep after-call
+purpose and agenda, and verify identity before account or health-data talk.
+Work the issue with the matching skill while narrating next steps. Close
+with the receipt (what was done, reference ID) and the confirm line. At the
+payment moment, pause recording or mask the keypad tones before card data and resume
+after authorization; never read a CVV aloud, and never store sensitive
+authentication data — CVV, PIN, or magnetic-stripe track data — in audio,
+screen, or transcript. Redact any slip immediately. Keep after-call
 work inside the target: log, disposition, and follow-up draft before the
 next call.
 
@@ -40,7 +42,8 @@ Offer the choice with numbers: estimated wait, estimated callback time,
 callback or hold — caller's pick. Never offer a callback for urgent calls
 (card cancellation, theft, crisis) or when the wait is under ~5 minutes;
 those go straight to the next agent. Work oldest promise first: verify the
-number and timezone, call only 8a-9p caller-local with a DNC check, redial
+number and timezone, call only 8a-9p caller-local after a do-not-call list
+check, redial
 once on no-answer, then leave the short message and re-promise once. A
 callback past its time is P2 minimum — say so and move it first.
 

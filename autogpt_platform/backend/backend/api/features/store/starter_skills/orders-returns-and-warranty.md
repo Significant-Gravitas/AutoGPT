@@ -1,7 +1,7 @@
 ---
 name: "orders-returns-and-warranty"
 description: "Use when a customer asks where their stuff is or wants it back: track the order, run the return or warranty by the book, and draft the update."
-triggers: ["where is my order", "track the order", "start a return", "warranty claim", "replacement order", "return label", "order status"]
+triggers: ["where is my order", "track this order", "start a return", "warranty claim", "send a replacement", "issue a return label", "order status for a customer"]
 version: "1"
 ---
 

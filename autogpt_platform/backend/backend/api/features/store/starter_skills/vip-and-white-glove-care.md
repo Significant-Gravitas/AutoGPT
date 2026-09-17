@@ -1,7 +1,7 @@
 ---
 name: "vip-and-white-glove-care"
 description: "Use when a premium-tier, enterprise, or exec-flagged customer needs help: tier the case, own it personally, and keep stakeholders warm until resolved."
-triggers: ["VIP case", "white glove", "exec escalation", "premium tier", "enterprise customer", "stakeholder update"]
+triggers: ["VIP case", "white glove handling", "exec escalation", "premium tier case", "enterprise customer escalation", "VIP stakeholder update"]
 version: "1"
 ---
 

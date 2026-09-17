@@ -1,7 +1,7 @@
 ---
 name: "social-and-community-support"
 description: "Use when support lands in public — social posts, DMs, reviews, or community threads: answer fast, protect the brand, and move the fix to private."
-triggers: ["angry tweet", "bad review", "social post", "community thread", "public complaint", "respond publicly", "DM the customer"]
+triggers: ["angry customer tweet", "bad review reply", "reply to a social post", "community thread question", "public complaint about us", "respond to this publicly", "DM the customer"]
 version: "1"
 ---
 
@@ -36,8 +36,9 @@ record behind it, and the company's social voice from prefs.
    message.
 4. For community threads, draft the full answer once the facts are in:
    docs-grounded, cited URL, no invented steps. Offer to mint the repeat
-   question as a KB candidate. Track failed searches and unresolved bot
-   turns as KB gaps; measure self-serve resolution and escalation rate.
+   question as a knowledge-base (KB) candidate. Track failed searches and
+   unresolved bot turns as KB gaps; measure self-serve resolution and
+   escalation rate.
 5. Log post, verdict, drafts, and send state. Answer public posts within 3h
    (24h max); reply to every review, negative ones first. High-visibility
    cases get a watch note: check back for replies before the next routine

@@ -23,8 +23,8 @@ Score what is missing before you touch what exists.
 
 ## Fix content, rates, and availability first
 
-Complete the content in the partner tools, align rates to demand and
-comp set, and close bogus unavailability. Each change is dated so the
+Complete the content in the partner tools, align rates to demand and the
+competitive set, and close bogus unavailability. Each change is dated so the
 revenue read can trace cause to effect.
 
 ## Layer promos with intent
@@ -35,7 +35,7 @@ and a read date.
 
 ## Read the reports weekly
 
-Rate position, visibility, and conversion against the comp set. A
+Rate position, visibility, and conversion against the competitive set. A
 rank drop gets a dated diagnosis, not a shrug.
 
 ## Advise in revenue terms
@@ -51,7 +51,7 @@ playbook for the next property.
 ## Output
 
 Listing audit with dated fixes, promo calendar with read dates,
-weekly comp-set read, one-page partner advice, and a change-to-effect
+weekly competitive-set read, one-page partner advice, and a change-to-effect
 log.
 
 ## Fallbacks

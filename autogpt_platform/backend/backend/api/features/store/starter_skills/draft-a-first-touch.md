@@ -1,7 +1,7 @@
 ---
 name: "draft-a-first-touch"
-description: "Use when a researched row needs its opening message on email, LinkedIn, phone, or X."
-triggers: ["first touch", "cold email", "linkedin outreach", "opening message", "prospecting draft", "voicemail line", "subject line"]
+description: "Use when a researched prospect row needs its opening message by email, social, phone, or short public post."
+triggers: ["cold email draft", "first touch for a prospect", "cold outreach opener", "prospecting draft", "cold call voicemail line", "cold email subject line", "opening message to a prospect"]
 version: "1"
 ---
 
@@ -25,8 +25,9 @@ Write from the row only:
   ask for the follow-up.
 
 Match the user's voice sample; if there is none, keep it plain and under
-100 words for email, under 60 words for LinkedIn, under 280 characters for
-X, and under 30 seconds spoken for phone with a voicemail fallback line.
+100 words for email, under 60 words for a social message, under 280
+characters for a short public post, and under 30 seconds spoken for phone
+with a voicemail fallback line.
 
 Email carries a subject in sentence case, four to five words; a short
 question naming the trigger is fine. Never use Re:/Fwd:, colons, or ALL

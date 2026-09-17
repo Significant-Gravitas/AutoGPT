@@ -27,7 +27,8 @@ or account records, and the open queue for dup checks.
    troubleshoot first, send to billing for money asks, escalate to a human
    with a repro doc when sentiment is hot, legal or safety words appear, or
    the ask exceeds the approval limit — or park as feedback with a thank-you
-   draft. State queue goals time-bound, e.g. FCR 75->85% in 6 months.
+   draft. State queue goals time-bound, e.g. first-contact
+   resolution 75->85% in 6 months.
 4. Show the ordered queue with priority, reason, route, and owner, take one
    round of edits, then save it as the day's work list.
 

@@ -8,14 +8,15 @@ version: "1"
 # Retail JBP trade and sellout
 
 Use this when selling through retailers or distributors where joint
-plans, trade spend, and in-store execution decide the number.
+business plans (JBPs), trade spend, and in-store execution decide the
+number.
 
 ## Inputs
 
 The retailer or distributor, the joint business plan if one exists, the
 trade budget and promo calendar, sell-in and sell-out data by store or
-banner, and the audit or compliance scorecards (Perfect Store, DFA,
-chargebacks, RTV).
+banner, and the audit or compliance scorecards (perfect-store audits,
+chargebacks, return-to-vendor claims).
 
 ## Joint business plan
 
@@ -27,19 +28,20 @@ tracking.
 ## Trade spend
 
 Plan trade spend like money, because it is: budget by lever (promo,
-feature, display, RGM actions), expected ROI per lever, and a dated promo
-calendar. Every promo has a success metric before it runs. Every
-incremental dollar goes to its highest return: harmonize POS, inventory,
-and third-party data, and bid levers against each other.
+feature, display, revenue-growth-management actions), expected ROI per
+lever, and a dated promo calendar. Every promo has a success metric before
+it runs. Every incremental dollar goes to its highest return: harmonize
+point-of-sale, inventory, and third-party data, and bid levers against
+each other.
 
 ## Sell-out read
 
-Track sell-out to store level on daily store and item POS, not weekly
-rollups: green, amber, or red by store or banner, with the driver named
-(availability, price, visibility, assortment). Read each promo against a
-pre-built baseline with a causal overlay (weather, events, seasonality).
-Amber gets a dated fix; red gets a fix plus a review date. Monitor promos
-in-flight and reallocate mid-cycle when the read says so.
+Track sell-out to store level on daily store and item point-of-sale data,
+not weekly rollups: green, amber, or red by store or banner, with the
+driver named (availability, price, visibility, assortment). Read each
+promo against a pre-built baseline with a causal overlay (weather, events,
+seasonality). Amber gets a dated fix; red gets a fix plus a review date.
+Monitor promos in-flight and reallocate mid-cycle when the read says so.
 
 ## Post-event analysis
 
@@ -58,8 +60,9 @@ per store, verified by audits not by hope. Failed audits get a dated
 correction with a named field owner.
 
 Manage the money after the sale: replenishment against sell-through,
-receivables on terms, chargebacks disputed with evidence, and RTVs inside
-policy. A deduction without evidence is a dispute, not a cost.
+receivables on terms, chargebacks disputed with evidence, and
+return-to-vendor claims inside policy. A deduction without evidence is a
+dispute, not a cost.
 
 Read launches, space changes, and e-retail sell-out as their own lines:
 what shipped, what sold, what the next buy looks like, and the date it is
@@ -72,8 +75,9 @@ calendar, audit corrections, and a receivables and dispute log.
 ## Fallbacks
 
 No sell-out data means you work from shipments labeled INFERENCE and ask
-for the retailer portal or report that closes the gap. No JBP yet means
-you draft the one-page plan and get internal yes before the buyer sees it.
+for the retailer portal or report that closes the gap. No joint business
+plan yet means you draft the one-page plan and get internal yes before the
+buyer sees it.
 
 Approval gate: nothing goes to the retailer and no trade terms, promo
 funding, or price is promised without your explicit yes.

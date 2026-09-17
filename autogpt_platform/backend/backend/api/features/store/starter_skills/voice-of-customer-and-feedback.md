@@ -1,7 +1,7 @@
 ---
 name: "voice-of-customer-and-feedback"
 description: "Use when tickets pile into patterns: mine the batch for repeat themes, file them as sourced evidence, and draft the product-ready brief."
-triggers: ["feedback themes", "repeat issues", "customer quotes", "product brief", "feature request", "top complaints", "survey"]
+triggers: ["customer feedback themes", "repeat issues in tickets", "pull customer quotes", "product-ready feedback brief", "feature request from a customer", "top customer complaints", "survey responses"]
 version: "1"
 ---
 
@@ -12,7 +12,7 @@ themes, file them as sourced evidence, and draft the product-ready
 brief.
 
 You need the ticket or thread batch with dates, survey or review quotes
-when they exist, and the product or eng intake path.
+when they exist, and the product or engineering intake path.
 
 ## Mine the batch
 
@@ -30,9 +30,10 @@ what it blocks. Missing-feature asks get the offer to file a defect or
 feature issue; feedback with no breakage gets a thank-you draft, never
 a roadmap promise.
 
-Draft the product brief: themes ranked by count and pain, the top KB
-candidate, and the one ask per theme with its evidence attached. Show
-it in chat, take one round of edits, then stage it for the owner.
+Draft the product brief: themes ranked by count and pain, the top
+knowledge-base (KB) candidate, and the one ask per theme with its evidence
+attached. Show it in chat, take one round of edits, then stage it for the
+owner.
 
 Log the themes against the intake with dates so next week's batch
 dedupes against them.

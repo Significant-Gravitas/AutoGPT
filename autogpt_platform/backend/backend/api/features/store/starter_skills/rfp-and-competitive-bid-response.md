@@ -7,10 +7,11 @@ version: "1"
 
 # RFP and competitive bid response
 
-Use this when a formal bid lands: RFP, RFI, security questionnaire, or a
-head-to-head competitive deal. Start from the RFP or bid documents, the
-deal sheet with qualification state, the competitor set, and the answer
-library when one exists.
+Use this when a formal bid lands: an RFP, an RFI (request for
+information), a security questionnaire, or a head-to-head competitive
+deal. Start from the RFP or bid documents, the deal sheet with
+qualification state, the competitor set, and the answer library when one
+exists.
 
 ## Bid or no-bid
 

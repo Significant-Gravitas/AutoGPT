@@ -1,14 +1,15 @@
 ---
 name: "sensitive-data-safe-handling"
 description: "Use before card, personal, or health data moves: redact PCI, handle PII and PHI by the regime, and contain spills fast."
-triggers: ["redact", "card data", "PII", "PHI", "data spill", "safe handling", "pause recording"]
+triggers: ["redact this transcript", "card data in a ticket", "PII in this draft", "health data in a case", "data spill", "safe handling check", "pause recording for card entry"]
 version: "1"
 ---
 
 # Sensitive data safe handling
 
-Use this before card, personal, or health data moves: redact PCI,
-handle PII and PHI by the regime, and contain spills fast.
+Use this before card, personal, or health data moves: redact PCI card
+data, handle PII and PHI (protected health information) by the regime,
+and contain spills fast.
 
 You need the draft, transcript, or record to check, the regimes and
 redaction tool from prefs, and the vault or safe-store path.
@@ -29,19 +30,19 @@ with a short packet.
 
 ## Stop capture before live card data
 
-On payment calls, pause recording or DTMF-mask keypad entry before
-collection, and resume after authorization. Never store SAD (CVV, PIN,
-track data) in audio, screen recordings, or transcripts — the recording
-itself becomes the violation. Redact any SAD slip from transcripts
-immediately.
+On payment calls, pause recording or mask keypad (DTMF) entry before
+collection, and resume after authorization. Never store sensitive
+authentication data — CVV, PIN, or magnetic-stripe track data — in audio,
+screen recordings, or transcripts; the recording itself becomes the
+violation. Redact any such slip from transcripts immediately.
 
 ## Check the PHI handling path too
 
 Confirm minimum-necessary access (except treatment, disclosures to the
-individual, authorized uses, disclosures to HHS, or as required by
-law), identity verified before PHI talk, encrypted store, no health
-detail in ticket subjects or public replies, and 6-year retention on
-the record (TSR keeps 5). A PHI finding outside the safe path is P1
+individual, authorized uses, disclosures to the regulator, or as
+required by law), identity verified before any PHI talk, encrypted
+store, no health detail in ticket subjects or public replies, and
+6-year retention on the record. A PHI finding outside the safe path is P1
 until contained.
 
 Stamp the result: clean, redacted, or blocked-with-owner. Blocked items

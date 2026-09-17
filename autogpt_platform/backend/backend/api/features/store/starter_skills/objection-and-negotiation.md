@@ -14,7 +14,8 @@ its qualification state, and what the user is actually allowed to concede.
 ## Name the kind, then run LAER
 
 Name it first: price, timing, authority, competition, status quo, or terms.
-Then run LAER: listen to the whole objection without interrupting,
+Then run LAER — listen, acknowledge, explore, respond. Listen to the whole
+objection without interrupting,
 acknowledge it in their words without conceding, explore the root cause with
 one open question — the first thing said is rarely the real objection — then
 give two tailored responses in the user's register, each under 30 seconds

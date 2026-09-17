@@ -1,7 +1,7 @@
 ---
 name: "knowledge-centered-service"
-description: "Use when an answer should outlive the case: capture knowledge in the flow of solving, keep articles findable and right, and coach reuse."
-triggers: ["write KB article", "solve loop", "knowledge capture", "article quality", "failed searches", "reuse rate", "stale article"]
+description: "Use when a support answer should outlive the case: capture knowledge in the flow of solving, keep help articles findable and right, and coach reuse."
+triggers: ["write a KB article", "capture knowledge from a case", "help article quality", "top failed searches", "KB reuse rate", "stale help article", "knowledge base gap"]
 version: "1"
 ---
 
@@ -12,8 +12,8 @@ flow of solving, keep articles findable and right, and coach reuse.
 
 ## What you need
 
-The solved case with its evidence, the KB home and article template from
-prefs, and the search terms the customer used.
+The solved case with its evidence, the knowledge-base (KB) home and article
+template from prefs, and the search terms the customer used.
 
 ## Run the loops
 
@@ -41,9 +41,9 @@ prefs, and the search terms the customer used.
    without searching, solved without capturing), with the fixed habit named.
    Log captures, flags, and publishes.
 6. Run the Evolve Loop monthly with the KB owner: content-health review
-   (AQI-style sample, archive or merge, domain gaps), New-vs-Known check, and
-   root-cause feedback to product. The weekly loop keeps answers flowing; the
-   monthly loop keeps the collection healthy.
+   (a scored article sample, archive or merge, domain gaps), the New-vs-Known
+   check, and root-cause feedback to product. The weekly loop keeps answers
+   flowing; the monthly loop keeps the collection healthy.
 
 ## Output
 

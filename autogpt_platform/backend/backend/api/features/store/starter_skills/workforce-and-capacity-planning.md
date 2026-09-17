@@ -1,7 +1,7 @@
 ---
 name: "workforce-and-capacity-planning"
 description: "Use when volume meets staffing: forecast contacts, build schedules, watch real-time adherence, and move people intra-day."
-triggers: ["forecast volume", "staffing plan", "schedule adherence", "intra-day moves", "shrinkage", "coverage gap", "headcount"]
+triggers: ["forecast contact volume", "support staffing plan", "schedule adherence", "intra-day moves", "shrinkage math", "shift coverage gap", "support headcount plan"]
 version: "1"
 ---
 
@@ -12,8 +12,9 @@ watch real-time adherence, and move people intra-day.
 
 ## What you need first
 
-Past volume by channel and interval, the WFM targets and shrinkage from
-prefs, the current schedule and absence list, and the real-time queue state.
+Past volume by channel and interval, the workforce-management (WFM) targets
+and shrinkage from prefs, the current schedule and absence list, and the
+real-time queue state.
 
 ## Forecast, staff, schedule, watch, close the loop
 

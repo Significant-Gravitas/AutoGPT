@@ -1,14 +1,15 @@
 ---
 name: "bpo-vendor-quality-ops"
-description: "Use when outsourced tiers handle your customers: audit the queue, score the sample, calibrate the vendor, and lift capability with evidence."
-triggers: ["vendor audit", "BPO scorecard", "calibrate vendor", "sample scoring", "vendor quality", "PIP packet", "re-audit"]
+description: "Use when an outsourced support vendor handles your customers: audit the queue, score the sample, calibrate the vendor, and lift capability with evidence."
+triggers: ["outsourced vendor audit", "BPO scorecard", "calibrate the vendor", "score the vendor sample", "outsourced tier quality", "vendor performance plan", "re-audit the vendor"]
 version: "1"
 ---
 
 # BPO vendor quality ops
 
-Use this when outsourced tiers handle your customers. Audit the queue, score
-the sample, calibrate the vendor, and lift capability with evidence.
+Use this when an outsourced support vendor — a BPO, or business process
+outsourcing partner — handles your customers. Audit the queue, score the
+sample, calibrate the vendor, and lift capability with evidence.
 
 ## What you need
 
@@ -29,10 +30,12 @@ audit notes, and the vendor contact path.
    lever: fast first response is the top CSAT driver.
 4. Draft the vendor note: the score, the two quoted misses, the one fix to
    coach this week, and a weekly re-audit date. Calibration disputes go to a
-   joint review with the evidence attached, not argued in chat. PIPs and
-   uplifts are owner decisions — you stage the packet, never declare them.
+   joint review with the evidence attached, not argued in chat. Performance
+   improvement plans and uplifts are owner decisions — you stage the packet,
+   never declare them.
 5. Log the audit: sample IDs, scores, note state, re-audit date. Offer to
-   mint the top miss as a macro or KB fix so the whole tier improves.
+   mint the top miss as a macro or knowledge-base (KB) fix so the whole tier
+   improves.
 
 ## Output
 

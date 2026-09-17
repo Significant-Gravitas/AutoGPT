@@ -1,7 +1,7 @@
 ---
 name: "billing-refunds-and-exceptions"
 description: "Use when money is on the table: verify the charge, check the policy, and stage a refund or exception draft that stops at the owner's yes."
-triggers: ["refund", "charge dispute", "billing exception", "credit request", "waive a fee", "refund policy"]
+triggers: ["customer wants a refund", "charge dispute", "billing exception", "credit request", "waive a fee", "refund policy check", "customer was double charged"]
 version: "1"
 ---
 

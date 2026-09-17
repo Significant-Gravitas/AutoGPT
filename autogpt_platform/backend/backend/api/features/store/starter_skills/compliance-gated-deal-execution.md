@@ -28,20 +28,22 @@ and a cleared, pending, or failed state.
 Run the compliance review at opportunity stage, not at signature:
 suitability of the product for the buyer, licensed sellers on the
 deal, and clean documentation of every buyer commitment. Review
-misses become rep coaching, tracked as a KPI.
+misses become rep coaching, tracked as a scored metric.
 
 ## Keep the file audit-ready
 
-Every term, concession, and buyer promise gets a date, an owner, and
-a source. SOX-grade means a stranger can re-run the deal from the
-file; a file that cannot be re-run is blocked.
+Every term, concession, and buyer promise gets a date, an owner, and a
+source. Audit-grade — the evidence standard a financial-controls audit
+applies — means a stranger can re-run the deal from the file; a file
+that cannot be re-run is blocked.
 
 ## Track regulated-ops steps
 
 Title, registration, or transfer work each carry an owner,
 jurisdiction, and date. Multi-state or multi-entity deals get one
-master track with dated sub-tracks per filing. For SaaS deals the
-same tracking covers security reviews, DPAs, and order-form approvals.
+master track with dated sub-tracks per filing. For software deals the
+same tracking covers security reviews, data processing agreements, and
+order-form approvals.
 
 ## Report gates in the forecast
 

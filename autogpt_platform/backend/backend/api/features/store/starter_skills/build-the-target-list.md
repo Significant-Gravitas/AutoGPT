@@ -19,8 +19,8 @@ One row per person: prospect_id, company, company_url, person, title,
 location, icp_fit, channel, contact, hook, hook_source_url, hook_date,
 enriched_on, status, last_touch_on, next_step, notes.
 
-Fixed values: icp_fit is strong, maybe, or weak. channel is email, linkedin,
-phone, x, or other. status runs new, enriched, drafted, approved, sent,
+Fixed values: icp_fit is strong, maybe, or weak. channel is email, social,
+phone, or other. status runs new, enriched, drafted, approved, sent,
 replied, meeting, qualified, no, or on hold.
 
 ## Start from companies

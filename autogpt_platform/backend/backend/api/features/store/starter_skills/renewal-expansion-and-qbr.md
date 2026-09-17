@@ -10,7 +10,8 @@ version: "1"
 Use this when an account needs its health read, its renewal secured, its
 expansion scoped, or its QBR built. Start from the account name, the
 renewal date and contract terms, usage numbers with their source, the
-stakeholder map, and the last QBR or EBR when one exists.
+stakeholder map, and the last QBR or executive business review when one
+exists.
 
 ## Health score
 
@@ -35,7 +36,7 @@ proof; push-without-trigger stays out.
 
 ## The QBR
 
-Build the QBR from CRM plus calls plus usage: KPI grades against the last
+Build the QBR from CRM plus calls plus usage: scorecard grades against the last
 review, what changed since, the course corrections with owners, and the
 champion co-drafted agenda. Every number is sourced; a deck built on
 guesses says so at the top.

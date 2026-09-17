@@ -22,10 +22,12 @@ track. A step with no date is blocked until it has one.
 ## Paper process and readiness packet
 
 Map the paper process in full before any proposal: procurement steps and
-cycle, legal redline rounds with liability, DPA, and SLA flags, security
-review artifacts, and ERP or vendor onboarding. Ship the readiness packet
-with the plan, not after the questionnaire lands: a Trust Center plus
-Tier-1 evidence (SOC 2 Type II, SSO/SAML, audit logging, encryption). Work
+cycle, legal redline rounds with liability, data-processing-agreement, and
+SLA flags, security review artifacts, and vendor onboarding in their
+purchasing or finance system. Ship the readiness packet with the plan, not
+after the questionnaire lands: a public trust page plus first-tier evidence
+(a SOC 2 Type II security audit report, single sign-on, audit logging,
+encryption). Work
 the veto coalition as a coalition: any one stakeholder can kill the deal,
 but none can approve it alone. A verbal yes is not signed; redlines kill
 enterprise deals as surely as feature gaps.

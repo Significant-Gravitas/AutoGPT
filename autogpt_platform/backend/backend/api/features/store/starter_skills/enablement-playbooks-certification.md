@@ -35,8 +35,9 @@ misses back into the library as talk-track fixes.
 
 ## Run training as programs, not events
 
-One skill per cycle, role-play reps in, score them out. Track how
-SPIF and deal-registration mechanics are played in the same system so
+One skill per cycle, role-play reps in, score them out. Track how sales
+incentive bonuses (SPIFs) and deal-registration mechanics are played in the
+same system so
 incentives and plays never drift apart; comp design itself lives in
 the sales-ops skill.
 

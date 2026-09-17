@@ -9,8 +9,10 @@ version: "1"
 
 Use this when a deal needs its discovery plan, its qualification score, or
 both before it moves stage. Start from the deal sheet or call transcript,
-the account brief, and which framework the user runs (MEDDICC/MEDDPICC or
-SPICED; MEDDICC when unset, MEDDPICC on long multi-stakeholder cycles).
+the account brief, and which qualification framework the user runs —
+MEDDICC, MEDDPICC, or SPICED, each a checklist whose letters are spelled
+out under Met bars below (MEDDICC when unset, MEDDPICC on long
+multi-stakeholder cycles).
 
 ## Discovery plan before the call
 

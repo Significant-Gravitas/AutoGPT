@@ -1,7 +1,7 @@
 ---
 name: "onboarding-and-adoption"
 description: "Use when a customer is new or newly upgraded: walk setup milestone by milestone, check health early, and draft the nudges that get them to first value."
-triggers: ["onboard", "new customer", "setup help", "adoption", "time to value", "welcome email", "stuck step"]
+triggers: ["onboard a new customer", "customer setup help", "customer adoption is stalling", "time to first value", "welcome email for a new customer", "stuck on a setup step", "customer onboarding plan"]
 version: "1"
 ---
 

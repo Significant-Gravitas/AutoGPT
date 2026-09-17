@@ -1,7 +1,7 @@
 ---
 name: "mass-recovery-and-bulk-comms"
 description: "Use when many customers break at once — outage, breach, recall, or disaster: run bulk recovery, publish mass comms, and keep the war room honest."
-triggers: ["outage recovery", "mass refund", "bulk comms", "war room", "postmortem", "mass notification", "bulk rebook"]
+triggers: ["outage recovery", "mass refund", "bulk customer comms", "support war room", "incident postmortem", "mass customer notification", "bulk rebook"]
 version: "1"
 ---
 

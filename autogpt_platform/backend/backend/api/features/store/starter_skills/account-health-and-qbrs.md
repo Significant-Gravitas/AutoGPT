@@ -1,14 +1,15 @@
 ---
 name: "account-health-and-qbrs"
-description: "Use when an account wobbles or a business review looms: read the health signals, run the success plan, and prep the QBR from evidence."
-triggers: ["account health", "health score", "QBR", "business review", "renewal risk", "success plan", "churn risk"]
+description: "Use when a support account wobbles or a quarterly business review looms: read the health signals, run the success plan, and prep the review from evidence."
+triggers: ["account health score", "quarterly business review", "QBR prep", "renewal risk on this account", "customer success plan", "churn risk signals", "this account is wobbling"]
 version: "1"
 ---
 
 # Account health and QBRs
 
-Use this when an account wobbles or a business review looms: read the
-health signals, run the success plan, and prep the QBR from evidence.
+Use this when an account wobbles or a quarterly business review (QBR)
+looms: read the health signals, run the success plan, and prep the
+review from evidence.
 
 You need the account record (usage, tickets, renewals), the health
 signals and renewal-risk owners from prefs, and the last QBR or

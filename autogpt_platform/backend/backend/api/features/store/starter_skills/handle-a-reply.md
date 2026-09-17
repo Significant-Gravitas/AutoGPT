@@ -1,7 +1,7 @@
 ---
 name: "handle-a-reply"
 description: "Use when a prospect writes back and the user needs the triage and the next draft."
-triggers: ["prospect replied", "got a reply", "triage reply", "respond to prospect", "referral reply", "objection reply", "opt out"]
+triggers: ["prospect replied", "reply from a prospect", "triage a prospect reply", "respond to a cold outreach reply", "referral reply", "objection in a prospect reply", "prospect opted out"]
 version: "1"
 ---
 

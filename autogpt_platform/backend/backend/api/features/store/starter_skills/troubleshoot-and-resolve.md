@@ -1,7 +1,7 @@
 ---
 name: "troubleshoot-and-resolve"
 description: "Use when something is broken: recreate it, find the root cause, ship relief, and file the defect."
-triggers: ["repro", "root cause", "workaround", "file defect", "diagnose", "broken feature"]
+triggers: ["customer reports a bug", "recreate the customer issue", "find the root cause", "ship a workaround", "file a defect", "broken feature in a ticket", "repro steps"]
 version: "1"
 ---
 

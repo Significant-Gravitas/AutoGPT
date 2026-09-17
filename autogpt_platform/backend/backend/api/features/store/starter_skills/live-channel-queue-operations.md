@@ -1,7 +1,7 @@
 ---
 name: "live-channel-queue-operations"
 description: "Use when the phones ring, chat piles up, or social mentions burn: work the live queue in order, keep talk tracks short, and move public heat to private."
-triggers: ["work the live queue", "chat wait is spiking", "phone queue", "callback list", "move to private", "talk track", "queue sweep"]
+triggers: ["work the live queue", "chat wait is spiking", "phone queue backlog", "overdue callback list", "move this to private", "shift talk track", "live queue sweep"]
 version: "1"
 ---
 

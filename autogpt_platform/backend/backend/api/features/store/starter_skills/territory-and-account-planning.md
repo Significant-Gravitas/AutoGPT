@@ -1,6 +1,6 @@
 ---
 name: "territory-and-account-planning"
-description: "Use when the user needs the plan for a territory, a named account, or the quarter: GTM, whitespace, coverage, and targets."
+description: "Use when the user needs the plan for a territory, a named account, or the quarter: go-to-market motion, whitespace, coverage, and targets."
 triggers: ["territory plan", "account plan", "coverage", "whitespace", "quota", "GTM", "30-60-90"]
 version: "1"
 ---
@@ -25,10 +25,10 @@ never estimated.
 
 ## Territory plan
 
-Write the territory plan in five short parts: the GTM motion per segment
-(land, expand, renew), the account tiers with why each tier earns its
-effort, the coverage map of who works what, the pipe-gen targets per tier,
-and the top three risks with what would prove or kill each.
+Write the territory plan in five short parts: the go-to-market motion per
+segment (land, expand, renew), the account tiers with why each tier earns
+its effort, the coverage map of who works what, the pipe-gen targets per
+tier, and the top three risks with what would prove or kill each.
 
 ## Account plans
 

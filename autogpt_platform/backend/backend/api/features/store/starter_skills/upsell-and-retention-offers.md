@@ -1,7 +1,7 @@
 ---
 name: "upsell-and-retention-offers"
 description: "Use when a support touch can attach value or a churn signal appears: offer in-flow, run the save play, and never discount past your limit."
-triggers: ["upsell", "churn signal", "cancellation", "save the account", "retention offer", "upgrade pitch", "discount request"]
+triggers: ["upsell from a support ticket", "churn signal in a ticket", "customer wants to cancel", "save this account", "retention offer", "upgrade ask in a ticket", "customer asked for a discount"]
 version: "1"
 ---
 

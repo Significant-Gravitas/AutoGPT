@@ -24,7 +24,7 @@
     {
       "id": "casey-briefing-05",
       "kind": "briefing",
-      "prompt": "Account health brief: Acme Corp shows 3 P2s in 10 days, renewal in 6 weeks, QBR Thursday. Read the health signals from the Salesforce records and prep QBR talking points with sources, then stage the success plan."
+      "prompt": "Account health brief: Acme Corp shows 3 P2s in 10 days, renewal in 6 weeks, QBR Thursday. Read the health signals from the account records and prep QBR talking points with sources, then stage the success plan."
     },
     {
       "id": "casey-briefing-06",
@@ -34,7 +34,7 @@
     {
       "id": "casey-reply_draft-01",
       "kind": "reply_draft",
-      "prompt": "Draft a reply for Maya, ticket #4817: her parcel stalled at the Memphis hub, tracking 1Z884, replacement verified in Salesforce. Apology-first, short sentences, next step with date and owner, no banned phrases."
+      "prompt": "Draft a reply for Maya, ticket #4817: her parcel stalled at the Memphis hub, tracking 1Z884, replacement verified in the order record. Apology-first, short sentences, next step with date and owner, no banned phrases."
     },
     {
       "id": "casey-reply_draft-02",
@@ -109,7 +109,7 @@
     {
       "id": "casey-failure-01",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Support Agent\nStatus: FAILED\nError: Salesforce ticket sync timed out after 30s\n</run_result>\nWhere is my morning queue brief?"
+      "prompt": "<run_result>\nWorkflow: Automated Support Agent\nStatus: FAILED\nError: Ticket store sync timed out after 30s\n</run_result>\nWhere is my morning queue brief?"
     },
     {
       "id": "casey-failure-02",

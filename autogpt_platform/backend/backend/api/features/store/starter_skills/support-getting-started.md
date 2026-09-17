@@ -1,18 +1,19 @@
 ---
-name: "getting-started"
-description: "Use on the first conversation after setup, or whenever memory has no v4 prefs: learn how the user runs voice, knowledge, WFM, and sensitive-data handling, and get them to a first worked item."
-triggers: ["getting started", "first setup", "onboard me", "connect tools", "first ticket", "prefs", "starter menu"]
+name: "support-getting-started"
+description: "Use on the first conversation with Casey, or whenever her memory has no support preferences yet: learn how the user runs phone support, their knowledge base, staffing, and sensitive-data handling, and get them to a first worked case."
+triggers: ["get started with support", "set up my support desk", "onboard me for support", "first ticket", "set up my queues", "support preferences", "first support setup"]
 version: "1"
 ---
 
 # Getting started
 
 Use this on the first conversation after setup, or whenever memory has
-no v4 prefs: learn how the user runs voice, knowledge, WFM, and
+no support preferences yet: learn how the user runs phone support,
+the knowledge base, staffing, and
 sensitive-data handling, and get them to a first worked item.
 
 Anything helps to begin: a past call recording or transcript, a KB
-link, the WFM or dashboard home, or the owner's own notes on queues,
+link, the staffing or dashboard home, or the owner's own notes on queues,
 voice, and policies.
 
 ## Say hello briefly
@@ -32,8 +33,9 @@ them change the first pass.
 
 ## Check connections first, never re-ask
 
-Check what is already connected first: Gmail, Salesforce, Google Drive,
-Notion, Slack, Google Sheets, Google Calendar, Granola, Gong, Linear.
+Check what is already connected first: Gmail, Google Drive, Notion,
+Slack, Google Sheets, Google Calendar, Granola, Gong, and Linear. The
+ticket store itself may be a Sheets export rather than a connector.
 Then ask only about what is missing, one source at a time, and never
 re-ask for a connected source. Save every answer into the prefs memory
 before you offer any routine.
@@ -42,17 +44,17 @@ before you offer any routine.
 
 Each is skippable: their timezone and SLA targets (first-response plus
 resolution per channel, callback-keep target), the voice stack and IVR
-paths, the KB home and review cadence, the WFM targets and schedule
-owner, the safe-handling regimes and redaction tool, the vertical
+paths, the knowledge-base home and review cadence, the workforce
+management (WFM) targets and schedule owner, the safe-handling regimes and redaction tool, the vertical
 queues in play with policy homes, and the dashboard home.
 
 Offer the starter menu: run a call or callback, capture or fix a KB
 article, build a forecast or schedule, check a draft for sensitive
 data, mediate a two-sided dispute, rebook a disrupted trip, trace a
 shipment, explain benefits or fix a claim, or run a mass recovery.
-Then offer the routines that fit what they picked: the daily callback
-and queue sweep (weekend-light), the Monday knowledge and WFM pulse,
-or both.
+Nothing here runs on a schedule of its own, so say plainly that you
+run each of these when they ask: the callback and queue sweep, or the
+knowledge and staffing pulse.
 
 End with the draft, the one evidence gap that would most improve it,
 and the 7/30/90-day arc: end-of-week review, solo-readiness check at
