@@ -1,236 +1,151 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-
-import {
-  postV2ExchangeOauthCodeForMcpTokens,
-  postV2InitiateOauthLoginForAnMcpServer,
-  postV2StoreABearerTokenForAnMcpServer,
-} from "@/app/api/__generated__/endpoints/mcp/mcp";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOAuthLoginResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { openOAuthPopup } from "@/lib/oauth-popup";
-import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
+import {
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPConnectPanel } from "./useMCPConnectPanel";
+import type { MCPAuthScheme } from "@/lib/mcp-auth";
+import { MCPServerURLField } from "./MCPServerURLField";
+import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
+import { noPasswordManager } from "./helpers";
 
 interface Props {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  initialServerURL?: string;
+  lockServerURL?: boolean;
+  allowedAuthMethods?: ("oauth" | MCPAuthScheme)[];
+  oauthScopes?: string[] | null;
+  oauthWriteScopes?: string[];
+  serverURLOptions?: { label: string; url: string }[];
 }
 
-type Phase = "form" | "manual-token";
-
-export function McpConnectPanel({ onSuccess }: Props) {
-  const queryClient = useQueryClient();
-  const [serverUrl, setServerUrl] = useState("");
-  const [token, setToken] = useState("");
-  const [phase, setPhase] = useState<Phase>("form");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
-
-  useEffect(() => () => oauthAbortRef.current?.(), []);
-
-  const trimmedUrl = serverUrl.trim();
-  const trimmedToken = token.trim();
-  const isUrlValid = isValidHttpUrl(trimmedUrl);
-  const canConnect = isUrlValid && !isSubmitting;
-  const canSubmitToken = isUrlValid && trimmedToken.length > 0 && !isSubmitting;
-
-  async function invalidateCredentials() {
-    await invalidateConnectionQueries(queryClient);
-  }
-
-  async function handleConnect() {
-    if (!canConnect) return;
-    setError(null);
-    setIsSubmitting(true);
-    oauthAbortRef.current?.();
-
-    try {
-      // Only a 400 from the *initiate* call means "server doesn't support
-      // OAuth" — fall back to manual-token for that. A 400 from anywhere else
-      // (popup callback, token exchange) is a real error and should surface
-      // as such instead of forcing the manual-token UI.
-      let loginRes: Awaited<
-        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
-      >;
-      try {
-        loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-          server_url: trimmedUrl,
-        });
-      } catch (e: unknown) {
-        if (getErrorStatus(e) === 400) {
-          setPhase("manual-token");
-          setError(
-            "This server doesn't support OAuth sign-in. Paste a bearer token instead.",
-          );
-          return;
-        }
-        throw e;
-      }
-
-      const { login_url, state_token } = loginRes.data as MCPOAuthLoginResponse;
-
-      const { promise, cleanup } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        useCrossOriginListeners: true,
-      });
-      oauthAbortRef.current = cleanup.abort;
-
-      const result = await promise;
-
-      const exchanged = await postV2ExchangeOauthCodeForMcpTokens({
-        code: result.code,
-        state_token,
-      });
-
-      await invalidateCredentials();
-      onSuccess(exchanged.status === 200 ? exchanged.data : undefined);
-    } catch (e: unknown) {
-      const message = getErrorMessage(e);
-      if (message === "OAuth flow timed out") {
-        setError("OAuth sign-in timed out. Please try again.");
-      } else {
-        setError(message);
-      }
-    } finally {
-      setIsSubmitting(false);
-      oauthAbortRef.current = null;
-    }
-  }
-
-  async function handleSubmitToken() {
-    if (!canSubmitToken) return;
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      const stored = await postV2StoreABearerTokenForAnMcpServer({
-        server_url: trimmedUrl,
-        token: trimmedToken,
-      });
-
-      await invalidateCredentials();
-      onSuccess(stored.status === 200 ? stored.data : undefined);
-    } catch (e: unknown) {
-      setError(getErrorMessage(e));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  function handleSwitchToOAuth() {
-    setPhase("form");
-    setToken("");
-    setError(null);
-  }
+export function McpConnectPanel({
+  onSuccess,
+  initialServerURL = "",
+  lockServerURL = false,
+  allowedAuthMethods,
+  oauthScopes,
+  oauthWriteScopes = [],
+  serverURLOptions,
+}: Props) {
+  const state = useMCPConnectPanel({
+    onSuccess,
+    initialServerURL,
+    allowedAuthMethods,
+    oauthScopes,
+    oauthWriteScopes,
+  });
 
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-zinc-600">
-        Enter the URL of your MCP server. We&apos;ll try OAuth first and fall
-        back to a bearer token if the server doesn&apos;t support OAuth.
-      </Text>
-
-      <Input
-        id="mcp-server-url"
-        label="Server URL"
-        type="url"
-        placeholder="https://mcp.example.com"
-        value={serverUrl}
-        onChange={(e) => setServerUrl(e.target.value)}
-        disabled={isSubmitting}
-        autoFocus
+      {!lockServerURL && (
+        <Text variant="body" className="text-zinc-600">
+          Enter the server URL from the service&apos;s setup instructions.
+        </Text>
+      )}
+      <MCPServerURLField
+        serverURL={state.serverURL}
+        onChange={state.handleServerURLChange}
+        disabled={state.isSubmitting}
+        readOnly={lockServerURL}
+        options={serverURLOptions}
       />
-
-      {phase === "manual-token" ? (
-        <Input
-          id="mcp-bearer-token"
-          label="Bearer token"
-          type="password"
-          placeholder="Paste API token"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          disabled={isSubmitting}
-          hint="Used as a Bearer Authorization header when calling tools."
+      {state.phase === "form" && oauthWriteScopes.length > 0 && (
+        <MultiToggle
+          items={[
+            {
+              value: "write",
+              label: "Allow changes",
+              disabled: state.isSubmitting,
+            },
+          ]}
+          selectedValues={state.allowChanges ? ["write"] : []}
+          onChange={(values) => state.setAllowChanges(values.includes("write"))}
         />
-      ) : null}
-
-      {error ? (
+      )}
+      {state.phase === "manual-token" && (
+        <>
+          <Text variant="small" className="text-zinc-600">
+            {allowedAuthMethods
+              ? "Use the credential described in the setup instructions above."
+              : "Use an API credential only if this server supports it. Follow the server's documentation for the correct authentication type."}
+          </Text>
+          {state.manualSchemes.length > 1 && (
+            <MCPAuthSchemeField
+              value={state.authScheme}
+              onChange={state.selectScheme}
+              disabled={state.isSubmitting}
+              className="flex flex-col gap-1"
+              labelClassName="text-sm font-medium text-zinc-700"
+              selectClassName="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+            />
+          )}
+          <Input
+            id="mcp-auth-token"
+            label={mcpAuthTokenLabel(state.authScheme)}
+            type="password"
+            placeholder={mcpAuthTokenPlaceholder(state.authScheme)}
+            value={state.token}
+            onChange={(e) => state.handleTokenChange(e.target.value)}
+            disabled={state.isSubmitting}
+            hint={mcpAuthTokenHint(state.authScheme)}
+            {...noPasswordManager}
+            autoComplete="new-password"
+          />
+        </>
+      )}
+      {state.error && (
         <div
           role="alert"
           aria-live="polite"
           className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
         >
-          {error}
+          {state.error}
         </div>
-      ) : null}
-
+      )}
       <div className="flex items-center justify-end gap-2">
-        {phase === "manual-token" ? (
+        {state.phase === "form" && state.manualSchemes.length > 0 && (
           <Button
             variant="secondary"
             size="small"
-            onClick={handleSwitchToOAuth}
-            disabled={isSubmitting}
+            onClick={state.handleSwitchToToken}
+          >
+            Use an API token instead
+          </Button>
+        )}
+        {state.phase === "manual-token" && state.canUseOAuth && (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={state.handleSwitchToOAuth}
+            disabled={state.isSubmitting}
           >
             Try OAuth
           </Button>
-        ) : null}
-        {phase === "form" ? (
-          <Button
-            variant="primary"
-            size="small"
-            onClick={handleConnect}
-            disabled={!canConnect}
-            loading={isSubmitting}
-          >
-            Connect
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            size="small"
-            onClick={handleSubmitToken}
-            disabled={!canSubmitToken}
-            loading={isSubmitting}
-          >
-            Save token
-          </Button>
         )}
+        <Button
+          variant="primary"
+          size="small"
+          onClick={
+            state.phase === "form"
+              ? state.handleConnect
+              : state.handleSubmitToken
+          }
+          disabled={
+            state.phase === "form" ? !state.canConnect : !state.canSubmitToken
+          }
+          loading={state.isSubmitting}
+        >
+          {state.phase === "form" ? "Connect" : "Save token"}
+        </Button>
       </div>
     </div>
   );
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "object" && error !== null) {
-    const detail = (error as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return "Something went wrong. Please try again.";
-}
-
-function getErrorStatus(error: unknown): number | null {
-  if (typeof error === "object" && error !== null) {
-    const status = (error as { status?: unknown }).status;
-    if (typeof status === "number") return status;
-  }
-  return null;
-}
-
-function isValidHttpUrl(value: string): boolean {
-  if (!value) return false;
-  try {
-    const u = new URL(value);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

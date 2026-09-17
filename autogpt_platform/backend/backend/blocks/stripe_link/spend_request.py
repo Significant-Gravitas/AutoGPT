@@ -36,7 +36,7 @@ settings = Settings()
 
 
 # Raw virtual-card numbers cannot be handed out on the hosted platform: block
-# outputs are persisted with the execution and surface into AutoPilot
+# outputs are persisted with the execution and surface into Otto
 # transcripts, so a PAN there is cardholder data at rest and a stored CVC is
 # prohibited outright. Rather than returning a crippled card block, the card
 # flow is absent from Cloud entirely — you cannot create a spend request you

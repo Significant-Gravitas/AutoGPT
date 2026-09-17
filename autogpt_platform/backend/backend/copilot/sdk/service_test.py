@@ -299,7 +299,7 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
@@ -1306,7 +1306,7 @@ class TestMoonshotHelperReexports:
 class TestIdleTimeoutThreshold:
     """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
     fires when the SDK is idle with no tool pending. The longer 2-hour cap
-    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    applies while any tool call is pending so a 45-min sub-Otto isn't
     killed, but a truly hung tool still eventually frees session resources."""
 
     def _make_adapter(self, current: dict, resolved: set):
@@ -1352,7 +1352,7 @@ class TestIdleTimeoutThreshold:
 
     def test_hung_tool_cap_is_2_hours(self):
         # Hard cap protects against a hung tool leaking resources forever.
-        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        # 2 hours is plenty for any legitimate sub-Otto or graph run.
         assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
 
     def test_long_cap_is_strictly_longer_than_short_cap(self):
@@ -1586,7 +1586,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
             yield ResultMessage(
                 subtype="success",
@@ -1631,7 +1631,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield None  # heartbeat
             yield ResultMessage(
                 subtype="success",
@@ -1680,7 +1680,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(
                 content=[
                     ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
@@ -1749,7 +1749,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="init", data={})
             yield AssistantMessage(
                 content=[
@@ -1811,7 +1811,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield ResultMessage(
                 subtype="error",
                 duration_ms=1,
@@ -1850,7 +1850,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="task_progress", data={"step": 1})
             yield ResultMessage(
                 subtype="success",
@@ -1889,7 +1889,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             # Two consecutive AssistantMessages with empty tool args —
             # the breaker counter should advance but not yet trip.
             for i in range(2):
@@ -2130,7 +2130,7 @@ class TestStreamEndedWithoutResultMessage:
         ctx = self._ctx()
         state = self._state()
 
-        async def empty_iter(_client, wake=None):
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
             # Drain immediately — no ResultMessage ever arrives. Mirrors
             # the CLI exiting on per-query ``max_budget_usd`` exhaustion
             # mid-tool-call.
@@ -2306,8 +2306,8 @@ class TestHiddenShortNamesForPermissions:
     def test_whitelist_hides_everything_not_listed(self):
         all_tools = all_known_tool_names()
         # Pick one stable, well-known tool as the whitelist.
-        keep = "find_block"
-        assert keep in all_tools, "test relies on find_block being registered"
+        keep = "find_capability"
+        assert keep in all_tools, "test relies on find_capability being registered"
         perms = CopilotPermissions(
             tools=[keep],
             tools_exclude=False,

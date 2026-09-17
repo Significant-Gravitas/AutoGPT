@@ -6,8 +6,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from backend.copilot.model import ChatSession, ChatSessionInfo
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.model import ChatSession
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
 from backend.copilot.tools.helpers import session_entered_building_mode
@@ -17,35 +17,6 @@ logger = logging.getLogger(__name__)
 
 BUILDER_CONTEXT_TAG = "builder_context"
 BUILDER_SESSION_TAG = "builder_session"
-
-
-# Tools hidden from builder-bound sessions: ``create_agent`` /
-# ``customize_agent`` would mint a new graph (panel is bound to one),
-# and ``get_agent_building_guide`` duplicates bytes already in the
-# system-prompt suffix. Everything else (find_block, find_agent, …)
-# stays available so the LLM can look up ids instead of hallucinating.
-BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
-    "create_agent",
-    "customize_agent",
-    "get_agent_building_guide",
-)
-
-
-def resolve_session_permissions(
-    session: ChatSessionInfo | None,
-) -> CopilotPermissions | None:
-    """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
-    return ``None`` (unrestricted) otherwise.
-
-    Reads ``metadata.builder_graph_id`` only — works on either the bare
-    ``ChatSessionInfo`` (no messages) or the full ``ChatSession``.
-    """
-    if session is None or not session.metadata.builder_graph_id:
-        return None
-    return CopilotPermissions(
-        tools=list(BUILDER_BLOCKED_TOOLS),
-        tools_exclude=True,
-    )
 
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
@@ -96,7 +67,7 @@ _BUILDER_TOOL_GUIDANCE = (
     "including populating an empty graph (version=1, no nodes) — "
     "`edit_agent` accepts the same node/link payload that `create_agent` "
     "would, so there is no reason to reach for `create_agent` here. "
-    "Typical sequence for a new request: call `find_block` to discover "
+    'Typical sequence for a new request: call `find_capability(context="graph")` to discover '
     "the block ids and input schemas you need, then call `edit_agent` "
     "once with the full set of nodes and links. "
     "Never ask the user to approve or allow a tool — there is no "

@@ -19,8 +19,8 @@ export function extractToolName(part: ToolUIPart): string {
 // Specific-case labels for tools whose auto-formatted name reads awkwardly
 // alongside a "Running …" prefix (e.g. avoid "Running Run sub session").
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  run_sub_session: "Sub-AutoPilot",
-  get_sub_session_result: "Sub-AutoPilot result",
+  run_sub_session: "Subtask",
+  get_sub_session_result: "Subtask result",
   delegate_to_expert: "Teammate delegation",
   handoff_to_expert: "Teammate hand-off",
   hire_expert: "Expert hire preview",
@@ -31,6 +31,10 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   view_agent_output: "Agent output",
   run_block: "Action",
   run_mcp_tool: "MCP tool",
+  find_capability: "Capability search",
+  describe_capability: "Capability details",
+  run_capability: "Action",
+  resume_capability: "Resumed action",
   get_agent_building_guide: "Agent building guide",
 };
 

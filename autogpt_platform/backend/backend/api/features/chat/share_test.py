@@ -47,7 +47,12 @@ def _make_workspace_file(**overrides) -> WorkspaceFile:
 
 def _mock_download_response():
     async def _handler(file, *, inline=False):
-        return Response(content=b"\x89PNG", media_type="image/png")
+        disposition = "inline" if inline else "attachment"
+        return Response(
+            content=b"\x89PNG",
+            media_type="image/png",
+            headers={"Content-Disposition": f'{disposition}; filename="image.png"'},
+        )
 
     return _handler
 
@@ -304,7 +309,7 @@ class TestDownloadSharedChatFile:
             )
         assert response.status_code == 404
 
-    def test_valid_token_returns_inline(self, client):
+    def test_valid_token_returns_attachment(self, client):
         with (
             patch(
                 "backend.api.features.chat.share.share_db.get_shared_chat_file",
@@ -326,3 +331,4 @@ class TestDownloadSharedChatFile:
             )
         assert response.status_code == 200
         assert response.content == b"\x89PNG"
+        assert "attachment" in response.headers["Content-Disposition"]

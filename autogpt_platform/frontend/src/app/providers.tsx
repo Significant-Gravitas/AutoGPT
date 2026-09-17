@@ -13,6 +13,7 @@ import {
   PostHogUserTracker,
 } from "@/providers/posthog/posthog-provider";
 import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker";
+import { AttributionReporter } from "@/services/analytics/AttributionReporter";
 import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, ThemeProviderProps } from "next-themes";
@@ -31,6 +32,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
             <Suspense fallback={null}>
               <SentryUserTracker />
               <PostHogUserTracker />
+              <AttributionReporter />
               <AdsConversionTracker />
               <PostHogPageViewTracker />
             </Suspense>

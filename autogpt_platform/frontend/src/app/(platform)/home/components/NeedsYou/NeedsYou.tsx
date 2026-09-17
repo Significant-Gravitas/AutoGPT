@@ -2,6 +2,7 @@
 
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import { Text } from "@/components/atoms/Text/Text";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
@@ -30,13 +31,16 @@ export function NeedsYou({ dashboard, className }: Props) {
       icon={AlertCircleIcon}
       title="Needs you"
       badge={
-        <span
+        <Text
+          variant="small-medium"
+          as="span"
+          tone="secondary"
           role="status"
           aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
-          className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-700"
+          className="rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
         >
           {itemCount}
-        </span>
+        </Text>
       }
       meta={
         hasFilters ? (

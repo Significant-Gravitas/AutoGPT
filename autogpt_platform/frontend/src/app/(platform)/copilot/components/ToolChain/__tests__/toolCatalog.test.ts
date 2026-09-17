@@ -75,17 +75,12 @@ describe("getCatalogLabel", () => {
       "done",
       'Posted to "#general"',
     ],
-    [
-      "run_block",
-      { block_name: "Web Search" },
-      "done",
-      'Ran block "Web Search"',
-    ],
+    ["run_block", { block_name: "Web Search" }, "done", "Ran block"],
     [
       "run_block",
       { block_id: "abcdefabcdefabcdefabcdef" },
       "done",
-      'Ran block "abcdefabcdefabcdefab…"',
+      "Ran block",
     ],
     [
       "run_mcp_tool",
@@ -169,17 +164,12 @@ describe("getCatalogLabel", () => {
     ],
     ["create_folder", { name: "Reports" }, "done", 'Created folder "Reports"'],
     ["update_folder", { name: "Reports" }, "done", 'Updated folder "Reports"'],
-    [
-      "run_agent",
-      { username_agent_slug: "abhi/scraper" },
-      "done",
-      'Ran agent "abhi/scraper"',
-    ],
+    ["run_agent", { username_agent_slug: "abhi/scraper" }, "done", "Ran agent"],
     [
       "run_agent",
       { library_agent_id: "0123456789012345678901234" },
       "done",
-      'Ran agent "01234567890123456789…"',
+      "Ran agent",
     ],
     ["add_understanding", {}, "done", "Noted context"],
     ["enter_agent_building_mode", {}, "running", "Entering building mode…"],
@@ -194,9 +184,7 @@ describe("getCatalogLabel", () => {
     const text =
       getCatalogLabel("run_sub_session", { prompt }, "running")?.text ?? "";
 
-    expect(text.startsWith('Delegating to sub-AutoPilot: "Investigate')).toBe(
-      true,
-    );
+    expect(text.startsWith('Delegating subtask: "Investigate')).toBe(true);
     expect(text.endsWith('…"…')).toBe(true);
   });
 
@@ -250,5 +238,70 @@ describe("getCatalogLabel", () => {
     expect(
       getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
     ).toBe('Handed over: "own it"');
+    expect(
+      getCatalogLabel(
+        "consult_teammate",
+        { question: "Does this commit us to a refund?" },
+        "running",
+      ),
+    ).toEqual({
+      category: "team",
+      text: 'Asking a teammate to check: "Does this commit us to a refund?"…',
+    });
+    expect(
+      getCatalogLabel(
+        "consult_teammate",
+        { question: "Does this commit us to a refund?" },
+        "done",
+      )?.text,
+    ).toBe('Teammate checked: "Does this commit us to a refund?"');
+    expect(getCatalogLabel("find_session", {}, "running")).toEqual({
+      category: "team",
+      text: "Looking for a session…",
+    });
+    expect(getCatalogLabel("find_session", {}, "done")?.text).toBe(
+      "Found sessions",
+    );
+    // The message is quoted and truncated, so the row never carries the whole
+    // payload into the chain label.
+    expect(
+      getCatalogLabel(
+        "message_session",
+        { message: "the numbers are in" },
+        "done",
+      )?.text,
+    ).toBe('Messaged a session: "the numbers are in"');
+  });
+
+  it("labels the capability tools by what they act on", () => {
+    expect(
+      getCatalogLabel("find_capability", { query: "linear issue" }, "running")
+        ?.text,
+    ).toBe('Searching capabilities for "linear issue"…');
+    expect(
+      getCatalogLabel("describe_capability", { id: "block:abc" }, "done")?.text,
+    ).toBe('Read capability "block:abc"');
+  });
+
+  it("names a run by its block, falling back to the capability id", () => {
+    // The display name only arrives once the run reports back, so the id
+    // has to carry the label until then.
+    expect(
+      getCatalogLabel(
+        "run_capability",
+        { id: "tool:list_schedules" },
+        "running",
+      )?.text,
+    ).toBe('Running "tool:list_schedules"…');
+    expect(
+      getCatalogLabel("run_capability", { id: "block:abc" }, "done", {
+        displayName: "Send Web Request",
+      })?.text,
+    ).toBe('Ran "Send Web Request"');
+    expect(
+      getCatalogLabel("resume_capability", { review_id: "r" }, "done", {
+        displayName: "Send Web Request",
+      })?.text,
+    ).toBe('Resumed "Send Web Request"');
   });
 });

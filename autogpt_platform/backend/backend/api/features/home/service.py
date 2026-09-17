@@ -4,14 +4,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from pydantic import BaseModel, ValidationError
 
-from backend.api.features.executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-)
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+)
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
@@ -61,13 +63,13 @@ class HomeSourceData(BaseModel):
 async def build_home_dashboard(
     *,
     user_id: str,
-    organization_id: str | None = None,
+    ctx: RequestContext | None = None,
 ) -> HomeDashboardResponse:
     now = datetime.now(timezone.utc)
     week_start = now - timedelta(days=7)
     data = await _load_home_source_data(
         user_id=user_id,
-        organization_id=organization_id,
+        ctx=ctx,
         now=now,
         week_start=week_start,
     )
@@ -81,7 +83,10 @@ async def build_home_dashboard(
     # All depend on the gathered data (graph ids / session ids / timezone) but
     # not on each other, so these reads cost no extra round-trip.
     library_refs, persisted_briefing, session_titles = await asyncio.gather(
-        library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
+        # Removed agents keep naming their past runs on the Recent work card.
+        library_db.get_library_agent_refs_by_graph_ids(
+            user_id, graph_ids, include_deleted=True
+        ),
         _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
         _get_session_titles(user_id=user_id, session_ids=work_session_ids),
     )
@@ -152,7 +157,7 @@ async def _persisted_briefing(
 async def _load_home_source_data(
     *,
     user_id: str,
-    organization_id: str | None,
+    ctx: RequestContext | None,
     now: datetime,
     week_start: datetime,
 ) -> HomeSourceData:
@@ -177,9 +182,7 @@ async def _load_home_source_data(
         )
     )
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
-    credits_task = asyncio.create_task(
-        _get_credits(user_id=user_id, organization_id=organization_id)
-    )
+    credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
     work_events_task = asyncio.create_task(
         _get_work_events(user_id=user_id, since=week_start)
@@ -282,7 +285,13 @@ async def _get_session_titles(
         return {}
 
 
-async def _get_credits(*, user_id: str, organization_id: str | None) -> int | None:
+async def _get_credits(*, user_id: str, ctx: RequestContext | None) -> int | None:
+    # An org wallet is pooled and MANAGE_BILLING gates it on /credits, so a
+    # member without that permission must not read the same figure here.
+    # Personal orgs are unaffected: their membership row is always isOwner.
+    if ctx and ctx.org_id and not check_org_permission(ctx, OrgAction.MANAGE_BILLING):
+        return None
+    organization_id = ctx.org_id if ctx else None
     try:
         model = await get_credit_model(user_id, organization_id)
         return await model.get_credits(user_id, organization_id)

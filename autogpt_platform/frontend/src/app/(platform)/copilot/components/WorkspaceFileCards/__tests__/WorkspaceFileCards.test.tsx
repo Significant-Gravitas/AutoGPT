@@ -86,6 +86,9 @@ function openFilesCard() {
       history: [],
       activeTab: "files",
       lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
 }
@@ -98,6 +101,9 @@ function closeFilesCard() {
       history: [],
       activeTab: "files",
       lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
 }
@@ -156,6 +162,9 @@ afterEach(() => {
       history: [],
       activeTab: "files",
       lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
   useCopilotStreamStore.setState({ messageSnapshots: {} });
@@ -184,6 +193,9 @@ describe("WorkspaceFileCards", () => {
         history: [],
         activeTab: "files",
         lastArtifact: null,
+        mode: "artifact",
+        computer: null,
+        isComputerOpen: false,
       },
     });
     const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
@@ -198,6 +210,9 @@ describe("WorkspaceFileCards", () => {
         history: [],
         activeTab: "artifacts",
         lastArtifact: null,
+        mode: "artifact",
+        computer: null,
+        isComputerOpen: false,
       },
     });
     const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);

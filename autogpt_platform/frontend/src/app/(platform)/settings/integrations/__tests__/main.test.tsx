@@ -55,7 +55,7 @@ describe("SettingsIntegrationsPage — list", () => {
     render(<SettingsIntegrationsPage />);
 
     expect(
-      await screen.findByRole("heading", { name: /integrations/i }),
+      await screen.findByRole("heading", { name: /^integrations$/i }),
     ).toBeDefined();
     const connectButtons = screen.getAllByRole("button", {
       name: /connect.*service/i,

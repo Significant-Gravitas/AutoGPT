@@ -55,18 +55,23 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="body-medium" className="text-pretty text-zinc-950">
+            <Text variant="body-medium" tone="primary" className="text-pretty">
               {item.title}
             </Text>
             {item.priority === "high" ? (
-              <span className="rounded bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/10">
+              <Text
+                variant="small-medium"
+                as="span"
+                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+              >
                 Waiting
-              </span>
+              </Text>
             ) : null}
           </div>
           <Text
             variant="body"
-            className="line-clamp-2 text-pretty text-zinc-600"
+            tone="secondary"
+            className="line-clamp-2 text-pretty"
           >
             {item.description}
           </Text>

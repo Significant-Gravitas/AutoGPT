@@ -361,7 +361,7 @@ describe("ToolResult", () => {
         />,
       );
 
-      expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
+      expect(screen.getByText("Expert")).toBeDefined();
       expect(screen.getByText("1m 15s")).toBeDefined();
       expect(screen.getByText("Everything worked")).toBeDefined();
       expect(
@@ -401,6 +401,33 @@ describe("ToolResult", () => {
   });
 
   describe("block routing", () => {
+    it.each([
+      { block_name: "FillTextTemplateBlock", outputs: { output: ["Hello"] } },
+      { block: { name: "FillTextTemplateBlock" } },
+    ])("normalizes expanded block names from %j", (output) => {
+      render(<ToolResult row={row(output, "run_block")} />);
+      expect(screen.getByText("Fill Text Template")).toBeDefined();
+      expect(screen.queryByText("FillTextTemplateBlock")).toBeNull();
+    });
+
+    it("keeps unknown block output cards generic instead of showing a UUID", () => {
+      render(
+        <ToolResult
+          row={row(
+            {
+              block_id: "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+              outputs: { output: ["Hello"] },
+            },
+            "run_block",
+          )}
+        />,
+      );
+      expect(screen.getByText("Block")).toBeDefined();
+      expect(
+        screen.queryByText("db7d8f02-2f44-4c55-ab7a-eae0941f0c30"),
+      ).toBeNull();
+    });
+
     it("renders a single block card for run_block block payloads", () => {
       render(
         <ToolResult
@@ -916,5 +943,71 @@ describe("ToolResult", () => {
       expect(screen.getByText("Replicas")).toBeDefined();
       expect(screen.getByText("3")).toBeDefined();
     });
+  });
+});
+
+describe("ToolResult start_desktop", () => {
+  afterEach(() => cleanup());
+
+  it("embeds the live desktop stream instead of dumping the payload", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    const frame = screen.getByTitle("Interactive desktop (sbx-1)");
+    expect(frame.getAttribute("src")).toBe(
+      "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+    );
+    expect(screen.getByText("Open in new tab")).toBeDefined();
+    expect(screen.queryByText(/"kind"/)).toBeNull();
+  });
+
+  it("shows a shared-transcript viewer a notice, not the owner-only frame", () => {
+    render(
+      <ToolResult
+        readOnly
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "/api/proxy/api/desktop-preview?token=abc",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+              requires_auth: true,
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("falls back to the generic view when the stream is missing", () => {
+    render(
+      <ToolResult
+        row={row({ message: "Failed to start the desktop." }, "start_desktop")}
+      />,
+    );
+    expect(screen.getByText("Failed to start the desktop.")).toBeDefined();
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
   });
 });
