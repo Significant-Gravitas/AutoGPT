@@ -172,7 +172,7 @@ package-lock.json
 
 # Allow for locally private items
 # private
-pri*
+private*
 # ignore
 ig*
 .github_access_token

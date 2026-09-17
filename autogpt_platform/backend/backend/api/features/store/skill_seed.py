@@ -445,6 +445,426 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["sales", "operations", "support"],
         "required_providers": [],
     },
+    {
+        "slug": "partnerships-getting-started",
+        "categories": ["sales", "operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "define-the-partner-icp",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "source-and-qualify-partners",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "partner-first-touch-outreach",
+        "categories": ["sales", "content"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "structure-the-partner-agreement",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "onboard-and-enable-partners",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-the-partner-co-sell-cadence",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "track-partner-pipeline",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "prep-the-partner-qbr",
+        "categories": ["sales", "operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "handle-partner-conflict-and-churn",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "design-the-partner-program",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "map-the-partner-ecosystem",
+        "categories": ["research", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "plan-the-multi-year-partnership",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "govern-the-strategic-alliance",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "model-the-partnership-commercials",
+        "categories": ["sales", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "scope-the-tech-partnership",
+        "categories": ["sales", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-the-partner-marketing-engine",
+        "categories": ["marketing", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "scale-the-partner-channel",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-hyperscaler-marketplace-co-sell",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-partner-strategy-and-operations",
+        "categories": ["operations", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "assure-partner-led-delivery",
+        "categories": ["operations", "support"],
+        "required_providers": [],
+    },
+    {
+        "slug": "manage-partner-renewals-and-exits",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "build-partner-academies-at-scale",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "orchestrate-multi-party-partner-bids",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-regulated-partnership-motions",
+        "categories": ["operations", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "source-partners-via-investor-ecosystems",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "build-data-and-r-d-alliances",
+        "categories": ["research", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-creator-and-affiliate-partner-programs",
+        "categories": ["marketing", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-brand-oem-and-supply-partnerships",
+        "categories": ["marketing", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "set-board-level-alliance-strategy",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "own-the-alliance-pnl",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "run-global-partner-executive-councils",
+        "categories": ["operations", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "drive-alliance-ma-and-strategic-investments",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "build-partner-led-category-creation",
+        "categories": ["marketing", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "finance-getting-started",
+        "categories": ["finance", "operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "budget-vs-actuals-and-reforecast",
+        "categories": ["finance"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "variance-and-flux-analysis",
+        "categories": ["finance", "research"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "cash-treasury-and-fx",
+        "categories": ["finance"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "close-controls-and-accounting",
+        "categories": ["finance", "operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "unit-economics-and-roi",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "saas-gtm-finance",
+        "categories": ["finance", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "deal-economics-and-pricing-guardrails",
+        "categories": ["finance", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "finance-board-and-investor-reporting",
+        "categories": ["finance", "content"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "automate-finance-reporting",
+        "categories": ["finance", "operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "product-getting-started",
+        "categories": ["development", "research"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "product-roadmap-and-prioritization",
+        "categories": ["development", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-prd-and-acceptance-criteria",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-discovery-and-user-research",
+        "categories": ["research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-metrics-and-instrumentation",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-strategy-and-bets",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-experiment-design",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-ai-feature-scoping-and-evals",
+        "categories": ["development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-launch-plan",
+        "categories": ["marketing", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-market-and-competitor-read",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "product-exec-briefing",
+        "categories": ["operations", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "recruiting-getting-started",
+        "categories": ["operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "role-intake-and-scorecard",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "job-description-drafting",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-sourcing-strategy",
+        "categories": ["operations", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "passive-candidate-outreach",
+        "categories": ["operations", "content"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "resume-screening",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "interview-kit-design",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "interview-coordination",
+        "categories": ["operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "hiring-debrief-and-decision",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "job-offer-and-close-plan",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "hiring-pipeline-analytics",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "ops-getting-started",
+        "categories": ["operations"],
+        "required_providers": ["google", "notion", "slack"],
+    },
+    {
+        "slug": "ops-run-the-operating-rhythm",
+        "categories": ["operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "ops-scorecard-and-kpis",
+        "categories": ["operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "ops-write-an-sop",
+        "categories": ["operations"],
+        "required_providers": ["notion"],
+    },
+    {
+        "slug": "ops-map-and-improve-a-process",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "ops-automate-a-workflow",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "ops-vendor-and-procurement",
+        "categories": ["operations", "finance"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "ops-capacity-and-headcount-plan",
+        "categories": ["operations"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "ops-controls-and-escalations",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "ops-govern-a-program",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "marketing-getting-started",
+        "categories": ["marketing", "content"],
+        "required_providers": ["google", "notion", "slack", "hubspot"],
+    },
+    {
+        "slug": "content-brief-writer-handoff",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "editorial-calendar-ops",
+        "categories": ["marketing", "content"],
+        "required_providers": ["google", "notion"],
+    },
+    {
+        "slug": "messaging-and-tone-matrix",
+        "categories": ["marketing", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "campaign-brief-and-asset-plan",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "channel-draft-shapes",
+        "categories": ["content", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "nurture-sequence-build-and-readout",
+        "categories": ["marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "weekly-marketing-read",
+        "categories": ["marketing", "research"],
+        "required_providers": [],
+    },
 ]
 
 
