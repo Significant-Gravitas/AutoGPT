@@ -173,6 +173,9 @@ class DesktopSession:
                     f"-passwdfile rm:{VNC_PASSWORD_PATH} "
                     f">{_X11VNC_LOG} 2>{_X11VNC_ERROR_LOG}"
                 )
+                # -bg returns once x11vnc has detached; one that dies after
+                # that would leave noVNC serving a stream with nothing behind.
+                await self._wait_for(f'netstat -tln | grep ":{VNC_PORT} "')
             except Exception as exc:
                 # x11vnc's own words are in the box, not in the exception.
                 raise RuntimeError(

@@ -1,7 +1,7 @@
 """The live stream: its password never rests on the box, and a re-open hands
 back the URL the user holds only while the box has kept running."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -149,3 +149,28 @@ async def test_a_failed_x11vnc_with_no_log_to_show_still_raises(tail, said):
     with pytest.raises(RuntimeError, match="x11vnc did not start") as raised:
         await DesktopSession(sandbox).start_stream(None)
     assert said in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_an_x11vnc_that_dies_after_detaching_is_caught_before_novnc_starts():
+    """``-bg`` reports success once it has forked; the port never opening is
+    the only sign, and noVNC's own port would come up regardless."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat"):
+            raise RuntimeError("not listening")
+        if command.startswith("tail"):
+            return MagicMock(stdout="caught X11 error")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with (
+        patch("backend.blocks.desktop._api._READY_POLL_ATTEMPTS", 2),
+        patch("backend.blocks.desktop._api._READY_POLL_SECONDS", 0),
+        pytest.raises(RuntimeError, match="x11vnc did not start: caught X11 error"),
+    ):
+        await DesktopSession(sandbox).start_stream(None)
+    assert not any("novnc_proxy --vnc" in cmd for cmd, _ in _commands(run))
