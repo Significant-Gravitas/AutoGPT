@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import inspect
 import time
 from datetime import datetime, timezone
 from functools import cached_property
@@ -12,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from backend.data.model import User
 from backend.util.exceptions import (
@@ -26,12 +27,25 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    _build_return_adapter,
+    _usable_adapter,
     endpoint_to_async,
     expose,
     get_service_client,
 )
 
 TEST_SERVICE_PORT = 8765
+
+
+class ReviewLike(BaseModel):
+    """Stand-in for a model that only the service module can name.
+
+    Referenced by ``ServiceTest.list_reviews`` as a forward reference, which is
+    what backend.data.human_review does for PendingHumanReviewModel.
+    """
+
+    id: str
+    name: str = "review"
 
 
 class _SupportsGetReturn(Protocol):
@@ -85,6 +99,11 @@ class ServiceTest(AppService):
         return self.run_and_wait(add_async(a, b))
 
     @expose
+    def list_reviews(self, count: int) -> list["ReviewLike"]:
+        """Quoted return annotation: unresolvable from backend.util.service."""
+        return [ReviewLike(id=str(i)) for i in range(count)]
+
+    @expose
     def failing_add(self, a: int, b: int) -> int:
         """Method that fails 2 times then succeeds - for testing retry logic"""
         self.fail_count += 1
@@ -108,7 +127,9 @@ class ServiceTestClient(AppServiceClient):
     fun_with_async = ServiceTest.fun_with_async
     failing_add = ServiceTest.failing_add
     always_failing_add = ServiceTest.always_failing_add
+    list_reviews = ServiceTest.list_reviews
     add_async = endpoint_to_async(ServiceTest.add)
+    list_reviews_async = endpoint_to_async(ServiceTest.list_reviews)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
 
 
@@ -974,3 +995,102 @@ class TestGetReturn:
 
         result = client._get_return(adapter, invalid_dict)
         assert result == invalid_dict
+
+
+class TestForwardRefReturnAnnotation:
+    """Regression tests for list["Model"] return annotations over the RPC.
+
+    ``backend.data.human_review.get_pending_reviews_for_user`` is annotated
+    ``-> list["PendingHumanReviewModel"]``. The client builds the TypeAdapter in
+    backend.util.service, where that name does not exist, so before the fix the
+    adapter was never fully defined and every call raised PydanticUserError inside
+    ``_get_return`` and handed callers raw dicts.
+    """
+
+    @property
+    def annotation(self):
+        return inspect.signature(ServiceTest.list_reviews).return_annotation
+
+    def test_annotation_is_unresolvable_from_the_service_module(self):
+        """Guards the premise of the fix.
+
+        Pydantic resolves a forward reference against the namespace of whoever
+        builds the adapter. Built from backend.util.service — where the client
+        builds it — the name is not in scope and there is no usable adapter.
+        """
+        assert _usable_adapter(self.annotation) is None
+
+    def test_build_return_adapter_resolves_the_forward_ref(self):
+        adapter = _build_return_adapter(
+            ServiceTest.list_reviews, self.annotation, "list_reviews"
+        )
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
+
+    def test_build_return_adapter_resolves_through_an_async_stub(self):
+        stub = ServiceTestClient.list_reviews_async
+        adapter = _build_return_adapter(
+            stub, inspect.signature(stub).return_annotation, "list_reviews"
+        )
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
+
+    def test_get_return_deserializes_the_forward_ref_payload(self):
+        adapter = _build_return_adapter(
+            ServiceTest.list_reviews, self.annotation, "list_reviews"
+        )
+        client = cast(_SupportsGetReturn, get_service_client(ServiceTestClient))
+        result = client._get_return(adapter, [{"id": "1", "name": "first"}])
+        assert result == [ReviewLike(id="1", name="first")]
+
+    def test_unresolvable_annotation_yields_no_adapter(self):
+        """A name nothing can resolve degrades to unvalidated results, not an error."""
+
+        def never_defined() -> "NeverDefinedModel":  # type: ignore[name-defined] # noqa: F821
+            raise NotImplementedError
+
+        annotation = inspect.signature(never_defined).return_annotation
+        assert (
+            _build_return_adapter(never_defined, list[annotation], "never_defined")
+            is None
+        )
+
+
+def _client_with_canned_response(payload: Any):
+    """A real client whose HTTP transport answers every call with *payload*.
+
+    Exercises the whole client path — adapter construction in ``__getattr__``,
+    the HTTP round trip and ``_get_return`` — without a service process.
+    """
+    client = get_service_client(ServiceTestClient)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    inner = cast(Any, client)
+    inner._sync_clients[ServiceTest.__name__] = httpx.Client(
+        transport=transport, base_url=inner.base_url
+    )
+    inner._async_clients[None] = httpx.AsyncClient(
+        transport=transport, base_url=inner.base_url
+    )
+    return client
+
+
+def test_forward_ref_return_is_deserialized_over_the_rpc():
+    client = _client_with_canned_response([{"id": "0"}, {"id": "1", "name": "second"}])
+
+    reviews = client.list_reviews(2)
+
+    assert reviews == [ReviewLike(id="0"), ReviewLike(id="1", name="second")]
+    assert all(isinstance(review, ReviewLike) for review in reviews)
+
+
+@pytest.mark.asyncio
+async def test_forward_ref_return_is_deserialized_over_the_async_rpc():
+    client = _client_with_canned_response([{"id": "0"}])
+    inner = cast(Any, client)
+    # The async client is keyed by running event loop; reuse the mocked one.
+    inner._async_clients[asyncio.get_running_loop()] = inner._async_clients[None]
+
+    reviews = await client.list_reviews_async(1)
+
+    assert reviews == [ReviewLike(id="0")]
+    assert isinstance(reviews[0], ReviewLike)
