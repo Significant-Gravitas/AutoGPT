@@ -53,6 +53,11 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
               providers={expert.credential_providers ?? []}
             />
           </div>
+          {expert.job_title ? (
+            <Text variant="body-medium" tone="secondary" className="mt-1">
+              {expert.job_title}
+            </Text>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button

@@ -174,6 +174,11 @@ export function ExpertTeamCard({
               providers={expert.credential_providers ?? []}
             />
           </div>
+          {expert.job_title ? (
+            <Text variant="body-medium" tone="secondary" className="truncate">
+              {expert.job_title}
+            </Text>
+          ) : null}
           {/* Same pill as the expert page header and the marketplace card. */}
           <Text
             variant="small-medium"

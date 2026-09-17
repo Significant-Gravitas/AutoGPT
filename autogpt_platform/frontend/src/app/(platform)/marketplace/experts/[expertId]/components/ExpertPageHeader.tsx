@@ -30,6 +30,11 @@ export function ExpertPageHeader({ expert, accent, actions }: Props) {
           <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
             {expert.name}
           </h1>
+          {expert.job_title ? (
+            <p className="mt-1 text-base font-medium text-zinc-500">
+              {expert.job_title}
+            </p>
+          ) : null}
           <span
             className={cn(
               "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",

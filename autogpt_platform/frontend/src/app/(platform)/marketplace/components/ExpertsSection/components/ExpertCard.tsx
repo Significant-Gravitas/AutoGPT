@@ -60,6 +60,11 @@ export function ExpertCard({ expert, isHired }: Props) {
           <div className="text-xl font-semibold tracking-[-0.01em] text-zinc-900">
             {expert.name}
           </div>
+          {expert.job_title ? (
+            <div className="mt-0.5 text-base font-medium text-zinc-500">
+              {expert.job_title}
+            </div>
+          ) : null}
           {expert.tagline ? (
             <p className="mt-1.5 line-clamp-2 text-base leading-relaxed text-zinc-600">
               {expert.tagline}

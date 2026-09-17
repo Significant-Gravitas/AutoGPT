@@ -247,6 +247,7 @@ def _to_model(
         avatar_url=row.avatarUrl,
         color=row.color,
         role=row.role,
+        job_title=row.jobTitle,
         tagline=row.tagline,
         bio=row.bio,
         skills=row.skills or [],
@@ -888,6 +889,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "avatarUrl": template.avatarUrl,
         "color": template.color,
         "role": template.role,
+        "jobTitle": template.jobTitle,
         "tagline": template.tagline,
         "bio": template.bio,
         # The bundled installs below record each name, so the row lists only
