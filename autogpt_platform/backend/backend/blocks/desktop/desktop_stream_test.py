@@ -55,6 +55,9 @@ async def test_a_fresh_stream_keeps_its_password_out_of_the_shells_reach():
     (x11vnc,) = [cmd for cmd, _ in commands if cmd.startswith("x11vnc")]
     assert f"-passwdfile rm:{VNC_PASSWORD_PATH}" in x11vnc
     assert "-storepasswd" not in x11vnc and password not in x11vnc
+    # Root's x11vnc and the user's Xvfb cannot share memory: with MIT-SHM on,
+    # x11vnc exits 1 (BadAccess on ShmAttach) and no desktop ever opens.
+    assert " -noshm " in x11vnc
 
 
 @pytest.mark.asyncio
@@ -89,3 +92,26 @@ async def test_a_remembered_password_is_dropped_once_the_proxy_is_gone():
 
     assert password != "issued-before"
     assert any(cmd.startswith("x11vnc") for cmd, _ in _commands(run))
+
+
+@pytest.mark.asyncio
+async def test_a_failed_x11vnc_says_why_in_its_own_words():
+    """Its stderr goes to a file in the box, so the bare exception is empty."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat"):
+            raise RuntimeError("nothing on the stream port")
+        if command.startswith("x11vnc"):
+            raise RuntimeError("Command exited with code 1 and error:")
+        if command.startswith("tail"):
+            return MagicMock(stdout="X Error of failed request:  BadAccess\n")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with pytest.raises(RuntimeError, match="x11vnc did not start: X Error.*BadAccess"):
+        await DesktopSession(sandbox).start_stream(None)
+    (tail,) = [(c, u) for c, u in _commands(run) if c.startswith("tail")]
+    assert tail[1] == VNC_USER
