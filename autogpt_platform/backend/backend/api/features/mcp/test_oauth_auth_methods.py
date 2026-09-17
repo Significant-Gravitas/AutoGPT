@@ -153,7 +153,11 @@ async def test_registered_method_survives_token_lifecycle(
                 ).decode()
                 == "client%3Aid:%3Ctest+secret%3E"
             )
-            assert "client_id" not in args["data"]
+            # The id rides along for servers that do not read it from the
+            # header (Miro answers "Missing client_id" otherwise); the
+            # secret is what must stay out of the body.
+            assert args["data"]["client_id"] == "client:id"
+            assert "client_secret" not in args["data"]
             assert "client_secret" not in args["data"]
         else:
             assert "Authorization" not in args["headers"]
