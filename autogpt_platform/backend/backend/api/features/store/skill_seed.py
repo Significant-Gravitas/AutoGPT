@@ -45,6 +45,7 @@ from backend.copilot.tools.skills import (
     _validate_name,
     parse_skill_markdown,
     validate_package,
+    validate_skill_content,
 )
 from backend.data import db as database
 
@@ -333,6 +334,7 @@ def _load(root: Path, entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]
             f"{named} declares name '{parsed.name}'; the frontmatter name is "
             "the installed skill's name and must match the catalog slug"
         )
+    validate_skill_content(parsed.description, parsed.body, parsed.triggers)
     files = _package_files(directory)
     validate_package(SkillPackage(skill_md=text, files=files))
     return parsed, files

@@ -298,6 +298,37 @@ def _validate_name(name: str) -> str | None:
     return None
 
 
+def validate_skill_content(
+    description: str, body: str, triggers: Iterable[str]
+) -> None:
+    trigger_list = list(triggers)
+    if not description:
+        raise ValueError("description is required")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValueError(
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
+            "(it appears in every turn's skills index)"
+        )
+    if not body:
+        raise ValueError("body is required")
+    if len(body) > MAX_BODY_CHARS:
+        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
+    if len(trigger_list) > MAX_TRIGGERS:
+        raise ValueError(
+            f"triggers must be ≤{MAX_TRIGGERS} entries "
+            "(they are inlined in <available_skills> every turn)"
+        )
+    oversized_trigger = next(
+        (trigger for trigger in trigger_list if len(trigger) > MAX_TRIGGER_CHARS),
+        None,
+    )
+    if oversized_trigger is not None:
+        raise ValueError(
+            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Workspace registry — read/write/delete user skills as folders under
 # ``/skills/{slug}/SKILL.md``.  We construct a *session-less*
@@ -679,28 +710,7 @@ async def store_user_skill(
     name_err = _validate_name(name)
     if name_err:
         raise ValueError(name_err)
-    if not description:
-        raise ValueError("description is required")
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        raise ValueError(
-            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
-            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
-            "(it appears in every turn's skills index)"
-        )
-    if not body:
-        raise ValueError("body is required")
-    if len(body) > MAX_BODY_CHARS:
-        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
-    if len(triggers) > MAX_TRIGGERS:
-        raise ValueError(
-            f"triggers must be ≤{MAX_TRIGGERS} entries "
-            "(they are inlined in <available_skills> every turn)"
-        )
-    oversized_trigger = next((t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None)
-    if oversized_trigger is not None:
-        raise ValueError(
-            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
-        )
+    validate_skill_content(description, body, triggers)
 
     parsed = ParsedSkill(
         name=name,

@@ -16,7 +16,14 @@ from backend.api.features.store.skill_seed import (
     _load_starter,
     load_catalog,
 )
-from backend.copilot.tools.skills import ParsedSkill, SkillPackageError
+from backend.copilot.tools.skills import (
+    MAX_BODY_CHARS,
+    MAX_DESCRIPTION_CHARS,
+    MAX_TRIGGER_CHARS,
+    MAX_TRIGGERS,
+    ParsedSkill,
+    SkillPackageError,
+)
 
 SKILL_MD = "---\nname: demo\ndescription: A demo skill.\n---\n\n# Demo\n"
 ENTRY = CatalogEntry(slug="demo", categories=["content"], required_providers=[])
@@ -69,6 +76,39 @@ def test_a_listed_skill_without_a_skill_md_is_refused(tmp_path):
     _write(tmp_path, "skills/demo/references/API.md", "# API\n")
 
     with pytest.raises(ValueError, match="is missing"):
+        _load(tmp_path, ENTRY)
+
+
+@pytest.mark.parametrize(
+    ("frontmatter", "body", "message"),
+    [
+        (
+            f"description: {'x' * (MAX_DESCRIPTION_CHARS + 1)}\n",
+            "# Demo\n",
+            "description is",
+        ),
+        ("description: A demo skill.\n", "x" * (MAX_BODY_CHARS + 1), "body must"),
+        (
+            "description: A demo skill.\n"
+            f"triggers: {[f't{i}' for i in range(MAX_TRIGGERS + 1)]}\n",
+            "# Demo\n",
+            "triggers must",
+        ),
+        (
+            "description: A demo skill.\n"
+            f"triggers: [{'x' * (MAX_TRIGGER_CHARS + 1)}]\n",
+            "# Demo\n",
+            "exceeds",
+        ),
+    ],
+)
+def test_a_skill_that_cannot_be_installed_is_refused(
+    tmp_path, frontmatter: str, body: str, message: str
+):
+    skill_md = f"---\nname: demo\n{frontmatter}---\n\n{body}"
+    _write(tmp_path, "skills/demo/SKILL.md", skill_md)
+
+    with pytest.raises(ValueError, match=message):
         _load(tmp_path, ENTRY)
 
 
