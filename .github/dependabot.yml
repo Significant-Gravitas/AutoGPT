@@ -75,29 +75,6 @@ updates:
           - "minor"
           - "patch"
 
-  # infra (Terraform)
-  - package-ecosystem: "terraform"
-    directory: "autogpt_platform/infra"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    target-branch: "dev"
-    commit-message:
-      prefix: "chore(infra/deps)"
-      prefix-development: "chore(infra/deps-dev)"
-
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
-
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -119,32 +96,21 @@ updates:
 
   # Docker
   - package-ecosystem: "docker"
-    directory: "autogpt_platform/"
+    # One entry per folder that holds a Dockerfile: the ecosystem does not
+    # look below the directory it is given.
+    directories:
+      - "autogpt_platform/backend"
+      - "autogpt_platform/frontend"
+      - "autogpt_platform/single-container"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Docs
-  - package-ecosystem: "pip"
-    directory: "docs/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-    target-branch: "dev"
-    commit-message:
-      prefix: "chore(docs/deps)"
+    ignore:
+      # frontend/package.json pins `engines.node` to 24.x with engine-strict,
+      # so a newer major image fails `pnpm install`. Bump both together by hand.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       production-dependencies:
         dependency-type: "production"
