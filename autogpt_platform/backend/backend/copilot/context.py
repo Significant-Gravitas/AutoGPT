@@ -53,53 +53,68 @@ _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 # re-asking the same question until the turn's round budget runs out, and a
 # check re-run on unchanged work is a loop, not diligence.
 MAX_CONSULTS_PER_TURN = 3
-_consults_used: ContextVar[int] = ContextVar("_consults_used", default=0)
-
 
 # How many teammates one turn may message. Sending does not block the turn,
 # so without a cap a single turn can wake every session the user owns.
 MAX_SESSION_MESSAGES_PER_TURN = 3
-_session_messages_used: ContextVar[int] = ContextVar(
-    "_session_messages_used", default=0
+
+# Both counters live in one dict, mutated in place, like the tool-adapter's
+# _consecutive_tool_failures: the SDK CLI runs each tool call in its own task,
+# which copies the context, so an int re-``set()`` per call never reaches the
+# next one and the budget counts nothing.
+_turn_budget: ContextVar[dict[str, int] | None] = ContextVar(
+    "_turn_budget", default=None
 )
 
 
 def reset_consult_budget() -> None:
     """Give the turn a fresh consult and message allowance. Called by both
     engines' setters."""
-    _consults_used.set(0)
-    _session_messages_used.set(0)
+    _turn_budget.set({})
 
 
 def take_session_message_slot() -> str | None:
     """Claim one outbound session message, or return the refusal to hand the
     model. Per turn, for the same reason the consult budget is."""
-    used = _session_messages_used.get()
-    if used >= MAX_SESSION_MESSAGES_PER_TURN:
-        return (
-            f"You have already messaged {used} sessions this turn. Wait for a "
-            "reply before sending more — a message costs the receiver a turn."
-        )
-    _session_messages_used.set(used + 1)
-    return None
+    used = _claim_slot("session_messages", MAX_SESSION_MESSAGES_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already messaged {used} sessions this turn. Wait for a "
+        "reply before sending more — a message costs the receiver a turn."
+    )
 
 
 def take_consult_slot() -> str | None:
     """Claim one consult, or return the refusal to hand the model.
 
     Counting here rather than in the tool keeps the budget per *turn*: the
-    context var is set once per turn by ``set_execution_context`` and read by
+    budget is created once per turn by ``set_execution_context`` and shared by
     every tool call inside it.
     """
-    used = _consults_used.get()
-    if used >= MAX_CONSULTS_PER_TURN:
-        return (
-            f"You have already asked teammates to check work "
-            f"{used} times this turn. Act on the verdicts you have — "
-            "re-asking about work that has not changed is a loop, not a "
-            "second opinion."
-        )
-    _consults_used.set(used + 1)
+    used = _claim_slot("consults", MAX_CONSULTS_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already asked teammates to check work "
+        f"{used} times this turn. Act on the verdicts you have — "
+        "re-asking about work that has not changed is a loop, not a "
+        "second opinion."
+    )
+
+
+def _claim_slot(key: str, limit: int) -> int | None:
+    """Take one slot: None when it was granted, the spent count when it was
+    not. Nothing awaits between the read and the write, so the claim is atomic
+    against the parallel tool dispatch the SDK CLI does."""
+    budget = _turn_budget.get()
+    if budget is None:
+        budget = {}
+        _turn_budget.set(budget)
+    used = budget.get(key, 0)
+    if used >= limit:
+        return used
+    budget[key] = used + 1
     return None
 
 

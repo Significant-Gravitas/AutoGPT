@@ -1376,6 +1376,7 @@ async def list_recent_chat_sessions(
     expert_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
+    skip: int = 0,
 ) -> list[ChatSessionInfo]:
     """The user's most recently active sessions, newest first.
 
@@ -1383,7 +1384,9 @@ async def list_recent_chat_sessions(
     another user's session is invisible rather than merely unlisted. The
     expert and status filters are applied in the query too, so ``limit``
     bounds the matches rather than the rows scanned — filtering them in
-    Python would silently drop matches older than the window.
+    Python would silently drop matches older than the window. ``skip`` pages
+    the caller past rows it has already looked at, for the one filter that
+    cannot move into the query (``task`` reads the metadata JSON).
     """
     where: ChatSessionWhereInput = {"userId": user_id}
     if expert_id:
@@ -1394,6 +1397,7 @@ async def list_recent_chat_sessions(
         where=where,
         order={"updatedAt": "desc"},
         take=limit,
+        skip=skip,
     )
     return [ChatSessionInfo.from_db(r) for r in rows]
 

@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 20
 _SCAN_LIMIT = 50
+# ``task`` reads the metadata JSON, so it is the one filter that stays in
+# Python — which means the scan has to keep paging until it has MAX_RESULTS
+# matches, or a match older than the first page is reported as no match at all.
+_MAX_SCAN_PAGES = 5
 
 
 class FindSessionTool(BaseTool):
@@ -83,27 +87,39 @@ class FindSessionTool(BaseTool):
         # expert and status filter in the query, so the scan limit bounds the
         # matches rather than the rows looked at; ``task`` reads ``purpose``
         # out of the metadata JSON and stays here.
-        rows = await list_recent_chat_sessions(
-            user_id=user_id,
-            expert_id=expert_id.strip() or None,
-            status=status.strip() or None,
-            limit=_SCAN_LIMIT,
-        )
-        matched = [
-            row
-            for row in rows
-            # The query already scopes to the caller; re-checking here keeps
-            # the invariant with the tool rather than with one call site.
-            if row.user_id == user_id
-            and row.session_id != session.session_id
-            and _matches_task(row, task.strip())
-        ]
+        matched: list[ChatSessionInfo] = []
+        scanned = 0
+        exhausted = False
+        for _ in range(_MAX_SCAN_PAGES):
+            rows = await list_recent_chat_sessions(
+                user_id=user_id,
+                expert_id=expert_id.strip() or None,
+                status=status.strip() or None,
+                limit=_SCAN_LIMIT,
+                skip=scanned,
+            )
+            scanned += len(rows)
+            matched.extend(
+                row
+                for row in rows
+                # The query already scopes to the caller; re-checking here
+                # keeps the invariant with the tool rather than with one call
+                # site.
+                if row.user_id == user_id
+                and row.session_id != session.session_id
+                and _matches_task(row, task.strip())
+            )
+            if len(rows) < _SCAN_LIMIT:
+                exhausted = True
+                break
+            if len(matched) > MAX_RESULTS:
+                break
         shown = matched[:MAX_RESULTS]
         return SessionListResponse(
             message=_summary(
                 len(shown),
                 truncated=len(matched) > MAX_RESULTS,
-                window_full=len(rows) == _SCAN_LIMIT,
+                window_full=not exhausted,
             ),
             sessions=[
                 SessionSummary(
@@ -131,8 +147,8 @@ def _summary(shown: int, *, truncated: bool, window_full: bool) -> str:
     list reads as authoritative and is not.
 
     Nothing found is the same trap one step further on. ``task`` is matched
-    after the scan, so an empty result off a full scan means "not among the
-    recent ones", which is not the same answer as "you have none".
+    after the scan, so an empty result that stopped at the page cap means "not
+    among the recent ones", which is not the same answer as "you have none".
     """
     if not shown:
         if window_full:

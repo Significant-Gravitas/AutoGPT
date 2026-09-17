@@ -220,7 +220,7 @@ picks.
 
 ### 2.3 The one new capability: `consult_teammate`
 
-```
+```text
 consult_teammate(expert_id, work, authority, question="")
   -> { verdict: "pass" | "block" | "insufficient",
        reason, quotes[], reviewer{id,name,role,avatar_url,color} }
@@ -631,7 +631,7 @@ Stated plainly, because the whole point of §3 was not overclaiming.
 
 ### 4.3 Reproducing
 
-```
+```shell
 cd experiments/consult_teammate
 ANTHROPIC_API_KEY=... <backend venv>/bin/python run.py --runs 3
 <backend venv>/bin/python analyse.py results.json

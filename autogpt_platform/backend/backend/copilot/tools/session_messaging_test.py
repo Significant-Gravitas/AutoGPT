@@ -7,6 +7,7 @@ being dropped, the sender is identifiable without a lookup, and neither the
 self-message nor the fan-out loop is possible.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -17,7 +18,12 @@ from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult
 from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
 from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
-from backend.copilot.tools.find_session import _SCAN_LIMIT, MAX_RESULTS, FindSessionTool
+from backend.copilot.tools.find_session import (
+    _MAX_SCAN_PAGES,
+    _SCAN_LIMIT,
+    MAX_RESULTS,
+    FindSessionTool,
+)
 from backend.copilot.tools.message_session import MAX_MESSAGE_CHARS, MessageSessionTool
 from backend.copilot.tools.models import (
     ErrorResponse,
@@ -124,6 +130,31 @@ class TestFindSessionScoping:
             )
         assert isinstance(result, SessionListResponse)
         assert [s.session_id for s in result.sessions] == ["a"]
+
+    async def test_a_match_behind_a_full_page_is_still_found(self) -> None:
+        """``task`` is matched in Python, so one page of non-matching rows would
+        otherwise hide every older match behind it."""
+        pages = [
+            [_info(f"new{i}", purpose="unrelated") for i in range(_SCAN_LIMIT)],
+            [_info("old", purpose="instagram audit")],
+        ]
+        lister = AsyncMock(side_effect=pages)
+        with patch(f"{_FIND}.list_recent_chat_sessions", new=lister):
+            result = await FindSessionTool()._execute(
+                OWNER, _session(), task="instagram"
+            )
+        assert isinstance(result, SessionListResponse)
+        assert [s.session_id for s in result.sessions] == ["old"]
+        assert lister.await_args_list[1].kwargs["skip"] == _SCAN_LIMIT
+
+    async def test_the_scan_stops_at_the_page_cap(self) -> None:
+        """Bounded: an open-ended walk would read a heavy user's whole history
+        every time a task matches nothing."""
+        page = [_info(f"s{i}", purpose="unrelated") for i in range(_SCAN_LIMIT)]
+        lister = AsyncMock(return_value=page)
+        with patch(f"{_FIND}.list_recent_chat_sessions", new=lister):
+            await FindSessionTool()._execute(OWNER, _session(), task="nothing")
+        assert lister.await_count == _MAX_SCAN_PAGES
 
     async def test_expert_and_status_filter_in_the_query(self) -> None:
         """Filtering these in Python would drop matches older than the scan
@@ -497,6 +528,36 @@ class TestMessageSessionGuards:
                 for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
                     result = await MessageSessionTool()._execute(
                         OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                    )
+                    if isinstance(result, SessionMessageResponse):
+                        sent += 1
+        assert sent == MAX_SESSION_MESSAGES_PER_TURN
+        assert isinstance(result, ErrorResponse)
+
+    async def test_the_budget_binds_across_the_per_call_task_boundary(self) -> None:
+        """The SDK CLI runs every tool call in its own task, which copies the
+        context — a count kept as an int and re-``set()`` there never reaches
+        the next call, so the cap would bound nothing."""
+        reset_consult_budget()
+        queued = QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+        sent = 0
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ):
+                for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
+                    result = await asyncio.create_task(
+                        MessageSessionTool()._execute(
+                            OWNER,
+                            _session(),
+                            session_id=TARGET_SESSION,
+                            message="hi",
+                        )
                     )
                     if isinstance(result, SessionMessageResponse):
                         sent += 1
