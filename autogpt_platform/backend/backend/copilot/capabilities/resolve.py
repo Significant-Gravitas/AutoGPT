@@ -9,6 +9,7 @@ from backend.copilot.capabilities.models import CapabilityEntry
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.text import normalize_name
 from backend.data.model import Credentials, HostScopedCredentials, OAuth2Credentials
+from backend.integrations.credentials_store import canonical_provider
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 
@@ -65,10 +66,15 @@ def connection_state_from(credentials: list[Credentials]) -> ConnectionState:
     server_urls: set[str] = set()
     hosts: set[str] = set()
     for credential in credentials:
-        providers.add(credential.provider)
+        # Credentials stored under Python 3.13 carry ``"ProviderName.MCP"``
+        # where they mean ``"mcp"``; ranking compares against the canonical
+        # value, so an un-normalised one reads as a service the user never
+        # connected.
+        provider = canonical_provider(credential.provider)
+        providers.add(provider)
         if isinstance(credential, HostScopedCredentials):
             hosts.add(credential.host.lower())
-        if credential.provider == ProviderName.MCP.value and isinstance(
+        if provider == ProviderName.MCP.value and isinstance(
             credential, OAuth2Credentials
         ):
             url = (credential.metadata or {}).get("mcp_server_url")

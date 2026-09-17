@@ -155,6 +155,38 @@ async def test_describe_block_collapses_large_enums_unless_expanded():
     assert len(full.block.inputs["properties"]["model"]["enum"]) == 40
 
 
+async def test_describe_block_honours_the_run_block_gate():
+    """A withheld block's schema is part of what was withheld.
+
+    Describing an MCP server is not even a local lookup -- it connects to the
+    server to list its tools -- so both kinds answer to their gate here the
+    way they do in run_capability.
+    """
+    session = make_session(USER)
+    set_execution_context(
+        USER, session, permissions=CopilotPermissions(tools=["run_block"])
+    )
+    result = await DescribeCapabilityTool()._execute(
+        USER, session, id="SendWebRequestBlock"
+    )
+    assert isinstance(result, ErrorResponse) and result.error == "tool_disabled"
+
+
+async def test_describe_mcp_honours_the_run_mcp_gate():
+    session = make_session(USER)
+    set_execution_context(
+        USER, session, permissions=CopilotPermissions(tools=["run_mcp_tool"])
+    )
+    with patch(
+        "backend.copilot.tools.describe_capability._describe_mcp", AsyncMock()
+    ) as describe:
+        result = await DescribeCapabilityTool()._execute(
+            USER, session, id="https://mcp.linear.app/mcp"
+        )
+    assert isinstance(result, ErrorResponse) and result.error == "tool_disabled"
+    describe.assert_not_awaited()
+
+
 async def test_describe_unknown_id():
     result = await DescribeCapabilityTool()._execute(
         USER, make_session(USER), id="tool:nope"

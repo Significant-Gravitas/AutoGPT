@@ -222,7 +222,8 @@ def stub_tool_result(
         # run_capability, so the table below would answer almost nothing if
         # it kept dispatching on the wrapper's name and arguments.
         name = called_name(name, arguments)
-        args = dict(args.get("input") or {})
+        nested = args.get("input")
+        args = dict(nested) if isinstance(nested, dict) else {}
     workflow = _workflow(expert, args)
     if name in LIBRARY_SEARCH_TOOLS:
         return _dump(_library_result(expert))

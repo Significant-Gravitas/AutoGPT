@@ -265,6 +265,17 @@ def test_the_stub_table_is_reached_through_run_capability():
     assert "No schedules yet." in answered
 
 
+def test_a_malformed_call_still_gets_an_answer():
+    """A stub that raises ends the eval run; one that answers scores the turn.
+
+    The model writes these arguments, so `input` is not necessarily an object.
+    """
+    from .generation import stub_tool_result
+
+    for arguments in ('{"id": "tool:list_schedules", "input": "oops"}', "not json"):
+        assert stub_tool_result("run_capability", arguments, None, [])
+
+
 def test_expert_session_loses_staffing_tools_and_keeps_memory():
     names = expert_reachable_tools(roster_experts(["Max"])[0])
     assert "memory_search" in names

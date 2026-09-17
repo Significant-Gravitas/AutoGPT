@@ -10,8 +10,10 @@ from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 
 from .base import BaseTool
+from .capability_gates import gate_denied, gate_denied_error
 from .models import (
     BlockDetailsResponse,
     CapabilityDetailsResponse,
@@ -98,11 +100,22 @@ class DescribeCapabilityTool(BaseTool):
         entry = resolve_entry(get_registry(), id)
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
+        # Describing answers to the gate that running does. An MCP
+        # description is not a local lookup -- it connects to the server to
+        # list its tools -- and a block's schema is what a withheld block
+        # was withheld from revealing.
         if entry.kind == "block":
+            if gate_denied(BLOCK_GATE):
+                return gate_denied_error("blocks", session_id)
             return await _describe_block(entry, user_id, session, expand)
         if entry.kind == "tool":
+            name = entry.implementations[0].ref
+            if gate_denied(name):
+                return gate_denied_error(name, session_id)
             return _describe_tool(entry, session_id, expand)
         if entry.kind == "mcp_server":
+            if gate_denied(MCP_GATE):
+                return gate_denied_error("MCP servers", session_id)
             return await _describe_mcp(entry, user_id, session)
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot be described yet.",
