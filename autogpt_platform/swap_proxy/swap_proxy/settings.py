@@ -1,0 +1,56 @@
+"""Configuration, all from the environment.
+
+Redis uses the backend's own variable names so that a deployment hands both
+the same values.
+"""
+
+import os
+from dataclasses import dataclass, field
+
+
+def _flag(name: str) -> bool:
+    return os.getenv(name, "").lower() in ("1", "true", "yes")
+
+
+def _list(name: str) -> list[str]:
+    return [e.strip() for e in os.getenv(name, "").split(",") if e.strip()]
+
+
+@dataclass(frozen=True)
+class Settings:
+    listen_host: str = field(
+        default_factory=lambda: os.getenv("SWAP_PROXY_LISTEN_HOST", "0.0.0.0")
+    )
+    listen_port: int = field(
+        default_factory=lambda: int(os.getenv("SWAP_PROXY_LISTEN_PORT", "1080"))
+    )
+    # The backend's internal service (DatabaseManager), e.g. http://host:8005
+    backend_url: str = field(
+        default_factory=lambda: os.getenv(
+            "SWAP_PROXY_BACKEND_URL", "http://localhost:8005"
+        )
+    )
+    # Where mitmproxy keeps the CA it signs with; the boxes' image trusts its
+    # certificate.  The key must exist nowhere else.
+    confdir: str = field(
+        default_factory=lambda: os.getenv("SWAP_PROXY_CONFDIR", "~/.mitmproxy")
+    )
+    # Private hosts or CIDRs boxes may reach anyway.  Empty: default deny.
+    egress_allow: list[str] = field(
+        default_factory=lambda: _list("SWAP_PROXY_EGRESS_ALLOW")
+    )
+    redis_host: str = field(
+        default_factory=lambda: os.getenv("REDIS_CLUSTER_HOST")
+        or os.getenv("REDIS_HOST", "localhost")
+    )
+    redis_port: int = field(
+        default_factory=lambda: int(
+            os.getenv("REDIS_CLUSTER_PORT") or os.getenv("REDIS_PORT", "6379")
+        )
+    )
+    redis_password: str | None = field(
+        default_factory=lambda: os.getenv("REDIS_PASSWORD") or None
+    )
+    redis_use_announced_address: bool = field(
+        default_factory=lambda: _flag("REDIS_USE_ANNOUNCED_ADDRESS")
+    )

@@ -1,0 +1,88 @@
+name: AutoGPT Platform - Swap Proxy CI
+
+on:
+  push:
+    branches: [master, dev, ci-test*]
+    paths:
+      - ".github/workflows/platform-swap-proxy-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/validate_junit.py"
+      - "autogpt_platform/swap_proxy/**"
+  pull_request:
+    branches: [master, dev, release-*]
+    paths:
+      - ".github/workflows/platform-swap-proxy-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/validate_junit.py"
+      - "autogpt_platform/swap_proxy/**"
+  merge_group:
+
+concurrency:
+  group: ${{ format('swap-proxy-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+jobs:
+  # The proxy is its own package with its own lockfile: mitmproxy pins its
+  # dependencies exactly and cannot share an environment with the backend.
+  # Pure unit and loopback tests: no database or external services needed.
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/swap_proxy
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.13-swap-proxy-${{ hashFiles('autogpt_platform/swap_proxy/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry ../backend/poetry.lock)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Check poetry.lock
+        run: |
+          poetry lock
+
+          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
+          fi
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run linters
+        run: |
+          poetry run isort --check swap_proxy
+          poetry run black --check swap_proxy
+          poetry run ruff check swap_proxy
+          poetry run pyright swap_proxy
+
+      - name: Run pytest
+        run: poetry run pytest -q --junitxml=junit-swap-proxy.xml
+
+      - name: Validate test report
+        if: ${{ always() }}
+        run: >-
+          python ../../.github/scripts/validate_junit.py --synthesize-invalid
+          --require-no-skips
+          junit-swap-proxy.xml
