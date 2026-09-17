@@ -501,6 +501,13 @@ async def test_seeded_skills_install_with_their_package_files(mocker, tmp_path):
 
     assert result.name == "cold-email"
     assert stored.await_args.kwargs["name"] == "cold-email"
+    assert stored.await_args.kwargs["extra"] == {
+        "license": "MIT",
+        "source": "acme/marketing-skills",
+        "source_url": (
+            "https://github.com/acme/marketing-skills/tree/abc/skills/cold-email"
+        ),
+    }
     assert [
         (f.relative_path, f.content) for f in stored.await_args.kwargs["files"]
     ] == [("references/frameworks.md", b"# Frameworks\n")]

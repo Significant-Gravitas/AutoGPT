@@ -188,6 +188,15 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        extra={
+            key: value
+            for key, value in (
+                ("license", active.license),
+                ("source", active.sourceRepo),
+                ("source_url", active.sourceUrl),
+            )
+            if value is not None
+        },
         # `[]`, never `None` — which means "leave the folder alone" and would
         # keep a sibling only the previously installed version had.
         files=await _read_version_files(active.id),
