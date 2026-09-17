@@ -145,6 +145,18 @@ def test_every_checked_in_starter_skill_loads(entry):
     assert files == []
 
 
+def test_a_starter_that_cannot_be_installed_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setattr("backend.api.features.store.skill_seed._CONTENT_DIR", tmp_path)
+    _write(
+        tmp_path,
+        "demo.md",
+        SKILL_MD.replace("A demo skill.", "x" * (MAX_DESCRIPTION_CHARS + 1)),
+    )
+
+    with pytest.raises(ValueError, match="description is"):
+        _load_starter(ENTRY)
+
+
 def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):
     _write(
         tmp_path,

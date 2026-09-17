@@ -356,6 +356,7 @@ def _load_starter(entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]]:
             f"{named} declares name '{parsed.name}'; the frontmatter name is "
             "the installed skill's name and must match the listing slug"
         )
+    validate_skill_content(parsed.description, parsed.body, parsed.triggers)
     files = _package_files(directory) if is_package else []
     validate_package(SkillPackage(skill_md=text, files=files))
     return parsed, files
