@@ -31,13 +31,14 @@ def block_entries() -> list[CapabilityEntry]:
     for block_id, block_cls in get_blocks().items():
         try:
             block = block_cls()
+            if not block.disabled:
+                # Building the entry reads the block's schema, which a
+                # malformed field definition can reject. One bad block must
+                # cost its own entry, not the whole registry.
+                entries.append(_block_entry(block))
         except Exception:
-            logger.debug(
-                "Skipping block %s: cannot instantiate", block_id, exc_info=True
-            )
+            logger.debug("Skipping block %s: cannot index", block_id, exc_info=True)
             continue
-        if not block.disabled:
-            entries.append(_block_entry(block))
     return entries
 
 
