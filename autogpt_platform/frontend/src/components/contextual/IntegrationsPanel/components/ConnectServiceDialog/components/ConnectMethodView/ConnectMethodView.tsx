@@ -74,8 +74,8 @@ const METHOD_COPY: Record<
     icon: UserIcon,
   },
   [AuthType.host_scoped]: {
-    label: "Host",
-    description: "Scope credentials to one host.",
+    label: "Website access",
+    description: "Paste a key or headers used only for one website.",
     icon: GlobeIcon,
   },
   [AuthType.device_code]: {

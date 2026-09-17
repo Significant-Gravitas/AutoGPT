@@ -234,7 +234,7 @@ describe("ConnectToolsPanel — inline host-scoped flow", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Http/ }));
     await screen.findByRole("heading", { name: "Connect AutoGPT to Http" });
-    await user.click(screen.getByRole("button", { name: /^Host/ }));
+    await user.click(screen.getByRole("button", { name: /^Website access/ }));
     return user;
   }
 
