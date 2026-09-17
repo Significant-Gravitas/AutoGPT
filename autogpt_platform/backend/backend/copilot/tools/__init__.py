@@ -453,6 +453,10 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
+    ``DEFERRED_TOOL_NAMES`` are refused outright: they are reached by id
+    through ``run_capability``, which applies the permission and envelope
+    gates this function does not.
+
     ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
     default on purpose: they are an enforcement boundary, so a new call site
     must state its gate rather than silently inherit "nothing is disabled"
@@ -464,8 +468,14 @@ async def execute_tool(
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
 
-    if tool_name in tool_names_in_groups(disabled_groups) or tool_name in frozenset(
-        disabled_tools
+    # A deferred tool is absent from every schema list, but a model that
+    # names one anyway reached it here and ran it -- routing around
+    # ``run_capability`` and the permission and envelope gates it applies.
+    # Deferred-ness is a property of the tool, not of the turn, so it is
+    # refused here rather than left to each caller's gate.
+    if tool_name in DEFERRED_TOOL_NAMES or (
+        tool_name in tool_names_in_groups(disabled_groups)
+        or tool_name in frozenset(disabled_tools)
     ):
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
