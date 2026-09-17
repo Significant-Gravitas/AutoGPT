@@ -2,7 +2,6 @@ import type { ExpertBundledSkill } from "@/app/api/__generated__/models/expertBu
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import type { ExpertAccent } from "../../../components/ExpertsSection/helpers";
-import { formatSkillTitle } from "../../../components/SkillsSection/helpers";
 import { ExpertPill } from "./ExpertPill";
 import { ExpertSection } from "./ExpertSection";
 
@@ -23,7 +22,7 @@ export function ExpertSkills({ skills, accent }: Props) {
             icon={
               <Icon icon={BookOpen01Icon} size={16} className={accent.icon} />
             }
-            label={formatSkillTitle(skill.name)}
+            label={skill.title}
             href={`/marketplace/skills/${skill.slug}`}
           />
         ))}

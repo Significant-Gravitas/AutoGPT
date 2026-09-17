@@ -71,6 +71,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 const brandVoice: MarketplaceSkill = {
   slug: "brand-voice-guide",
   name: "brand-voice-guide",
+  title: "Brand voice guide",
   description: "Write in a consistent brand voice.",
   categories: ["content"],
   required_providers: [],
@@ -83,8 +84,17 @@ const outreach: MarketplaceSkill = {
   ...brandVoice,
   slug: "outreach-playbook",
   name: "outreach-playbook",
+  title: "Outreach playbook",
   categories: ["sales"],
   required_providers: ["google"],
+};
+
+const seoAudit: MarketplaceSkill = {
+  ...brandVoice,
+  slug: "on-page-seo-audit",
+  name: "on-page-seo-audit",
+  title: "On-page SEO audit",
+  categories: ["marketing"],
 };
 
 const CATEGORIES = [
@@ -118,6 +128,17 @@ describe("Marketplace SkillsSection", () => {
     );
   });
 
+  test("shows a skill's title as its author cased it, acronyms intact", async () => {
+    server.use(listing([seoAudit]));
+
+    render(<MainMarkeplacePage />);
+
+    expect(
+      await screen.findByRole("link", { name: /On-page SEO audit/ }),
+    ).toBeDefined();
+    expect(screen.queryByText("On page seo audit")).toBeNull();
+  });
+
   test("shows skills as their own shelf, linked to the skill page", async () => {
     server.use(listing([brandVoice]));
 
@@ -132,7 +153,6 @@ describe("Marketplace SkillsSection", () => {
         },
       ),
     ).toBeDefined();
-    // The API returns the frontmatter name, which the seed pins to the slug.
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
     expect(card.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",

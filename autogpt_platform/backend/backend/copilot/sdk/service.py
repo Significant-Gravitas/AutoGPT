@@ -173,6 +173,7 @@ from ..tools import (
     ToolGroup,
     expert_tool_disabled_groups,
     kickoff_turn_disabled_tools,
+    origin_disabled_tools,
     tool_names_in_groups,
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -4958,11 +4959,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if is_expert_kickoff_turn(session)
             else frozenset()
         )
+        # A machine-authored session cannot staff the team, so it is not
+        # offered the proposal tools its own guard would refuse.
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
             | kickoff_hidden
+            | origin_disabled_tools(session.metadata.origin)
         )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
