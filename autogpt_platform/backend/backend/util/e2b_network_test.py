@@ -80,11 +80,17 @@ def _configured(address: str | None):
 
 class TestOff:
     @pytest.mark.asyncio
-    async def test_pausing_or_killing_a_box_does_not_touch_redis(self):
-        lookup = AsyncMock()
-        with _configured(None), patch(f"{_M}.get_redis_async", lookup):
+    async def test_a_credential_from_before_the_address_was_removed_is_still_revoked(
+        self,
+    ):
+        redis = _redis(
+            {"e2b:egress:box:sb-1": "box-a1", "e2b:egress:cred:box-a1": "{}"}
+        )
+        with _configured(None), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
             await forget_sandbox("sb-1")
-        lookup.assert_not_awaited()
+        assert redis.store == {}
 
     @pytest.mark.asyncio
     async def test_create_and_connect_are_passed_through_untouched(self):

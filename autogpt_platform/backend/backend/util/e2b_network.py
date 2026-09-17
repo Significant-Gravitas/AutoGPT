@@ -216,8 +216,8 @@ async def forget_sandbox(sandbox_id: str) -> None:
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
     here must not fail the pause or kill it follows.
     """
-    if proxy_address() is None:
-        return  # no box is pinned; leftovers of an earlier setting expire
+    # Not skipped while no proxy is configured: a box pinned before the
+    # address was removed still has a credential on record.
     try:
         redis = await get_redis_async()
         username = await _bound_username(sandbox_id)

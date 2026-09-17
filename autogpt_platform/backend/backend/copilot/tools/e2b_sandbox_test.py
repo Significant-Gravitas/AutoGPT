@@ -143,6 +143,14 @@ def _patch_redis(redis: AsyncMock):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_credentials():
+    """Pause and kill revoke the box's proxy credential (``e2b_network``),
+    which has its own Redis handle; ``TestProxyCredentialIsRevoked`` covers it."""
+    with patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()):
+        yield
+
+
 class TestTryReconnect:
     def test_reconnect_refuses_a_box_stamped_for_someone_else(self):
         """A cached id that resolves to another owner's box is dropped, not used."""
