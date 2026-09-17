@@ -577,14 +577,13 @@ async def mcp_oauth_callback(
             user_id, ProviderName.MCP.value
         )
         for old in old_creds:
-            # Match on the same URL the new credential is filed under, not
-            # the sign-in URL: for the two entries where those differ,
-            # comparing against the sign-in URL never matched, so every
-            # reconnection left another dead token behind.
-            if (
-                isinstance(old, OAuth2Credentials)
-                and (old.metadata or {}).get("mcp_server_url") == tools_url
-            ):
+            # Both URLs count. The new credential is filed under the tools
+            # URL, but ones stored before that change are under the sign-in
+            # URL, and for the two entries where those differ matching only
+            # one of them leaves a dead token behind on every reconnection.
+            if isinstance(old, OAuth2Credentials) and (old.metadata or {}).get(
+                "mcp_server_url"
+            ) in {tools_url, meta["server_url"]}:
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
                     "Removed old MCP credential %s for %s",

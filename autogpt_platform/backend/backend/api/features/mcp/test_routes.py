@@ -468,9 +468,8 @@ class TestOAuthLogin:
             )
 
         assert response.status_code == 400
-        assert (
-            "does not match where the metadata was published"
-            in (response.json()["detail"])
+        assert "does not match where the metadata was published" in (
+            response.json()["detail"]
         )
         mock_cm.store.store_state_token.assert_not_awaited()
 
