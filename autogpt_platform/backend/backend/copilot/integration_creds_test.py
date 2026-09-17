@@ -299,6 +299,18 @@ class TestRequiredScopes:
             )
         assert token == "tok-newer"
 
+    def test_invalidation_accepts_the_enum_repr_a_stored_credential_may_carry(self):
+        # Rows written under Python 3.13's str(StrEnum) have this provider, and
+        # change events pass it on as stored; cache keys use the canonical one.
+        scoped = (_USER, _PROVIDER, frozenset({"repo"}))
+        _token_cache[(_USER, _PROVIDER)] = "tok"
+        _token_cache[scoped] = "tok"
+        _gh_identity_cache[_USER] = {"GIT_AUTHOR_NAME": "x"}
+        invalidate_user_provider_cache(_USER, "ProviderName.GITHUB")
+        assert (_USER, _PROVIDER) not in _token_cache
+        assert scoped not in _token_cache
+        assert _USER not in _gh_identity_cache
+
     def test_invalidation_drops_scoped_entries_too(self):
         scoped = (_USER, _PROVIDER, frozenset({"repo", "read:org"}))
         _token_cache[scoped] = "tok"

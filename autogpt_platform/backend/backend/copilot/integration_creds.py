@@ -35,6 +35,7 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.retry import continuous_retry
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,21 @@ _gh_identity_null_cache: TTLCache[str, bool] = _LockedTTLCache(
 )
 
 
+def _canonical_provider(provider: str) -> str:
+    """``"ProviderName.GITHUB"`` -> ``"github"``.
+
+    Credentials persisted under Python 3.13's ``str(StrEnum)`` carry the enum's
+    repr as their provider, and change events pass it on as stored, while
+    lookups (and so cache keys) use the canonical value.
+    """
+    if provider.startswith("ProviderName."):
+        try:
+            return ProviderName[provider.removeprefix("ProviderName.")].value
+        except KeyError:
+            pass
+    return provider
+
+
 def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     """Remove the cached entry for *user_id*/*provider* from both caches.
 
@@ -131,6 +147,7 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     ``get_github_user_git_identity()`` re-fetches the user's profile on
     the next call instead of serving stale identity data.
     """
+    provider = _canonical_provider(provider)
     # Every scope-specific entry for this pair is stale too.
     _token_cache.pop_prefix((user_id, provider))
     _null_cache.pop_prefix((user_id, provider))
