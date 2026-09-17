@@ -548,6 +548,13 @@ jobs:
           export DIRECT_URL="$DATABASE_URL"
           poetry run prisma migrate deploy
 
+      - name: Generate ephemeral secrets
+        # A fixed value here would be a published value. These live only for
+        # the duration of this job.
+        run: |
+          echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+          echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+
       - name: Test shard
         shell: bash
         env:
@@ -559,7 +566,6 @@ jobs:
           EXECUTION_SCHEDULER_PORT: "18003"
           NOTIFICATION_SERVICE_PORT: "18007"
           REDIS_HOST: localhost
-          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
           TRIAL_TEST_DATABASE: "1"
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
