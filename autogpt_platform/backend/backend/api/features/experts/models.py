@@ -229,6 +229,7 @@ class Expert(BaseModel):
     # Accent color token chosen while raising; "" when unset.
     color: str = ""
     role: str
+    job_title: str | None = None
     tagline: str | None
     bio: str | None
     skills: list[str]

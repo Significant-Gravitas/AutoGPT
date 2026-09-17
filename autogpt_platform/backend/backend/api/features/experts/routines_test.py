@@ -9,6 +9,11 @@ account.
 
 from backend.api.features.experts import seed
 from backend.api.features.experts.routines import _spread_cron
+from backend.copilot.permissions import (
+    CAPABILITY_GATE_NAMES,
+    unattended_routine_disabled_tools,
+)
+from backend.copilot.tools import TOOL_REGISTRY
 
 # Every routine the roster ships, as (expert, key). A routine fires unattended
 # once its owner switches it on, and what it says is written by whoever wrote
@@ -97,3 +102,16 @@ def test_spread_leaves_a_cadence_it_cannot_safely_rewrite():
     the routine means rather than when it runs."""
     for cron in ["*/15 * * * *", "* 9 * * 1", "0,30 9 * * 1", "not a cron"]:
         assert _spread_cron(cron, seed="user-a:x:0") == cron
+
+
+def test_the_unattended_denylist_names_things_that_exist():
+    """A name that has been renamed out from under this set denies nothing, and
+    the routine would quietly gain the reach the denylist exists to remove."""
+    for name in unattended_routine_disabled_tools():
+        assert name in TOOL_REGISTRY or name in CAPABILITY_GATE_NAMES, name
+
+
+def test_the_unattended_denylist_closes_both_capability_gates():
+    """Blocks and MCP servers are reached through ``run_capability``, so only
+    the gates withhold them — denying a tool name would leave both open."""
+    assert CAPABILITY_GATE_NAMES <= unattended_routine_disabled_tools()

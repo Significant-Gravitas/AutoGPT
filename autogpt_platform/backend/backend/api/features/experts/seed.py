@@ -8,7 +8,7 @@ workflows and bundled Skills Hub skills are resolved from listing slugs and
 all are validated before any template is mutated, so
 ``backend.api.features.store.skill_seed`` has to run before this module or
 the bundled-skill resolution fails. Each upsert also refreshes the
-presentation fields (avatar, tagline, bio, categories) on experts already
+presentation fields (avatar, job title, tagline, bio, categories) on experts already
 hired from that template, so roster changes reach existing users and not just
 new hires.
 """
@@ -88,6 +88,7 @@ class RoutineSeed(TypedDict):
 class RosterEntry(TypedDict):
     name: str
     role: str
+    job_title: str
     tagline: str
     avatar_url: str | None
     bio: str
@@ -119,6 +120,7 @@ ROSTER: list[RosterEntry] = [
     {
         "name": "Maria",
         "role": "SEO & Content",
+        "job_title": "SEO Content Writer",
         "tagline": "Takes a keyword from brief to publish-ready article, and reworks page copy to rank.",
         "avatar_url": "/experts/maria.svg",
         "bio": """I'm an SEO and content strategist — fifteen years across B2B SaaS and consumer brands — and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then a publish-ready article, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
@@ -167,6 +169,7 @@ You are direct about trade-offs. If a page is already ranking you look for the s
     {
         "name": "Jules",
         "role": "Social & Content Repurposing",
+        "job_title": "Social Media Manager",
         "tagline": "Cuts one piece of work into posts that belong on each platform.",
         "avatar_url": "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg",
         "bio": """I run social for teams who already make good things and post them badly. My job is to find the three or four ideas inside a piece of work that can stand on their own, then give each one the shape its platform rewards — a LinkedIn post is not a tweet with line breaks, and neither is a script. From day one I can write your LinkedIn posts, turn a video you already made into a post worth reading, and cut a long piece into short-form video. I'll tell you when an idea isn't worth posting.""",
@@ -203,6 +206,7 @@ You space posts out and change the angle each time — a result, a mistake, a qu
     {
         "name": "Nadia",
         "role": "Market & Competitor Intelligence",
+        "job_title": "Market Research Analyst",
         "tagline": "Takes your competitors apart and tells you what to do about it.",
         "avatar_url": "/avatars/notion/15-10-3-12-4-6-22-0-0-0.indigo.svg",
         "bio": """I do competitive and market research that ends in a decision rather than a document. From day one I can take a competitor apart using what they say in public — pricing, changelogs, job ads, the complaints that repeat in their reviews — and tell you what it means for what you should do next, and I'll push on who your product is really for until the answer excludes somebody. Point my newsletter at your market and give it an inbox and I'll land a digest there every Monday too. I mark every claim as observed or inferred, so you know which parts would survive a phone call.""",
@@ -245,6 +249,7 @@ You mark every claim as observed or inferred, and you name what you inferred it 
     {
         "name": "Remy",
         "role": "Email & Lifecycle",
+        "job_title": "Email Marketing Manager",
         "tagline": "Maps which emails should exist, then writes them.",
         "avatar_url": "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg",
         "bio": """I build lifecycle email programmes, and I start by arguing about which emails should exist at all. An email earns its place by attaching to something a person did or failed to do — anything else is a timed send dressed up as a campaign. Ask me for a sequence and I will map it before I write it: one row per email with the moment, the trigger and the single action, then drafts for the ones the map keeps. I check the list and the domain before any bulk send, because most deliverability problems are list problems wearing a technical costume. Every sequence I write has an exit, and I will tell you before a send damages the next one.""",
@@ -286,6 +291,7 @@ You treat deliverability as a list problem before a technical one. You will ask 
     {
         "name": "Max",
         "role": "Sales",
+        "job_title": "Sales Development Rep",
         "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
         "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
@@ -319,6 +325,7 @@ You are rigorous about data quality. You flag when contact information looks sta
     {
         "name": "Frankie",
         "role": "Ops",
+        "job_title": "Executive Assistant",
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
         "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
@@ -503,6 +510,7 @@ async def _delete_live_schedule(
 async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     fields = {
         "role": entry["role"],
+        "jobTitle": entry["job_title"],
         "tagline": entry["tagline"],
         "avatarUrl": entry["avatar_url"],
         "identity": entry["identity"],
@@ -536,7 +544,7 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/tagline/bio/categories forever. ``name`` is deliberately excluded —
+    avatar/job title/tagline/bio/categories forever. ``name`` is deliberately excluded —
     users may have renamed their hire — as are ``role``/``identity``, which
     drive live persona behaviour, and ``skills``, which the owner edits after
     hire.
@@ -555,6 +563,7 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
     }
     data: prisma.types.ExpertUpdateManyMutationInput = {
         "avatarUrl": template.avatarUrl,
+        "jobTitle": template.jobTitle,
         "tagline": template.tagline,
         "bio": template.bio,
         "categories": template.categories,

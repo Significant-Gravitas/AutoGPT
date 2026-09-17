@@ -38,6 +38,15 @@ STREAM_PORT = 6080
 # box (see ``backend.copilot.computer``).
 VNC_USER = "root"
 VNC_PASSWORD_PATH = "/root/.vnc/stream_password"
+# Root's logs live in root's directory, not /tmp: there the box's user could
+# plant a file of the same name, and with fs.protected_regular set the kernel
+# refuses even root an O_CREAT open of another user's file in a sticky
+# directory, which is what a box that ran its stream as the user has.
+_VNC_DIR = VNC_PASSWORD_PATH.rsplit("/", 1)[0]
+_X11VNC_LOG = f"{_VNC_DIR}/x11vnc.log"
+_X11VNC_ERROR_LOG = f"{_VNC_DIR}/x11vnc_stderr.log"
+_NOVNC_LOG = f"{_VNC_DIR}/novnc.log"
+_STOP_STREAM = "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
@@ -147,31 +156,61 @@ class DesktopSession:
             password = "".join(
                 secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
             )
+            await self._vnc_command(_STOP_STREAM)
             await self._vnc_command(
-                "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
-            )
-            await self._vnc_command(
-                f"umask 077 && mkdir -p {shlex.quote(VNC_PASSWORD_PATH.rsplit('/', 1)[0])}"
+                f"umask 077 && mkdir -p {shlex.quote(_VNC_DIR)}"
                 f" && printf %s {shlex.quote(password)} > {shlex.quote(VNC_PASSWORD_PATH)}"
             )
-            await self._vnc_command(
-                f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
-                f"-rfbport {VNC_PORT} -passwdfile rm:{VNC_PASSWORD_PATH} "
-                ">/tmp/x11vnc.log 2>/tmp/x11vnc_stderr.log"
-            )
-            await self.sandbox.commands.run(
-                f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
-                f"--listen {STREAM_PORT} --web /opt/noVNC > /tmp/novnc.log 2>&1",
-                background=True,
-                user=VNC_USER,
-            )
-            await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            # -noshm: x11vnc runs as root and Xvfb as the box's user, and the X
+            # server cannot attach a shared-memory segment that root owns
+            # (MIT-SHM BadAccess, x11vnc exits 1).  Without it the screen is
+            # read over the X socket instead.
+            try:
+                await self._vnc_command(
+                    f"x11vnc -bg -noshm -display {DISPLAY} -forever -wait 50 "
+                    f"-shared -rfbport {VNC_PORT} "
+                    f"-passwdfile rm:{VNC_PASSWORD_PATH} "
+                    f">{_X11VNC_LOG} 2>{_X11VNC_ERROR_LOG}"
+                )
+                # -bg returns once x11vnc has detached; one that dies after
+                # that would leave noVNC serving a stream with nothing behind.
+                await self._wait_for(f'netstat -tln | grep ":{VNC_PORT} "')
+            except Exception as exc:
+                # One that detached but never served is still running.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
+                # x11vnc's own words are in the box, not in the exception.
+                raise RuntimeError(
+                    f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
+                ) from exc
+            try:
+                await self.sandbox.commands.run(
+                    f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
+                    f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
+                    background=True,
+                    user=VNC_USER,
+                )
+                await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            except Exception as exc:
+                # Do not leave an x11vnc serving under a password nobody holds.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
+                raise RuntimeError(
+                    f"noVNC did not start: {await self._tail(_NOVNC_LOG)}"
+                ) from exc
         host = self.sandbox.get_host(STREAM_PORT)
         url = (
             f"https://{host}/vnc.html"
             f"?autoconnect=true&resize=scale&password={password}"
         )
         return DesktopStream(url=url, sandbox_id=self.sandbox_id), password
+
+    async def _tail(self, path: str) -> str:
+        try:
+            result = await self._vnc_command(f"tail -n 15 {shlex.quote(path)}")
+            return result.stdout.strip() or "(empty log)"
+        except Exception:
+            return "(log unreadable)"
 
     async def _stream_listening(self) -> bool:
         """Whether noVNC is still serving the stream (it survives a pause)."""

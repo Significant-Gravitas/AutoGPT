@@ -115,8 +115,8 @@ from ..pending_messages import (
 )
 from ..permissions import (
     CopilotPermissions,
-    all_known_tool_names,
     apply_tool_permissions,
+    denied_tool_names,
 )
 from ..prompting import (
     get_chat_platform_supplement,
@@ -1037,10 +1037,7 @@ def _hidden_short_names_for_permissions(
     Hiding the tool from the MCP server removes it from the model's tool
     list entirely so it never reaches for the blocked name.
     """
-    if permissions is None or permissions.is_empty():
-        return frozenset()
-    all_tools = all_known_tool_names()
-    return all_tools - permissions.effective_allowed_tools(all_tools)
+    return denied_tool_names(permissions)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -4968,6 +4965,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | kickoff_hidden
             | origin_disabled_tools(session.metadata.origin)
         )
+        # run_capability reaches deferred tools by id; the same hidden set
+        # must bound it, so it travels with the turn's execution context.
+        set_execution_context(
+            user_id,
+            session,
+            sandbox=e2b_sandbox,
+            sdk_cwd=sdk_cwd,
+            permissions=permissions,
+            envelope=envelope,
+            hidden_tools=hidden_tools,
+        )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
             hidden_tool_names=hidden_tools,
@@ -5169,6 +5177,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),
             "conversation_turn": str(turn),
+            "tool_surface": "registry",
         }
         if _user_tier:
             _otel_metadata["subscription_tier"] = _user_tier.value

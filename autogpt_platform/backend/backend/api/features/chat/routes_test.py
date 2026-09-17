@@ -3964,8 +3964,8 @@ def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
     """Builder-bound sessions return a blacklist of the three tools that
     conflict with the panel's graph-bound scope. Regular sessions return
     ``None`` so default (unrestricted) behaviour is preserved."""
-    from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
     from backend.copilot.model import ChatSession
+    from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 
     unbound = ChatSession.new("u1", dry_run=False)
     assert chat_routes.resolve_session_permissions(unbound) is None

@@ -1105,6 +1105,9 @@ model Expert {
   // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
   color            String   @default("")
   role             String
+  // What the expert would be called on a team ("Social Media Manager"); the
+  // `role` above names the area it covers. null on raised experts.
+  jobTitle         String?
   tagline          String?
   identity         String
   bio              String?

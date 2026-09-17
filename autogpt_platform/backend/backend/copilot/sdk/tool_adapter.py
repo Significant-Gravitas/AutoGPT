@@ -19,6 +19,7 @@ from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
     _current_envelope,
+    _current_hidden_tools,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -28,6 +29,7 @@ from backend.copilot.context import (
     _encode_cwd_for_cli,
     get_execution_context,
     is_sdk_tool_path,
+    reset_consult_budget,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -35,7 +37,12 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
+from backend.copilot.tools import (
+    DEFERRED_TOOL_NAMES,
+    TOOL_REGISTRY,
+    ToolGroup,
+    tool_names_in_groups,
+)
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -131,6 +138,7 @@ def set_execution_context(
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
     envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -144,6 +152,8 @@ def set_execution_context(
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
         envelope: The turn's tree envelope; spawn tools derive children from it.
+        hidden_tools: Short tool names hidden from the model this turn;
+            ``run_capability`` refuses to reach them by id.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -152,6 +162,8 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
     _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
+    reset_consult_budget()
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
@@ -878,12 +890,14 @@ def create_copilot_mcp_server(
         # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
+        # Deferred tools are reached through run_capability, not by name.
         # ``is_available`` is the env check the baseline path applies in
         # ``get_available_tools``; without it this engine offers browser
         # tools on a box with no agent-browser binary.
         if (
             tool_name in hidden
             or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or tool_name in DEFERRED_TOOL_NAMES
             or not base_tool.is_available
         ):
             continue
@@ -1126,7 +1140,9 @@ def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
     return [
         f"{MCP_TOOL_PREFIX}{name}"
         for name in TOOL_REGISTRY.keys()
-        if name not in BASELINE_ONLY_MCP_TOOLS and name not in hidden
+        if name not in BASELINE_ONLY_MCP_TOOLS
+        and name not in DEFERRED_TOOL_NAMES
+        and name not in hidden
     ]
 
 
