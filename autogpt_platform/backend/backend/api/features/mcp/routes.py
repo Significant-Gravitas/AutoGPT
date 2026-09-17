@@ -60,6 +60,13 @@ creds_manager = IntegrationCredentialsManager()
 _PROBE_TIMEOUT_SECONDS = 10
 _PROBE_CLOSE_TIMEOUT_SECONDS = 5
 
+# `/oauth/login` answers 400 for eight different reasons, and only one of them
+# means "there is no OAuth here, use an API token". The connect panel has to
+# tell that one apart to decide whether to offer the manual-token form, and
+# matching on the prose broke the moment either message was reworded — so the
+# two no-OAuth branches carry this code and the rest stay plain strings.
+NO_OAUTH_CODE = "no_oauth"
+
 
 # ====================== Tool Discovery ====================== #
 
@@ -253,9 +260,12 @@ async def mcp_oauth_login(
         if "oauth" not in catalog_entry.mcp_server.auth_methods:
             raise fastapi.HTTPException(
                 status_code=400,
-                detail=f"{catalog_entry.display_name} uses "
-                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} authentication. "
-                f"{catalog_entry.mcp_server.setup_instructions}",
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"{catalog_entry.display_name} uses "
+                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+                },
             )
         catalog_scopes = catalog_entry.mcp_server.oauth_scopes
     client = MCPClient(server_url)
@@ -303,8 +313,11 @@ async def mcp_oauth_login(
     ):
         raise fastapi.HTTPException(
             status_code=400,
-            detail="This MCP server does not advertise OAuth support. "
-            "You may need to provide an auth credential manually.",
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": "This MCP server does not advertise OAuth support. "
+                "You may need to provide an auth credential manually.",
+            },
         )
 
     authorize_url = metadata["authorization_endpoint"]

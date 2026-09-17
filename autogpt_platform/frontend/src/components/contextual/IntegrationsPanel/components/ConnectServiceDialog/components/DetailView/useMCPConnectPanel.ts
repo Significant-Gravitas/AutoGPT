@@ -76,9 +76,11 @@ export function useMCPConnectPanel({
         const reason =
           credential && "reason" in credential ? credential.reason : undefined;
         // Only "this server has no OAuth" should push the user at the manual
-        // token tab; every other 400 is its own problem and says so.
+        // token tab; every other 400 is its own problem and says so. The route
+        // makes that call and sends `no_oauth`, because the same verdict comes
+        // back under two quite different messages.
         const noOAuth =
-          !reason || /does not (advertise|support) oauth/i.test(reason);
+          !credential || ("noOAuth" in credential && credential.noOAuth);
         if (noOAuth && manualSchemes.length) setPhase("manual-token");
         setError(
           reason ??

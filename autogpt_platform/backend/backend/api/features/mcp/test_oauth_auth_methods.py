@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 
-from backend.api.features.mcp.routes import router
+from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.integrations.creds_manager import create_mcp_oauth_handler
 from backend.util.request import HTTPClientError
 
@@ -420,8 +420,12 @@ async def test_token_connections_do_not_start_oauth(client, oauth_mocks, provide
         )
 
     assert response.status_code == 400
-    assert entry.display_name in response.json()["detail"]
-    assert "authentication" in response.json()["detail"]
+    detail = response.json()["detail"]
+    # The code is what sends the connect panel to its manual-token form; these
+    # services have no OAuth to offer under any wording of the message.
+    assert detail["code"] == NO_OAUTH_CODE
+    assert entry.display_name in detail["message"]
+    assert "authentication" in detail["message"]
     mcp_client.assert_not_called()
     post.assert_not_awaited()
     manager.store.store_state_token.assert_not_awaited()
