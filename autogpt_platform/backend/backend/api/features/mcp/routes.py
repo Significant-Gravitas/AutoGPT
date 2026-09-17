@@ -548,11 +548,12 @@ async def mcp_oauth_callback(
     # said connected, and every later call fell back to public limits with
     # nothing reporting a problem. Record the URL the tools actually use.
     catalog_entry = get_mcp_catalog_entry_for_url(meta["server_url"])
-    credentials.metadata["mcp_server_url"] = (
+    tools_url = (
         catalog_entry.mcp_server.server_url
         if catalog_entry and catalog_entry.mcp_server.server_url
         else meta["server_url"]
     )
+    credentials.metadata["mcp_server_url"] = tools_url
     credentials.metadata["mcp_client_id"] = meta["client_id"]
     credentials.metadata["mcp_client_secret"] = (
         ""
@@ -576,9 +577,13 @@ async def mcp_oauth_callback(
             user_id, ProviderName.MCP.value
         )
         for old in old_creds:
+            # Match on the same URL the new credential is filed under, not
+            # the sign-in URL: for the two entries where those differ,
+            # comparing against the sign-in URL never matched, so every
+            # reconnection left another dead token behind.
             if (
                 isinstance(old, OAuth2Credentials)
-                and (old.metadata or {}).get("mcp_server_url") == meta["server_url"]
+                and (old.metadata or {}).get("mcp_server_url") == tools_url
             ):
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
