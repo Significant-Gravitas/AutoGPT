@@ -20,6 +20,7 @@ from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
 
 DATASET_PATH = Path(__file__).with_name("t0_dataset.json")
+UNAVAILABLE = "<not loaded in this environment>"
 LABEL_KINDS = ("block", "tool", "mcp")
 TOP_K = 5
 
@@ -73,17 +74,18 @@ class Report(BaseModel):
     retained_of: int = 0
     # Block cases find_block missed entirely that the registry finds at 5.
     gained: int = 0
-    # Cases whose labelled block is not in this index at all, so neither
-    # column could ever return it. Recorded rather than silently dropped.
-    unavailable: dict[str, int] = Field(default_factory=dict)
-    skipped_named: list[str] = Field(default_factory=list)
+    # Labelled cases whose target block is not loaded in this environment
+    # (OAuth-only blocks drop out without provider secrets); scored nowhere.
+    skipped_unavailable: int = 0
 
     def retained_rate(self) -> float:
         return self.retained / self.retained_of if self.retained_of else 0.0
 
     def named_failures(self) -> dict[str, list[str]]:
         return {
-            q: got for q, got in self.named.items() if not NAMED_CASES[q][1] & set(got)
+            q: got
+            for q, got in self.named.items()
+            if got != [UNAVAILABLE] and not NAMED_CASES[q][1] & set(got)
         }
 
 
@@ -96,24 +98,17 @@ def evaluate(index: CapabilityIndex, cases: list[Case]) -> Report:
     today = {kind: Stratum() for kind in (*LABEL_KINDS, "all")}
     registry = {kind: Stratum() for kind in (*LABEL_KINDS, "all")}
     misses: list[dict[str, object]] = []
-    retained = retained_of = gained = 0
-    # "Today" was recorded on a platform where every provider was configured.
-    # This one disables a block whose provider OAuth is absent, so thirteen
-    # labelled blocks -- the Google, Twitter, Notion and Reddit ones -- are
-    # not in the index to be returned. Scoring the registry on questions
-    # whose answer was removed measures the environment, not the ranking, so
-    # those cases sit out and are reported under the table.
-    available = _available(index)
-    unavailable: dict[str, int] = {}
+    retained = retained_of = gained = skipped = 0
+    available = _available_names(index)
     for case in cases:
-        if case.label_kind == "block" and case.label not in available:
-            unavailable[case.label] = unavailable.get(case.label, 0) + 1
-            continue
         context = "graph" if case.for_agent_generation else "direct"
         result = index.search(case.query, context=context)
         today["all"].add(None, empty=case.result_type != "block_list")
         registry["all"].add(None, empty=not result.hits)
         if case.label_kind not in LABEL_KINDS:
+            continue
+        if case.label_kind == "block" and case.label not in available:
+            skipped += 1
             continue
         today_rank = _today_rank(case)
         rank = _registry_rank(result, case)
@@ -129,9 +124,12 @@ def evaluate(index: CapabilityIndex, cases: list[Case]) -> Report:
                 {"query": case.query, "label": case.label, "got": result.names[:TOP_K]}
             )
     named = {
-        q: _top3(index, q, context)
-        for q, (context, accept) in NAMED_CASES.items()
-        if accept & available
+        q: (
+            _top3(index, q, context)
+            if expected & available or any(e.startswith("mcp:") for e in expected)
+            else [UNAVAILABLE]
+        )
+        for q, (context, expected) in NAMED_CASES.items()
     }
     return Report(
         today=today,
@@ -141,18 +139,18 @@ def evaluate(index: CapabilityIndex, cases: list[Case]) -> Report:
         retained=retained,
         retained_of=retained_of,
         gained=gained,
-        unavailable=unavailable,
-        skipped_named=sorted(set(NAMED_CASES) - set(named)),
+        skipped_unavailable=skipped,
     )
 
 
-def _available(index: CapabilityIndex) -> set[str]:
-    """Every name and id this index could return."""
-    names: set[str] = set()
-    for entry in index.entries:
-        names.add(entry.id)
-        names.add(entry.name)
-        names.update(impl.name for impl in entry.implementations if impl.name)
+def _available_names(index: CapabilityIndex) -> set[str]:
+    names = {entry.name for entry in index.entries}
+    names |= {
+        impl.name
+        for entry in index.entries
+        for impl in entry.implementations
+        if impl.name
+    }
     return names
 
 
@@ -177,19 +175,17 @@ def format_report(report: Report) -> str:
         f"{report.retained}/{report.retained_of} ({100 * report.retained_rate():.0f}%);"
         f" blocks it missed that the registry finds: {report.gained}"
     )
-    if report.unavailable:
-        total = sum(report.unavailable.values())
+    if report.skipped_unavailable:
         lines.append(
-            f"skipped {total} cases labelled with {len(report.unavailable)} blocks "
-            f"this index does not contain (provider not configured): "
-            f"{', '.join(sorted(report.unavailable))}"
+            f"skipped {report.skipped_unavailable} block cases whose block is not "
+            "loaded here (OAuth-only blocks need provider secrets)"
         )
     failures = report.named_failures()
+    unavailable = sum(got == [UNAVAILABLE] for got in report.named.values())
     lines.append(
-        f"named cases: {len(report.named) - len(failures)}/{len(report.named)} pass"
+        f"named cases: {len(NAMED_CASES) - len(failures) - unavailable}/"
+        f"{len(NAMED_CASES)} pass, {unavailable} not loaded here"
     )
-    if report.skipped_named:
-        lines.append(f"  skipped (block unavailable): {report.skipped_named}")
     lines += [f"  FAIL {q!r} -> {got}" for q, got in failures.items()]
     return "\n".join(lines)
 
