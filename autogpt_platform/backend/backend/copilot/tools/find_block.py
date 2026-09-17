@@ -6,6 +6,10 @@ from prisma.enums import ContentType
 
 from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockType
+from backend.copilot.capabilities.block_meta import (
+    COPILOT_EXCLUDED_BLOCK_IDS,
+    COPILOT_EXCLUDED_BLOCK_TYPES,
+)
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
@@ -28,29 +32,6 @@ _TARGET_RESULTS = 10
 _OVERFETCH_PAGE_SIZE = 40
 # Cap on registry hits for queries that name a block class directly.
 _MAX_EXACT_NAME_MATCHES = 3
-
-# Block types that only work within graphs and cannot run standalone in CoPilot.
-COPILOT_EXCLUDED_BLOCK_TYPES = {
-    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
-    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
-    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
-    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
-    BlockType.NOTE,  # Visual annotation only - no runtime behavior
-    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
-    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
-    BlockType.MCP_TOOL,  # Has dedicated run_mcp_tool tool with discovery + auth flow
-}
-
-# Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
-COPILOT_EXCLUDED_BLOCK_IDS = {
-    # OrchestratorBlock - dynamically discovers downstream blocks via graph topology;
-    # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
-    "3b191d9f-356f-482d-8238-ba04b6d18381",
-    # AutoPilotBlock - has dedicated run_sub_session tool with async start +
-    # poll lifecycle. Calling it via run_block would block the parent stream
-    # for the sub-Otto's entire runtime (15-45+ min typical).
-    "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
-}
 
 
 class FindBlockTool(BaseTool):

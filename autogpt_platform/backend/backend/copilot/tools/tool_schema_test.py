@@ -14,6 +14,8 @@ import pytest
 
 from backend.copilot.tools import TOOL_REGISTRY
 
+from ._test_data import make_session
+
 # Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
 # Bumped 32000 -> 32500 on PR #12699 to fit two pieces of load-bearing
 # guidance: the wait_for_result dispatch-mode docs on run_agent
@@ -446,19 +448,24 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
         "memory_forget_confirm",
     }
 
-    default = {t["function"]["name"] for t in get_available_tools()}
+    default = {
+        t["function"]["name"] for t in get_available_tools(include_deferred=True)
+    }
     assert memory_tool_names.issubset(
         default
     ), "sanity: memory_* tools should be present when no groups disabled"
 
     filtered = {
-        t["function"]["name"] for t in get_available_tools(disabled_groups=["graphiti"])
+        t["function"]["name"]
+        for t in get_available_tools(
+            include_deferred=True, disabled_groups=["graphiti"]
+        )
     }
     assert not (
         memory_tool_names & filtered
     ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
     # Non-graphiti tools stay visible.
-    assert "find_block" in filtered
+    assert "find_capability" in filtered
     assert "TodoWrite" in filtered
 
 
@@ -473,8 +480,10 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         f"{MCP_TOOL_PREFIX}memory_forget_confirm",
     }
 
+    # Memory tools are deferred: never in the schema list, reached through
+    # run_capability instead.  Disabling the group must not resurrect them.
     default = set(get_copilot_tool_names())
-    assert memory_mcp_names.issubset(default)
+    assert not memory_mcp_names & default
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
     assert not (
@@ -500,53 +509,90 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     for origin in ("automation", None):
         hidden = origin_disabled_tools(origin)
         assert hidden == INTERACTIVE_ORIGIN_TOOLS
 
-        declared = {
-            t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-        }
-        assert not (INTERACTIVE_ORIGIN_TOOLS & declared), (
-            f"origin={origin!r} still declares "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & declared)}"
+        # Reachable, not declared: most of these are deferred now, so the
+        # schema list would read every one of them as gated whether the gate
+        # works or not.  ``run_capability`` answers to the same hidden set.
+        reachable = reachable_tool_names(disabled_tools=hidden)
+        assert not (INTERACTIVE_ORIGIN_TOOLS & reachable), (
+            f"origin={origin!r} can still reach "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & reachable)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
         # still reports through a chat platform, still wakes itself up.
         assert {
             "run_agent",
-            "run_block",
+            "run_capability",
             "run_sub_session",
             "schedule_followup",
             "ask_question",
-        } <= declared
+        } <= reachable
 
 
-def test_interactive_origin_declares_every_tool_it_did_before() -> None:
-    """An interactive session declares exactly what it declared before.
+@pytest.mark.asyncio
+async def test_a_deferred_tool_named_directly_is_refused() -> None:
+    """The schema list is a presentation filter; this is the boundary.
+
+    Deferred tools are absent from every schema list, but a model that names
+    one anyway (replayed transcript, prompt injection) used to reach it here
+    and run it — routing around ``run_capability`` and the permission and
+    envelope gates it applies.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES, execute_tool, get_tool
+    from backend.copilot.tools.models import ErrorResponse
+
+    name = "memory_search"
+    assert name in DEFERRED_TOOL_NAMES, "test relies on this tool being deferred"
+    tool = get_tool(name)
+    assert tool is not None
+
+    with patch.object(
+        tool, "execute", new=AsyncMock(return_value="should never run")
+    ) as ran:
+        result = await execute_tool(
+            tool_name=name,
+            parameters={},
+            user_id="user-1",
+            session=make_session("user-1"),
+            tool_call_id="call-1",
+            # Nothing else gates it: the refusal has to come from deferral.
+            disabled_groups=[],
+            disabled_tools=(),
+        )
+
+    ran.assert_not_awaited()
+    assert result.success is False
+    assert ErrorResponse.model_validate_json(result.output).error == "tool_disabled"
+
+
+def test_interactive_origin_reaches_every_tool_it_did_before() -> None:
+    """An interactive session reaches exactly what it reached before.
 
     The counterpart to the test above, and what fails if the gate ever widens
     past ``origin`` into the sessions a person really is driving.
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     hidden = origin_disabled_tools("interactive")
     assert hidden == frozenset()
 
-    declared = {
-        t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-    }
+    reachable = reachable_tool_names(disabled_tools=hidden)
     assert (
-        INTERACTIVE_ORIGIN_TOOLS <= declared
-    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - declared)}"
+        INTERACTIVE_ORIGIN_TOOLS <= reachable
+    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - reachable)}"
 
 
 def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
