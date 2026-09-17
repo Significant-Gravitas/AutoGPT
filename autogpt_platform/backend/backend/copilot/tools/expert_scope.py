@@ -17,6 +17,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
@@ -55,6 +56,37 @@ class ExpertWorkflowScope(BaseModel):
         return (library_agent_id in self.library_agent_ids) or (
             graph_id is not None and self.allows_graph(graph_id)
         )
+
+
+class CredentialScopeSnapshot:
+    """One consistent view of an account's credentials and expert grants."""
+
+    def __init__(self, owned: list[Credentials], allowed_ids: set[str] | None) -> None:
+        self.owned = owned
+        self.allowed_ids = allowed_ids
+
+    @property
+    def available(self) -> list[Credentials]:
+        if self.allowed_ids is None:
+            return self.owned
+        return [
+            credential
+            for credential in self.owned
+            if is_system_credential(credential.id) or credential.id in self.allowed_ids
+        ]
+
+
+async def resolve_credential_scope(
+    user_id: str, expert_id: str | None
+) -> CredentialScopeSnapshot:
+    """Load credentials and grants once for one card-building operation."""
+    owned = await IntegrationCredentialsManager().store.get_all_creds(user_id)
+    allowed_ids = (
+        set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
+        if expert_id is not None
+        else None
+    )
+    return CredentialScopeSnapshot(owned=owned, allowed_ids=allowed_ids)
 
 
 async def expert_workflow_scope(user_id: str, expert_id: str) -> ExpertWorkflowScope:
@@ -192,30 +224,31 @@ def provider_slug(value: object) -> str:
 
 
 async def _ungranted_credentials(
-    user_id: str, expert_id: str, providers: set[str]
+    user_id: str,
+    expert_id: str,
+    providers: set[str],
+    credential_scope: CredentialScopeSnapshot | None = None,
 ) -> list[Credentials]:
     """Account credentials for *providers* that *expert_id* cannot use yet."""
-    from backend.integrations.creds_manager import IntegrationCredentialsManager
-
     try:
-        owned = await IntegrationCredentialsManager().store.get_all_creds(user_id)
-        allowed = set(
-            await experts_db().expert_allowed_credential_ids(user_id, expert_id)
-        )
+        scope = credential_scope or await resolve_credential_scope(user_id, expert_id)
     except Exception:
         logger.warning("Could not resolve ungranted credentials", exc_info=True)
         return []
     return [
         c
-        for c in owned
+        for c in scope.owned
         if provider_slug(c.provider) in providers
-        and c.id not in allowed
+        and c.id not in (scope.allowed_ids or set())
         and not is_system_credential(c.id)
     ]
 
 
 async def annotate_expert_grants(
-    user_id: str, expert_id: str | None, missing: dict[str, Any]
+    user_id: str,
+    expert_id: str | None,
+    missing: dict[str, Any],
+    credential_scope: CredentialScopeSnapshot | None = None,
 ) -> dict[str, Any]:
     """Tell the setup card which expert is asking and what it could be granted.
 
@@ -229,7 +262,9 @@ async def annotate_expert_grants(
     providers = {
         provider_slug(entry.get("provider", "")) for entry in missing.values()
     } - {""}
-    candidates = await _ungranted_credentials(user_id, expert_id, providers)
+    candidates = await _ungranted_credentials(
+        user_id, expert_id, providers, credential_scope
+    )
     return {
         key: {
             **entry,
@@ -269,7 +304,10 @@ def _satisfies_requirement(credential: Credentials, entry: dict[str, Any]) -> bo
 
 
 async def ungranted_credential_hint(
-    user_id: str, expert_id: str | None, providers: set[str]
+    user_id: str,
+    expert_id: str | None,
+    providers: set[str],
+    credential_scope: CredentialScopeSnapshot | None = None,
 ) -> str:
     """Point at credentials the account already has but the expert lacks.
 
@@ -279,7 +317,9 @@ async def ungranted_credential_hint(
     """
     if expert_id is None or not providers:
         return ""
-    candidates = await _ungranted_credentials(user_id, expert_id, providers)
+    candidates = await _ungranted_credentials(
+        user_id, expert_id, providers, credential_scope
+    )
     if not candidates:
         return ""
     lines = "\n".join(
