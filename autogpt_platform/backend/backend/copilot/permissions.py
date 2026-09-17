@@ -47,9 +47,11 @@ are allowed.
 ``blocks_exclude`` follows the same pattern for ``blocks``.
 
 Denying a capability denies the tools that extend it (see
-``_IMPLIED_DENIALS``). A blacklist is written against the tools that exist
-when it is written, so a later tool that reaches the same resource would
-otherwise be silently regained by every existing blacklist.
+``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
+performs it (see ``_IMPLIED_GRANTS``). Either list is written against the
+tools that exist when it is written, so a later tool that reaches the same
+resource would otherwise be silently regained by every existing blacklist,
+and a renamed one silently lost by every existing whitelist.
 
 Recursion inheritance
 ---------------------
@@ -250,6 +252,27 @@ def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
     )
 
 
+# Tools that a whitelist entry must allow alongside the capability named.
+#
+# The mirror of the above: a whitelist is also written against the tools that
+# existed when it was written, and the gates are the one case where the tool
+# that does the work was renamed out from under it. A saved list naming
+# ``run_block`` meant "you may run blocks", which now happens through
+# ``run_capability`` -- a name no existing list can contain. Without this the
+# gate stays open and the tool that opens it is never handed to the model.
+_IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
+    BLOCK_GATE: ("run_capability",),
+    MCP_GATE: ("run_capability",),
+}
+
+
+def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
+    """Expand an allow set with the tools its entries imply."""
+    return allowed.union(
+        implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helper — block identifier matching
 # ---------------------------------------------------------------------------
@@ -314,7 +337,7 @@ class CopilotPermissions(BaseModel):
         tool_set = frozenset(LEGACY_TOOL_ALIASES.get(t, t) for t in self.tools)
         if self.tools_exclude:
             return all_tools - _with_implied_denials(tool_set)
-        return all_tools & tool_set
+        return all_tools & _with_implied_grants(tool_set)
 
     # ------------------------------------------------------------------
     # Block helpers

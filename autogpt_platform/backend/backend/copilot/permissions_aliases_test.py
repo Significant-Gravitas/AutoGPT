@@ -28,7 +28,25 @@ def test_legacy_whitelist_maps_to_registry_tools():
     )
     allowed = perms.effective_allowed_tools(ALL_TOOL_NAMES)
     assert {"find_capability", "resume_capability", BLOCK_GATE} <= allowed
-    assert "run_capability" not in allowed  # blocks run through the gate only
+
+
+def test_allowing_a_gate_allows_the_tool_that_runs_it():
+    """A saved whitelist says what the agent may do, not what we named it.
+
+    ``run_block`` meant "you may run blocks"; the tool that runs them is now
+    ``run_capability``, which no list written before the rename can contain.
+    Keep the gate open but withhold the tool and the agent can search and is
+    permitted to run, with nothing to run it with.
+    """
+    for gate in (BLOCK_GATE, MCP_GATE):
+        allowed = CopilotPermissions(
+            tools=[gate], tools_exclude=False
+        ).effective_allowed_tools(ALL_TOOL_NAMES)
+        assert {gate, "run_capability"} <= allowed
+    # The grant is implied by the gate, not handed out to every whitelist.
+    assert "run_capability" not in CopilotPermissions(
+        tools=["find_block"], tools_exclude=False
+    ).effective_allowed_tools(ALL_TOOL_NAMES)
 
 
 def test_legacy_blacklist_denies_the_gate():

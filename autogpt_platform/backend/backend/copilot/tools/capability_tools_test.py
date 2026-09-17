@@ -412,6 +412,45 @@ async def test_resume_mcp_review_reopens_when_overrides_change_a_write():
     db.delete_review_by_node_exec_id.assert_not_awaited()
 
 
+async def test_resume_mcp_review_reopens_even_when_the_call_would_not_be_gated():
+    """The review's existence is the proof this call needed approving.
+
+    Re-deriving that on resume reads the world as it is now: a read-shaped
+    tool name, or a server added to the catalog between turns, both answer
+    "no review needed" and would replay the changed arguments unapproved.
+    """
+    session = make_session(USER)
+    review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:ab12"
+    review = _review(
+        review_id,
+        ReviewStatus.APPROVED,
+        {
+            "server_url": "https://mcp.example.com/mcp",
+            "tool": "get_thing",  # a read: needs_review() would say no
+            "arguments": {"id": 1},
+        },
+        session.session_id,
+    )
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.delete_review_by_node_exec_id = AsyncMock()
+    with patch(
+        "backend.copilot.tools.resume_capability.review_db", return_value=db
+    ), patch(
+        "backend.copilot.tools.resume_capability.open_mcp_review",
+        AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
+    ), patch(
+        "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+        AsyncMock(),
+    ) as run:
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id, input_overrides={"id": 2}
+        )
+    assert result.type == "review_required"
+    run.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
 async def test_resume_mcp_review_waits_for_approval():
     session = make_session(USER)
     review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:cd34"

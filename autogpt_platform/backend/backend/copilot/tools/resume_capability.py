@@ -16,11 +16,8 @@ from backend.blocks.mcp.helpers import server_host
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     is_mcp_review_id,
-    needs_review,
     open_mcp_review,
 )
-from backend.copilot.capabilities.registry import get_registry
-from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
@@ -167,38 +164,38 @@ async def _resume_mcp(
         )
     arguments = {**payload.arguments, **(input_overrides or {})}
     if arguments != payload.arguments:
-        # The user approved one call, not a family of them. Re-running the
-        # gate on the merged arguments is what keeps an approval for
-        # "read this file" from being replayed, via a prompt injection, as
-        # "read that other one" on a server outside the catalog.
-        catalog_entry = resolve_entry(get_registry(), payload.server_url)
-        if needs_review(payload.tool, catalog_server=catalog_entry is not None):
-            host = server_host(payload.server_url)
-            fresh = MCPReviewPayload(
-                server_url=payload.server_url, tool=payload.tool, arguments=arguments
-            )
-            new_id = await open_mcp_review(
-                user_id=user_id,
-                session_id=session.session_id,
-                host=host,
-                payload=fresh,
-                organization_id=session.organization_id,
-                team_id=session.team_id,
-            )
-            return ReviewRequiredResponse(
-                message=(
-                    f"The arguments changed since the user approved "
-                    f"'{payload.tool}' on {host}, so it needs approving again. "
-                    f"Tell the user what changed; after they approve, call "
-                    f"resume_capability(review_id='{new_id}')."
-                ),
-                session_id=session.session_id,
-                block_id=payload.server_url,
-                block_name=f"{host}/{payload.tool}",
-                review_id=new_id,
-                graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
-                input_data=fresh.model_dump(),
-            )
+        # The user approved one call, not a family of them. This review only
+        # exists because the original call needed approving, so the changed
+        # call needs approving too. Re-deriving that from the live catalog
+        # instead would mean a server added to it since approval turns the
+        # replay -- which a prompt injection can steer -- into an unreviewed
+        # call on arguments nobody ever saw.
+        host = server_host(payload.server_url)
+        fresh = MCPReviewPayload(
+            server_url=payload.server_url, tool=payload.tool, arguments=arguments
+        )
+        new_id = await open_mcp_review(
+            user_id=user_id,
+            session_id=session.session_id,
+            host=host,
+            payload=fresh,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
+        return ReviewRequiredResponse(
+            message=(
+                f"The arguments changed since the user approved "
+                f"'{payload.tool}' on {host}, so it needs approving again. "
+                f"Tell the user what changed; after they approve, call "
+                f"resume_capability(review_id='{new_id}')."
+            ),
+            session_id=session.session_id,
+            block_id=payload.server_url,
+            block_name=f"{host}/{payload.tool}",
+            review_id=new_id,
+            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
+            input_data=fresh.model_dump(),
+        )
     result = await RunMCPToolTool()._execute(
         user_id,
         session,
