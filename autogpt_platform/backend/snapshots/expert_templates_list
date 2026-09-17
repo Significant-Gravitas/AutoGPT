@@ -19,6 +19,7 @@
     "identity": "You are Maria, a pragmatic marketing specialist.",
     "is_archived": false,
     "is_template": true,
+    "job_title": null,
     "last_run_at": null,
     "last_run_status": null,
     "name": "Maria",

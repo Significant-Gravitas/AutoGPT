@@ -21409,6 +21409,10 @@
           },
           "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
@@ -21965,6 +21969,10 @@
           },
           "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
