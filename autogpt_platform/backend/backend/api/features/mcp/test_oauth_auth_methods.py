@@ -9,6 +9,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
+from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import create_mcp_oauth_handler
 from backend.util.request import HTTPClientError
 
@@ -429,3 +430,51 @@ async def test_token_connections_do_not_start_oauth(client, oauth_mocks, provide
     mcp_client.assert_not_called()
     post.assert_not_awaited()
     manager.store.store_state_token.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reconnect_replaces_the_credential_filed_under_the_tools_url(
+    client, oauth_mocks
+):
+    """Context7 and Parallel sign in at one URL and serve tools at another.
+
+    The new credential is filed under the tools URL, so the cleanup has to
+    look for the old one there too — matching on the sign-in URL found
+    nothing and left a dead token behind on every reconnection.
+    """
+    _, _, _, manager = oauth_mocks
+    sign_in_url = "https://mcp.context7.com/mcp/oauth"
+    tools_url = "https://mcp.context7.com/mcp"
+
+    stale = MagicMock(spec=OAuth2Credentials)
+    stale.id = "stale-credential-id"
+    stale.metadata = {"mcp_server_url": tools_url}
+    manager.store.get_creds_by_provider = AsyncMock(return_value=[stale])
+    manager.store.delete_creds_by_id = AsyncMock()
+
+    state = MagicMock()
+    state.state_metadata = {
+        "server_url": sign_in_url,
+        "client_id": "client:id",
+        "client_secret": "",
+        "authorize_url": "https://auth.example.com/authorize",
+        "token_url": "https://auth.example.com/token",
+        "token_endpoint_auth_method": "none",
+    }
+    state.scopes = ["read"]
+    state.code_verifier = "pkce-verifier"
+    manager.store.verify_state_token = AsyncMock(return_value=state)
+
+    with patch("backend.blocks.mcp.oauth.Requests") as token_requests:
+        token_response = MagicMock()
+        token_response.json.return_value = {"access_token": "<test-access-token>"}
+        token_requests.return_value.post = AsyncMock(return_value=token_response)
+        callback = await client.post(
+            "/oauth/callback", json={"code": "code", "state_token": "state"}
+        )
+
+    assert callback.status_code == 200
+    assert manager.create.call_args.args[1].metadata["mcp_server_url"] == tools_url
+    manager.store.delete_creds_by_id.assert_awaited_once_with(
+        "test-user-id", "stale-credential-id"
+    )
