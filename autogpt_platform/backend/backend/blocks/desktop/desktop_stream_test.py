@@ -173,7 +173,11 @@ async def test_an_x11vnc_that_dies_after_detaching_is_caught_before_novnc_starts
         pytest.raises(RuntimeError, match="x11vnc did not start: caught X11 error"),
     ):
         await DesktopSession(sandbox).start_stream(None)
-    assert not any("novnc_proxy --vnc" in cmd for cmd, _ in _commands(run))
+    commands = [cmd for cmd, _ in _commands(run)]
+    assert not any("novnc_proxy --vnc" in cmd for cmd in commands)
+    # Detached but never serving, it is still running: stopped, not left.
+    started = next(i for i, cmd in enumerate(commands) if cmd.startswith("x11vnc"))
+    assert any(cmd.startswith("pkill") for cmd in commands[started + 1 :])
 
 
 @pytest.mark.asyncio

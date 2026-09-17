@@ -176,6 +176,9 @@ class DesktopSession:
                 # that would leave noVNC serving a stream with nothing behind.
                 await self._wait_for(f'netstat -tln | grep ":{VNC_PORT} "')
             except Exception as exc:
+                # One that detached but never served is still running.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
                 # x11vnc's own words are in the box, not in the exception.
                 raise RuntimeError(
                     f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
