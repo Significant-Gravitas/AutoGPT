@@ -107,6 +107,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -871,6 +872,33 @@ async def resolve_private_expert_tenancy(
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+    try:
+        result, state = await _hire_expert_impl(user_id, template_id, name)
+    except Exception:
+        emit_funnel_event(
+            user_id,
+            "hire_failed",
+            {"template_id": template_id, "failed_preloads_count": 0},
+        )
+        raise
+    # An idempotent re-hire of an already-active expert is not a hire.
+    if state != "existing":
+        emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {
+                "template_id": template_id,
+                "failed_preloads_count": len(result.failed_preloads),
+            },
+        )
+    return result
+
+
+async def _hire_expert_impl(
+    user_id: str, template_id: str, name: str | None
+) -> tuple[HireResult, Literal["existing", "revived", "created"]]:
+    """The hire result plus which transition produced it, so the funnel can
+    count a genuine hire once and stay silent on an idempotent retry."""
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -913,10 +941,10 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
 
     if state == "existing":
-        return HireResult(expert=_to_model(expert), failed_preloads=[])
+        return HireResult(expert=_to_model(expert), failed_preloads=[]), state
     if state == "revived":
         expert = await _resume_revived_hire(expert)
-        return HireResult(expert=_to_model(expert), failed_preloads=[])
+        return HireResult(expert=_to_model(expert), failed_preloads=[]), state
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
     await _install_bundled_skills(user_id, expert.id, template.id)
@@ -926,7 +954,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     )
     if hydrated is None:
         raise ExpertNotFoundError(expert.id)
-    return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
+    return HireResult(expert=_to_model(hydrated), failed_preloads=failed), state
 
 
 async def _reserve_hired_expert(
@@ -1404,6 +1432,14 @@ async def _owned_active_expert(
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
+    before = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+    )
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -1425,6 +1461,10 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    if before is not None:
+        _emit_writing_style_added(
+            user_id, expert_id, before.voicePreferences, soul.voice_preferences
+        )
     return expert
 
 
@@ -1621,7 +1661,23 @@ async def update_soul_fields_if_current(
         },
         data=data,
     )
-    return updated == 1
+    if updated != 1:
+        return False
+    if voice_preferences is not None:
+        _emit_writing_style_added(
+            user_id, expert_id, expected_voice_preferences, voice_preferences
+        )
+    return True
+
+
+def _emit_writing_style_added(
+    user_id: str, expert_id: str, before: str | None, after: str | None
+) -> None:
+    """Only a first blank→nonblank writing style counts; rewrites and removals
+    are silent, so the funnel measures personalisation rather than edits."""
+    if (before or "").strip() or not (after or "").strip():
+        return
+    emit_funnel_event(user_id, "writing_style_added", {"expert_id": expert_id})
 
 
 async def _install_preloads(
@@ -1773,6 +1829,15 @@ async def _install_library_workflow(
         data={"expertId": expert_id, "libraryAgentId": library_agent_id},
         include=_WORKFLOW_ROW_INCLUDE,
     )
+    emit_funnel_event(
+        user_id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": expert_id,
+            "source": "library",
+            "library_agent_id": library_agent_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -1813,6 +1878,15 @@ async def _install_marketplace_workflow(
         if raced is None:
             raise
         return _to_workflow_ref(raced)
+    emit_funnel_event(
+        user_id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": expert_id,
+            "source": "marketplace",
+            "store_listing_version_id": store_listing_version_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -1928,12 +2002,25 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
         },
         data={"isArchived": True},
     )
     if updated == 0:
-        raise ExpertNotFoundError(expert_id)
+        already_archived = await prisma.models.Expert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            },
+        )
+        if already_archived is None:
+            raise ExpertNotFoundError(expert_id)
+        # Re-archiving is an idempotent no-op; the funnel counts each firing once.
+        return
+    emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:

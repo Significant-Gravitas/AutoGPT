@@ -22,6 +22,7 @@ from .chat_platform import (
 )
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
+from .consult_teammate import ConsultTeammateTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
@@ -44,6 +45,7 @@ from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsToo
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
+from .find_session import FindSessionTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
@@ -71,6 +73,7 @@ from .manage_schedules import (
     PauseScheduleTool,
     ResumeScheduleTool,
 )
+from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
@@ -147,6 +150,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
+    "consult_teammate": ConsultTeammateTool(),
+    "find_session": FindSessionTool(),
+    "message_session": MessageSessionTool(),
     "delegate_to_expert": DelegateToExpertTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
@@ -259,6 +265,13 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # A consult is read-only and costs one bounded completion, but it is
+    # meaningless without teammates to ask, so it rides the same gate.
+    "consult_teammate": "delegation",
+    # Reaching an existing session is a teammate action: it needs someone to
+    # reach, and works from either side of session.expert_id.
+    "find_session": "delegation",
+    "message_session": "delegation",
     # Workflow installs work from either side; credential grants are
     # owner-only, so they ride the staffing gate.
     "install_expert_workflow": "expert_resources",

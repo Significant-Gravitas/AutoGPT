@@ -151,6 +151,26 @@ from backend.copilot.tools import TOOL_REGISTRY
 # The next tool that does not fit raises this line itself, with its own measured
 # number and its own row above.
 #
+# Bumped 67_651 -> 68_604 on 2026-09-16, by the line above: #14415 landed and
+# dev alone now measures 67,622, leaving 29 chars — consult_teammate's measured
+# +981 does not fit. Measured on the MERGED tree, which is what this PR's CI
+# runs on, not on the branch tip:
+#     dev 2ee0819cc5                             67,622 (81 tools)
+#     + #14207 multi-expert-teams  +981          68,603 (82 tools)
+# Still no margin: strict <, so the ceiling is that total plus one. dev's own
+# 29 chars are the standing problem here — the next tool anyone adds trips this
+# again, whatever this line says.
+#
+# Bumped 71_752 -> 73_003 for find_session and message_session, the two tools
+# this PR adds: they measure 1,251 between them.
+#     dev + this branch's consult_teammate           71,751 (86 tools)
+#     + find_session, message_session  +1,251        73,002 (88 tools)
+#
+# Bumped 73_003 -> 73_030 for one sentence in find_session's description
+# saying `task` searches recent sessions only — 27 chars. A description edit
+# costs the same on both brakes (see below); only a tool's SHAPE makes them
+# differ.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
@@ -165,11 +185,37 @@ from backend.copilot.tools import TOOL_REGISTRY
 # counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
 # 68,237 — dev widened raise_expert by two characters after this line was first
 # set, which reddened three interpreters on a branch that had added nothing.
+# Bumped 68_238 -> 69_219 on 2026-09-16, merging dev into #14207: dev's own
+# 68,238 left one character of headroom (dev measures 68,237 with the schedule
+# tools above), and consult_teammate's measured +981 does not fit. Re-measured
+# on the MERGED tree per the rule above, not on either side's tip:
+#     dev e45aa33600                             68,237 (83 tools)
+#     + #14207 multi-expert-teams  +981          69,218 (84 tools)
+# Higher of the two conflicting values wins and is then re-measured, which is
+# what makes it 69,219 rather than this branch's earlier 68,604. #14476 landed
+# mid-merge and is in here too; it moves API routes and no tools, so 69,218 holds.
+# Bumped 69_056 -> 70_037 on 2026-09-16, merging dev into #14207 again. dev's
+# ceiling of 69,056 sat one character above its own 69,055 — the third merge
+# running where dev is on its limit — so consult_teammate's +981 does not fit.
+# Measured on the MERGED tree, never on either tip, never reused from a prior
+# merge:
+#     dev 648c5ce6d5                             69,055 (84 tools)
+#     + #14207 multi-expert-teams  +981          70,036 (85 tools)
+# Keep the HIGHER of two conflicting values and then re-measure, per the rule
+# above: this branch held 69,219 and dev 69,056, and neither is the answer.
 # Bumped 69_056 -> 70_771 for SECRT-2605: edit_chat_platform_message (mirroring
 # post_to_chat_platform's platform/target enums plus channel_id/ref_id/content)
 # measures 1,460, and the line in post_to_chat_platform's description pointing
 # at it 255. Measured on the branch merged with dev: 70,770, plus one.
-_CHAR_BUDGET = 70_771
+# Bumped 70_771 -> 71_752 on 2026-09-16, merging dev into #14207 a fourth time.
+# #14436 added edit_chat_platform_message and set 70,771 against dev's own
+# 70,770 — one character, as every one of these bumps has left. Re-measured on
+# the MERGED tree, against the ref merged rather than origin/dev afterwards:
+#     dev 28d332fb36                             70,770 (85 tools)
+#     + #14207 multi-expert-teams  +981          71,751 (86 tools)
+# consult_teammate has measured +981 at every dev tip since 2026-09-09; what
+# moves this line is dev, not this branch.
+_CHAR_BUDGET = 73_030
 
 
 @pytest.fixture(scope="module")
@@ -305,10 +351,26 @@ def test_total_schema_char_budget() -> None:
 # session moves 62,003 -> 63,609. Measured on the branch merged with dev,
 # which is what CI builds — the branch tip still read 62,003 and would have
 # been ejected from the queue.
+# Raised 63_610 -> 64_494 on 2026-09-16, merging dev into #14207:
+# consult_teammate is in the ``delegation`` group, which an Otto chat does not
+# hide, so it is declared here and the largest session moves 63,609 -> 64,493.
+# Its wire cost is 884, not the 981 it adds to _CHAR_BUDGET above — this shape
+# drops ``required`` and uses compact separators but prefixes each name.
+#     dev d028684cce                             63,609 (85 tools)
+#     + #14207 multi-expert-teams  +884          64,493 (86 tools)
+# Raised 64_494 -> 65_603 for find_session and message_session. Both sit in the
+# ``delegation`` group, which an Otto chat does not hide, so both are declared
+# here: 65,602, +1,109. That is less than the 1,251 they add to _CHAR_BUDGET
+# above — the two brakes never move in step, so measure each.
+#
+# Raised 65_603 -> 65_630 for the same sentence: 65,629, +27, exactly the
+# registry's delta. Prose lands byte-for-byte in both, so the two brakes only
+# diverge on tool shape — `required` and separators — not on wording.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 63_610
+_SESSION_WIRE_BUDGET = 65_630
 
 
 def test_largest_declared_session_wire_budget() -> None:
