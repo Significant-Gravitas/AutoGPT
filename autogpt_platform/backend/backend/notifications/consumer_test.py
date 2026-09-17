@@ -99,16 +99,39 @@ async def test_messages_are_worked_concurrently_up_to_the_prefetch():
         return True
 
     messages = [_message() for _ in range(total)]
-    # A real queue name, not a placeholder: the audience queue is serialised
-    # for ordering and the other three must not be dragged down with it.
     await manager._consume_queue(
-        _queue(messages), slow, delivery.USER_NOTIFICATIONS_QUEUE
+        _queue(messages), slow, "q", delivery.Ordering.COMMUTATIVE
     )
 
     assert peak == delivery.CONSUMER_CONCURRENCY, (
         "the consumer must keep exactly as many messages in flight as the "
         "broker prefetches; fewer wastes the prefetch, more overruns it"
     )
+    assert all(m.ack.await_count == 1 for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_an_as_published_queue_works_one_message_at_a_time():
+    """The declaration is what serialises the queue, not its name: a queue
+    whose messages do not commute must never have two in flight, however many
+    the broker prefetched."""
+    manager = _manager()
+    active = peak = 0
+
+    async def slow(_: str) -> bool:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return True
+
+    messages = [_message() for _ in range(delivery.CONSUMER_CONCURRENCY * 2)]
+    await manager._consume_queue(
+        _queue(messages), slow, "q", delivery.Ordering.AS_PUBLISHED
+    )
+
+    assert peak == 1
     assert all(m.ack.await_count == 1 for m in messages)
 
 
@@ -123,7 +146,9 @@ async def test_in_flight_work_finishes_before_the_consumer_returns():
         return True
 
     messages = [_message(str(i)) for i in range(5)]
-    await manager._consume_queue(_queue(messages), slow, "q")
+    await manager._consume_queue(
+        _queue(messages), slow, "q", delivery.Ordering.COMMUTATIVE
+    )
 
     assert sorted(done) == [0, 1, 2, 3, 4]
 
@@ -173,7 +198,10 @@ async def test_a_channel_swap_at_iterator_exit_asks_for_a_reconnect():
 
     with pytest.raises(ConnectionError, match="channel lost"):
         await manager._consume_queue(
-            _queue([], exit_error=group), AsyncMock(return_value=True), "q"
+            _queue([], exit_error=group),
+            AsyncMock(return_value=True),
+            "q",
+            delivery.Ordering.COMMUTATIVE,
         )
 
 
@@ -184,7 +212,10 @@ async def test_other_exception_groups_still_propagate():
 
     with pytest.raises(ExceptionGroup):
         await manager._consume_queue(
-            _queue([], exit_error=group), AsyncMock(return_value=True), "q"
+            _queue([], exit_error=group),
+            AsyncMock(return_value=True),
+            "q",
+            delivery.Ordering.COMMUTATIVE,
         )
 
 
@@ -197,7 +228,9 @@ async def test_one_failed_consumer_takes_its_siblings_with_it():
     started = asyncio.Event()
     survivors: list[asyncio.Task[None]] = []
 
-    async def consume(_queue: Any, _handler: Any, name: str) -> None:
+    async def consume(
+        _queue: Any, _handler: Any, name: str, _ordering: delivery.Ordering
+    ) -> None:
         task = asyncio.current_task()
         assert task is not None
         if name == delivery.PASS_WORK_QUEUE:
@@ -285,7 +318,10 @@ async def test_a_handler_that_cannot_settle_takes_the_consumer_down():
 
     with pytest.raises(ExceptionGroup) as raised:
         await manager._consume_queue(
-            _queue([broken, never], then_wait=True), AsyncMock(return_value=True), "q"
+            _queue([broken, never], then_wait=True),
+            AsyncMock(return_value=True),
+            "q",
+            delivery.Ordering.COMMUTATIVE,
         )
 
     assert raised.value.subgroup(RuntimeError) is not None
@@ -303,7 +339,9 @@ async def test_shutdown_lets_in_flight_handlers_settle_before_cancelling_them():
         return True
 
     consumer = asyncio.create_task(
-        manager._consume_queue(_queue([message], then_wait=True), slow, "q")
+        manager._consume_queue(
+            _queue([message], then_wait=True), slow, "q", delivery.Ordering.COMMUTATIVE
+        )
     )
     await asyncio.sleep(0.01)
     consumer.cancel()
@@ -379,10 +417,53 @@ async def test_audience_changes_for_one_email_keep_their_published_order():
         patch.object(delivery.mailerlite, "add_to_changelog", add),
     ):
         await manager._consume_queue(
-            _queue(messages), manager._process_audience_change, delivery.AUDIENCE_QUEUE
+            _queue(messages),
+            manager._process_audience_change,
+            delivery.AUDIENCE_QUEUE,
+            delivery.Ordering.AS_PUBLISHED,
         )
 
     assert applied == ["remove", "add"], (
         "the resubscribe must land after the churn removal it was published "
         "after; reordered, the returning customer is left out of the changelog"
     )
+
+
+@pytest.mark.asyncio
+async def test_every_consumer_declares_how_its_queue_is_ordered():
+    """The ordering decision lives next to the handler in `_run_service`, so
+    a new consumer cannot be added without making it. Pinned here because
+    getting it wrong is silent: the suite stays green and the symptom is a
+    rare wrong end state."""
+    manager = _manager()
+    manager.rabbitmq_config = MagicMock()
+    declared: dict[str, delivery.Ordering] = {}
+
+    async def consume(
+        _queue: Any, _handler: Any, name: str, ordering: delivery.Ordering
+    ) -> None:
+        declared[name] = ordering
+        await asyncio.Event().wait()
+
+    channel = MagicMock(
+        set_qos=AsyncMock(), get_queue=AsyncMock(return_value=MagicMock())
+    )
+    rabbit = MagicMock(connect=AsyncMock(), get_channel=AsyncMock(return_value=channel))
+
+    with (
+        patch.object(delivery.rabbitmq, "AsyncRabbitMQ", return_value=rabbit),
+        patch.object(manager, "_consume_queue", consume),
+    ):
+        undecorated = inspect.unwrap(NotificationManager._run_service)
+        run = asyncio.create_task(undecorated(manager))
+        await asyncio.sleep(0.01)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    assert declared == {
+        delivery.USER_NOTIFICATIONS_QUEUE: delivery.Ordering.COMMUTATIVE,
+        delivery.OPS_NOTIFICATIONS_QUEUE: delivery.Ordering.COMMUTATIVE,
+        delivery.AUDIENCE_QUEUE: delivery.Ordering.AS_PUBLISHED,
+        delivery.PASS_WORK_QUEUE: delivery.Ordering.COMMUTATIVE,
+    }

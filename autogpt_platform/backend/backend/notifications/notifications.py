@@ -11,6 +11,7 @@ import logging
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import date, datetime, timezone
+from enum import Enum, auto
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
@@ -86,10 +87,6 @@ def _is_permanent_delivery_failure(error: ClientError) -> bool:
     return error.error_code in PERMANENT_POSTMARK_ERROR_CODES
 
 
-def _concurrency_for(queue_name: str) -> int:
-    return 1 if queue_name in SERIAL_QUEUES else CONSUMER_CONCURRENCY
-
-
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
 # Messages a consumer works on at once, and the broker prefetch to match. The
@@ -97,17 +94,6 @@ CONSUMER_RETRY_BACKOFF_SECONDS = 2
 # other prefetched messages waiting in memory, and a large fan-out from one
 # scheduled pass drained at a fraction of the rate the pass published it.
 CONSUMER_CONCURRENCY = 10
-# Queues whose messages have to be applied in the order they were published,
-# and so are worked one at a time however many the broker prefetches.
-# Concurrency is safe wherever two messages commute, which is why the other
-# three queues keep it: a second briefing or a second ops mail is its own
-# unit of work. The audience queue is the exception. ADD_CHANGELOG and
-# REMOVE_CHANGELOG for one address are a resubscribe and a churn, MailerLite
-# is left in whichever state finished last, and a removal is a lookup then a
-# delete while an add is one call — so a churn-then-resubscribe pair, one
-# Stripe burst apart, reorders and leaves a paying customer out of the
-# changelog. Volume here is one message per subscription lifecycle event.
-SERIAL_QUEUES = frozenset({AUDIENCE_QUEUE})
 # Hard ceiling on one message's processing. RabbitMQ closes the channel when a
 # delivered message goes unacknowledged for its consumer timeout (30 minutes
 # by default), and every other in-flight ack on that channel then fails too;
@@ -137,6 +123,29 @@ HANDLER_SHUTDOWN_GRACE_SECONDS = 5
 PERMANENT_POSTMARK_ERROR_CODES = frozenset({300, 406})
 SHUTDOWN_TIMEOUT_SECONDS = 10
 CLEANUP_TIMEOUT_SECONDS = SHUTDOWN_TIMEOUT_SECONDS * 2 + 5
+
+
+class Ordering(Enum):
+    """Whether one queue's messages may be worked out of order.
+
+    Every consumer declares this where it is registered in `_run_service`,
+    because that is where a handler is added and the question has to be
+    answered: working the prefetch concurrently drops FIFO within the queue,
+    which is only safe where two of its messages commute.
+
+    COMMUTATIVE means they do — a second briefing or a second ops mail is its
+    own unit of work — and the queue runs at CONSUMER_CONCURRENCY.
+    AS_PUBLISHED means they do not, and the queue is worked one message at a
+    time however many the broker prefetches.
+    """
+
+    COMMUTATIVE = auto()
+    AS_PUBLISHED = auto()
+
+    @property
+    def concurrency(self) -> int:
+        return 1 if self is Ordering.AS_PUBLISHED else CONSUMER_CONCURRENCY
+
 
 __all__ = [
     "NotificationManager",
@@ -401,17 +410,35 @@ class NotificationManager(AppService):
         channel = await self.rabbit.get_channel()
         await channel.set_qos(prefetch_count=CONSUMER_CONCURRENCY)
 
+        # Each consumer declares whether its messages commute, here where a
+        # handler is added, rather than in a list somewhere else that a new
+        # handler is easy to leave out of. See `Ordering`.
         consumers = {
-            USER_NOTIFICATIONS_QUEUE: self._process_user_notification,
-            OPS_NOTIFICATIONS_QUEUE: self._process_ops_notification,
-            AUDIENCE_QUEUE: self._process_audience_change,
-            PASS_WORK_QUEUE: self._process_pass_work,
+            USER_NOTIFICATIONS_QUEUE: (
+                self._process_user_notification,
+                Ordering.COMMUTATIVE,
+            ),
+            OPS_NOTIFICATIONS_QUEUE: (
+                self._process_ops_notification,
+                Ordering.COMMUTATIVE,
+            ),
+            # ADD_CHANGELOG and REMOVE_CHANGELOG for one address are a
+            # resubscribe and a churn, and MailerLite is left in whichever
+            # state finished last. A removal is a lookup then a delete while
+            # an add is one call, so a churn-then-resubscribe pair, one Stripe
+            # burst apart, reorders under concurrency and leaves a paying
+            # customer out of the changelog. Volume here is one message per
+            # subscription lifecycle event, so one at a time costs nothing.
+            AUDIENCE_QUEUE: (self._process_audience_change, Ordering.AS_PUBLISHED),
+            PASS_WORK_QUEUE: (self._process_pass_work, Ordering.COMMUTATIVE),
         }
         tasks = [
             asyncio.create_task(
-                self._consume_queue(await channel.get_queue(name), handler, name)
+                self._consume_queue(
+                    await channel.get_queue(name), handler, name, ordering
+                )
             )
-            for name, handler in consumers.items()
+            for name, (handler, ordering) in consumers.items()
         ]
 
         try:
@@ -433,16 +460,19 @@ class NotificationManager(AppService):
         queue: aio_pika.abc.AbstractQueue,
         process_func: Callable[[str], Awaitable[bool]],
         queue_name: str,
+        ordering: Ordering,
     ):
         """Work up to this queue's concurrency in messages at once.
 
         The prefetch already delivered that many; handling them one after
-        another only kept the rest waiting in memory. A queue in
-        SERIAL_QUEUES stays at one, because its messages are not commutative
-        and have to be applied in the order they were published.
+        another only kept the rest waiting in memory. `ordering` is the
+        caller's declaration that the queue's messages commute; an
+        AS_PUBLISHED queue stays at one message at a time. It has no default
+        on purpose, so a new consumer cannot be registered without answering
+        the question.
         """
         logger.info(f"Starting consumer for queue: {queue_name}")
-        slots = asyncio.Semaphore(_concurrency_for(queue_name))
+        slots = asyncio.Semaphore(ordering.concurrency)
         in_flight: set[asyncio.Task[None]] = set()
 
         async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
