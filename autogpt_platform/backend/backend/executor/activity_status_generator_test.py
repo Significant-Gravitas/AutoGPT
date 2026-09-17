@@ -20,7 +20,52 @@ from backend.executor.activity_status_generator import (
     _get_deterministic_failure_response,
     generate_activity_status_for_execution,
 )
+from backend.executor.run_judge import JudgeResult
 from backend.util.exceptions import ExecutionFailureReason
+from backend.util.settings import Settings
+
+
+def _judge_settings(mode: str, key: str = "test-typesafe-key") -> Settings:
+    # Environment (.env) outranks constructor kwargs for these settings
+    # models, so set the fields after construction.
+    settings = Settings()
+    settings.config.run_judge_mode = mode
+    settings.config.run_judge_timeout_seconds = 5
+    settings.secrets.typesafe_api_key = key
+    return settings
+
+
+@pytest.fixture(autouse=True)
+def judge_off():
+    """Keep the Jev run judge out of the existing tests; judge tests opt in."""
+    with patch(
+        "backend.executor.activity_status_generator.Settings",
+        return_value=_judge_settings("off"),
+    ) as settings:
+        yield settings
+
+
+def _judge_result(mode: str, score: float = 0.8, error: str = "") -> JudgeResult:
+    return JudgeResult(
+        source="jev",
+        mode=mode,
+        answers={
+            "delivered": {
+                "type": "choice",
+                "choice": "delivered",
+                "probabilities": {"delivered": 0.6, "partially_delivered": 0.4},
+                "confidence": 0.2,
+            }
+        },
+        derived_correctness_score=None if error else score,
+        request_id="req-1",
+        latency_ms=50.0,
+        input_tokens=10,
+        output_tokens=2,
+        request="{}",
+        response="{}",
+        error=error,
+    )
 
 
 def _make_usage(
@@ -1260,3 +1305,253 @@ def test_paywall_is_a_known_graph_execution_error():
 
     assert issubclass(UserPaywalledError, Exception)
     assert UserPaywalledError in KNOWN_GRAPH_EXECUTION_ERRORS
+
+
+class TestRunJudgeIntegration:
+    """Shadow/primary wiring of the Jev run judge into the generator."""
+
+    def _db(self, mock_node_executions):
+        db = AsyncMock()
+        db.get_node_executions.return_value = mock_node_executions
+        meta = MagicMock()
+        meta.name = "Test Agent"
+        meta.description = "A test agent"
+        db.get_graph_metadata.return_value = meta
+        graph = MagicMock()
+        graph.links = []
+        db.get_graph.return_value = graph
+        return db
+
+    def _completion(self, score: float = 0.3) -> ChatCompletion:
+        return _make_completion(
+            content=json.dumps(
+                {"activity_status": "Done.", "correctness_score": score}
+            ),
+            usage=_make_usage(),
+        )
+
+    async def _run(
+        self, mode, judge, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        client, create_mock = _make_client(self._completion())
+        judge_mock = AsyncMock(side_effect=judge)
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block",
+                side_effect=lambda block_id: mock_blocks.get(block_id),
+            ),
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.Settings",
+                return_value=_judge_settings(mode),
+            ),
+            patch(
+                "backend.executor.activity_status_generator.judge_execution_safely",
+                judge_mock,
+            ),
+        ):
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=self._db(mock_node_executions),
+                user_id="test_user",
+            )
+        return result, judge_mock, create_mock
+
+    @pytest.mark.asyncio
+    async def test_shadow_records_judge_but_keeps_llm_score(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        result, judge_mock, create_mock = await self._run(
+            "shadow",
+            lambda *a, **k: _judge_result("shadow"),
+            mock_node_executions,
+            mock_execution_stats,
+            mock_blocks,
+        )
+        assert result is not None
+        assert result["correctness_score"] == 0.3
+        assert result["judge"]["derived_correctness_score"] == 0.8
+        assert result["judge"]["mode"] == "shadow"
+        judge_mock.assert_awaited_once()
+        execution_data = judge_mock.await_args.args[0]
+        assert execution_data["graph_info"]["name"] == "Test Agent"
+        prompt = create_mock.await_args.kwargs["messages"][1]["content"]
+        assert "Verdicts" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_shadow_judge_failure_never_breaks_summary(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        result, _, _ = await self._run(
+            "shadow",
+            RuntimeError("jev exploded"),
+            mock_node_executions,
+            mock_execution_stats,
+            mock_blocks,
+        )
+        assert result is not None
+        assert result["activity_status"] == "Done."
+        assert result["correctness_score"] == 0.3
+        assert "judge" not in result
+
+    @pytest.mark.asyncio
+    async def test_primary_uses_derived_score_and_verdicts_prompt(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        result, _, create_mock = await self._run(
+            "primary",
+            lambda *a, **k: _judge_result("primary"),
+            mock_node_executions,
+            mock_execution_stats,
+            mock_blocks,
+        )
+        assert result is not None
+        assert result["correctness_score"] == 0.8
+        assert result["judge"]["mode"] == "primary"
+        prompt = create_mock.await_args.kwargs["messages"][1]["content"]
+        assert "Verdicts" in prompt
+        assert (
+            "- delivered: delivered (delivered 0.60, partially_delivered 0.40)"
+            in prompt
+        )
+
+    @pytest.mark.asyncio
+    async def test_primary_falls_back_to_llm_score_when_judge_errors(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        result, _, create_mock = await self._run(
+            "primary",
+            lambda *a, **k: _judge_result(
+                "primary", error="Jev API request failed (HTTP 502)."
+            ),
+            mock_node_executions,
+            mock_execution_stats,
+            mock_blocks,
+        )
+        assert result is not None
+        assert result["correctness_score"] == 0.3
+        assert "HTTP 502" in result["judge"]["error"]
+        prompt = create_mock.await_args.kwargs["messages"][1]["content"]
+        assert "Verdicts" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_off_never_calls_judge(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        result, judge_mock, _ = await self._run(
+            "off",
+            lambda *a, **k: _judge_result("shadow"),
+            mock_node_executions,
+            mock_execution_stats,
+            mock_blocks,
+        )
+        assert result is not None and "judge" not in result
+        judge_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_deterministic_failure_carries_deterministic_judge(self):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE
+        )
+        with patch(
+            "backend.executor.activity_status_generator.Settings",
+            return_value=_judge_settings("shadow", key=""),
+        ):
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="e",
+                graph_id="g",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=AsyncMock(),
+                user_id="u",
+                execution_status=ExecutionStatus.FAILED,
+                skip_feature_flag=True,
+            )
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert result["judge"]["source"] == "deterministic"
+        assert result["judge"]["deterministic_reason"] == "insufficient_balance"
+
+
+def _link(source_id: str, sink_id: str) -> MagicMock:
+    return MagicMock(
+        source_id=source_id,
+        sink_id=sink_id,
+        source_name="output",
+        sink_name="input",
+        is_static=False,
+    )
+
+
+class TestGraphOutputEvidence:
+    def test_terminal_and_output_nodes_keep_long_outputs(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        long_text = "x" * 1_500
+        mock_node_executions[0].output_data = {"processed_input": [long_text]}
+        mock_node_executions[1].output_data = {"result": [long_text]}
+        links = [
+            _link(
+                "456e7890-e89b-12d3-a456-426614174002",
+                "567e8901-e89b-12d3-a456-426614174005",
+            ),
+            _link(
+                "567e8901-e89b-12d3-a456-426614174005",
+                "678e9012-e89b-12d3-a456-426614174008",
+            ),
+        ]
+        with patch(
+            "backend.executor.activity_status_generator.get_block",
+            side_effect=lambda block_id: mock_blocks.get(block_id),
+        ):
+            summary = _build_execution_summary(
+                mock_node_executions,
+                mock_execution_stats,
+                "G",
+                "D",
+                links,
+                ExecutionStatus.COMPLETED,
+            )
+        by_name = {node["block_name"]: node for node in summary["nodes"]}
+        assert by_name["AgentInputBlock"]["is_graph_output"] is False
+        assert by_name["ProcessingBlock"]["is_graph_output"] is False
+        assert by_name["AgentOutputBlock"]["is_graph_output"] is True
+        clipped = by_name["AgentInputBlock"]["recent_outputs"][0]["output_data"]
+        assert len(json.dumps(clipped)) <= 120
+
+    def test_node_without_outgoing_link_is_graph_output(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        long_text = "y" * 1_500
+        mock_node_executions[1].output_data = {"result": [long_text]}
+        links = [
+            _link(
+                "456e7890-e89b-12d3-a456-426614174002",
+                "567e8901-e89b-12d3-a456-426614174005",
+            )
+        ]
+        with patch(
+            "backend.executor.activity_status_generator.get_block",
+            side_effect=lambda block_id: mock_blocks.get(block_id),
+        ):
+            summary = _build_execution_summary(
+                mock_node_executions[:2],
+                mock_execution_stats,
+                "G",
+                "D",
+                links,
+                ExecutionStatus.COMPLETED,
+            )
+        terminal = summary["nodes"][1]
+        assert terminal["is_graph_output"] is True
+        assert len(terminal["recent_outputs"][0]["output_data"]["result"][0]) > 1_000
