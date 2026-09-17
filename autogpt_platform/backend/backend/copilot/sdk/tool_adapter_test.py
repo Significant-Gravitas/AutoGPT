@@ -1331,16 +1331,23 @@ class TestCreateCopilotMcpServerHidden:
                 f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
             )
             # Narrow by design: the work an automation exists to do stays.
-            assert {"run_agent", "run_block", "run_sub_session"} <= registered
+            # ``run_block`` is a permission gate rather than a registered
+            # tool now — blocks run through ``run_capability``.
+            assert {"run_agent", "run_capability", "run_sub_session"} <= registered
 
         interactive = await self._registered_tool_names(
             create_copilot_mcp_server(
                 hidden_tool_names=origin_disabled_tools("interactive")
             )
         )
-        assert INTERACTIVE_ORIGIN_TOOLS <= interactive, (
-            "an interactive session lost "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS - interactive)}"
+        # Every interactive-origin tool is deferred, so none is registered by
+        # name in either session; the model reaches them through
+        # ``run_capability``. What the origin gate still decides is whether
+        # the turn may run them at all, which the hidden set above enforces.
+        assert INTERACTIVE_ORIGIN_TOOLS <= DEFERRED_TOOL_NAMES
+        eager_interactive = INTERACTIVE_ORIGIN_TOOLS - DEFERRED_TOOL_NAMES
+        assert eager_interactive <= interactive, (
+            "an interactive session lost " f"{sorted(eager_interactive - interactive)}"
         )
 
     @pytest.mark.asyncio
@@ -1350,19 +1357,22 @@ class TestCreateCopilotMcpServerHidden:
         Without it the model is offered browser tools on a box with no
         ``agent-browser`` binary, and they fail on first use.
         """
+        # The browser tools are deferred, so they are never registered by
+        # name; the model reaches them through ``run_capability``. Assert the
+        # env check on a tool that is registered when its binary is present.
         browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+        assert browser_tools <= DEFERRED_TOOL_NAMES
 
-        with patch(
-            "backend.copilot.tools.agent_browser.shutil.which", return_value="/x"
-        ):
-            registered = await self._registered_tool_names(create_copilot_mcp_server())
-            assert browser_tools <= registered
-
-        with patch(
-            "backend.copilot.tools.agent_browser.shutil.which", return_value=None
-        ):
-            registered = await self._registered_tool_names(create_copilot_mcp_server())
-            assert not (browser_tools & registered)
+        for present in ("/x", None):
+            with patch(
+                "backend.copilot.tools.agent_browser.shutil.which",
+                return_value=present,
+            ):
+                registered = await self._registered_tool_names(
+                    create_copilot_mcp_server()
+                )
+                assert not (browser_tools & registered)
+                assert self._expected_registry_names() <= registered
 
     @staticmethod
     def _expected_registry_names() -> set[str]:
