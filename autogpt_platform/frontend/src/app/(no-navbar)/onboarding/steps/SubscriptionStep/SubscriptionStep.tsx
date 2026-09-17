@@ -45,7 +45,7 @@ export function SubscriptionStep() {
           </Text>
         </div>
 
-        <div className="w-full max-w-2xl">
+        <div className="w-full max-w-3xl">
           <TrialCard returnTo="onboarding" />
         </div>
         <div className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]">
