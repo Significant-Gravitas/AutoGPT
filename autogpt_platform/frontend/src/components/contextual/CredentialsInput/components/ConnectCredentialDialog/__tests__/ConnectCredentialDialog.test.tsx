@@ -430,4 +430,35 @@ describe("ConnectCredentialDialog with existing accounts", () => {
     expect(screen.queryByTestId("connect-method-view")).toBeNull();
     expect(screen.getByText("Use existing")).toBeDefined();
   });
+
+  it("pre-selects nothing when the user is choosing between their own accounts", async () => {
+    const existing = { ...offer(), purpose: "choose" as const };
+    renderDialog({ existing });
+
+    expect(screen.getByText("Choose a GitHub account")).toBeDefined();
+    expect(screen.queryByText(/this expert/i)).toBeNull();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+    // Nothing is picked for the user, so there is nothing to confirm yet.
+    expect(
+      screen.getByText("Use this account").closest("button")?.disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByText("Personal GitHub"));
+    fireEvent.click(screen.getByText("Use this account"));
+
+    await waitFor(() =>
+      expect(existing.onUse).toHaveBeenCalledWith(accounts[1]),
+    );
+  });
+
+  it("keeps the expert grant wording and its default selection", () => {
+    renderDialog({ existing: offer() });
+
+    expect(screen.getByText("Give this expert access to GitHub")).toBeDefined();
+    expect(screen.getAllByRole("radio")[0].getAttribute("aria-checked")).toBe(
+      "true",
+    );
+  });
 });

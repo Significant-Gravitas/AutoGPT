@@ -75,7 +75,12 @@ export function ConnectCredentialDialog({
 
   const offered = existing?.credentials ?? [];
   const showExisting = offered.length > 0 && !addingNew;
-  const chosen = offered.find((c) => c.id === chosenId) ?? offered[0];
+  const isChoosing = existing?.purpose === "choose";
+  // Handing an expert one of several accounts defaults to the first; choosing
+  // which of your own accounts to run on starts with none picked.
+  const chosen =
+    offered.find((c) => c.id === chosenId) ??
+    (isChoosing ? undefined : offered[0]);
 
   function resetAll() {
     reset();
@@ -129,13 +134,14 @@ export function ConnectCredentialDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-5 pb-2">
-          {showExisting && chosen ? (
+          {showExisting ? (
             <ExistingCredentialsView
               provider={provider}
               displayName={displayName}
               credentials={offered}
-              selectedId={chosen.id}
+              selectedId={chosen?.id ?? null}
               onSelect={setChosenId}
+              purpose={existing?.purpose}
             />
           ) : (
             <ConnectMethodView
@@ -170,9 +176,14 @@ export function ConnectCredentialDialog({
                   variant="primary"
                   size="small"
                   loading={existing?.isPending}
+                  disabled={!chosen}
                   onClick={handleUseExisting}
                 >
-                  {existing?.isPending ? "Granting…" : "Use existing"}
+                  {existing?.isPending
+                    ? "Granting…"
+                    : isChoosing
+                      ? "Use this account"
+                      : "Use existing"}
                 </Button>
               </>
             ) : (

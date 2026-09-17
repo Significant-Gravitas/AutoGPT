@@ -262,6 +262,7 @@ export function ConnectorRow({ row }: Props) {
                   onUse: pick,
                   isPending: false,
                   error: null,
+                  purpose: "choose",
                 }
               : undefined
         }
