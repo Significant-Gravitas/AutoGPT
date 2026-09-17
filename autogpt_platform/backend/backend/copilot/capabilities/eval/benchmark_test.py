@@ -21,7 +21,12 @@ PARITY_TOLERANCE = 0.03
 
 @pytest.fixture(scope="module")
 def report() -> Report:
-    index = CapabilityIndex(build_entries(TOOL_REGISTRY, TOOL_GROUPS))
+    # Score against the same catalogue the recorded results came from: a
+    # machine without provider secrets disables the Google, Twitter, Notion
+    # and Reddit blocks, and thirteen labelled answers vanish with them.
+    index = CapabilityIndex(
+        build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
+    )
     result = evaluate(index, load_cases())
     print("\n" + format_report(result))
     return result

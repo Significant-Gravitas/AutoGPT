@@ -26,12 +26,21 @@ from backend.data.model import CredentialsFieldInfo
 logger = logging.getLogger(__name__)
 
 
-def block_entries() -> list[CapabilityEntry]:
+def block_entries(*, include_disabled: bool = False) -> list[CapabilityEntry]:
+    """Every indexable block.
+
+    ``include_disabled`` keeps blocks the running environment has switched
+    off, which is how the retrieval benchmark sees the same catalogue the
+    recorded results were measured against: a block whose provider OAuth is
+    unconfigured is disabled, and scoring retrieval on questions whose
+    answer has been removed measures the environment, not the ranking.
+    Entries are metadata only, so nothing here can run a disabled block.
+    """
     entries: list[CapabilityEntry] = []
     for block_id, block_cls in get_blocks().items():
         try:
             block = block_cls()
-            if not block.disabled:
+            if include_disabled or not block.disabled:
                 # Building the entry reads the block's schema, which a
                 # malformed field definition can reject. One bad block must
                 # cost its own entry, not the whole registry.

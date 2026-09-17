@@ -83,10 +83,11 @@ def build_entries(
     *,
     include_blocks: bool = True,
     include_catalog: bool = True,
+    include_disabled_blocks: bool = False,
 ) -> list[CapabilityEntry]:
     entries = tool_entries(tools, groups)
     if include_blocks:
-        entries += block_entries()
+        entries += block_entries(include_disabled=include_disabled_blocks)
     if include_catalog:
         entries += mcp_catalog_entries()
     return _merge(entries)

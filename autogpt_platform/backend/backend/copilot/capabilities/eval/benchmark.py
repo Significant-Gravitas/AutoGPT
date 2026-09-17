@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from backend.copilot.capabilities.index import CapabilityIndex, SearchResult
 from backend.copilot.capabilities.models import CapabilityEntry
-from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.registry import build_entries
+from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
 
 DATASET_PATH = Path(__file__).with_name("t0_dataset.json")
 UNAVAILABLE = "<not loaded in this environment>"
@@ -226,7 +227,12 @@ def main() -> None:
     parser.add_argument("--json", type=Path, help="also write the full report here")
     parser.add_argument("--misses", action="store_true", help="list every miss")
     args = parser.parse_args()
-    report = evaluate(get_registry(), load_cases())
+    # Same catalogue as the test fixture, so running this by hand on a
+    # machine without provider secrets reports what CI reports.
+    index = CapabilityIndex(
+        build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
+    )
+    report = evaluate(index, load_cases())
     print(format_report(report))
     if args.misses:
         for miss in report.misses:
