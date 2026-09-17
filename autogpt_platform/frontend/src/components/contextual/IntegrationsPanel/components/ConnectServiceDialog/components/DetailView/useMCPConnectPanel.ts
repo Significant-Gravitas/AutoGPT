@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 import { getErrorMessage } from "@/lib/mcp-errors";
-import { mcpServerIdentity } from "@/lib/mcp-url";
+import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { connectMCPOAuth } from "./mcpOAuth";
@@ -72,12 +72,21 @@ export function useMCPConnectPanel({
         signal,
       });
       signal.throwIfAborted();
-      if (!credential) {
-        if (manualSchemes.length) setPhase("manual-token");
+      if (!credential || "reason" in credential) {
+        const reason =
+          credential && "reason" in credential ? credential.reason : undefined;
+        // Only "this server has no OAuth" should push the user at the manual
+        // token tab; every other 400 is its own problem and says so. The route
+        // makes that call and sends `no_oauth`, because the same verdict comes
+        // back under two quite different messages.
+        const noOAuth =
+          !credential || ("noOAuth" in credential && credential.noOAuth);
+        if (noOAuth && manualSchemes.length) setPhase("manual-token");
         setError(
-          manualSchemes.length
-            ? "This server doesn't support OAuth sign-in. Choose how its API credential should be sent."
-            : "Sign-in is unavailable for this connection. Check its setup instructions and try again.",
+          reason ??
+            (manualSchemes.length
+              ? "This server doesn't support OAuth sign-in. Choose how its API credential should be sent."
+              : "Sign-in is unavailable for this connection. Check its setup instructions and try again."),
         );
         return;
       }
@@ -145,7 +154,10 @@ export function useMCPConnectPanel({
   }
 
   function handleServerURLChange(nextURL: string) {
-    const changed = mcpServerIdentity(serverURL) !== mcpServerIdentity(nextURL);
+    // Compare the whole URL, not just the origin: two tenants on one host
+    // differ only by path, and keeping the typed token across that change
+    // would submit one tenant's secret to another.
+    const changed = normalizeMcpUrl(serverURL) !== normalizeMcpUrl(nextURL);
     setServerURL(nextURL);
     if (!changed) return;
     activeRequest.current?.abort();

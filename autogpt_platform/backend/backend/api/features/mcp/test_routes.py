@@ -14,7 +14,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 
-from backend.api.features.mcp.routes import router
+from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
 from backend.util.request import HTTPClientError, HTTPServerError
@@ -338,7 +338,11 @@ class TestOAuthLogin:
             )
 
         assert response.status_code == 400
-        assert "does not advertise OAuth" in response.json()["detail"]
+        detail = response.json()["detail"]
+        # The connect panel offers the manual-token form off this code, so it
+        # has to survive any rewording of the message beside it.
+        assert detail["code"] == NO_OAUTH_CODE
+        assert "does not advertise OAuth" in detail["message"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_fallback_to_public_client(self, client):
@@ -464,8 +468,9 @@ class TestOAuthLogin:
             )
 
         assert response.status_code == 400
-        assert "does not match where the metadata was published" in (
-            response.json()["detail"]
+        assert (
+            "does not match where the metadata was published"
+            in (response.json()["detail"])
         )
         mock_cm.store.store_state_token.assert_not_awaited()
 

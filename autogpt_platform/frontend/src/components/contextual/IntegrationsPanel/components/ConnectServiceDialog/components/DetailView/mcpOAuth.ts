@@ -2,7 +2,12 @@ import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
+import {
+  getAPIResponseError,
+  getErrorCode,
+  getErrorMessage,
+  getErrorStatus,
+} from "@/lib/mcp-errors";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 
 interface Args {
@@ -10,6 +15,9 @@ interface Args {
   scopes?: string[];
   signal: AbortSignal;
 }
+
+/** Mirrors `NO_OAUTH_CODE` in `backend/api/features/mcp/routes.py`. */
+export const NO_OAUTH_CODE = "no_oauth";
 
 export async function connectMCPOAuth({ serverURL, scopes, signal }: Args) {
   signal.throwIfAborted();
@@ -27,7 +35,18 @@ export async function connectMCPOAuth({ serverURL, scopes, signal }: Args) {
       throw getAPIResponseError(login.status, login.data);
   } catch (error) {
     signal.throwIfAborted();
-    if (getErrorStatus(error) === 400) return null;
+    // The login route writes eight different 400s, each explaining a
+    // different failure. Returning a bare null threw all of them away and
+    // told the user to find an API token, even when the real cause was a
+    // failed client registration on a server that does support OAuth. Hand
+    // the reason back, with the route's own verdict on whether this server
+    // has any OAuth to offer, so the caller can show one and branch on the
+    // other instead of reading the prose.
+    if (getErrorStatus(error) === 400)
+      return {
+        reason: getErrorMessage(error),
+        noOAuth: getErrorCode(error) === NO_OAUTH_CODE,
+      } as const;
     throw error;
   }
   signal.throwIfAborted();

@@ -68,7 +68,8 @@ async def test_revocation_uses_registered_authentication(method):
     assert args["data"]["token"] == "<test-token>"
     if method == "client_secret_basic":
         assert args["headers"]["Authorization"].startswith("Basic ")
-        assert "client_id" not in args["data"]
+        assert args["data"]["client_id"] == "client"
+        assert "client_secret" not in args["data"]
         assert "client_secret" not in args["data"]
     elif method == "client_secret_post":
         assert "Authorization" not in args["headers"]

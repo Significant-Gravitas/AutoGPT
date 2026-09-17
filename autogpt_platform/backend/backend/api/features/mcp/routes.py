@@ -60,6 +60,13 @@ creds_manager = IntegrationCredentialsManager()
 _PROBE_TIMEOUT_SECONDS = 10
 _PROBE_CLOSE_TIMEOUT_SECONDS = 5
 
+# `/oauth/login` answers 400 for eight different reasons, and only one of them
+# means "there is no OAuth here, use an API token". The connect panel has to
+# tell that one apart to decide whether to offer the manual-token form, and
+# matching on the prose broke the moment either message was reworded — so the
+# two no-OAuth branches carry this code and the rest stay plain strings.
+NO_OAUTH_CODE = "no_oauth"
+
 
 # ====================== Tool Discovery ====================== #
 
@@ -253,9 +260,12 @@ async def mcp_oauth_login(
         if "oauth" not in catalog_entry.mcp_server.auth_methods:
             raise fastapi.HTTPException(
                 status_code=400,
-                detail=f"{catalog_entry.display_name} uses "
-                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} authentication. "
-                f"{catalog_entry.mcp_server.setup_instructions}",
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"{catalog_entry.display_name} uses "
+                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+                },
             )
         catalog_scopes = catalog_entry.mcp_server.oauth_scopes
     client = MCPClient(server_url)
@@ -303,14 +313,26 @@ async def mcp_oauth_login(
     ):
         raise fastapi.HTTPException(
             status_code=400,
-            detail="This MCP server does not advertise OAuth support. "
-            "You may need to provide an auth credential manually.",
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": "This MCP server does not advertise OAuth support. "
+                "You may need to provide an auth credential manually.",
+            },
         )
 
     authorize_url = metadata["authorization_endpoint"]
     token_url = metadata["token_endpoint"]
     registration_endpoint = metadata.get("registration_endpoint")
     revoke_url = metadata.get("revocation_endpoint")
+    # The revocation call carries the token, and this URL comes from the
+    # server's own metadata. Over plain HTTP that hands the token to anyone
+    # on the path, so drop it rather than use it; revocation is best-effort.
+    if isinstance(revoke_url, str) and not revoke_url.lower().startswith("https://"):
+        logger.warning(
+            "Ignoring non-HTTPS revocation endpoint advertised by %s",
+            server_host(request.server_url),
+        )
+        revoke_url = None
     scopes = (
         request.scopes
         if request.scopes is not None
@@ -520,7 +542,17 @@ async def mcp_oauth_callback(
     # Enrich credential metadata for future lookup and token refresh
     if credentials.metadata is None:
         credentials.metadata = {}
-    credentials.metadata["mcp_server_url"] = meta["server_url"]
+    # Two catalog entries sign in at a different URL from the one their
+    # tools are called on (Context7 and Parallel). Binding the credential to
+    # the sign-in URL made lookup miss: the user completed OAuth, the dialog
+    # said connected, and every later call fell back to public limits with
+    # nothing reporting a problem. Record the URL the tools actually use.
+    catalog_entry = get_mcp_catalog_entry_for_url(meta["server_url"])
+    credentials.metadata["mcp_server_url"] = (
+        catalog_entry.mcp_server.server_url
+        if catalog_entry and catalog_entry.mcp_server.server_url
+        else meta["server_url"]
+    )
     credentials.metadata["mcp_client_id"] = meta["client_id"]
     credentials.metadata["mcp_client_secret"] = (
         ""

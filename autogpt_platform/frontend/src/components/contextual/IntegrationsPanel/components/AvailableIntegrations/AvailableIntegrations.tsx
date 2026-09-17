@@ -61,7 +61,9 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           </ul>
           <Text variant="small" className="px-4 text-zinc-500" role="status">
             {catalog.total === 0
-              ? "No available services match your search."
+              ? query.trim()
+                ? "No available services match your search."
+                : "No available services."
               : `${catalog.providers.length} of ${catalog.total} services`}
           </Text>
           {catalog.hasMore && (

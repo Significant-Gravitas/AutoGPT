@@ -31,8 +31,24 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   useGetV1ListCredentials: () => ({ data: mockSavedCredentials }),
 }));
 
-function makeApiError(status: number, detail = "boom"): Error {
-  const err = new Error(detail) as Error & {
+// What the login route actually answers when a server has no OAuth at all:
+// prose for the user, plus the code the panel branches on. Every other 400 it
+// writes is a different failure and must not offer the manual-token form.
+const noOAuthDetail = {
+  detail: {
+    code: "no_oauth",
+    message: "This MCP server does not advertise OAuth support.",
+  },
+};
+
+function makeApiError(status: number, detail: unknown = "boom"): Error {
+  // `parseApiError` already unwraps a structured detail into the message, so
+  // mirror that here: the prose on `message`, the whole body on `response`.
+  const message =
+    typeof detail === "string"
+      ? detail
+      : ((detail as { message?: string })?.message ?? "boom");
+  const err = new Error(message) as Error & {
     status: number;
     response: unknown;
   };
@@ -160,7 +176,7 @@ describe("McpConnectPanel", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
 
@@ -174,9 +190,74 @@ describe("McpConnectPanel", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(
-      screen.getByText(/server doesn't support oauth sign-in/i),
-    ).toBeDefined();
+    // The route's own wording, not a generic stand-in: it names the reason
+    // this particular server cannot be signed into.
+    expect(screen.getByText(/does not advertise oauth support/i)).toBeDefined();
+  });
+
+  it("offers the manual form for a catalog service that has no OAuth", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+
+    // A catalog entry without OAuth is rejected in quite different words from
+    // the "does not advertise OAuth" case above. Both mean the same thing to
+    // this panel, and only the code says so.
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: {
+        detail: {
+          code: "no_oauth",
+          message:
+            "Brevo uses bearer / basic authentication. Create an API key in " +
+            "your Brevo dashboard.",
+        },
+      },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+    expect(screen.getByText(/create an api key/i)).toBeDefined();
+  });
+
+  it("keeps the OAuth form for a 400 that is not about missing OAuth", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+
+    // A failed client registration is a problem with this attempt, on a server
+    // that does support OAuth. Sending the user off to find an API token would
+    // be the wrong advice.
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: {
+        detail: "Could not register an OAuth client with this MCP server.",
+      },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/could not register an oauth client/i),
+      ).toBeDefined();
+    });
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
   });
 
   it("does NOT switch to manual-token on a 400 from token exchange", async () => {
@@ -224,7 +305,7 @@ describe("McpConnectPanel", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
-      makeApiError(400, "OAuth not supported"),
+      makeApiError(400, noOAuthDetail.detail),
     );
 
     const onSuccess = vi.fn();
@@ -270,7 +351,7 @@ describe("McpConnectPanel", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -322,7 +403,7 @@ describe("McpConnectPanel", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -376,7 +457,7 @@ describe("McpConnectPanel", () => {
     };
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -413,7 +494,7 @@ describe("McpConnectPanel", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
 
@@ -449,7 +530,7 @@ describe("McpConnectPanel", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
@@ -488,7 +569,7 @@ describe("McpConnectPanel", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "OAuth not supported" },
+      data: noOAuthDetail,
       headers: new Headers(),
     } as never);
 
@@ -521,7 +602,7 @@ describe("McpConnectPanel", () => {
     );
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
-      makeApiError(400, "OAuth not supported"),
+      makeApiError(400, noOAuthDetail.detail),
     );
 
     render(<McpConnectPanel onSuccess={() => {}} />);
@@ -554,12 +635,12 @@ describe("McpConnectPanel", () => {
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "OAuth not supported" },
+        data: noOAuthDetail,
         headers: new Headers(),
       } as never)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "OAuth not supported" },
+        data: noOAuthDetail,
         headers: new Headers(),
       } as never);
 
@@ -617,7 +698,7 @@ describe("McpConnectPanel", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
-      makeApiError(400, "OAuth not supported"),
+      makeApiError(400, noOAuthDetail.detail),
     );
 
     const onSuccess = vi.fn();

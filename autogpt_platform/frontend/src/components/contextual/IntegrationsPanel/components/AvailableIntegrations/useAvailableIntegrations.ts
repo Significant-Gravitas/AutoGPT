@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -20,11 +20,18 @@ export function useAvailableIntegrations(query: string) {
   });
   const allProviders = toConnectableProviders(result.data ?? []);
   const matching = filterConnectableProviders(allProviders, debouncedQuery);
-  const providers = debouncedQuery.trim() ? matching : matching.slice(0, limit);
+  // Paging applies whether or not there is a query. It used to be skipped
+  // while searching, which is the one path a user reaches by typing, so a
+  // broad term rendered every match and its image at once.
+  const providers = matching.slice(0, limit);
 
   function showMore() {
     setLimit((current) => current + PAGE_SIZE);
   }
+
+  useEffect(() => {
+    setLimit(PAGE_SIZE);
+  }, [debouncedQuery]);
 
   return {
     providers,
