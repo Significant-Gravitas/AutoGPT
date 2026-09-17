@@ -18,6 +18,7 @@ describe("GET /avatars/notion/[file]", () => {
     expect(response.headers.get("Cache-Control")).toContain("immutable");
     const body = await response.text();
     expect(body.startsWith("<svg xmlns=")).toBe(true);
+    expect(body).toContain("scale(1.2)");
     expect(body).toContain("</svg>");
   });
 

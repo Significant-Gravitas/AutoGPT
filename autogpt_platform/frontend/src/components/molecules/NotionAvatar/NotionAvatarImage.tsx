@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { notionAvatarUrlFor, type NotionAvatarConfig } from "./helpers";
+import { notionAvatarImageUrlFor, type NotionAvatarConfig } from "./helpers";
 import type { AvatarStatus } from "./status";
 import { StatusDot } from "./StatusDot";
 
@@ -21,7 +21,7 @@ export function NotionAvatarImage({
   title,
   className,
 }: Props) {
-  const src = notionAvatarUrlFor(config);
+  const src = notionAvatarImageUrlFor(config);
   const face = (
     <Image
       src={src}

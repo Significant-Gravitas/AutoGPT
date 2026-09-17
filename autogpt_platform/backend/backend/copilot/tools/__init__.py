@@ -15,7 +15,11 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
+from .chat_platform import (
+    EditChatPlatformMessageTool,
+    ListChatPlatformChannelsTool,
+    PostToChatPlatformTool,
+)
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
@@ -27,6 +31,15 @@ from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
 from .expert_onboarding import ExpertOnboardingTool
+from .expert_resources import (
+    GrantExpertCredentialTool,
+    InstallExpertWorkflowTool,
+    ListExpertCredentialsTool,
+    ListExpertWorkflowsTool,
+    RemoveExpertWorkflowTool,
+    RequestCredentialGrantTool,
+    RevokeExpertCredentialTool,
+)
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -52,7 +65,12 @@ from .manage_folders import (
     UpdateFolderTool,
 )
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
-from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .manage_schedules import (
+    DeleteScheduleTool,
+    ListSchedulesTool,
+    PauseScheduleTool,
+    ResumeScheduleTool,
+)
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
@@ -64,6 +82,7 @@ from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
+from .start_desktop import StartDesktopTool
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -78,7 +97,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
+    from backend.copilot.model import ChatSession, ChatSessionOrigin
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +128,12 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Schedule management
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
+    "pause_schedule": PauseScheduleTool(),
+    "resume_schedule": ResumeScheduleTool(),
     "schedule_followup": ScheduleFollowupTool(),
     # Proactive chat-platform output (post message / open thread on user's behalf)
     "post_to_chat_platform": PostToChatPlatformTool(),
+    "edit_chat_platform_message": EditChatPlatformMessageTool(),
     "list_chat_platform_channels": ListChatPlatformChannelsTool(),
     # Trigger management (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
@@ -151,6 +173,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
+    "start_desktop": StartDesktopTool(),
     "connect_integration": ConnectIntegrationTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools
@@ -182,6 +205,15 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # own data, read with the query the chat API uses.
     "list_expert_chats": ListExpertChatsTool(),
     "read_expert_chat": ReadExpertChatTool(),
+    # Expert resources: an expert installs onto itself, Otto names the
+    # expert. Credential grants are the owner's call, so Otto only.
+    "install_expert_workflow": InstallExpertWorkflowTool(),
+    "remove_expert_workflow": RemoveExpertWorkflowTool(),
+    "list_expert_workflows": ListExpertWorkflowsTool(),
+    "list_expert_credentials": ListExpertCredentialsTool(),
+    "grant_expert_credential": GrantExpertCredentialTool(),
+    "revoke_expert_credential": RevokeExpertCredentialTool(),
+    "request_credential_grant": RequestCredentialGrantTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -195,7 +227,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "delegation", "expert_resources"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -225,6 +259,16 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # Workflow installs work from either side; credential grants are
+    # owner-only, so they ride the staffing gate.
+    "install_expert_workflow": "expert_resources",
+    "remove_expert_workflow": "expert_resources",
+    "list_expert_workflows": "expert_resources",
+    "list_expert_credentials": "expert_resources",
+    "grant_expert_credential": "expert_admin",
+    "revoke_expert_credential": "expert_admin",
+    # Only an expert has someone to ask.
+    "request_credential_grant": "experts",
     # Read-only, but it shares the same gate: with the flag off there is no
     # team to list.
     "list_team": "delegation",
@@ -242,8 +286,37 @@ def expert_tool_disabled_groups(
     expert-session tools (``experts``).
     """
     if not experts_enabled:
-        return ["experts", "expert_admin", "delegation"]
+        return ["experts", "expert_admin", "delegation", "expert_resources"]
     return ["expert_admin"] if expert_id else ["experts"]
+
+
+# The tools ``autopilot_session_guard`` refuses off an interactive origin:
+# hidden there rather than declared and then refused.  Not a ``ToolGroup`` —
+# that says what a tool does, and each of these already holds ``expert_admin``
+# — and not a wider "needs a person" set either, because ``automation`` marks
+# a machine-authored PROMPT, not an empty chat: a dream pass and a scheduled
+# brief both carry it and both expect the user to read and reply.  So what is
+# safe to withhold on this seam is what the runtime already withholds, no
+# more.  ``tool_schema_test`` asserts the two stay equal.
+INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
+    {
+        "hire_expert",
+        "raise_expert",
+        "update_expert",
+        "confirm_expert_change",
+    }
+)
+
+
+def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
+    """Tools to hide from a session *origin* no person is driving.
+
+    Positive match, so a legacy ``None`` is hidden from too — an unknown
+    origin cannot prove a human is here, and ``autopilot_session_guard``
+    takes the same side of the same unknown, which is the point: whatever
+    it would refuse, this stops us declaring.
+    """
+    return frozenset() if origin == "interactive" else INTERACTIVE_ORIGIN_TOOLS
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

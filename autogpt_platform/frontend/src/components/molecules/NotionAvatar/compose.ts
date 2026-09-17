@@ -8,14 +8,8 @@ import { NOTION_PARTS } from "./parts.generated";
 import { badgeMarkup } from "./statusBadge";
 import type { AvatarStatus } from "./status";
 
-// The artwork is drawn to the edge of its 1080 box, so a circular crop shears
-// off long hair. Scaling it down inside the disc keeps every hairstyle whole,
-// and the nudge downward stops the crown from crowding the top edge.
-//
-// 1.35 puts the head at roughly 85% of the disc. Past that the crop starts
-// taking ears and cap brims; at this size only long hair reaches the edge,
-// which reads as a portrait crop rather than damage.
-export const FRAME_SCALE = 1.35;
+// Leave a clear margin around the face while keeping it readable at card size.
+export const FRAME_SCALE = 1.2;
 export const FRAME_OFFSET_Y = 0;
 
 interface Options {

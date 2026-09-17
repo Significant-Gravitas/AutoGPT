@@ -3,7 +3,7 @@
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import ListToolsRequest, ToolAnnotations
@@ -19,12 +19,14 @@ from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
     BASELINE_ONLY_MCP_TOOLS,
+    BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_sdk_disallowed_tools,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -743,6 +745,39 @@ class TestSDKDisallowedTools:
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
 
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cli_cron_tools_are_disallowed(self, tool: str):
+        """The CLI's cron built-ins schedule nothing that outlives the turn.
+
+        CronCreate confirms success and claims it persisted to disk, so an
+        exposed cron tool lets the model promise unattended monitoring that
+        never fires. `schedule_followup` is the only durable primitive.
+        """
+        assert tool in SDK_DISALLOWED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cron_tools_reach_sdk_options_in_both_modes(self, tool: str, use_e2b: bool):
+        """`disallowed_tools` is what removes a built-in from the model's
+        context, so the names must survive the E2B branch too."""
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cron_tools_reach_security_hook_denylist(self, tool: str):
+        """Defence in depth: security_hooks denies on BLOCKED_TOOLS, which is
+        a denylist — an unlisted tool falls through and executes."""
+        assert tool in BLOCKED_TOOLS
+
+    def test_orchestrator_block_disallows_every_known_builtin(self):
+        # The orchestrator's model gets graph MCP tools only, so its blocklist
+        # must cover everything the copilot blocks *and* everything the
+        # copilot deliberately keeps (sub-agents, todo list, file search).
+        from backend.blocks.orchestrator import sdk_disallowed_tools
+
+        blocked = set(sdk_disallowed_tools())
+        assert set(get_sdk_disallowed_tools(use_e2b=True)) <= blocked
+        assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= blocked
+
 
 # ---------------------------------------------------------------------------
 # _read_file_handler — bridge_and_annotate integration
@@ -1229,15 +1264,13 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
         # Other tools still register.
-        assert len(registered) >= len(TOOL_REGISTRY) - 1
+        assert self._expected_registry_names() - {hidden_name} <= registered
 
     @pytest.mark.asyncio
-    async def test_no_hidden_tools_registers_all(self):
+    async def test_no_hidden_tools_registers_every_available_tool(self):
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
 
     @pytest.mark.asyncio
@@ -1273,10 +1306,79 @@ class TestCreateCopilotMcpServerHidden:
         )
         registered = await self._registered_tool_names(server)
         # All real tools still register.
-        for short in TOOL_REGISTRY:
-            if short in BASELINE_ONLY_MCP_TOOLS:
-                continue
+        for short in self._expected_registry_names():
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_automation_origin_tools_not_registered(self):
+        """The origin gate reaches the MCP server, not just the schema list.
+
+        ``origin_disabled_tools`` is what both engines feed in; on this one
+        hiding IS the enforcement, since an unregistered tool does not exist
+        for the CLI. A legacy ``origin=None`` counts as automation.
+        """
+        from backend.copilot.tools import (
+            INTERACTIVE_ORIGIN_TOOLS,
+            origin_disabled_tools,
+        )
+
+        for origin in ("automation", None):
+            server = create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools(origin)
+            )
+            registered = await self._registered_tool_names(server)
+            assert not (INTERACTIVE_ORIGIN_TOOLS & registered), (
+                f"origin={origin!r} registered "
+                f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
+            )
+            # Narrow by design: the work an automation exists to do stays.
+            assert {"run_agent", "run_block", "run_sub_session"} <= registered
+
+        interactive = await self._registered_tool_names(
+            create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools("interactive")
+            )
+        )
+        assert INTERACTIVE_ORIGIN_TOOLS <= interactive, (
+            "an interactive session lost "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS - interactive)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_env_unavailable_tools_not_registered(self):
+        """``is_available`` is honoured here as it is on the baseline path.
+
+        Without it the model is offered browser tools on a box with no
+        ``agent-browser`` binary, and they fail on first use.
+        """
+        browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value="/x"
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert browser_tools <= registered
+
+        with patch(
+            "backend.copilot.tools.agent_browser.shutil.which", return_value=None
+        ):
+            registered = await self._registered_tool_names(create_copilot_mcp_server())
+            assert not (browser_tools & registered)
+
+    @staticmethod
+    def _expected_registry_names() -> set[str]:
+        """Registry tools the SDK server should register in this environment.
+
+        ``is_available`` is read here rather than asserted over the whole
+        registry: the chat-platform, browser and E2B tools depend on env the
+        test box may not have, and registering one the environment cannot
+        serve is the bug, not the invariant.
+        """
+        return {
+            name
+            for name, tool in TOOL_REGISTRY.items()
+            if name not in BASELINE_ONLY_MCP_TOOLS and tool.is_available
+        }
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:

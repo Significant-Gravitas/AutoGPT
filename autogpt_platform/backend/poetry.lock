@@ -464,7 +464,7 @@ fastapi = "^0.128.7"
 google-cloud-logging = "^3.13.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
-pyjwt = {version = "^2.11.0", extras = ["crypto"]}
+pyjwt = {version = "^2.13.0", extras = ["crypto"]}
 redis = "^8.1.0"
 
 [package.source]

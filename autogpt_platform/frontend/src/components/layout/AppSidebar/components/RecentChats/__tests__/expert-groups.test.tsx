@@ -218,7 +218,9 @@ describe("RecentChats — expert groups", () => {
     const avatar = expertGroup.querySelector(
       'img[data-testid="notion-avatar-image"]',
     );
-    expect(avatar?.getAttribute("data-avatar")).toMatch(/\.violet\.svg$/);
+    expect(avatar?.getAttribute("data-avatar")).toMatch(
+      /\.violet\.svg\?v=\d+$/,
+    );
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

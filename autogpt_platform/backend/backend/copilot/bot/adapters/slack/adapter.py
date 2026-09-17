@@ -24,12 +24,14 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.copilot.bot import choices, threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -444,7 +446,7 @@ class SlackAdapter(WebhookAdapter):
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
             thread_history=thread_history,
-            mentionable_users=await self._collect_mentionable_users(team, text),
+            mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,
             skipped_attachments=skipped,
         )
@@ -739,11 +741,15 @@ class SlackAdapter(WebhookAdapter):
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
         team, channel, thread_ts = _decode_target(channel_id)
-        first_ts = await self._post_chunked(team, channel, text, thread_ts=thread_ts)
+        first_ts, sent = await self._post_chunked(
+            team, channel, text, thread_ts=thread_ts
+        )
         if first_ts is None:
             return None
         return PostedRef(
-            id=first_ts, url=await self._permalink(team, channel, first_ts)
+            id=first_ts,
+            url=await self._permalink(team, channel, first_ts),
+            chunk_count=sent,
         )
 
     async def create_channel_thread(
@@ -752,18 +758,54 @@ class SlackAdapter(WebhookAdapter):
         # Slack threads are implicit + unnamed: post text as the root message;
         # the returned ref threads subsequent sends off it.
         team, channel, _ = _decode_target(channel_id)
-        root_ts = await self._post_chunked(team, channel, text)
+        root_ts, sent = await self._post_chunked(team, channel, text)
         if root_ts is None:
             return None
+        # `id` is the root message's ts so it can be edited; `channel_id`
+        # carries the encoded target whose thread_ts keeps follow-up sends
+        # threaded under it.
         return PostedRef(
-            id=_encode_target(team, channel, root_ts),
+            id=root_ts,
             url=await self._permalink(team, channel, root_ts),
+            channel_id=_encode_target(team, channel, root_ts),
+            chunk_count=sent,
         )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        team, channel, _ = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return EditOutcome.FAILED
+        try:
+            # `blocks=[]` is required, not cosmetic: chat.update keeps the
+            # message's existing blocks when the field is omitted, so editing
+            # a block message (every `send_link` card) would change nothing
+            # visible while still reporting success.
+            await client.chat_update(
+                channel=channel,
+                ts=ref_id,
+                text=self.localize_markup(text),
+                blocks=[],
+            )
+        except SlackApiError as e:
+            if e.response.get("error") == "message_not_found":
+                return EditOutcome.NOT_FOUND
+            logger.warning(
+                "Slack chat.update rejected edit: %s", e.response.get("error")
+            )
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Slack message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _post_chunked(
         self, team_id: str, channel: str, text: str, thread_ts: Optional[str] = None
-    ) -> Optional[str]:
-        """Post ``text`` chunked under the message cap; return the first ts.
+    ) -> tuple[Optional[str], int]:
+        """Post ``text`` chunked under the message cap; return the first ts
+        and how many chunks landed.
 
         Later chunks thread off the first so a long post stays one conversation.
 
@@ -776,8 +818,9 @@ class SlackAdapter(WebhookAdapter):
         """
         client = await self._client_for(team_id)
         if client is None:
-            return None
+            return None, 0
         first_ts = thread_ts
+        sent = 0
         posted = False
         for rendered in self._localized_chunks(text, config.CHUNK_FLUSH_AT):
             try:
@@ -792,9 +835,10 @@ class SlackAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Slack chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_ts is None:
                 first_ts = resp.get("ts")
-        return first_ts
+        return first_ts, sent
 
     def _localized_chunks(self, text: str, flush_at: int) -> Iterator[str]:
         """Chunk the canonical markdown, then localize each chunk, so a cut
@@ -864,12 +908,14 @@ class SlackAdapter(WebhookAdapter):
         return _USER_MENTION_RE.sub(_replace, text).strip()
 
     async def _collect_mentionable_users(
-        self, team_id: str, text: str
+        self, team_id: str, text: str, author_id: str = ""
     ) -> tuple[tuple[str, str], ...]:
+        """The author and everyone the inbound message mentioned. The author
+        is who the bot is answering, so "@name" back to them must ping."""
         bot_id = await self._bot_user_id_for(team_id)
         pairs: list[tuple[str, str]] = []
-        for match in _USER_MENTION_RE.finditer(text):
-            uid = match.group(1)
+        mentioned = [m.group(1) for m in _USER_MENTION_RE.finditer(text)]
+        for uid in ([author_id] if author_id else []) + mentioned:
             if bot_id and uid == bot_id:
                 continue
             pair = (await self._user_display_name(team_id, uid), uid)
