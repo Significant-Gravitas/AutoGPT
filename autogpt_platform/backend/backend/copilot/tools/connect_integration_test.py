@@ -192,3 +192,21 @@ class TestRequestedScopes:
         )
         session.messages.append(_connect_call("{not json"))
         assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}
+
+    def test_flat_tool_call_shape_counts(self):
+        # Some transcripts keep name and arguments at the top level.
+        session = make_session("user-1", guide_read=False, library_check=False)
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "connect_integration",
+                        "arguments": {"provider": "github", "scopes": ["read:org"]},
+                    }
+                ],
+            )
+        )
+        assert requested_scopes(session) == {"github": frozenset({"repo", "read:org"})}

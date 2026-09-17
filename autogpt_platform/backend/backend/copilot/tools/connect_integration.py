@@ -49,8 +49,10 @@ def requested_scopes(session: ChatSession | None) -> dict[str, frozenset[str]]:
             name = str(function.get("name") or call.get("name") or "")
             if name.rsplit("__", 1)[-1] != CONNECT_INTEGRATION_TOOL:
                 continue
+            # Both transcript shapes: nested under "function", or flat.
+            raw = function.get("arguments") or call.get("arguments") or "{}"
             try:
-                args = json.loads(function.get("arguments") or "{}")
+                args = raw if isinstance(raw, dict) else json.loads(raw)
             except (TypeError, ValueError):
                 continue
             if not isinstance(args, dict):
