@@ -160,13 +160,14 @@ async def _seed_loaded(
 ) -> list[str]:
     """Write a set whose packages have all been loaded and checked."""
     listing_ids = []
-    for entry, parsed, files in loaded:
-        listing = await _upsert_listing(entry, parsed, files)
-        listing_ids.append(listing.id)
-        logger.info(
-            f"Seeded skill '{entry['slug']}' (#{listing.id})"
-            + (f" with {len(files)} package files" if files else "")
-        )
+    async with database.transaction() as tx:
+        for entry, parsed, files in loaded:
+            listing = await _upsert_listing(tx, entry, parsed, files)
+            listing_ids.append(listing.id)
+            logger.info(
+                f"Seeded skill '{entry['slug']}' (#{listing.id})"
+                + (f" with {len(files)} package files" if files else "")
+            )
     return listing_ids
 
 
@@ -222,41 +223,43 @@ def load_catalog(root: Path) -> list[CatalogEntry]:
 
 
 async def _upsert_listing(
-    entry: CatalogEntry, parsed: ParsedSkill, files: list[SkillFile]
+    tx: prisma.Prisma,
+    entry: CatalogEntry,
+    parsed: ParsedSkill,
+    files: list[SkillFile],
 ) -> prisma.models.SkillListing:
-    async with database.transaction() as tx:
-        listing = await prisma.models.SkillListing.prisma(tx).find_unique(
-            where={"slug": entry["slug"]}, include={"ActiveVersion": True}
+    listing = await prisma.models.SkillListing.prisma(tx).find_unique(
+        where={"slug": entry["slug"]}, include={"ActiveVersion": True}
+    )
+    if listing is None:
+        listing = await prisma.models.SkillListing.prisma(tx).create(
+            data={"slug": entry["slug"], "hasApprovedVersion": True},
+            include={"ActiveVersion": True},
         )
-        if listing is None:
-            listing = await prisma.models.SkillListing.prisma(tx).create(
-                data={"slug": entry["slug"], "hasApprovedVersion": True},
+    else:
+        if listing.owningUserId is not None or listing.owningOrgId is not None:
+            raise ValueError(
+                f"catalog skill '{entry['slug']}' conflicts with an owned listing"
+            )
+        listing = (
+            await prisma.models.SkillListing.prisma(tx).update(
+                where={"id": listing.id},
+                data={"hasApprovedVersion": True, "isDeleted": False},
                 include={"ActiveVersion": True},
             )
-        else:
-            if listing.owningUserId is not None or listing.owningOrgId is not None:
-                raise ValueError(
-                    f"catalog skill '{entry['slug']}' conflicts with an owned listing"
-                )
-            listing = (
-                await prisma.models.SkillListing.prisma(tx).update(
-                    where={"id": listing.id},
-                    data={"hasApprovedVersion": True, "isDeleted": False},
-                    include={"ActiveVersion": True},
-                )
-                or listing
+            or listing
+        )
+    version = await _upsert_version(tx, listing, entry, parsed, files)
+    if listing.activeVersionId != version.id:
+        listing = (
+            await prisma.models.SkillListing.prisma(tx).update(
+                where={"id": listing.id},
+                data={"activeVersionId": version.id},
+                include={"ActiveVersion": True},
             )
-        version = await _upsert_version(tx, listing, entry, parsed, files)
-        if listing.activeVersionId != version.id:
-            listing = (
-                await prisma.models.SkillListing.prisma(tx).update(
-                    where={"id": listing.id},
-                    data={"activeVersionId": version.id},
-                    include={"ActiveVersion": True},
-                )
-                or listing
-            )
-        return listing
+            or listing
+        )
+    return listing
 
 
 async def _upsert_version(

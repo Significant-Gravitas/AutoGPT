@@ -381,12 +381,15 @@ COLD_EMAIL_MD = (
 )
 
 
-def _write_catalog(root, frameworks: str = "# Frameworks\n"):
+def _write_catalog(
+    root, frameworks: str = "# Frameworks\n", brand_body: str = "# Voice\n"
+):
     (root / "catalog.yml").write_text(CATALOG_YML, encoding="utf-8")
     brand = root / "skills" / "brand-voice-guide"
     brand.mkdir(parents=True, exist_ok=True)
     (brand / "SKILL.md").write_text(
-        "---\nname: brand-voice-guide\ndescription: Keep one voice.\n---\n\n# Voice\n",
+        "---\nname: brand-voice-guide\ndescription: Keep one voice.\n---\n\n"
+        + brand_body,
         encoding="utf-8",
     )
     cold = root / "skills" / "cold-email" / "references"
@@ -442,6 +445,38 @@ async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tm
     assert [(file.relativePath, file.content.decode()) for file in files] == [
         ("references/frameworks.md", b"# Frameworks\n")
     ]
+
+
+async def test_seed_rolls_back_every_listing_when_one_file_write_fails(
+    mocker, tmp_path
+):
+    catalog = _write_catalog(tmp_path)
+    await skill_seed.seed_catalog_skills(catalog)
+    cold_email = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}, include={"ActiveVersion": True}
+    )
+    assert cold_email is not None and cold_email.ActiveVersion is not None
+    failing_version_id = cold_email.ActiveVersion.id
+    original_snapshot = skill_seed.snapshot_version_files
+
+    async def fail_on_cold_email(skill_listing_version_id, files, tx):
+        if skill_listing_version_id == failing_version_id:
+            raise RuntimeError("file write failed")
+        await original_snapshot(skill_listing_version_id, files, tx)
+
+    mocker.patch.object(
+        skill_seed, "snapshot_version_files", side_effect=fail_on_cold_email
+    )
+    _write_catalog(tmp_path, frameworks="# Frameworks v2\n", brand_body="# Voice v2\n")
+
+    with pytest.raises(RuntimeError, match="file write failed"):
+        await skill_seed.seed_catalog_skills(catalog)
+
+    brand_voice = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "brand-voice-guide"}, include={"ActiveVersion": True}
+    )
+    assert brand_voice is not None and brand_voice.ActiveVersion is not None
+    assert brand_voice.ActiveVersion.body == "# Voice\n"
 
 
 async def test_seed_rejects_a_slug_owned_by_a_creator(tmp_path, setup_test_user):
