@@ -1012,7 +1012,7 @@ class CredentialSelectionRequest(BaseModel):
 
 @router.put(
     "/sessions/{session_id}/credential-selection",
-    summary="Record the credentials the user picked for this chat",
+    summary="Record credential picks for this chat",
     dependencies=[Security(auth.requires_user)],
     status_code=200,
     responses={404: {"description": "Session or credential not found"}},

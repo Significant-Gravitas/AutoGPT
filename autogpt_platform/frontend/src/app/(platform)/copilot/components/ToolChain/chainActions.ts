@@ -16,6 +16,9 @@ export interface ChainActionEntry {
   id: string;
   ready: boolean;
   buildMessage: () => string | null;
+  /** Awaited before the chain's reply goes out. The reply is what makes the
+   *  tool run again, so anything it must find in place is settled here. */
+  beforeSend?: () => Promise<void>;
   onSent?: () => void;
   /** This card's reply must be reviewed before it is sent, so the chain owes
    *  it a Proceed even when it asks for nothing but credentials. */

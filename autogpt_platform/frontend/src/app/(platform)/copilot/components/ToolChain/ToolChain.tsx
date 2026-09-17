@@ -151,8 +151,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         .filter(Boolean)
         .join("\n\n");
       if (!message) return;
-      pendingActions.forEach((entry) => entry.onSent?.());
-      sendReply(message);
+      void sendAfter(pendingActions, message);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
@@ -239,7 +238,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       .filter(Boolean)
       .join("\n\n");
     if (!message) return;
-    readyActions.forEach((entry) => entry.onSent?.());
+    void sendAfter(readyActions, message);
+  }
+
+  async function sendAfter(entries: ChainActionEntry[], message: string) {
+    await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+    entries.forEach((entry) => entry.onSent?.());
     sendReply(message);
   }
 
