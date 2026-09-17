@@ -205,9 +205,11 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-# The version CI and the image actually run; py310 flagged 3.11+ builtins
-# such as ExceptionGroup as undefined names.
-target-version = "py312"
+# The floor the code needs, not what CI or the image run: ExceptionGroup and
+# TaskGroup are 3.11 builtins and py310 flagged them as undefined names. Kept
+# at the minimum so ruff still reports 3.12+ syntax, which would break the
+# 3.11 leg of the CI matrix.
+target-version = "py311"
 extend-exclude = ["test/fixtures"]
 # `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
 # the vendored fixture it walks into.
