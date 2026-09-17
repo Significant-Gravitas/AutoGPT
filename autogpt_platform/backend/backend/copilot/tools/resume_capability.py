@@ -12,10 +12,19 @@ from typing import Any
 
 from prisma.enums import ReviewStatus
 
-from backend.copilot.capabilities.mcp_review import MCPReviewPayload, is_mcp_review_id
+from backend.blocks.mcp.helpers import server_host
+from backend.copilot.capabilities.mcp_review import (
+    MCPReviewPayload,
+    is_mcp_review_id,
+    needs_review,
+    open_mcp_review,
+)
+from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
+    SPEND_REVIEW_MARKER,
     parse_node_id_from_exec_id,
 )
 from backend.copilot.model import ChatSession
@@ -23,7 +32,7 @@ from backend.data.db_accessors import review_db
 
 from .base import BaseTool
 from .continue_run_block import ContinueRunBlockTool
-from .models import ErrorResponse, ToolResponseBase
+from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 
@@ -88,6 +97,17 @@ class ResumeCapabilityTool(BaseTool):
             return ErrorResponse(
                 message="input_overrides must be an object", session_id=session_id
             )
+        if SPEND_REVIEW_MARKER in review_id:
+            # A spend approval releases an expert's budget; there is no block
+            # behind it to re-run, and parsing one out of the id fails.
+            return ErrorResponse(
+                message=(
+                    "That review is a spend approval, not a paused capability. "
+                    "It releases an expert's budget once the user approves it, "
+                    "and there is nothing here to resume."
+                ),
+                session_id=session.session_id,
+            )
         if is_mcp_review_id(review_id):
             return await _resume_mcp(review_id, user_id, session, input_overrides)
         if input_overrides:
@@ -146,6 +166,39 @@ async def _resume_mcp(
             session_id=session.session_id,
         )
     arguments = {**payload.arguments, **(input_overrides or {})}
+    if arguments != payload.arguments:
+        # The user approved one call, not a family of them. Re-running the
+        # gate on the merged arguments is what keeps an approval for
+        # "read this file" from being replayed, via a prompt injection, as
+        # "read that other one" on a server outside the catalog.
+        catalog_entry = resolve_entry(get_registry(), payload.server_url)
+        if needs_review(payload.tool, catalog_server=catalog_entry is not None):
+            host = server_host(payload.server_url)
+            fresh = MCPReviewPayload(
+                server_url=payload.server_url, tool=payload.tool, arguments=arguments
+            )
+            new_id = await open_mcp_review(
+                user_id=user_id,
+                session_id=session.session_id,
+                host=host,
+                payload=fresh,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+            return ReviewRequiredResponse(
+                message=(
+                    f"The arguments changed since the user approved "
+                    f"'{payload.tool}' on {host}, so it needs approving again. "
+                    f"Tell the user what changed; after they approve, call "
+                    f"resume_capability(review_id='{new_id}')."
+                ),
+                session_id=session.session_id,
+                block_id=payload.server_url,
+                block_name=f"{host}/{payload.tool}",
+                review_id=new_id,
+                graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
+                input_data=fresh.model_dump(),
+            )
     result = await RunMCPToolTool()._execute(
         user_id,
         session,
@@ -153,7 +206,9 @@ async def _resume_mcp(
         tool_name=payload.tool,
         tool_arguments=arguments,
     )
-    if result.type != "error":
+    # A sign-in card or a fresh review means the call has not run, so the
+    # approval must survive for the retry that follows.
+    if result.type not in ("error", "setup_requirements", "review_required"):
         await review_db().delete_review_by_node_exec_id(review_id, user_id)
     return result
 
@@ -169,7 +224,11 @@ async def _rerun_block(
         return review
     block_id = parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
     stored = review.payload if isinstance(review.payload, dict) else {}
-    await review_db().delete_review_by_node_exec_id(review_id, user_id)
-    return await RunBlockTool()._execute(
+    result = await RunBlockTool()._execute(
         user_id, session, block_id=block_id, input_data={**stored, **input_overrides}
     )
+    # Delete only once the run has actually happened: dropping the review
+    # first left a failed run with nothing to retry from.
+    if result.type not in ("error", "setup_requirements", "review_required"):
+        await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    return result
