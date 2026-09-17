@@ -28,6 +28,7 @@ from backend.copilot.baseline.service import (
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools import (
+    ToolGroup,
     expert_tool_disabled_groups,
     get_available_tools,
     get_tool,
@@ -104,7 +105,7 @@ def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
     return openai.AsyncOpenAI(api_key=api_key or "", base_url=base_url)
 
 
-def _expert_disabled_groups(expert: Expert | None) -> list[str]:
+def _expert_disabled_groups(expert: Expert | None) -> list[ToolGroup]:
     return expert_tool_disabled_groups(
         experts_enabled=DELEGATION_ENABLED, expert_id=expert.id if expert else None
     )
