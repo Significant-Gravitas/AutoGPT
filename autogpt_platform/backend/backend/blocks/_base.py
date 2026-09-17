@@ -717,11 +717,23 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         """
         if self._capability_kind is not None:
             return self._capability_kind
-        providers = {
-            provider
-            for info in self.input_schema.get_credentials_fields_info().values()
-            for provider in info.provider
-        }
+        try:
+            providers = {
+                provider
+                for info in self.input_schema.get_credentials_fields_info().values()
+                for provider in info.provider
+            }
+        except Exception:
+            # This runs while the block registry is being built, so one block
+            # with a malformed credentials schema would otherwise take the
+            # whole platform down at startup. "primitive" is the safe read:
+            # it only costs this block some ranking weight.
+            logger.warning(
+                "Could not read credentials for %s; treating it as a primitive",
+                self.name,
+                exc_info=True,
+            )
+            return "primitive"
         if len(providers) == 1:
             return "service"
         return "primitive"
