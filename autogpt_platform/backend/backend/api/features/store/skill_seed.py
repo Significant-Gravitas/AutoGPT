@@ -42,6 +42,7 @@ from backend.copilot.tools.skills import (
     ParsedSkill,
     SkillFile,
     SkillPackage,
+    SkillPackageError,
     _validate_name,
     parse_skill_markdown,
     validate_package,
@@ -364,15 +365,20 @@ def _package_files(directory: Path) -> list[SkillFile]:
     """Every file beside the directory's ``SKILL.md``, by its relative path.
     The executable bit rides along so a seeded script stays runnable."""
     root = directory / "SKILL.md"
-    return [
-        SkillFile(
-            relative_path=path.relative_to(directory).as_posix(),
-            content=path.read_bytes(),
-            is_executable=os.access(path, os.X_OK),
-        )
-        for path in sorted(directory.rglob("*"))
-        if path.is_file() and path != root
-    ]
+    files = []
+    for path in sorted(directory.rglob("*")):
+        relative_path = path.relative_to(directory).as_posix()
+        if path.is_symlink():
+            raise SkillPackageError(f"file '{relative_path}' may not be a symlink")
+        if path.is_file() and path != root:
+            files.append(
+                SkillFile(
+                    relative_path=relative_path,
+                    content=path.read_bytes(),
+                    is_executable=os.access(path, os.X_OK),
+                )
+            )
+    return files
 
 
 def _download_catalog(into: Path) -> Path:

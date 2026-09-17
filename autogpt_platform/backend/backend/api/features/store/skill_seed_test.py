@@ -63,6 +63,17 @@ def test_a_skill_breaking_a_package_rule_fails_the_seed(tmp_path):
         _load(tmp_path, ENTRY)
 
 
+def test_a_skill_package_cannot_read_through_a_symlink(tmp_path):
+    _write(tmp_path, "skills/demo/SKILL.md", SKILL_MD)
+    outside = _write(tmp_path, "outside.txt", "secret\n")
+    linked = tmp_path / "skills" / "demo" / "references" / "outside.txt"
+    linked.parent.mkdir(parents=True)
+    linked.symlink_to(outside)
+
+    with pytest.raises(SkillPackageError, match="may not be a symlink"):
+        _load(tmp_path, ENTRY)
+
+
 def test_a_skill_whose_frontmatter_name_differs_is_refused(tmp_path):
     """The frontmatter name becomes the installed skill's name, so a mismatch
     would install a skill under a name the marketplace never shows."""
