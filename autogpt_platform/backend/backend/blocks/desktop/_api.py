@@ -46,6 +46,7 @@ _VNC_DIR = VNC_PASSWORD_PATH.rsplit("/", 1)[0]
 _X11VNC_LOG = f"{_VNC_DIR}/x11vnc.log"
 _X11VNC_ERROR_LOG = f"{_VNC_DIR}/x11vnc_stderr.log"
 _NOVNC_LOG = f"{_VNC_DIR}/novnc.log"
+_STOP_STREAM = "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
@@ -155,9 +156,7 @@ class DesktopSession:
             password = "".join(
                 secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
             )
-            await self._vnc_command(
-                "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
-            )
+            await self._vnc_command(_STOP_STREAM)
             await self._vnc_command(
                 f"umask 077 && mkdir -p {shlex.quote(_VNC_DIR)}"
                 f" && printf %s {shlex.quote(password)} > {shlex.quote(VNC_PASSWORD_PATH)}"
@@ -181,13 +180,21 @@ class DesktopSession:
                 raise RuntimeError(
                     f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
                 ) from exc
-            await self.sandbox.commands.run(
-                f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
-                f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
-                background=True,
-                user=VNC_USER,
-            )
-            await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            try:
+                await self.sandbox.commands.run(
+                    f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
+                    f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
+                    background=True,
+                    user=VNC_USER,
+                )
+                await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            except Exception as exc:
+                # Do not leave an x11vnc serving under a password nobody holds.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
+                raise RuntimeError(
+                    f"noVNC did not start: {await self._tail(_NOVNC_LOG)}"
+                ) from exc
         host = self.sandbox.get_host(STREAM_PORT)
         url = (
             f"https://{host}/vnc.html"

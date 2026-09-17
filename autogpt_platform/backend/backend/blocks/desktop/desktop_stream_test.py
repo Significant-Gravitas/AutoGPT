@@ -174,3 +174,29 @@ async def test_an_x11vnc_that_dies_after_detaching_is_caught_before_novnc_starts
     ):
         await DesktopSession(sandbox).start_stream(None)
     assert not any("novnc_proxy --vnc" in cmd for cmd, _ in _commands(run))
+
+
+@pytest.mark.asyncio
+async def test_a_novnc_that_never_serves_takes_x11vnc_down_with_it():
+    """Otherwise x11vnc keeps serving under a password nobody was handed."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat") and "5900" not in command:
+            raise RuntimeError("not listening")
+        if command.startswith("tail"):
+            return MagicMock(stdout="websockify: address in use")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with (
+        patch("backend.blocks.desktop._api._READY_POLL_ATTEMPTS", 2),
+        patch("backend.blocks.desktop._api._READY_POLL_SECONDS", 0),
+        pytest.raises(RuntimeError, match="noVNC did not start: websockify"),
+    ):
+        await DesktopSession(sandbox).start_stream(None)
+    commands = [cmd for cmd, _ in _commands(run)]
+    started = next(i for i, cmd in enumerate(commands) if cmd.startswith("x11vnc"))
+    assert any(cmd.startswith("pkill") for cmd in commands[started + 1 :])
