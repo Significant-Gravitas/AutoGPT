@@ -7,13 +7,17 @@ import pytest
 
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_EXCHANGE,
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
     COPILOT_EXECUTION_ROUTING_KEY,
+    LEGACY_COPILOT_CANCEL_QUEUE_NAME,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
+    unbind_legacy_cancel_queue,
 )
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -127,7 +131,7 @@ class TestCreateCopilotQueueConfig:
     def test_returns_valid_config(self):
         config = create_copilot_queue_config()
         assert len(config.exchanges) == 2
-        assert len(config.queues) == 2
+        assert len(config.queues) == 1
 
     def test_execution_queue_properties(self):
         config = create_copilot_queue_config()
@@ -138,13 +142,53 @@ class TestCreateCopilotQueueConfig:
         assert exec_queue.exchange == COPILOT_EXECUTION_EXCHANGE
         assert exec_queue.routing_key == COPILOT_EXECUTION_ROUTING_KEY
 
-    def test_cancel_queue_uses_fanout(self):
+    def test_config_declares_no_shared_cancel_queue(self):
+        """A queue in this config is declared by every holder, the publishing
+        API included, and shared by every consumer — which is what made the
+        fanout deliver each cancel to one pod."""
         config = create_copilot_queue_config()
-        cancel_queue = next(
-            q for q in config.queues if q.name != COPILOT_EXECUTION_QUEUE_NAME
+        assert COPILOT_CANCEL_EXCHANGE in config.exchanges
+        assert all(q.exchange != COPILOT_CANCEL_EXCHANGE for q in config.queues)
+
+
+class TestDeclarePodCancelQueue:
+    def test_queue_is_exclusive_auto_delete_and_bound_to_the_fanout(self):
+        channel = MagicMock()
+        name = declare_pod_cancel_queue(channel, "executor-1")
+        channel.queue_declare.assert_called_once_with(
+            queue=name, durable=False, exclusive=True, auto_delete=True
         )
-        assert cancel_queue.exchange is not None
-        assert cancel_queue.exchange.type.value == "fanout"
+        channel.queue_bind.assert_called_once_with(
+            queue=name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+        )
+
+    def test_each_pod_gets_its_own_queue(self):
+        names = {
+            declare_pod_cancel_queue(MagicMock(), executor_id)
+            for executor_id in ("executor-1", "executor-2", "executor-1")
+        }
+        assert len(names) == 3
+
+
+class TestUnbindLegacyCancelQueue:
+    def test_unbinds_on_a_scratch_channel(self):
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        assert unbind_legacy_cancel_queue(channel) is True
+        scratch.queue_unbind.assert_called_once_with(
+            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME,
+            exchange=COPILOT_CANCEL_EXCHANGE.name,
+            routing_key="",
+        )
+        scratch.close.assert_called_once()
+        channel.queue_unbind.assert_not_called()
+
+    def test_a_broker_error_is_swallowed_and_the_channel_closed(self):
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_unbind.side_effect = RuntimeError("NOT_FOUND")
+        assert unbind_legacy_cancel_queue(channel) is False
+        scratch.close.assert_called_once()
 
 
 class TestCoPilotLogMetadata:

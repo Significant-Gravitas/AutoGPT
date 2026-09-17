@@ -1,12 +1,14 @@
-"""RabbitMQ queue configuration for CoPilot executor.
+"""RabbitMQ topology for the CoPilot executor.
 
-Defines two exchanges and queues following the graph executor pattern:
-- 'copilot_execution' (DIRECT) for chat generation tasks
-- 'copilot_cancel' (FANOUT) for cancellation requests
+- 'copilot_execution' (DIRECT) for chat generation tasks, one shared queue so
+  the fleet shares the work.
+- 'copilot_cancel' (FANOUT) for cancellation requests, one queue per pod so
+  every pod sees every cancel and the one holding the session acts on it.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -32,6 +34,9 @@ from backend.copilot.tree import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    from pika.adapters.blocking_connection import BlockingChannel
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +106,11 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+# Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
+# pod, so RabbitMQ round-robined each cancel to a single arbitrary pod. Kept only
+# so a deploy can unbind it; nothing declares or consumes it any more.
+LEGACY_COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+COPILOT_CANCEL_QUEUE_PREFIX = "copilot_cancel.pod"
 
 
 def get_session_lock_key(session_id: str) -> str:
@@ -123,14 +132,9 @@ GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = COPILOT_CONSUMER_TIMEOUT_SECONDS
 
 
 def create_copilot_queue_config() -> RabbitMQConfig:
-    """Create RabbitMQ configuration for CoPilot executor.
+    """Declare both exchanges and the shared run queue.
 
-    Defines two exchanges and queues:
-    - 'copilot_execution' (DIRECT) for chat generation tasks
-    - 'copilot_cancel' (FANOUT) for cancellation requests
-
-    Returns:
-        RabbitMQConfig with exchanges and queues defined
+    The cancel queue is deliberately absent; see the comment below.
     """
     run_queue = Queue(
         name=COPILOT_EXECUTION_QUEUE_NAME,
@@ -166,19 +170,62 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=COPILOT_CANCEL_QUEUE_NAME,
-        exchange=COPILOT_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-        arguments={"x-queue-type": "quorum"},
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming
+    # connection, and declared by the consumer itself in
+    # ``declare_pod_cancel_queue``. Declaring it in the shared config would
+    # bind one queue for the whole fleet again, and every other holder of this
+    # config (the API, which only publishes) would own a queue nobody drains.
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
+
+
+def declare_pod_cancel_queue(channel: "BlockingChannel", executor_id: str) -> str:
+    """Give this pod its own queue on the cancel fanout and return its name.
+
+    A fanout reaches every pod only when every pod owns a queue: consumers on
+    one shared queue get round-robined, so a cancel lands on one arbitrary pod
+    and the pod actually running that session never hears it. Exclusive and
+    auto-delete, so the queue dies with the connection that declared it.
+    """
+    queue_name = f"{COPILOT_CANCEL_QUEUE_PREFIX}.{executor_id}.{uuid4().hex[:8]}"
+    channel.queue_declare(
+        queue=queue_name, durable=False, exclusive=True, auto_delete=True
+    )
+    channel.queue_bind(
+        queue=queue_name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+    )
+    return queue_name
+
+
+def unbind_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
+    """Detach the old fleet-wide cancel queue from the fanout, if still bound.
+
+    Nothing consumes it once every pod runs this code, so leaving it bound
+    would accumulate every cancel forever. Runs on its own channel because a
+    broker error (404 when the queue is already gone) closes the channel it
+    arrives on, and the caller's channel is about to carry the consumer.
+    """
+    try:
+        scratch = channel.connection.channel()
+    except Exception:
+        logger.warning("Could not open a channel to unbind the legacy cancel queue")
+        return False
+    try:
+        scratch.queue_unbind(
+            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME,
+            exchange=COPILOT_CANCEL_EXCHANGE.name,
+            routing_key="",
+        )
+        return True
+    except Exception as e:
+        logger.info(f"Legacy cancel queue already unbound or absent: {e}")
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 # ============ Message Models ============ #
@@ -624,8 +671,6 @@ async def schedule_chat_turn(
     """
     # Deferred so the executor module stays a leaf for the queue dataclasses
     # (only the chat HTTP path persists user messages this way).
-    from uuid import uuid4
-
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.prompting import VOICE_TURN_PREFIX
     from backend.copilot.service import strip_server_injected_tags
