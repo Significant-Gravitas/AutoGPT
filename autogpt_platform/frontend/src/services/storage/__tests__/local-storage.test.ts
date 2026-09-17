@@ -38,6 +38,24 @@ describe("storage", () => {
     });
   });
 
+  describe("null localStorage", () => {
+    it("returns undefined for set and clean instead of throwing", () => {
+      const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+      Object.defineProperty(window, "localStorage", {
+        value: null,
+        configurable: true,
+      });
+      try {
+        expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
+        expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+      } finally {
+        if (original) {
+          Object.defineProperty(window, "localStorage", original);
+        }
+      }
+    });
+  });
+
   describe("server-side guard", () => {
     it("returns undefined for get when on server side", () => {
       vi.mocked(environment.isServerSide).mockReturnValue(true);
