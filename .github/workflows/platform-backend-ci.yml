@@ -84,15 +84,11 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
 
       - name: Check poetry.lock
-        run: |
-          poetry lock
-
-          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
-            echo "Error: poetry.lock not up to date."
-            echo
-            git diff poetry.lock
-            exit 1
-          fi
+        # Compares the lock's content hash with pyproject.toml instead of
+        # re-locking and diffing: a re-lock reformats the file whenever the
+        # Poetry that wrote it differs from ours, which failed every
+        # Dependabot PR (Dependabot runs its own, newer Poetry).
+        run: poetry check --lock
 
       - name: Install Python dependencies
         run: poetry install

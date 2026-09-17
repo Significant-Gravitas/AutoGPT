@@ -53,6 +53,11 @@ updates:
     directory: "autogpt_platform/frontend"
     schedule:
       interval: "weekly"
+    # Must stay >= `minimum-release-age` in frontend/.npmrc (10080 min = 7 days).
+    # Without it Dependabot picks a release pnpm then refuses to install
+    # (ERR_PNPM_NO_MATCHING_VERSION).
+    cooldown:
+      default-days: 8
     open-pull-requests-limit: 10
     target-branch: "dev"
     commit-message:
