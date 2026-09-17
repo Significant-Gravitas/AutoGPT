@@ -41,7 +41,11 @@ from backend.data.model import (
     NodeExecutionStats,
     OAuth2Credentials,
 )
-from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.rabbitmq import (
+    SyncRabbitMQ,
+    declare_broadcast_queue,
+    unbind_shared_queue,
+)
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
@@ -96,10 +100,11 @@ from .cluster_lock import ClusterLock
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
+    LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -1656,12 +1661,28 @@ class ExecutionManager(AppProcess):
             self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
+        # Bind before unbinding: the cancel exchange is auto-delete, so removing
+        # the last binding would drop the exchange itself and the bind that
+        # follows would 404. Both run on every reconnect — an exclusive queue
+        # dies with its connection, and a draining old-image pod re-binds the
+        # shared queue whenever it reconnects.
+        cancel_queue_name = declare_broadcast_queue(
+            cancel_channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, self.executor_id
+        )
+        unbind_shared_queue(
+            cancel_channel,
+            GRAPH_EXECUTION_CANCEL_EXCHANGE,
+            LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+        )
         cancel_channel.basic_consume(
-            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
+        logger.info(
+            f"[{self.service_name}] ⏳ Starting cancel message consumer "
+            f"on {cancel_queue_name}..."
+        )
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_graph_runs:
             raise RuntimeError(

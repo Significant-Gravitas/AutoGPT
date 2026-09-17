@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Awaitable, Optional
+from uuid import uuid4
 
 import aio_pika
 import pika
@@ -73,6 +74,54 @@ class RabbitMQConfig(BaseModel):
     vhost: str = "/"
     exchanges: list[Exchange]
     queues: list[Queue]
+
+
+def declare_broadcast_queue(
+    channel: "pika.adapters.blocking_connection.BlockingChannel",
+    exchange: Exchange,
+    instance_id: str,
+) -> str:
+    """Give this process its own queue on a fanout exchange, and return its name.
+
+    A fanout reaches every process only when every process owns a queue:
+    consumers sharing one queue are round-robined, so a broadcast lands on one
+    arbitrary instance. Exclusive and auto-delete, so the queue dies with the
+    connection that declared it — which is why callers re-declare on reconnect.
+    """
+    queue_name = f"{exchange.name}.instance.{instance_id}.{uuid4().hex[:8]}"
+    channel.queue_declare(
+        queue=queue_name, durable=False, exclusive=True, auto_delete=True
+    )
+    channel.queue_bind(queue=queue_name, exchange=exchange.name, routing_key="")
+    return queue_name
+
+
+def unbind_shared_queue(
+    channel: "pika.adapters.blocking_connection.BlockingChannel",
+    exchange: Exchange,
+    queue_name: str,
+) -> bool:
+    """Detach a fleet-wide queue from a fanout, if it is still bound.
+
+    Once every instance owns a queue nothing drains the shared one, so leaving
+    it bound accumulates every broadcast forever. Runs on its own channel: a
+    broker error (404 when the queue is already gone) closes the channel it
+    arrives on, and the caller's channel is about to carry the consumer.
+    """
+    try:
+        scratch = channel.connection.channel()
+    except Exception:
+        logger.warning(f"Could not open a channel to unbind {queue_name}")
+        return False
+    try:
+        scratch.queue_unbind(queue=queue_name, exchange=exchange.name, routing_key="")
+        return True
+    except Exception as e:
+        logger.info(f"{queue_name} is already unbound from {exchange.name}: {e}")
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 class RabbitMQBase(ABC):

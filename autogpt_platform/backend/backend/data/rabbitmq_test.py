@@ -20,8 +20,11 @@ from backend.data.rabbitmq import (
     ExchangeType,
     Queue,
     RabbitMQConfig,
+    declare_broadcast_queue,
+    unbind_shared_queue,
 )
 from backend.executor.utils import (
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
@@ -60,12 +63,64 @@ def test_graph_execution_queue_is_quorum() -> None:
     assert run.exchange is GRAPH_EXECUTION_EXCHANGE
 
 
-def test_graph_execution_cancel_queue_is_quorum() -> None:
-    """Cancel queue must also be quorum — losing cancellations on a node
-    flap is just as bad as losing runs."""
+def test_graph_execution_config_declares_no_cancel_queue() -> None:
+    """Cancels fan out to a per-pod exclusive queue each consumer declares
+    itself; a queue here would be shared by the whole fleet again, and
+    RabbitMQ would round-robin each cancel to one arbitrary pod."""
     cfg = create_execution_queue_config()
-    cancel = next(q for q in cfg.queues if q.name.endswith("cancel_queue_v2"))
-    assert cancel.arguments == {"x-queue-type": "quorum"}
+    assert GRAPH_EXECUTION_CANCEL_EXCHANGE in cfg.exchanges
+    assert [q.name for q in cfg.queues] == [GRAPH_EXECUTION_QUEUE_NAME]
+
+
+class TestDeclareBroadcastQueue:
+    def test_queue_is_exclusive_auto_delete_and_bound_to_the_exchange(self) -> None:
+        channel = MagicMock()
+        name = declare_broadcast_queue(
+            channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "executor-1"
+        )
+        assert name.startswith(f"{GRAPH_EXECUTION_CANCEL_EXCHANGE.name}.instance.")
+        channel.queue_declare.assert_called_once_with(
+            queue=name, durable=False, exclusive=True, auto_delete=True
+        )
+        channel.queue_bind.assert_called_once_with(
+            queue=name, exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE.name, routing_key=""
+        )
+
+    def test_each_instance_gets_its_own_queue(self) -> None:
+        names = {
+            declare_broadcast_queue(
+                MagicMock(), GRAPH_EXECUTION_CANCEL_EXCHANGE, instance_id
+            )
+            for instance_id in ("executor-1", "executor-2", "executor-1")
+        }
+        assert len(names) == 3
+
+
+class TestUnbindSharedQueue:
+    def test_unbinds_on_a_scratch_channel(self) -> None:
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        assert (
+            unbind_shared_queue(channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "old_queue")
+            is True
+        )
+        scratch.queue_unbind.assert_called_once_with(
+            queue="old_queue",
+            exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE.name,
+            routing_key="",
+        )
+        scratch.close.assert_called_once()
+        channel.queue_unbind.assert_not_called()
+
+    def test_a_broker_error_is_swallowed_and_the_channel_closed(self) -> None:
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_unbind.side_effect = RuntimeError("NOT_FOUND")
+        assert (
+            unbind_shared_queue(channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "old_queue")
+            is False
+        )
+        scratch.close.assert_called_once()
 
 
 def test_copilot_execution_queue_is_quorum_with_consumer_timeout() -> None:
