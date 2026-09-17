@@ -239,4 +239,36 @@ describe("getCatalogLabel", () => {
       getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
     ).toBe('Handed over: "own it"');
   });
+
+  it("labels the capability tools by what they act on", () => {
+    expect(
+      getCatalogLabel("find_capability", { query: "linear issue" }, "running")
+        ?.text,
+    ).toBe('Searching capabilities for "linear issue"…');
+    expect(
+      getCatalogLabel("describe_capability", { id: "block:abc" }, "done")?.text,
+    ).toBe('Read capability "block:abc"');
+  });
+
+  it("names a run by its block, falling back to the capability id", () => {
+    // The display name only arrives once the run reports back, so the id
+    // has to carry the label until then.
+    expect(
+      getCatalogLabel(
+        "run_capability",
+        { id: "tool:list_schedules" },
+        "running",
+      )?.text,
+    ).toBe('Running "tool:list_schedules"…');
+    expect(
+      getCatalogLabel("run_capability", { id: "block:abc" }, "done", {
+        displayName: "Send Web Request",
+      })?.text,
+    ).toBe('Ran "Send Web Request"');
+    expect(
+      getCatalogLabel("resume_capability", { review_id: "r" }, "done", {
+        displayName: "Send Web Request",
+      })?.text,
+    ).toBe('Resumed "Send Web Request"');
+  });
 });
