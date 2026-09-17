@@ -3,7 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CancelTrialDialog } from "./CancelTrialDialog";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
 import { TrialRejection } from "./TrialRejection";
-import { TrialTitle } from "./TrialTitle";
+import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
   trial: TrialStatusResponse;

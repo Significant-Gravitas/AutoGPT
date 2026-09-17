@@ -1,7 +1,7 @@
 import type { TrialRejectionReason } from "@/app/api/__generated__/models/trialRejectionReason";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { TrialTitle } from "./TrialTitle";
+import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
   reason: TrialRejectionReason;

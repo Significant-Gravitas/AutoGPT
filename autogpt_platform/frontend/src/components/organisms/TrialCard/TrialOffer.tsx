@@ -2,7 +2,7 @@ import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialSt
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTrialPrice, trialPlanLabels } from "./helpers";
-import { TrialTitle } from "./TrialTitle";
+import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
   trial: TrialStatusResponse;
