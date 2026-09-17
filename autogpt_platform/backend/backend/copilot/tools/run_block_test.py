@@ -1440,7 +1440,7 @@ class TestExecuteBlockCredentialRejection:
             )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_refresh_the_provider_refused_returns_the_card(self):
+    async def test_a_refresh_the_provider_refused_returns_the_card(self, caplog):
         # The block never runs: loading the credential refreshes it first, and a
         # revoked grant fails there. Reconnecting is the only way out.
         from backend.util.request import HTTPClientError
@@ -1457,6 +1457,7 @@ class TestExecuteBlockCredentialRejection:
         assert response.rejection.credential_id == "cred-1"
         assert response.rejection.status_code is None
         assert "rt-secret" not in response.rejection.detail
+        assert "rt-secret" not in caplog.text
         assert "could not be refreshed" in response.message
         assert "Work Ayrshare key" in response.message
         assert "credentials" in response.setup_info.user_readiness.missing_credentials

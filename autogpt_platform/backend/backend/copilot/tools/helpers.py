@@ -391,11 +391,13 @@ async def execute_block(
                     # Usually a refresh the provider refused (revoked grant,
                     # expired refresh token). The user can only fix that by
                     # reconnecting, so hand them the card rather than an error.
+                    # Never the exception itself: a refresh error can quote
+                    # the token it was refreshing.
                     logger.warning(
-                        "Could not load credential %s for block %s: %s",
+                        "Could not load credential %s for block %s (%s)",
                         cred_meta.id,
                         block.name,
-                        e,
+                        type(e).__name__,
                     )
                     await _release_credential_leases(credential_leases)
                     return _build_credential_rejected_card(
