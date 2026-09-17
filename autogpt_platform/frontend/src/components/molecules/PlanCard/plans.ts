@@ -48,7 +48,7 @@ export const PLANS: PlanDef[] = [
     cta: "Get Pro",
     highlighted: false,
     badge: null,
-    buttonVariant: "secondary",
+    buttonVariant: "primary",
   },
   {
     key: PLAN_KEYS.MAX,
@@ -118,7 +118,7 @@ export const PLAN_METADATA: Record<
     cta: "Upgrade to Pro",
     highlighted: false,
     badge: null,
-    buttonVariant: "secondary",
+    buttonVariant: "primary",
   },
   MAX: {
     key: PLAN_KEYS.MAX,
@@ -137,7 +137,7 @@ export const PLAN_METADATA: Record<
     cta: "Upgrade to Max",
     highlighted: false,
     badge: null,
-    buttonVariant: "secondary",
+    buttonVariant: "primary",
   },
   BUSINESS: {
     key: PLAN_KEYS.BUSINESS,
