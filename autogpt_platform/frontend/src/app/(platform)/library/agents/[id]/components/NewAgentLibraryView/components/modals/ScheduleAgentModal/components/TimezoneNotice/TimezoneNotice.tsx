@@ -1,6 +1,7 @@
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { InfoIcon } from "@phosphor-icons/react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function TimezoneNotice() {
   const userTimezone = useUserTimezone();
@@ -12,7 +13,7 @@ export function TimezoneNotice() {
   if (userTimezone === "not-set") {
     return (
       <div className="mt-1 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-        <InfoIcon className="h-4 w-4 text-amber-600" />
+        <Icon icon={InformationCircleIcon} className="h-4 w-4 text-amber-600" />
         <p className="text-sm text-amber-800">
           No timezone set. Schedule will run in UTC.
           <a href="/settings/account" className="ml-1 underline">
@@ -27,7 +28,10 @@ export function TimezoneNotice() {
 
   return (
     <div className="mt-1 flex items-center gap-2 rounded-md bg-muted/50 p-3">
-      <InfoIcon className="h-4 w-4 text-muted-foreground" />
+      <Icon
+        icon={InformationCircleIcon}
+        className="h-4 w-4 text-muted-foreground"
+      />
       <p className="text-sm text-muted-foreground">
         Schedule will run in your timezone:{" "}
         <span className="font-medium">{tzName}</span>

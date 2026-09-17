@@ -19,10 +19,10 @@ import {
 
 import SettingsCreatorDashboardPage from "../page";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("@/components/contextual/PublishAgentModal/PublishAgentModal", () => ({
@@ -154,11 +154,10 @@ function makeResponse(
 describe("SettingsCreatorDashboardPage", () => {
   beforeEach(() => {
     toastSpy.mockClear();
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: testUser,
       isLoggedIn: true,
       isUserLoading: false,
-      supabase: {},
     });
   });
 

@@ -8,6 +8,7 @@ and pull in the full app startup).
 import asyncio
 import json
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -160,6 +161,16 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
         return redis
 
     monkeypatch.setattr(pm_module, "get_redis_async", _get_redis_async)
+
+    # Isolate the mid-turn drain hint: by default there's no live turn, so
+    # ``drain_pending_messages`` must not reach the real stream registry.
+    # Stub the lookup to "no active turn" so the emit is a no-op; the
+    # dedicated emit tests below override these to assert the SSE hint.
+    async def _no_active_session(_session_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(pm_module, "get_session", _no_active_session)
+    monkeypatch.setattr(pm_module, "publish_chunk", AsyncMock())
     return redis
 
 
@@ -190,6 +201,77 @@ async def test_push_and_drain_preserves_order(fake_redis: _FakeRedis) -> None:
 @pytest.mark.asyncio
 async def test_drain_empty_returns_empty_list(fake_redis: _FakeRedis) -> None:
     assert await drain_pending_messages("nope") == []
+
+
+# ── Mid-turn drain SSE hint ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_drain_emits_pending_drained_hint(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mid-turn drain pushes a ``data-pending-drained`` hint onto the
+    active turn's stream so the client promotes chips immediately instead
+    of waiting for its backstop poll."""
+    from backend.copilot.response_model import StreamPendingDrained
+    from backend.copilot.stream_registry import ActiveSession
+
+    await push_pending_message("sessHint", PendingMessage(content="hi"))
+
+    active = ActiveSession(
+        session_id="sessHint",
+        user_id="u1",
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-xyz",
+        status="running",
+    )
+
+    async def _get_session(_session_id: str) -> ActiveSession:
+        return active
+
+    publish = AsyncMock()
+    monkeypatch.setattr(pm_module, "get_session", _get_session)
+    monkeypatch.setattr(pm_module, "publish_chunk", publish)
+
+    drained = await drain_pending_messages("sessHint")
+    assert len(drained) == 1
+
+    publish.assert_awaited_once()
+    args, kwargs = publish.call_args
+    assert args[0] == "turn-xyz"
+    assert isinstance(args[1], StreamPendingDrained)
+    assert args[1].drainedCount == 1
+    assert kwargs["session_id"] == "sessHint"
+
+
+@pytest.mark.asyncio
+async def test_drain_empty_does_not_emit_hint(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No drain → no hint: an empty buffer must not emit a stream chunk."""
+    publish = AsyncMock()
+    monkeypatch.setattr(pm_module, "publish_chunk", publish)
+
+    assert await drain_pending_messages("emptySess") == []
+    publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_drain_hint_failure_does_not_break_drain(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hint is best-effort: a stream-registry hiccup while emitting it
+    must not lose the drained messages."""
+    await push_pending_message("sessBoom", PendingMessage(content="hi"))
+
+    async def _boom(_session_id: str) -> None:
+        raise RuntimeError("registry down")
+
+    monkeypatch.setattr(pm_module, "get_session", _boom)
+
+    drained = await drain_pending_messages("sessBoom")
+    assert [m.content for m in drained] == ["hi"]
 
 
 # ── Buffer cap ──────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants
 
 
 class ConnectIntegrationTool(BaseTool):
@@ -40,8 +41,15 @@ class ConnectIntegrationTool(BaseTool):
             f"Supported providers: {supported}. "
             "ONLY call this tool for one of the supported providers listed above — "
             "do NOT call it for Google, Gmail, Slack, or any other provider not in the list. "
-            "Call this when an external CLI or API call fails because the user "
-            "has not connected the relevant account. "
+            "Call this ONLY when an external CLI or API call in the sandbox "
+            "fails because the user has not connected the relevant account. "
+            "Do NOT call this for agent block credential issues — `run_agent` "
+            "automatically detects and prompts for the correct provider based "
+            "on the agent's graph metadata. Using this tool for agent blocks "
+            "risks requesting the WRONG provider. "
+            "The `provider` parameter must match what the failing CLI/API "
+            "actually needs. Double-check that the provider is in the supported "
+            "list above before calling. "
             "The tool surfaces a credentials setup card in the chat so the user "
             "can authenticate without leaving the page. "
             "After the user connects the account, retry the operation. "
@@ -112,7 +120,6 @@ class ConnectIntegrationTool(BaseTool):
 
         Returns an :class:`ErrorResponse` if *provider* is unknown.
         """
-        _ = user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider = (provider or "").strip().lower()
         reason = (reason or "").strip()[:500]  # cap LLM-controlled text
@@ -148,6 +155,11 @@ class ConnectIntegrationTool(BaseTool):
         ]
         if reason:
             message_parts.append(reason)
+        if session.expert_id is not None:
+            message_parts.append(
+                "Note: a credential connected here belongs to the account and "
+                "is granted to this expert automatically."
+            )
 
         # Route the single-provider entry through the shared serializer
         # used by run_block / run_agent so the payload shape (sorted scopes,
@@ -173,6 +185,10 @@ class ConnectIntegrationTool(BaseTool):
         # generic serializer produces from `field_key`.
         missing_credentials[field_key]["title"] = f"{display_name} Credentials"
         missing_credentials[field_key]["provider_name"] = display_name
+        if user_id:
+            missing_credentials = await annotate_expert_grants(
+                user_id, session.expert_id, missing_credentials
+            )
 
         return SetupRequirementsResponse(
             type=ResponseType.SETUP_REQUIREMENTS,

@@ -12,10 +12,15 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { FloppyDiskIcon, PlayIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";
+import {
+  Delete02Icon,
+  FloppyDiskIcon,
+  PlayIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -98,7 +103,7 @@ export function SelectedTemplateActions({
           {isSaving ? (
             <LoadingSpinner size="small" />
           ) : (
-            <FloppyDiskIcon weight="bold" size={18} className="text-zinc-700" />
+            <Icon icon={FloppyDiskIcon} size={18} className="text-zinc-700" />
           )}
         </Button>
         {onStartTask && (
@@ -115,7 +120,7 @@ export function SelectedTemplateActions({
               </>
             ) : (
               <>
-                <PlayIcon weight="bold" size={16} />
+                <Icon icon={PlayIcon} size={16} />
               </>
             )}
           </Button>
@@ -130,7 +135,7 @@ export function SelectedTemplateActions({
           {deleteMutation.isPending ? (
             <LoadingSpinner size="small" />
           ) : (
-            <TrashIcon weight="bold" size={18} />
+            <Icon icon={Delete02Icon} size={18} />
           )}
         </Button>
         <AgentActionsDropdown agent={agent} />

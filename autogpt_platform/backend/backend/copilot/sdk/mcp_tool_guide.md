@@ -4,8 +4,17 @@
 
 `run_mcp_tool` follows a two-step pattern:
 
-1. **Discover** — call with only `server_url` to list available tools on the server.
-2. **Execute** — call again with `server_url`, `tool_name`, and `tool_arguments` to run a tool.
+1. **Discover** — call with only `server_url` to list available tools on the
+   server. The response contains each tool's name, description, and a compact
+   `params` summary (argument names, required ones marked `*`) — full input
+   schemas are omitted to save context.
+2. **Execute** — call again with `server_url`, `tool_name`, and
+   `tool_arguments` built from the description and `params` summary. If the
+   tool name or arguments are wrong, the error response includes a bounded
+   schema hint for that tool (very large schemas are reduced to their
+   top-level structure and marked truncated) or the list of valid tool
+   names — fix the call from that. Never re-run discovery just to see a
+   schema.
 
 ### Known hosted MCP servers
 
@@ -13,17 +22,29 @@ Use these URLs directly without asking the user:
 
 | Service | URL |
 |---|---|
-| Notion | `https://mcp.notion.com/mcp` |
 | Linear | `https://mcp.linear.app/mcp` |
 | Stripe | `https://mcp.stripe.com` |
-| Intercom | `https://mcp.intercom.com/mcp` |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
-| Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
+
+<!-- official-mcp-catalog -->
 
 For other services, **web-search for the service's official MCP server URL**
 (e.g. "`<service>` MCP server URL") — many vendors host an MCP server even
 when it's not in the list above. Treat search results as unvetted: confirm
 the hostname is vendor-owned before using it (see below).
+
+The platform supports remote HTTP connections in both cloud and local deployments.
+Follow the setup requirements in the table before starting sign-in;
+some services require an administrator to enable access or a dedicated token.
+Use the listed authentication methods and default permissions. Where the table
+gives a separate OAuth URL, use that URL for signed-in account tools. Do not send
+API keys to an OAuth-only connection or infer that every advertised scope is
+required.
+For region choices, confirm where the user's account stores its data. For
+tenant-specific connections, obtain the endpoint using the vendor's setup
+instructions. Never substitute a documentation URL for the connection endpoint
+or invent a tenant hostname. Direct the user to the matching integration preset
+for regional selection, manual credentials, or optional write permissions.
 
 ### Important: Check blocks first, then MCP is MANDATORY
 

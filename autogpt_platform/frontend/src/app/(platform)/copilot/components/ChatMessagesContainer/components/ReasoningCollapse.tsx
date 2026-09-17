@@ -7,9 +7,10 @@ import {
   AccordionItem,
 } from "@/components/molecules/Accordion/Accordion";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, LightbulbIcon } from "@phosphor-icons/react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { useState } from "react";
+import { ArrowRight01Icon, BulbIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   children: React.ReactNode;
@@ -42,13 +43,13 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
             )}
           >
             {isActive ? (
-              <LightbulbIcon size={14} weight="bold" className="shrink-0" />
+              <Icon icon={BulbIcon} size={14} className="shrink-0" />
             ) : (
               // Once reasoning has finished streaming, swap the bulb for a
               // caret that rotates to reflect the expanded/collapsed state.
-              <CaretRightIcon
+              <Icon
+                icon={ArrowRight01Icon}
                 size={14}
-                weight="bold"
                 className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
               />
             )}

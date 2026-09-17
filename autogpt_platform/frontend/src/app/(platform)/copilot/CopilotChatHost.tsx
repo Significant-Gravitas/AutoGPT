@@ -1,13 +1,17 @@
 "use client";
-
-import { Flask } from "@phosphor-icons/react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
+import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
+  /** The new layout floats its sidebar/files controls over the chat's
+   *  top-left corner on small viewports. */
+  hasFloatingControls?: boolean;
 }
 
 /**
@@ -18,6 +22,7 @@ interface Props {
 export function CopilotChatHost({
   droppedFiles,
   onDroppedFilesConsumed,
+  hasFloatingControls,
 }: Props) {
   const {
     sessionId,
@@ -26,6 +31,7 @@ export function CopilotChatHost({
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -44,8 +50,14 @@ export function CopilotChatHost({
     turnStats,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isAdoptingExpertSession,
+    isKickoffStarting,
   } = useCopilotPage();
 
   return (
@@ -55,7 +67,7 @@ export function CopilotChatHost({
           (which only predicts future sessions). */}
       {sessionId && sessionDryRun && (
         <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-          <Flask size={13} weight="bold" />
+          <Icon icon={FlaskConicalIcon} size={13} />
           Test mode — this session runs agents as simulation
         </div>
       )}
@@ -70,6 +82,7 @@ export function CopilotChatHost({
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
+          isFinishProbing={isFinishProbing}
           isRestoringActiveSession={isRestoringActiveSession}
           restoreStatusMessage={restoreStatusMessage}
           activeStreamStartedAt={activeStreamStartedAt}
@@ -86,11 +99,21 @@ export function CopilotChatHost({
           droppedFiles={droppedFiles}
           onDroppedFilesConsumed={onDroppedFilesConsumed}
           turnStats={turnStats}
+          expertIdentity={expertIdentity}
+          isResolvingExpertIdentity={isResolvingExpertIdentity}
+          isAdoptingExpertSession={isAdoptingExpertSession}
+          isKickoffStarting={isKickoffStarting}
+          hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
         onDismiss={dismissRateLimit}
+      />
+      <ProviderLimitDialog
+        failure={providerLimit}
+        sessionId={sessionId}
+        onDismiss={dismissProviderLimit}
       />
     </>
   );

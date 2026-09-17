@@ -10,12 +10,14 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
+import * as Sentry from "@sentry/nextjs";
 import { Key, storage } from "../local-storage";
 import { environment } from "@/services/environment";
 
 describe("storage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.mocked(Sentry.captureException).mockClear();
     vi.mocked(environment.isServerSide).mockReturnValue(false);
   });
 
@@ -35,6 +37,49 @@ describe("storage", () => {
       storage.set(Key.COPILOT_SOUND_ENABLED, "true");
       storage.clean(Key.COPILOT_SOUND_ENABLED);
       expect(storage.get(Key.COPILOT_SOUND_ENABLED)).toBeNull();
+    });
+  });
+
+  describe("null localStorage", () => {
+    it("returns undefined for set and clean instead of throwing", () => {
+      const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+      Object.defineProperty(window, "localStorage", {
+        value: null,
+        configurable: true,
+      });
+      try {
+        expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
+        expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+      } finally {
+        if (original) {
+          Object.defineProperty(window, "localStorage", original);
+        }
+      }
+    });
+  });
+
+  describe("unexpected write failures", () => {
+    it("reports them to Sentry when storage is available", () => {
+      const error = new Error("QuotaExceededError");
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      const removeItem = vi
+        .spyOn(window.localStorage, "removeItem")
+        .mockImplementation(() => {
+          throw error;
+        });
+      try {
+        storage.set(Key.COPILOT_MODE, "fast");
+        storage.clean(Key.COPILOT_MODE);
+        expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+        expect(Sentry.captureException).toHaveBeenCalledWith(error);
+      } finally {
+        setItem.mockRestore();
+        removeItem.mockRestore();
+      }
     });
   });
 

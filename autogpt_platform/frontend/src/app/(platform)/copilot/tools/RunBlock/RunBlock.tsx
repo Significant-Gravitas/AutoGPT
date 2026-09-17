@@ -1,5 +1,6 @@
 "use client";
 
+import { useGetV1ListAvailableBlocks } from "@/app/api/__generated__/endpoints/blocks/blocks";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -15,6 +16,7 @@ import {
 import {
   getAccordionMeta,
   getAnimationText,
+  getBlockNamesById,
   getRunBlockToolOutput,
   isRunBlockBlockOutput,
   isRunBlockDetailsOutput,
@@ -38,12 +40,23 @@ interface Props {
 }
 
 export function RunBlockTool({ part }: Props) {
-  const text = getAnimationText(part);
+  const input = part.input as RunBlockInput | undefined;
+  // The LLM's input only carries a block_id; resolve it to a name so the
+  // in-flight state doesn't show a raw UUID (outputs carry the name already)
+  const needsBlockNameLookup =
+    !input?.block_name?.trim() && !!input?.block_id?.trim();
+  const { data: blocksResponse } = useGetV1ListAvailableBlocks({
+    query: { enabled: needsBlockNameLookup, staleTime: 5 * 60 * 1000 },
+  });
+  const text = getAnimationText(
+    part,
+    needsBlockNameLookup ? getBlockNamesById(blocksResponse) : undefined,
+  );
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunBlockToolOutput(part);
-  const inputData = (part.input as RunBlockInput | undefined)?.input_data;
+  const inputData = input?.input_data;
   const hasInputData = inputData != null && Object.keys(inputData).length > 0;
   const isCorrupted =
     part.state === "output-available" &&
@@ -87,7 +100,7 @@ export function RunBlockTool({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 

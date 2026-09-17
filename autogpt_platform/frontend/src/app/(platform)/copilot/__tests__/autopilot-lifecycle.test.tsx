@@ -34,8 +34,8 @@ vi.mock("../helpers", async (importActual) => {
   };
 });
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -55,7 +55,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("AutoPilot streaming — submit / stop lifecycle", () => {
+describe("Otto streaming — submit / stop lifecycle", () => {
   it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {
     server.use(
       copilotStreamHandler({
@@ -121,7 +121,7 @@ describe("AutoPilot streaming — submit / stop lifecycle", () => {
   });
 });
 
-describe("AutoPilot streaming — resume on mount", () => {
+describe("Otto streaming — resume on mount", () => {
   it("issues a GET resume and renders streamed content when the session has an active_stream", async () => {
     server.use(
       copilotResumeHandler({

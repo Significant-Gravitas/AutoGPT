@@ -5,11 +5,11 @@ import uuid
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
 from . import exceptions as store_exceptions
+from . import local_media
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     """
     settings = Settings()
     if not settings.config.media_gcs_bucket_name:
-        raise MissingConfigError("GCS media bucket is not configured")
+        return await local_media.check_media_exists(user_id, filename)
 
     async with async_storage.Storage() as async_client:
         bucket_name = settings.config.media_gcs_bucket_name
@@ -118,13 +118,7 @@ async def upload_media(
     content_type = detected_content_type
 
     settings = Settings()
-
-    # Check required settings first before doing any file processing
-    if not settings.config.media_gcs_bucket_name:
-        logger.error("Missing GCS bucket name setting")
-        raise store_exceptions.StorageConfigError(
-            "Missing storage bucket configuration"
-        )
+    use_local_storage = not settings.config.media_gcs_bucket_name
 
     try:
         # content_type is already validated from file signature detection above
@@ -161,6 +155,17 @@ async def upload_media(
 
         # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
+
+        if use_local_storage:
+            unique_filename = local_media.stored_filename(
+                unique_filename, content_type, use_file_name
+            )
+            file_bytes = await file.read()
+            await scan_content_safe(file_bytes, filename=unique_filename)
+            return await local_media.store_media(
+                user_id, media_type, unique_filename, file_bytes
+            )
+
         storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:

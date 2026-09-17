@@ -13,6 +13,7 @@ from .platform_cost import (
     _build_prisma_where,
     _build_raw_where,
     _build_where,
+    _ids_matching_metadata_filter,
     _mask_email,
     get_platform_cost_dashboard,
     get_platform_cost_logs,
@@ -211,6 +212,11 @@ class TestBuildPrismaWhere:
 
 
 class TestBuildRawWhere:
+    def test_excludes_user_subscription_rows(self):
+        sql, _ = _build_raw_where(None, None, None, None)
+
+        assert "metadata->>'billing_mode' IS DISTINCT FROM 'user_subscription'" in sql
+
     def test_end_filter(self):
         end = datetime(2026, 6, 1, tzinfo=timezone.utc)
         sql, params = _build_raw_where(None, end, None, None)
@@ -257,6 +263,37 @@ class TestBuildRawWhere:
     def test_graph_exec_id_not_included_when_none(self):
         sql, params = _build_raw_where(None, None, None, None)
         assert "graphExecId" not in sql
+
+
+class TestIdsMatchingMetadataFilter:
+    @pytest.mark.asyncio
+    async def test_excludes_user_subscription_rows_from_count_and_ids(self):
+        raw_mock = AsyncMock(side_effect=[[{"c": 0}], []])
+
+        with patch(
+            "backend.data.platform_cost.query_raw_with_schema",
+            raw_mock,
+        ):
+            await _ids_matching_metadata_filter(
+                start=None,
+                end=None,
+                provider=None,
+                user_id=None,
+                model=None,
+                block_name=None,
+                tracking_type=None,
+                graph_exec_id=None,
+                execution_path=None,
+                source=None,
+                limit=50,
+                offset=0,
+            )
+
+        for call in raw_mock.await_args_list:
+            sql = call.args[0]
+            assert (
+                "metadata->>'billing_mode' IS DISTINCT FROM 'user_subscription'" in sql
+            )
 
 
 def _make_entry(**overrides: object) -> PlatformCostEntry:
@@ -385,7 +422,7 @@ class TestGetPlatformCostDashboard:
         mock_user.email = "a@b.com"
 
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(
+        group_mock = AsyncMock(
             side_effect=[
                 [provider_row],  # by_provider
                 [user_row],  # by_user
@@ -404,6 +441,10 @@ class TestGetPlatformCostDashboard:
             patch(
                 "backend.data.platform_cost.PrismaUser.prisma",
                 return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
             ),
             patch(
                 "backend.data.platform_cost.query_raw_with_schema",
@@ -462,7 +503,7 @@ class TestGetPlatformCostDashboard:
         }
 
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(
+        group_mock = AsyncMock(
             side_effect=[
                 [total_row],  # by_provider
                 [{"_sum": {}, "_count": {"_all": 5}, "userId": "u1"}],  # by_user
@@ -485,6 +526,10 @@ class TestGetPlatformCostDashboard:
             patch(
                 "backend.data.platform_cost.PrismaUser.prisma",
                 return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
             ),
             patch(
                 "backend.data.platform_cost.query_raw_with_schema",
@@ -515,7 +560,7 @@ class TestGetPlatformCostDashboard:
         )
 
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(
+        group_mock = AsyncMock(
             side_effect=[
                 [tokens_row],  # by_provider
                 [{"_sum": {}, "_count": {"_all": 5}, "userId": "u1"}],  # by_user
@@ -535,6 +580,10 @@ class TestGetPlatformCostDashboard:
             patch(
                 "backend.data.platform_cost.PrismaUser.prisma",
                 return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
             ),
             patch(
                 "backend.data.platform_cost.query_raw_with_schema",
@@ -568,7 +617,7 @@ class TestGetPlatformCostDashboard:
         user_row = _make_group_by_row(user_id="u2", cost=1000, count=1)
 
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(
+        group_mock = AsyncMock(
             side_effect=[
                 [provider_row],  # by_provider
                 [user_row],  # by_user
@@ -589,6 +638,10 @@ class TestGetPlatformCostDashboard:
                 return_value=mock_actions,
             ),
             patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
+            ),
+            patch(
                 "backend.data.platform_cost.query_raw_with_schema",
                 new_callable=AsyncMock,
                 side_effect=[
@@ -607,7 +660,7 @@ class TestGetPlatformCostDashboard:
     @pytest.mark.asyncio
     async def test_returns_empty_dashboard(self):
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(side_effect=[[], [], [], [], []])
+        group_mock = AsyncMock(side_effect=[[], [], [], [], []])
         mock_actions.find_many = AsyncMock(return_value=[])
 
         with (
@@ -618,6 +671,10 @@ class TestGetPlatformCostDashboard:
             patch(
                 "backend.data.platform_cost.PrismaUser.prisma",
                 return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
             ),
             patch(
                 "backend.data.platform_cost.query_raw_with_schema",
@@ -640,7 +697,7 @@ class TestGetPlatformCostDashboard:
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(side_effect=[[], [], [], [], []])
+        group_mock = AsyncMock(side_effect=[[], [], [], [], []])
         mock_actions.find_many = AsyncMock(return_value=[])
 
         raw_mock = AsyncMock(side_effect=[[], []])
@@ -654,6 +711,10 @@ class TestGetPlatformCostDashboard:
                 return_value=mock_actions,
             ),
             patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
+            ),
+            patch(
                 "backend.data.platform_cost.query_raw_with_schema",
                 raw_mock,
             ),
@@ -662,13 +723,15 @@ class TestGetPlatformCostDashboard:
                 start=start, provider="openai", user_id="u1"
             )
 
-        # group_by called 5 times (by_provider, by_user, by_user_tracking, distinct users,
+        # Grouped SQL helper called 5 times (provider, user, user/tracking,
+        # distinct users,
         # total agg filtered); the 6th call (total agg no-tracking-type) only runs
         # when tracking_type is set.
-        assert mock_actions.group_by.await_count == 5
-        # The where dict passed to the first call should include createdAt
-        first_call_kwargs = mock_actions.group_by.call_args_list[0][1]
-        assert "createdAt" in first_call_kwargs.get("where", {})
+        assert group_mock.await_count == 5
+        first_call_kwargs = group_mock.call_args_list[0][1]
+        assert '"createdAt" >= $' in first_call_kwargs["where_sql"]
+        assert "openai" in first_call_kwargs["params"]
+        assert "u1" in first_call_kwargs["params"]
         # Raw SQL queries should receive provider and user_id as parameters
         assert raw_mock.await_count == 2
         raw_call_args = raw_mock.call_args_list[0][0]  # positional args of 1st call
@@ -681,7 +744,7 @@ class TestGetPlatformCostDashboard:
         """by_user_tracking_groups must NOT apply the tracking_type filter so that
         cost_usd rows are always included even when the caller filters by 'tokens'."""
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(side_effect=[[], [], [], [], [], []])
+        group_mock = AsyncMock(side_effect=[[], [], [], [], [], []])
         mock_actions.find_many = AsyncMock(return_value=[])
 
         with (
@@ -694,6 +757,10 @@ class TestGetPlatformCostDashboard:
                 return_value=mock_actions,
             ),
             patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
+            ),
+            patch(
                 "backend.data.platform_cost.query_raw_with_schema",
                 new_callable=AsyncMock,
                 side_effect=[[], []],
@@ -703,19 +770,19 @@ class TestGetPlatformCostDashboard:
 
         # Call index 2 is by_user_tracking_groups (0=by_provider, 1=by_user,
         # 2=by_user_tracking, 3=distinct_users, 4=total_agg, 5=total_agg_no_tt).
-        tracking_call_where = mock_actions.group_by.call_args_list[2][1]["where"]
+        tracking_call_where = group_mock.call_args_list[2][1]["where_sql"]
         # The main filter applies trackingType; by_user_tracking must NOT.
-        assert "trackingType" not in tracking_call_where
+        assert '"trackingType" = $' not in tracking_call_where
         # Other filters (e.g., date range, provider) are still passed through.
         # The first call (by_provider) should have trackingType in its where dict.
-        provider_call_where = mock_actions.group_by.call_args_list[0][1]["where"]
-        assert "trackingType" in provider_call_where
+        provider_call_where = group_mock.call_args_list[0][1]["where_sql"]
+        assert '"trackingType" = $' in provider_call_where
 
     @pytest.mark.asyncio
     async def test_graph_exec_id_filter_passed_to_queries(self):
         """graph_exec_id must be forwarded to both prisma and raw SQL queries."""
         mock_actions = MagicMock()
-        mock_actions.group_by = AsyncMock(side_effect=[[], [], [], [], []])
+        group_mock = AsyncMock(side_effect=[[], [], [], [], []])
         mock_actions.find_many = AsyncMock(return_value=[])
         raw_mock = AsyncMock(side_effect=[[], []])
 
@@ -729,15 +796,19 @@ class TestGetPlatformCostDashboard:
                 return_value=mock_actions,
             ),
             patch(
+                "backend.data.platform_cost._group_platform_cost_logs",
+                group_mock,
+            ),
+            patch(
                 "backend.data.platform_cost.query_raw_with_schema",
                 raw_mock,
             ),
         ):
             await get_platform_cost_dashboard(graph_exec_id="exec-xyz")
 
-        # Prisma groupBy where must include graphExecId
-        first_call_where = mock_actions.group_by.call_args_list[0][1]["where"]
-        assert first_call_where.get("graphExecId") == "exec-xyz"
+        first_call = group_mock.call_args_list[0][1]
+        assert '"graphExecId" = $' in first_call["where_sql"]
+        assert "exec-xyz" in first_call["params"]
         # Raw SQL params must include the exec id
         raw_params = raw_mock.call_args_list[0][0][1:]
         assert "exec-xyz" in raw_params
@@ -779,9 +850,16 @@ class TestGetPlatformCostLogs:
         mock_actions.count = AsyncMock(return_value=1)
         mock_actions.find_many = AsyncMock(return_value=[row])
 
-        with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.platform_cost.PrismaLog.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._ids_matching_metadata_filter",
+                new_callable=AsyncMock,
+                return_value=(["log-0"], 1),
+            ),
         ):
             logs, total = await get_platform_cost_logs(page=1, page_size=10)
 
@@ -793,13 +871,10 @@ class TestGetPlatformCostLogs:
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_data(self):
-        mock_actions = MagicMock()
-        mock_actions.count = AsyncMock(return_value=0)
-        mock_actions.find_many = AsyncMock(return_value=[])
-
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            new_callable=AsyncMock,
+            return_value=([], 0),
         ):
             logs, total = await get_platform_cost_logs()
 
@@ -808,53 +883,41 @@ class TestGetPlatformCostLogs:
 
     @pytest.mark.asyncio
     async def test_pagination_offset(self):
-        mock_actions = MagicMock()
-        mock_actions.count = AsyncMock(return_value=100)
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 100))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             logs, total = await get_platform_cost_logs(page=3, page_size=25)
 
         assert total == 100
-        find_many_call = mock_actions.find_many.call_args[1]
-        assert find_many_call["take"] == 25
-        assert find_many_call["skip"] == 50  # (3-1) * 25
+        query_args = ids_mock.await_args.kwargs
+        assert query_args["limit"] == 25
+        assert query_args["offset"] == 50
 
     @pytest.mark.asyncio
     async def test_explicit_start_skips_default(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        mock_actions = MagicMock()
-        mock_actions.count = AsyncMock(return_value=0)
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 0))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             logs, total = await get_platform_cost_logs(start=start)
 
         assert total == 0
-        where = mock_actions.count.call_args[1]["where"]
-        # start provided — should appear in the where filter
-        assert "createdAt" in where
+        assert ids_mock.await_args.kwargs["start"] == start
 
     @pytest.mark.asyncio
     async def test_graph_exec_id_filter(self):
-        mock_actions = MagicMock()
-        mock_actions.count = AsyncMock(return_value=0)
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 0))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             logs, total = await get_platform_cost_logs(graph_exec_id="exec-abc")
 
-        where = mock_actions.count.call_args[1]["where"]
-        assert where.get("graphExecId") == "exec-abc"
+        assert ids_mock.await_args.kwargs["graph_exec_id"] == "exec-abc"
 
 
 class TestGetPlatformCostLogsForExport:
@@ -864,9 +927,16 @@ class TestGetPlatformCostLogsForExport:
         mock_actions = MagicMock()
         mock_actions.find_many = AsyncMock(return_value=[row])
 
-        with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.platform_cost.PrismaLog.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._ids_matching_metadata_filter",
+                new_callable=AsyncMock,
+                return_value=(["log-0"], 1),
+            ),
         ):
             logs, truncated = await get_platform_cost_logs_for_export()
 
@@ -876,12 +946,10 @@ class TestGetPlatformCostLogsForExport:
 
     @pytest.mark.asyncio
     async def test_returns_empty_not_truncated(self):
-        mock_actions = MagicMock()
-        mock_actions.find_many = AsyncMock(return_value=[])
-
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            new_callable=AsyncMock,
+            return_value=([], 0),
         ):
             logs, truncated = await get_platform_cost_logs_for_export()
 
@@ -900,6 +968,11 @@ class TestGetPlatformCostLogsForExport:
                 return_value=mock_actions,
             ),
             patch("backend.data.platform_cost.EXPORT_MAX_ROWS", 2),
+            patch(
+                "backend.data.platform_cost._ids_matching_metadata_filter",
+                new_callable=AsyncMock,
+                return_value=(["log-0", "log-1", "log-2"], 3),
+            ),
         ):
             logs, truncated = await get_platform_cost_logs_for_export()
 
@@ -908,22 +981,19 @@ class TestGetPlatformCostLogsForExport:
 
     @pytest.mark.asyncio
     async def test_passes_model_block_tracking_filters(self):
-        mock_actions = MagicMock()
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 0))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             await get_platform_cost_logs_for_export(
                 model="gpt-4", block_name="LLMBlock", tracking_type="tokens"
             )
 
-        where = mock_actions.find_many.call_args[1]["where"]
-        assert where.get("model") == "gpt-4"
-        assert where.get("trackingType") == "tokens"
-        # blockName uses a dict filter for case-insensitive match
-        assert "blockName" in where
+        query_args = ids_mock.await_args.kwargs
+        assert query_args["model"] == "gpt-4"
+        assert query_args["tracking_type"] == "tokens"
+        assert query_args["block_name"] == "LLMBlock"
 
     @pytest.mark.asyncio
     async def test_maps_cache_tokens(self):
@@ -932,9 +1002,16 @@ class TestGetPlatformCostLogsForExport:
         mock_actions = MagicMock()
         mock_actions.find_many = AsyncMock(return_value=[row])
 
-        with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.platform_cost.PrismaLog.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost._ids_matching_metadata_filter",
+                new_callable=AsyncMock,
+                return_value=(["log-0"], 1),
+            ),
         ):
             logs, _ = await get_platform_cost_logs_for_export()
 
@@ -943,35 +1020,29 @@ class TestGetPlatformCostLogsForExport:
 
     @pytest.mark.asyncio
     async def test_graph_exec_id_filter(self):
-        mock_actions = MagicMock()
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 0))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             logs, truncated = await get_platform_cost_logs_for_export(
                 graph_exec_id="exec-xyz"
             )
 
-        where = mock_actions.find_many.call_args[1]["where"]
-        assert where.get("graphExecId") == "exec-xyz"
+        assert ids_mock.await_args.kwargs["graph_exec_id"] == "exec-xyz"
         assert logs == []
         assert truncated is False
 
     @pytest.mark.asyncio
     async def test_explicit_start_skips_default(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        mock_actions = MagicMock()
-        mock_actions.find_many = AsyncMock(return_value=[])
-
+        ids_mock = AsyncMock(return_value=([], 0))
         with patch(
-            "backend.data.platform_cost.PrismaLog.prisma",
-            return_value=mock_actions,
+            "backend.data.platform_cost._ids_matching_metadata_filter",
+            ids_mock,
         ):
             logs, truncated = await get_platform_cost_logs_for_export(start=start)
 
         assert logs == []
         assert truncated is False
-        where = mock_actions.find_many.call_args[1]["where"]
-        assert "createdAt" in where
+        assert ids_mock.await_args.kwargs["start"] == start

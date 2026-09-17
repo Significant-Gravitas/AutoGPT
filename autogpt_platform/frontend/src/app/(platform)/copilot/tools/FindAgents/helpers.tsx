@@ -3,13 +3,14 @@ import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsF
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import { ToolUIPart } from "ai";
 import {
   FolderOpenIcon,
-  MagnifyingGlassIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
-import { ToolUIPart } from "ai";
+  GridViewIcon,
+  Search01Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface FindAgentInput {
   query: string;
@@ -162,13 +163,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   const { source } = getSourceLabelFromToolType(toolType);
-  const IconComponent =
-    source === "library" ? MagnifyingGlassIcon : SquaresFourIcon;
+  const icon = source === "library" ? Search01Icon : GridViewIcon;
 
   return (
-    <IconComponent
+    <Icon
+      icon={icon}
       size={14}
-      weight="regular"
       className={
         isError
           ? "text-red-500"
@@ -182,6 +182,6 @@ export function ToolIcon({
 
 export function AccordionIcon({ toolType }: { toolType?: FindAgentsToolType }) {
   const { source } = getSourceLabelFromToolType(toolType);
-  const IconComponent = source === "library" ? FolderOpenIcon : StorefrontIcon;
-  return <IconComponent size={32} weight="light" />;
+  const icon = source === "library" ? FolderOpenIcon : Store01Icon;
+  return <Icon icon={icon} size={32} />;
 }

@@ -106,6 +106,34 @@ class TestEffectiveAllowedTools:
         result = perms.effective_allowed_tools(ALL_TOOLS)
         assert result == ALL_TOOLS
 
+    def test_denying_a_capability_also_denies_what_extends_it(self):
+        # A blacklist is written against the tools that exist at the time, so
+        # an operator who revoked proactive posting never listed the edit
+        # tool — and would otherwise silently regain the ability to rewrite
+        # everything the bot has already said in their servers.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(tools=["post_to_chat_platform"], tools_exclude=True)
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["run_block"])
+
+    def test_an_implied_denial_does_not_leak_into_a_whitelist(self):
+        # Whitelists are explicit: listing the edit tool means it is wanted,
+        # and the implication table must not second-guess that.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(
+            tools=["edit_chat_platform_message"], tools_exclude=False
+        )
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["edit_chat_platform_message"])
+
 
 # ---------------------------------------------------------------------------
 # CopilotPermissions.is_block_allowed
@@ -715,3 +743,55 @@ class TestDreamPermissionsPreset:
                 "memory_forget_confirm",
             }
         )
+
+
+class TestApplyToolPermissionsIsLossless:
+    """A filter that permits everything must be indistinguishable from no
+    filter. It was not: outside E2B only ``read_file`` has an MCP wrapper, so
+    mapping ``Write``/``Edit`` solely to their MCP names dropped them from
+    every filtered turn — silently, since an absent tool just never gets
+    called. Children are the only turns that carry a filter, so this removed
+    file editing from every spawned agent on non-E2B deployments."""
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_identity_whitelist_equals_no_filter(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            ALL_TOOL_NAMES,
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+
+        identity = CopilotPermissions(tools=sorted(ALL_TOOL_NAMES), tools_exclude=False)
+        allowed_identity, _ = apply_tool_permissions(identity, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        assert set(allowed_identity) == set(allowed_unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_a_child_keeps_its_file_tools(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+        from backend.copilot.tree import (
+            DESCENT_DENIED_TOOLS,
+            SpawnRequest,
+            derive_child_envelope,
+            root_envelope,
+        )
+
+        child = derive_child_envelope(root_envelope("t"), SpawnRequest(may_spawn=True))
+        child_permissions = child.as_permissions()
+        assert child_permissions is not None
+        allowed_child, _ = apply_tool_permissions(child_permissions, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        lost = set(allowed_unfiltered) - set(allowed_child)
+        # A child loses exactly the descent-denied set — nothing else.
+        assert lost == {
+            name
+            for name in allowed_unfiltered
+            if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
+        }

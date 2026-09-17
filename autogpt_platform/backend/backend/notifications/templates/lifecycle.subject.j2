@@ -1,0 +1,9 @@
+{% if kind == 'welcome' %}Welcome to AutoGPT — your {{ plan.name }} plan is live
+Your {{ plan.label }} plan is active. Here's the fastest route to your first working agent.{% elif kind == 'drip1' %}Build your first agent in 10 minutes
+Ten minutes, one working agent. Let's build.{% elif kind == 'payment_failed' %}We couldn't process your payment
+No panic — we'll retry automatically on {{ next_retry_label }}. Updating your card takes a minute.{% elif kind == 'final_notice' %}Action needed: your AutoGPT plan pauses on {{ pauses_label }}
+We've tried several times without luck. One click keeps your agents running.{% elif kind == 'cancel_confirmed' %}Your cancellation is confirmed
+Your plan stays active until {{ access_until_label }}. Nothing is deleted.{% elif kind == 'cancel_reversed' %}Your AutoGPT plan will continue
+Good news — your {{ plan.name }} plan renews on {{ renews_label }} as usual.{% elif kind == 'ended' %}Your AutoGPT plan has ended
+{% if due_to_payment %}We couldn't collect payment. Your agents are paused, not deleted — restarting takes one click.{% else %}Your agents are paused, not deleted. Pick up right where you left off.{% endif %}{% elif kind == 'trial_ending' %}Your free trial ends on {{ ends_label }}
+{% if has_payment_method %}Your trial ends in {{ days_left }} days. Here's exactly what happens next.{% else %}Your trial ends in {{ days_left }} days — nothing is charged unless you add a card.{% endif %}{% endif %}

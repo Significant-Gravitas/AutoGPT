@@ -1,6 +1,4 @@
 "use client";
-
-import { PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -20,6 +18,8 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
+import { PlugSocketIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface RunMCPToolPart {
   type: string;
@@ -79,7 +79,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 
@@ -106,7 +106,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {/* Tool execution result */}
       {mcpToolOutput && (
         <ToolAccordion
-          icon={<PlugsConnectedIcon size={32} weight="light" />}
+          icon={<Icon icon={PlugSocketIcon} size={32} />}
           title={mcpToolOutput.tool_name}
           description={`from ${serverHost(mcpToolOutput.server_url)}`}
         >

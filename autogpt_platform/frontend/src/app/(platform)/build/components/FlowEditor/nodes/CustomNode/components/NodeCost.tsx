@@ -2,10 +2,11 @@ import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { BlockCostType } from "@/app/api/__generated__/models/blockCostType";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { CoinIcon } from "@phosphor-icons/react";
 import { isCostFilterMatch } from "../../../../helper";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
+import { Coins02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type CostDisplay =
   | { kind: "free" }
@@ -128,7 +129,7 @@ export const NodeCost = ({
   if (display.kind === "free") {
     return (
       <div className="mr-3 flex items-center gap-1 text-base font-light">
-        <CoinIcon className="h-3 w-3" />
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
         <Text variant="small" className="!font-medium">
           Free
         </Text>
@@ -142,7 +143,7 @@ export const NodeCost = ({
         className="mr-3 flex items-center gap-1 text-base font-light"
         title={tokenRateTooltip(display)}
       >
-        <CoinIcon className="h-3 w-3" />
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
         <Text variant="small" className="!font-medium">
           {`${formatUsd(display.input)} in / ${formatUsd(display.output)} out`}
         </Text>
@@ -157,7 +158,7 @@ export const NodeCost = ({
         className="mr-3 flex items-center gap-1 text-base font-light"
         title="Pay-as-you-go pricing. Final charge matches the provider's per-token rate plus a 1.5× margin."
       >
-        <CoinIcon className="h-3 w-3" />
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
         <Text variant="small">Pay-as-you-go</Text>
       </div>
     );
@@ -168,7 +169,7 @@ export const NodeCost = ({
       className="mr-3 flex items-center gap-1 text-base font-light"
       title={display.note}
     >
-      <CoinIcon className="h-3 w-3" />
+      <Icon icon={Coins02Icon} className="h-3 w-3" />
       <Text variant="small" className="!font-medium">
         {display.amountText}
       </Text>

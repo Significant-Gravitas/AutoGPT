@@ -39,6 +39,11 @@ are allowed.
 
 ``blocks_exclude`` follows the same pattern for ``blocks``.
 
+Denying a capability denies the tools that extend it (see
+``_IMPLIED_DENIALS``). A blacklist is written against the tools that exist
+when it is written, so a later tool that reaches the same resource would
+otherwise be silently regained by every existing blacklist.
+
 Recursion inheritance
 ---------------------
 :meth:`CopilotPermissions.merged_with_parent` produces a new instance that
@@ -71,48 +76,73 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "confirm_expert_change",
+    "confirm_expert_soul_update",
     "connect_integration",
+    "consult_teammate",
     "continue_run_block",
     "create_agent",
     "create_feature_request",
     "create_folder",
     "customize_agent",
     "decompose_goal",
+    "delegate_to_expert",
     "delete_folder",
     "delete_preset",
     "delete_schedule",
     "delete_skill",
     "delete_workspace_file",
     "edit_agent",
+    "edit_chat_platform_message",
+    "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
     "find_block",
     "find_library_agent",
+    "find_session",
     "fix_agent_graph",
     "get_agent_building_guide",
     "get_doc_page",
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "grant_expert_credential",
+    "handoff_to_expert",
+    "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_expert_chats",
+    "list_expert_credentials",
+    "list_expert_workflows",
     "list_folders",
     "list_presets",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
     "memory_search",
     "memory_store",
+    "message_session",
     "move_agents_to_folder",
     "move_folder",
+    "pause_schedule",
     "post_to_chat_platform",
+    "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "remove_expert_workflow",
+    "request_credential_grant",
+    "resume_schedule",
+    "revoke_expert_credential",
     "run_agent",
     "run_block",
     "run_mcp_tool",
@@ -121,7 +151,10 @@ ToolName = Literal[
     "search_docs",
     "search_feature_requests",
     "setup_agent_webhook_trigger",
+    "start_desktop",
     "store_skill",
+    "update_expert",
+    "update_expert_soul",
     "update_folder",
     "update_preset",
     "validate_agent_graph",
@@ -144,7 +177,7 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -157,7 +190,8 @@ the model as available tools.
 # baseline mode ships an MCP-wrapped platform version
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# ``Task`` remains an SDK-only built-in
 # (for queue-backed context-isolation on baseline, use ``run_sub_session``
 # instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
@@ -173,6 +207,25 @@ _FULL_UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+
+# Tools that a blacklist entry must deny alongside the capability named.
+#
+# A blacklist is written against the tools that existed when it was written,
+# so a tool added later that reaches the same resource is silently regained
+# by every blacklist already out there. An operator who revoked proactive
+# posting to their chat platforms should not find the agent able to rewrite
+# everything the bot has already said in them.
+_IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
+    "post_to_chat_platform": ("edit_chat_platform_message",),
+}
+
+
+def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
+    """Expand a deny set with the tools its entries imply."""
+    return denied.union(
+        implied for name in denied for implied in _IMPLIED_DENIALS.get(name, ())
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +291,7 @@ class CopilotPermissions(BaseModel):
             return frozenset(all_tools)
         tool_set = frozenset(self.tools)
         if self.tools_exclude:
-            return all_tools - tool_set
+            return all_tools - _with_implied_denials(tool_set)
         return all_tools & tool_set
 
     # ------------------------------------------------------------------
@@ -475,8 +528,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names
