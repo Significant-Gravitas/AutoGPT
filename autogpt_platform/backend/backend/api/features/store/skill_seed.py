@@ -210,6 +210,126 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["research", "development"],
         "required_providers": [],
     },
+    {
+        "slug": "recruiting-getting-started",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "role-intake-and-job-description",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "hiring-rubric-design",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "resume-screening",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "interview-plan-and-scorecard",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-interview-debrief",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-rejection-email",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-offer-draft",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "procurement-getting-started",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-requirements-brief",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-quote-comparison",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-due-diligence",
+        "categories": ["operations", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "procurement-decision-memo",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-renewal-tracker",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-performance-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "spend-anomaly-review",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-ops-getting-started",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "nda-playbook-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "msa-playbook-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-clause-comparison",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-key-term-extraction",
+        "categories": ["operations", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-deviation-triage",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-obligation-tracker",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "counsel-escalation-brief",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
 ]
 
 
