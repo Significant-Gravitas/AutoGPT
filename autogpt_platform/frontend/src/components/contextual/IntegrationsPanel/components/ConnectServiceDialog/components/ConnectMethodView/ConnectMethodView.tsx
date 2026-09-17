@@ -15,6 +15,8 @@ import {
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import type { UseFormReturn } from "react-hook-form";
 import { InlineApiKeyForm } from "./InlineApiKeyForm";
+import { InlineHostScopedForm } from "./InlineHostScopedForm";
+import { InlineUserPasswordForm } from "./InlineUserPasswordForm";
 import {
   GlobeIcon,
   Key01Icon,
@@ -31,7 +33,9 @@ interface Props {
   onSelectMethod: (method: AuthMethod) => void;
   apiKeyForm: UseFormReturn<ApiKeyConnectFormValues>;
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
-  onDeviceAuthSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** A method that completes inside this view rather than through the
+   *  panel footer's Continue: device auth, host-scoped, user/password. */
+  onInlineConnectSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export const METHOD_ORDER: AuthMethod[] = [
@@ -88,7 +92,7 @@ export function ConnectMethodView({
   onSelectMethod,
   apiKeyForm,
   onApiKeySubmit,
-  onDeviceAuthSuccess,
+  onInlineConnectSuccess,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
     provider.supportedAuthTypes.includes(method),
@@ -205,7 +209,18 @@ export function ConnectMethodView({
                           <DeviceAuthConnectButton
                             provider={provider.id}
                             providerName={provider.name}
-                            onSuccess={onDeviceAuthSuccess}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.host_scoped ? (
+                          <InlineHostScopedForm
+                            provider={provider.id}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.user_password ? (
+                          <InlineUserPasswordForm
+                            provider={provider.id}
+                            providerName={provider.name}
+                            onSuccess={onInlineConnectSuccess}
                           />
                         ) : (
                           <UnsupportedNotice providerName={provider.name} />

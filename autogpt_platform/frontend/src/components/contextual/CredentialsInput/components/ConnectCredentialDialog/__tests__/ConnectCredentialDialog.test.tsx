@@ -26,12 +26,12 @@ vi.mock(
       provider,
       selectedMethod,
       onSelectMethod,
-      onDeviceAuthSuccess,
+      onInlineConnectSuccess,
     }: {
       provider: { id: string; name: string; supportedAuthTypes: string[] };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
-      onDeviceAuthSuccess: () => void;
+      onInlineConnectSuccess: () => void;
     }) => (
       <div data-testid="connect-method-view">
         <span>Connect AutoGPT to {provider.name}</span>
@@ -45,7 +45,7 @@ vi.mock(
           </button>
         ))}
         {provider.supportedAuthTypes.includes("device_code") && (
-          <button onClick={onDeviceAuthSuccess}>complete-device_code</button>
+          <button onClick={onInlineConnectSuccess}>complete-device_code</button>
         )}
       </div>
     ),
@@ -108,7 +108,7 @@ function makeApiKeyReturn(
       reset: vi.fn(),
       formState: { isValid: overrides.isValid ?? false },
       handleSubmit: (onValid: (values: unknown) => void) => () =>
-        onValid({ title: "Key", apiKey: "sk-123", expiresAt: "" }),
+        onValid({ title: "Key", apiKey: "sk-123", expiresAt: "" }), // pragma: allowlist secret
     },
     handleSubmit: vi.fn(),
     isPending: overrides.isPending ?? false,
@@ -228,7 +228,7 @@ describe("ConnectCredentialDialog", () => {
 
     expect(apiKey.handleSubmit).toHaveBeenCalledWith({
       title: "Key",
-      apiKey: "sk-123",
+      apiKey: "sk-123", // pragma: allowlist secret
       expiresAt: "",
     });
   });

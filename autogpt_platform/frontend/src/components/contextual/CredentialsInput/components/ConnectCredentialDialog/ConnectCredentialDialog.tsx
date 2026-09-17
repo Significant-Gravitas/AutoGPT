@@ -96,9 +96,9 @@ export function ConnectCredentialDialog({
     onClose();
   }
 
-  // Device auth completes inside ConnectMethodView, bypassing the hook, so
-  // this is the only place its reset can happen.
-  function handleDeviceAuthSuccess(credential?: CredentialsMetaResponse) {
+  // The self-submitting methods complete inside ConnectMethodView, bypassing
+  // the hook, so this is the only place their reset can happen.
+  function handleInlineConnectSuccess(credential?: CredentialsMetaResponse) {
     reset();
     handleConnected(credential);
   }
@@ -144,7 +144,7 @@ export function ConnectCredentialDialog({
               onSelectMethod={setSelectedMethod}
               apiKeyForm={apiKeyForm}
               onApiKeySubmit={handleApiKeySubmit}
-              onDeviceAuthSuccess={handleDeviceAuthSuccess}
+              onInlineConnectSuccess={handleInlineConnectSuccess}
             />
           )}
           {showExisting && existing?.error && (
