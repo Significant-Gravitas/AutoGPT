@@ -343,7 +343,7 @@ async def _live_bundled_skills(
             ExpertBundledSkill(
                 id=row.skillListingId,
                 slug=skill.slug,
-                name=skill.name,
+                title=skill.title,
                 description=skill.description,
             )
             for row in rows
