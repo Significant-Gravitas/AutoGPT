@@ -311,6 +311,15 @@ async def mcp_oauth_login(
     token_url = metadata["token_endpoint"]
     registration_endpoint = metadata.get("registration_endpoint")
     revoke_url = metadata.get("revocation_endpoint")
+    # The revocation call carries the token, and this URL comes from the
+    # server's own metadata. Over plain HTTP that hands the token to anyone
+    # on the path, so drop it rather than use it; revocation is best-effort.
+    if isinstance(revoke_url, str) and not revoke_url.lower().startswith("https://"):
+        logger.warning(
+            "Ignoring non-HTTPS revocation endpoint advertised by %s",
+            server_host(request.server_url),
+        )
+        revoke_url = None
     scopes = (
         request.scopes
         if request.scopes is not None
