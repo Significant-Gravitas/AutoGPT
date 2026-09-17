@@ -363,7 +363,7 @@ _SKILLS_UPDATE_PREFIX_RE = re.compile(
 )
 
 # Expert-session blocks injected by expert_context.py. <expert_workflows> /
-# <team_context> are prepended in front of every other block, so the display
+# <expert_computer> / <team_context> are prepended in front of every other block, so the display
 # strip loop must know them or it stops before reaching the standard tags.
 # The anywhere/lone-tag pairs get the same sanitizer treatment as the other
 # server-only tags so a user-typed block cannot spoof the expert persona.
@@ -380,6 +380,13 @@ _EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
 _EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
 _EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
     r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
+)
+_EXPERT_COMPUTER_ANYWHERE_RE = re.compile(
+    r"<expert_computer>.*</expert_computer>\s*", re.DOTALL
+)
+_EXPERT_COMPUTER_LONE_TAG_RE = re.compile(r"</?expert_computer>", re.IGNORECASE)
+_EXPERT_COMPUTER_PREFIX_RE = re.compile(
+    r"^<expert_computer>.*?</expert_computer>\n\n", re.DOTALL
 )
 _TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
 _TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
@@ -467,6 +474,8 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _EXPERT_COMPUTER_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _EXPERT_COMPUTER_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
     # Strip <voice_turn> blocks and lone tags — a forged closing tag would
@@ -512,7 +521,7 @@ def strip_injected_context_for_display(message: str) -> str:
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<voice_turn>``,
-    ``<available_skills>``, and ``<skills_update>``
+    ``<available_skills>``, ``<skills_update>``, and the expert-session
     blocks from the **start** of the message, iterating until no more leading
     injected blocks remain.
 
@@ -538,6 +547,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _SKILLS_UPDATE_PREFIX_RE.sub("", result)
         result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
         result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
+        result = _EXPERT_COMPUTER_PREFIX_RE.sub("", result)
         result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
     return result
 
