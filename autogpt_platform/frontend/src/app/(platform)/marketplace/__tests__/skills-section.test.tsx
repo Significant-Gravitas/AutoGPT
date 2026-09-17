@@ -196,6 +196,7 @@ describe("Marketplace SkillsSection", () => {
       ...outreach,
       slug: "cold-email",
       name: "cold-email",
+      title: "Cold email",
       source_repo: "coreyhaines31/marketingskills",
       source_url:
         "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
@@ -210,7 +211,9 @@ describe("Marketplace SkillsSection", () => {
     expect(vendored.textContent).toContain(
       "From coreyhaines31/marketingskills",
     );
-    const own = await screen.findByRole("link", { name: /Brand voice guide/ });
+    const own = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
     expect(own.textContent).not.toContain("From ");
   });
 
