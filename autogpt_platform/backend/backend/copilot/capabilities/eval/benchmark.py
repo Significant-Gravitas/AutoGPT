@@ -102,15 +102,21 @@ def evaluate(index: CapabilityIndex, cases: list[Case]) -> Report:
     for case in cases:
         context = "graph" if case.for_agent_generation else "direct"
         result = index.search(case.query, context=context)
-        today["all"].add(None, empty=case.result_type != "block_list")
-        registry["all"].add(None, empty=not result.hits)
+        labelled = case.label_kind in LABEL_KINDS and not (
+            case.label_kind == "block" and case.label not in available
+        )
+        # Rank the labelled cases before the aggregate rows: passing None
+        # unconditionally made "all" report 0% recall whatever the search
+        # returned, so only its no-result column ever said anything.
+        today_rank = _today_rank(case) if labelled else None
+        rank = _registry_rank(result, case) if labelled else None
+        today["all"].add(today_rank, empty=case.result_type != "block_list")
+        registry["all"].add(rank, empty=not result.hits)
         if case.label_kind not in LABEL_KINDS:
             continue
         if case.label_kind == "block" and case.label not in available:
             skipped += 1
             continue
-        today_rank = _today_rank(case)
-        rank = _registry_rank(result, case)
         today[case.label_kind].add(today_rank, empty=case.result_type != "block_list")
         registry[case.label_kind].add(rank, empty=not result.hits)
         if case.label_kind == "block":
