@@ -17,6 +17,11 @@ from backend.copilot.context import (
     reset_consult_budget,
     take_consult_slot,
 )
+from backend.copilot.dream.llm import (
+    CompletionUsage,
+    DreamLLMError,
+    StructuredCompletion,
+)
 from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.tools.consult_audit import audit_frame, audit_material
 from backend.copilot.tools.consult_teammate import ConsultTeammateTool
@@ -159,6 +164,52 @@ class TestExecute:
         assert result.verdict == "insufficient"
         assert "NOT been checked" in result.reason
 
+    async def test_a_pass_comes_back_whole_and_the_audit_is_billed(self):
+        """The success path end to end: a parsed verdict reaches the caller
+        with the reviewer on it, and the tokens it cost are booked."""
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(
+            "backend.copilot.tools.consult_teammate.structured_completion",
+            AsyncMock(
+                return_value=_completion(
+                    _verdict("pass", "Every commitment is covered.", ["the date"])
+                )
+            ),
+        ), patch(
+            "backend.copilot.tools.consult_teammate.persist_and_record_usage",
+            AsyncMock(),
+        ) as billed:
+            result = await self._run()
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.verdict == "pass"
+        assert result.reason == "Every commitment is covered."
+        assert result.reviewer.name == "Ada"
+        assert "> the date" in result.message
+        assert "No objection raised. Carry on." in result.message
+        assert billed.await_args.kwargs["prompt_tokens"] == 11
+        assert billed.await_args.kwargs["completion_tokens"] == 7
+        assert billed.await_args.kwargs["cost_usd"] == 0.0004
+
+    async def test_a_response_that_did_not_parse_is_still_billed(self):
+        """Those tokens were charged by the provider whether or not we could
+        read the answer, so dropping them bills the platform instead."""
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(
+            "backend.copilot.tools.consult_teammate.structured_completion",
+            AsyncMock(side_effect=DreamLLMError("not json", _usage())),
+        ), patch(
+            "backend.copilot.tools.consult_teammate.persist_and_record_usage",
+            AsyncMock(),
+        ) as billed:
+            result = await self._run()
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.verdict == "insufficient"
+        assert billed.await_args.kwargs["prompt_tokens"] == 11
+
     async def test_dry_run_never_calls_the_provider(self):
         completion = AsyncMock()
         with patch(
@@ -212,3 +263,13 @@ def _verdict(verdict: str, reason: str, quotes: list[str]):
     from backend.copilot.tools.consult_audit import VerdictPayload
 
     return VerdictPayload(verdict=verdict, reason=reason, quotes=quotes)
+
+
+def _usage():
+    return CompletionUsage(
+        model="aux", input_tokens=11, output_tokens=7, cost_usd=0.0004
+    )
+
+
+def _completion(verdict):
+    return StructuredCompletion(value=verdict, usage=_usage())

@@ -255,5 +255,21 @@ describe("getCatalogLabel", () => {
         "done",
       )?.text,
     ).toBe('Teammate checked: "Does this commit us to a refund?"');
+    expect(getCatalogLabel("find_session", {}, "running")).toEqual({
+      category: "team",
+      text: "Looking for a session…",
+    });
+    expect(getCatalogLabel("find_session", {}, "done")?.text).toBe(
+      "Found sessions",
+    );
+    // The message is quoted and truncated, so the row never carries the whole
+    // payload into the chain label.
+    expect(
+      getCatalogLabel(
+        "message_session",
+        { message: "the numbers are in" },
+        "done",
+      )?.text,
+    ).toBe('Messaged a session: "the numbers are in"');
   });
 });

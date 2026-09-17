@@ -86,6 +86,32 @@ describe("consult_teammate verdict card", () => {
     expect(screen.queryByRole("list")).toBeNull();
   });
 
+  it("renders the ruling as text, never as markup", () => {
+    const reason = "**bold** <b>tag</b> [link](https://x.test)";
+    const quote = '<img src=x onerror="boom()"> the refund line';
+    render(
+      <ToolResult
+        row={row("consult_teammate", {
+          type: "team_consult",
+          message: "Ada ruled: BLOCK.",
+          verdict: "block",
+          reason,
+          quotes: [quote],
+          reviewer: REVIEWER,
+        })}
+      />,
+    );
+
+    // Both strings are model output conditioned on a user-editable Soul, so
+    // each must reach the page whole, as characters, creating no elements of
+    // its own. A markdown or HTML renderer splits the match and fails here.
+    for (const text of [reason, quote]) {
+      const element = screen.getByText(text);
+      expect(element.textContent).toBe(text);
+      expect(element.querySelector("*")).toBeNull();
+    }
+  });
+
   it("renders nothing while the tool is still running with no output yet", () => {
     const { container } = render(
       <ToolResult row={row("consult_teammate", undefined, "running")} />,
