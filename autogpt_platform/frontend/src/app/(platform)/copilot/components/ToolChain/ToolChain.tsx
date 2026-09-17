@@ -30,7 +30,11 @@ import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import {
+  buildChainReply,
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { ChainRowView } from "./ChainRowView";
 import {
@@ -146,10 +150,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       if (!canAutoSend || autoSentRef.current) return;
       autoSentRef.current = true;
       setAutoSent(true);
-      const message = pendingActions
-        .map((entry) => entry.buildMessage())
-        .filter(Boolean)
-        .join("\n\n");
+      const message = buildChainReply(pendingActions);
       if (!message) return;
       void sendAfter(pendingActions, message);
     },
@@ -233,10 +234,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = readyActions
-      .map((entry) => entry.buildMessage())
-      .filter(Boolean)
-      .join("\n\n");
+    const message = buildChainReply(readyActions);
     if (!message) return;
     void sendAfter(readyActions, message);
   }
