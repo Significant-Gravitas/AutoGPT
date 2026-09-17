@@ -433,9 +433,7 @@ async def test_token_connections_do_not_start_oauth(client, oauth_mocks, provide
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_reconnect_replaces_the_credential_filed_under_the_tools_url(
-    client, oauth_mocks
-):
+async def test_reconnect_replaces_credentials_under_either_url(client, oauth_mocks):
     """Context7 and Parallel sign in at one URL and serve tools at another.
 
     The new credential is filed under the tools URL, so the cleanup has to
@@ -449,7 +447,12 @@ async def test_reconnect_replaces_the_credential_filed_under_the_tools_url(
     stale = MagicMock(spec=OAuth2Credentials)
     stale.id = "stale-credential-id"
     stale.metadata = {"mcp_server_url": tools_url}
-    manager.store.get_creds_by_provider = AsyncMock(return_value=[stale])
+    # Credentials stored before the URL was normalised sit under the sign-in
+    # URL instead, and have to be swept up by the same pass.
+    legacy = MagicMock(spec=OAuth2Credentials)
+    legacy.id = "legacy-credential-id"
+    legacy.metadata = {"mcp_server_url": sign_in_url}
+    manager.store.get_creds_by_provider = AsyncMock(return_value=[stale, legacy])
     manager.store.delete_creds_by_id = AsyncMock()
 
     state = MagicMock()
@@ -475,6 +478,7 @@ async def test_reconnect_replaces_the_credential_filed_under_the_tools_url(
 
     assert callback.status_code == 200
     assert manager.create.call_args.args[1].metadata["mcp_server_url"] == tools_url
-    manager.store.delete_creds_by_id.assert_awaited_once_with(
-        "test-user-id", "stale-credential-id"
-    )
+    deleted = {
+        call.args[1] for call in manager.store.delete_creds_by_id.await_args_list
+    }
+    assert deleted == {"stale-credential-id", "legacy-credential-id"}
