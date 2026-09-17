@@ -1452,6 +1452,12 @@ async def reset_copilot_usage(
     )
 
 
+# A delivered cancel has been measured missing this window while the executor
+# was still tearing the turn down, so timing out here is a normal outcome.
+_CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
+_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
+
+
 async def _clear_pending_best_effort(session_id: str) -> None:
     """Drop the session's pending buffer, swallowing Redis errors.
 
@@ -1532,12 +1538,10 @@ async def cancel_session_task(
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 
     # Poll until the executor confirms the task is no longer running.
-    poll_interval = 0.5
-    max_wait = 5.0
     waited = 0.0
-    while waited < max_wait:
-        await asyncio.sleep(poll_interval)
-        waited += poll_interval
+    while waited < _CANCEL_CONFIRM_TIMEOUT_SECONDS:
+        await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
+        waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
         if session_state is None or session_state.status != "running":
             logger.info(
@@ -1551,13 +1555,22 @@ async def cancel_session_task(
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
-        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
+        f"{_CANCEL_CONFIRM_TIMEOUT_SECONDS}s, completing the turn as cancelled"
     )
-    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # The user asked for this stop, so publishing a StreamError would paint
+    # the "assistant encountered an error" banner over their own cancel.
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message="Operation cancelled",
+        skip_error_publish=True,
+    )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
     await _clear_pending_best_effort(session_id)
-    return CancelSessionResponse(cancelled=True)
+    return CancelSessionResponse(
+        cancelled=True, reason="cancel_published_not_confirmed"
+    )
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
