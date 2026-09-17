@@ -65,8 +65,16 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 }
 # Personas that deliberately ship no workflows, so the 2-4 preload bound below
 # stays a real check on everyone else. Remy's workflow listings are unavailable;
-# Mina, Theo, and Quinn are skills-only by design.
-PERSONAS_WITHOUT_WORKFLOWS = {"Remy", "Mina", "Theo", "Quinn"}
+# the other names are skills-only by design.
+PERSONAS_WITHOUT_WORKFLOWS = {
+    "Remy",
+    "Mina",
+    "Theo",
+    "Quinn",
+    "Harper",
+    "Vera",
+    "Ellis",
+}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
@@ -74,6 +82,38 @@ PERSONAS_WITHOUT_WORKFLOWS = {"Remy", "Mina", "Theo", "Quinn"}
 EXPECTED_ROSTER_SCHEDULES = {
     ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+}
+EXPECTED_OPERATIONS_SKILLS = {
+    "Harper": [
+        "recruiting-getting-started",
+        "role-intake-and-job-description",
+        "hiring-rubric-design",
+        "resume-screening",
+        "interview-plan-and-scorecard",
+        "candidate-interview-debrief",
+        "candidate-rejection-email",
+        "candidate-offer-draft",
+    ],
+    "Vera": [
+        "procurement-getting-started",
+        "vendor-requirements-brief",
+        "vendor-quote-comparison",
+        "vendor-due-diligence",
+        "procurement-decision-memo",
+        "contract-renewal-tracker",
+        "vendor-performance-review",
+        "spend-anomaly-review",
+    ],
+    "Ellis": [
+        "contract-ops-getting-started",
+        "nda-playbook-review",
+        "msa-playbook-review",
+        "contract-clause-comparison",
+        "contract-key-term-extraction",
+        "contract-deviation-triage",
+        "contract-obligation-tracker",
+        "counsel-escalation-brief",
+    ],
 }
 
 
@@ -3251,6 +3291,14 @@ def test_roster_bundled_skills_are_hub_slugs():
             assert _NAME_RE.match(slug), (entry["name"], slug)
 
 
+def test_operations_experts_bundle_their_eight_skills_in_work_order():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in EXPECTED_OPERATIONS_SKILLS.items():
+        assert roster[name]["bundled_skills"] == skills
+        assert roster[name]["preloads"] == []
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
     server: SpinTestServer, hub_listing, monkeypatch
@@ -3291,11 +3339,8 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     upsert.assert_not_awaited()
 
 
-def test_roster_day_one_copy_matches_work_the_experts_can_do_unaided():
-    """Day-one copy may only promise work an expert can do without a cadence.
-
-    A clock-based promise needs a cadence behind it. Skills-only experts may
-    promise draft work on day one or on request, but never a scheduled run."""
+def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
+    """Day-one copy may describe draft work, but not an unattended cadence."""
     day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
 
     assert [(item.title, item.timing) for item in day_one["Maria"]] == [
@@ -3316,6 +3361,18 @@ def test_roster_day_one_copy_matches_work_the_experts_can_do_unaided():
         "day 1",
         "day 1",
         "on request",
+    ]
+    assert [(item.title, item.timing) for item in day_one["Harper"]] == [
+        ("A hiring plan grounded in the role", "day 1"),
+        ("A fair scorecard before screening", "day 1"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Vera"]] == [
+        ("Your next vendor choice, compared", "day 1"),
+        ("Renewals and spend risks surfaced", "on request"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
+        ("Key terms in one clear record", "day 1"),
+        ("Playbook gaps ready for counsel", "on request"),
     ]
     for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
         assert day_one[name] == [], name
