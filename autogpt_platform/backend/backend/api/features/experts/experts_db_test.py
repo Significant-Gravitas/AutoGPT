@@ -64,11 +64,9 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-transcription-scraper",
 }
 # Personas that deliberately ship no workflows, so the 2-4 preload bound below
-# stays a real check on everyone else. Remy is here because neither of her
-# lifecycle-email listings was ever published under the official marketplace
-# creator, and _resolve_roster_preloads fails the whole seed on a slug it
-# cannot resolve.
-PERSONAS_WITHOUT_WORKFLOWS = {"Remy"}
+# stays a real check on everyone else. Remy's workflow listings are unavailable;
+# Mina, Theo, and Quinn are skills-only by design.
+PERSONAS_WITHOUT_WORKFLOWS = {"Remy", "Mina", "Theo", "Quinn"}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
@@ -3293,22 +3291,74 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     upsert.assert_not_awaited()
 
 
-def test_roster_day_one_is_marias_two_rows_and_hidden_for_the_rest():
-    """Only Maria promises day-one work, and only work she can do unaided.
+def test_roster_day_one_copy_matches_work_the_experts_can_do_unaided():
+    """Day-one copy may only promise work an expert can do without a cadence.
 
-    A dated promise needs a cadence behind it, and the only two roster
-    cadences sit on a workflow whose required inputs make
-    ``create_workflow_schedule`` refuse the schedule at hire — so every
-    other persona's rows stay empty rather than promising a delivery the
-    hire flow cannot make."""
+    A clock-based promise needs a cadence behind it. Skills-only experts may
+    promise draft work on day one or on request, but never a scheduled run."""
     day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
 
     assert [(item.title, item.timing) for item in day_one["Maria"]] == [
         ("A brief before the draft", "day 1"),
         ("Your money pages, audited", "day 1"),
     ]
+    assert [item.timing for item in day_one["Mina"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Theo"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Quinn"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
     for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
         assert day_one[name] == [], name
+
+
+def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
+    expected = {
+        "Mina": [
+            "bookkeeping-getting-started",
+            "expense-categorization",
+            "invoice-drafting-and-issue",
+            "accounts-receivable-follow-up",
+            "statement-reconciliation",
+            "month-end-close-checklist",
+            "monthly-profit-and-loss-summary",
+            "bookkeeping-exception-escalation",
+        ],
+        "Theo": [
+            "investor-relations-getting-started",
+            "pitch-deck-review",
+            "fundraising-data-room-checklist",
+            "investor-targeting-and-research",
+            "fundraising-pipeline-review",
+            "cap-table-hygiene",
+            "monthly-investor-update",
+            "board-and-investor-metrics-brief",
+        ],
+        "Quinn": [
+            "kpi-analysis-getting-started",
+            "metric-definition-and-data-quality",
+            "weekly-kpi-digest",
+            "metric-anomaly-detection",
+            "metric-movement-analysis",
+            "cohort-and-retention-analysis",
+            "funnel-conversion-analysis",
+            "experiment-readout",
+        ],
+    }
+    by_name = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in expected.items():
+        assert by_name[name]["bundled_skills"] == skills
+        assert by_name[name]["preloads"] == []
 
 
 @pytest.mark.asyncio(loop_scope="session")

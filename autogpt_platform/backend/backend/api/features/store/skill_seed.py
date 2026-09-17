@@ -90,6 +90,126 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["marketing"],
         "required_providers": [],
     },
+    {
+        "slug": "bookkeeping-getting-started",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "expense-categorization",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "invoice-drafting-and-issue",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "accounts-receivable-follow-up",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "statement-reconciliation",
+        "categories": ["finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "month-end-close-checklist",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "monthly-profit-and-loss-summary",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "bookkeeping-exception-escalation",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "investor-relations-getting-started",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "pitch-deck-review",
+        "categories": ["finance", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "fundraising-data-room-checklist",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "investor-targeting-and-research",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "fundraising-pipeline-review",
+        "categories": ["finance", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "cap-table-hygiene",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "monthly-investor-update",
+        "categories": ["finance", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "board-and-investor-metrics-brief",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "kpi-analysis-getting-started",
+        "categories": ["research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-definition-and-data-quality",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "weekly-kpi-digest",
+        "categories": ["research", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-anomaly-detection",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-movement-analysis",
+        "categories": ["research", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "cohort-and-retention-analysis",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "funnel-conversion-analysis",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "experiment-readout",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
 ]
 
 
