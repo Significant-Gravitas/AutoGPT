@@ -65,6 +65,14 @@ from backend.api.features.experts.models import (
     decode_day_one,
     decode_voice_preferences,
 )
+from backend.api.features.experts.routines import disable_routine as disable_routine
+from backend.api.features.experts.routines import enable_routine as enable_routine
+from backend.api.features.experts.routines import get_routine as get_routine
+from backend.api.features.experts.routines import install_routines
+from backend.api.features.experts.routines import list_routines as list_routines
+from backend.api.features.experts.routines import (
+    record_routine_thread as record_routine_thread,
+)
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -920,6 +928,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
     await _install_bundled_skills(user_id, expert.id, template.id)
+    await install_routines(expert.id, await _template_routines(template.id))
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -1690,6 +1699,16 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
+
+
+async def _template_routines(
+    template_id: str,
+) -> list[prisma.models.ExpertRoutine]:
+    """The proposals a template ships, in the order the roster declares them."""
+    return await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id},
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
+    )
 
 
 async def _install_bundled_skills(

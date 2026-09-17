@@ -118,6 +118,7 @@ ToolName = Literal[
     "list_chat_platform_channels",
     "list_expert_chats",
     "list_expert_credentials",
+    "list_expert_routines",
     "list_expert_workflows",
     "list_folders",
     "list_presets",
@@ -148,6 +149,7 @@ ToolName = Literal[
     "schedule_followup",
     "search_docs",
     "search_feature_requests",
+    "set_expert_routine",
     "setup_agent_webhook_trigger",
     "store_skill",
     "update_expert",
@@ -173,6 +175,43 @@ ToolName = Literal[
 
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
+
+
+# What a routine may reach when nobody bound it to anything.  A roster
+# template is read by whoever reviews the PR, not by the owner whose account it
+# will run on, so a seeded routine ships able to research, think, read its own
+# workspace and write to its own thread — and nothing else.  Denying the tools
+# that carry a credential outward is what makes "a cadence may only carry work
+# that acts on nothing outside the platform" (``PreloadSeed.cron``) a boundary
+# rather than a comment.  An owner who wants their queue swept says so when
+# they switch the routine on, and that answer — not a template — is what grants
+# this.
+UNATTENDED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        "run_mcp_tool",
+        "run_agent",
+        "run_block",
+        "post_to_chat_platform",
+        "setup_agent_webhook_trigger",
+    }
+)
+
+
+def unattended_routine_disabled_tools() -> frozenset[str]:
+    """Tools to refuse on a routine turn its owner has not bound to anything.
+
+    Deliberately a denylist of what reaches *outward*, not a narrow allowlist:
+    reading, searching, and drafting into the thread are the whole point of an
+    unattended routine, and a routine that can do none of those is not worth
+    shipping off.
+
+    Kept here rather than beside the other tool gates in ``tools/__init__``:
+    the scheduler needs it at import time, and ``executor.scheduler`` importing
+    ``copilot.tools`` closes a cycle (tools -> helpers -> executor -> scheduler).
+    ``tool_schema_test`` asserts every name here is a real tool.
+    """
+    return UNATTENDED_ROUTINE_DENIED_TOOLS
+
 
 DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
 """Tool names accepted only for backwards compatibility with saved graphs.

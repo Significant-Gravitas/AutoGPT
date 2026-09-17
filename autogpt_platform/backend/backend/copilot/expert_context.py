@@ -25,6 +25,7 @@ import asyncio
 import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
@@ -114,6 +115,21 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
+        f"<standing_work>\n"
+        f"Part of your job is the work that repeats. A colleague who only "
+        f"ever acts when asked is half a colleague: when you notice something "
+        f"in your own area that would be worth doing every week, or every "
+        f"weekday morning, say so and offer to take it on — "
+        f"`list_expert_routines` shows the ones you already came with, and "
+        f"`set_expert_routine` is how one gets switched on. Offer only work "
+        f"inside your role as {escape_prompt_xml_tags(expert.role)}.\n"
+        f"Never describe a routine as running until the tool call that "
+        f"schedules it has actually succeeded. An unkept cadence is silent — "
+        f"the user finds out by noticing that nothing ever arrived — so "
+        f"'I'll check every Monday' is a promise you may only make after the "
+        f"call returns. Every routine you set up is the user's to see and "
+        f"change: `list_schedules` shows what is really scheduled.\n"
+        f"</standing_work>\n"
         f"<first_turn>\n"
         f"Your first turn after being hired arrives as a hidden instruction "
         f"that names `expert_onboarding`. On that turn call "
@@ -122,8 +138,13 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"question and option on that card must be about your own role as "
         f"{escape_prompt_xml_tags(expert.role)} and the workflows installed "
         f"on you: never about a teammate's area or work outside your role, "
-        f"whatever other context suggests. Once the card's answers come "
-        f"back, continue as normal.\n"
+        f"whatever other context suggests. If <expert_routines> lists any "
+        f"standing work, spend one of those questions on which of it to take "
+        f"on — it is the one moment the user is deciding how you will work, "
+        f"and a routine offered later has already missed it. Once the card's "
+        f"answers come back, continue as normal: that reply is an ordinary "
+        f"turn, so settle the details of anything they picked and switch it "
+        f"on there.\n"
         f"</first_turn>\n"
         f"The base instructions above describe Otto, the platform's default "
         f"assistant. All platform capabilities and tools remain "
@@ -248,7 +269,61 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
-    return render_expert_workflows_block(expert) + _expert_computer_block() + teammates
+    return (
+        render_expert_workflows_block(expert)
+        + await _expert_routines_block(user_id, expert_id)
+        + _expert_computer_block()
+        + teammates
+    )
+
+
+async def _expert_routines_block(user_id: str, expert_id: str) -> str:
+    """The standing work this expert offers, and what is actually running.
+
+    Without this the model has no idea its own routines exist, so it never
+    offers them and the expert silently does less than it came able to do. A
+    failed lookup drops the block rather than the turn: an expert that forgets
+    to mention a routine is worse than one that cannot answer at all.
+    """
+    try:
+        routines = await experts_db().list_routines(user_id, expert_id)
+    except Exception as e:
+        logger.warning(f"Failed to load routines for expert context: {e}")
+        return ""
+    if not routines:
+        return ""
+    lines = "\n".join(_routine_line(routine) for routine in routines)
+    return (
+        f"<expert_routines>\n"
+        f"Standing work you can do unattended. Each runs as a turn of yours on "
+        f"a schedule, in the user's timezone. Switch one on with "
+        f"`set_expert_routine` — never silently, always after the user has "
+        f"chosen it:\n"
+        f"{lines}\n"
+        f"An OFF routine is an offer, not a plan: the wording above is a draft "
+        f"written for everybody, so before switching one on, answer its open "
+        f"questions with the user, rewrite it in their terms, and show them "
+        f"the result. A routine reaches none of their connected accounts "
+        f"unless they say it should, so if the work needs one, ask for that "
+        f"specifically rather than assuming it.\n"
+        f"</expert_routines>\n\n"
+    )
+
+
+def _routine_line(routine: ExpertRoutineModel) -> str:
+    title = escape_prompt_xml_tags(routine.title)
+    if not routine.enabled:
+        asks = (
+            " — still needs answered: "
+            + "; ".join(escape_prompt_xml_tags(ask) for ask in routine.asks)
+            if routine.asks
+            else ""
+        )
+        return f"- {title} (id: {routine.id}) — OFF, suggested {', '.join(routine.crons)}{asks}"
+    reach = (
+        "may use connected accounts" if routine.grants_credentials else "platform-only"
+    )
+    return f"- {title} (id: {routine.id}) — ON, {', '.join(routine.crons)}, {reach}"
 
 
 def render_expert_workflows_block(expert: Expert) -> str:

@@ -40,6 +40,7 @@ from .expert_resources import (
     RequestCredentialGrantTool,
     RevokeExpertCredentialTool,
 )
+from .expert_routines import ListExpertRoutinesTool, SetExpertRoutineTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -210,6 +211,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "install_expert_workflow": InstallExpertWorkflowTool(),
     "remove_expert_workflow": RemoveExpertWorkflowTool(),
     "list_expert_workflows": ListExpertWorkflowsTool(),
+    # Standing work: what the expert offers to do unattended, and the round
+    # trip that turns one of those offers into a real cadence.
+    "list_expert_routines": ListExpertRoutinesTool(),
+    "set_expert_routine": SetExpertRoutineTool(),
     "list_expert_credentials": ListExpertCredentialsTool(),
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
@@ -264,6 +269,10 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "install_expert_workflow": "expert_resources",
     "remove_expert_workflow": "expert_resources",
     "list_expert_workflows": "expert_resources",
+    # Routines ride the same gate as workflow installs: an expert manages its
+    # own standing work, and personal AutoPilot manages any expert's.
+    "list_expert_routines": "expert_resources",
+    "set_expert_routine": "expert_resources",
     "list_expert_credentials": "expert_resources",
     "grant_expert_credential": "expert_admin",
     "revoke_expert_credential": "expert_admin",

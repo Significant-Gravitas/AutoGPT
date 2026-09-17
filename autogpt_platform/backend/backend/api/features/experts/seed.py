@@ -18,6 +18,7 @@ import logging
 from collections.abc import Mapping
 from typing import TypedDict
 
+import prisma.enums
 import prisma.models
 import prisma.types
 
@@ -55,6 +56,35 @@ class PreloadSeed(TypedDict):
     cron: str | None
 
 
+class RoutineSeed(TypedDict):
+    # Stable slug; the key `_sync_routines` matches a template row on, and the
+    # name a hire's row keeps for the life of the expert. Renaming one orphans
+    # the old row on every existing hire, so treat it as permanent.
+    key: str
+    title: str
+    # The proposal, in the expert's own voice: what this routine would do each
+    # time it runs. Not what runs — switching the routine on rewrites this with
+    # the owner's answers before anything is scheduled.
+    prompt: str
+    # Suggested fire times. Several because one routine can legitimately have
+    # more than one (a callback sweep at 08:30 and again at 13:00 is one thing
+    # the owner turned on). Each is 5-field and resolves in the owner's
+    # timezone. These are defaults: `_spread_cron` nudges the minute at
+    # install so a roster-wide "Monday 9am" doesn't arrive as one pile-up, and
+    # a time the owner names replaces them outright.
+    crons: list[str]
+    # What the expert must ask before this can run — which repo, which inbox,
+    # what hour. Straight from the source package's installer block. A routine
+    # with unanswered asks cannot be switched on, which is what stops a seeded
+    # proposal from firing against guesses.
+    asks: list[str]
+    # Where each turn lands. THREAD (the default) gives the routine one durable
+    # thread of its own, which is also its memory when `graphiti-memory` is
+    # off; FRESH starts a new chat every time and suits work that re-reads its
+    # own source anyway.
+    session_mode: str
+
+
 class RosterEntry(TypedDict):
     name: str
     role: str
@@ -77,6 +107,12 @@ class RosterEntry(TypedDict):
     # Up to three rows for the profile's "sets up on day one"; empty hides it.
     day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
+    # Standing work this persona offers. Every one arrives switched OFF and
+    # unable to reach a single connected service (see
+    # ``ExpertRoutine.grantsCredentials``) — a roster entry is read by whoever
+    # reviews the PR, not by the owner whose account it will run on, so the
+    # proposal is all a template is allowed to ship.
+    routines: list[RoutineSeed]
 
 
 ROSTER: list[RosterEntry] = [
@@ -126,6 +162,7 @@ You are direct about trade-offs. If a page is already ranking you look for the s
             {"slug": "ai-webpage-copy-improver", "cron": None},
             {"slug": "ai-youtube-to-blog-converter", "cron": None},
         ],
+        "routines": [],
     },
     {
         "name": "Jules",
@@ -161,6 +198,7 @@ You space posts out and change the angle each time — a result, a mistake, a qu
                 "cron": None,
             },
         ],
+        "routines": [],
     },
     {
         "name": "Nadia",
@@ -202,6 +240,7 @@ You mark every claim as observed or inferred, and you name what you inferred it 
             {"slug": "personalized-morning-coffee-newsletter", "cron": "0 8 * * 1"},
             {"slug": "youtube-transcription-scraper", "cron": None},
         ],
+        "routines": [],
     },
     {
         "name": "Remy",
@@ -242,6 +281,7 @@ You treat deliverability as a list problem before a technical one. You will ask 
         # workflow first, then dropping her from PERSONAS_WITHOUT_WORKFLOWS in
         # the roster contract test.
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Max",
@@ -274,6 +314,7 @@ You are rigorous about data quality. You flag when contact information looks sta
             {"slug": "business-ownerceo-finder", "cron": None},
             {"slug": "email-address-finder", "cron": None},
         ],
+        "routines": [],
     },
     {
         "name": "Frankie",
@@ -309,6 +350,7 @@ You are conservative about commitments. You never promise a delivery date, refun
             # are research-only (see PreloadSeed.cron).
             {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
         ],
+        "routines": [],
     },
 ]
 
@@ -620,6 +662,89 @@ async def _prune_preloads(
     )
 
 
+async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
+    """Push the roster's routine proposals onto the template, keyed by slug.
+
+    Template rows only. A hire's rows are handled by ``_sync_hired_routines``,
+    which is far more cautious, because a routine on a hire may already be
+    running on somebody's account.
+    """
+    existing = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id}
+    )
+    by_key = {row.key: row for row in existing if row.key is not None}
+    wanted = {routine["key"] for routine in entry["routines"]}
+    for routine in entry["routines"]:
+        fields = _routine_fields(routine)
+        current = by_key.get(routine["key"])
+        if current is None:
+            await prisma.models.ExpertRoutine.prisma().create(
+                data=prisma.types.ExpertRoutineCreateInput(
+                    expertId=template_id, key=routine["key"], **fields
+                )
+            )
+        else:
+            await prisma.models.ExpertRoutine.prisma().update(
+                where={"id": current.id}, data=fields
+            )
+    stale = [row.id for row in existing if row.key not in wanted]
+    if not stale:
+        return
+    await prisma.models.ExpertRoutine.prisma().delete_many(
+        where={"id": {"in": stale}, "expertId": template_id}
+    )
+    logger.info(
+        f"Removed {len(stale)} stale template routine(s) from '{entry['name']}'"
+    )
+
+
+def _routine_fields(
+    routine: RoutineSeed,
+) -> prisma.types.ExpertRoutineUpdateManyMutationInput:
+    """The columns a roster entry owns on a template row.
+
+    ``grantsCredentials`` is absent on purpose: it is never roster-declared, so
+    a template row keeps the schema default of False and no roster edit can
+    hand a seeded routine the keys to somebody's inbox.
+    """
+    return {
+        "title": routine["title"],
+        "prompt": routine["prompt"],
+        "crons": routine["crons"],
+        "asks": routine["asks"],
+        "sessionMode": prisma.enums.ExpertRoutineSession(routine["session_mode"]),
+    }
+
+
+async def _sync_hired_routines(template_id: str, entry: RosterEntry) -> int:
+    """Refresh routine proposals on hires — but only the untouched ones.
+
+    A routine nobody has switched on and nobody has edited is still just an
+    offer, so re-wording it or fixing its suggested hour is safe and reaches
+    people who hired last month. Everything else is off limits: once a routine
+    is running, or once its owner has changed a single thing about it, what it
+    does is theirs and a roster edit must never silently rewrite it.
+
+    New roster routines are not added to existing hires either. A hire's
+    routine list is what that expert arrived with; growing it behind the
+    owner's back would put unasked-for standing work on their team page.
+    """
+    if not entry["routines"]:
+        return 0
+    refreshed = 0
+    for routine in entry["routines"]:
+        refreshed += await prisma.models.ExpertRoutine.prisma().update_many(
+            where={
+                "key": routine["key"],
+                "enabledAt": None,
+                "customizedAt": None,
+                "Expert": {"is": {"sourceTemplateId": template_id}},
+            },
+            data=_routine_fields(routine),
+        )
+    return refreshed
+
+
 async def _resolve_roster_preloads() -> dict[str, str]:
     slugs = {preload["slug"] for entry in ROSTER for preload in entry["preloads"]}
     resolved = {
@@ -685,14 +810,16 @@ async def seed_roster() -> list[str]:
     for entry in ROSTER:
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry, resolved_versions)
+        await _sync_routines(template.id, entry)
         await _sync_bundled_skills(
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
         refreshed = await _backfill_hired_copies(template)
+        routines = await _sync_hired_routines(template.id, entry)
         template_ids.append(template.id)
         logger.info(
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
-            f"refreshed {refreshed} hired copies"
+            f"refreshed {refreshed} hired copies and {routines} untouched routine(s)"
         )
     await _clear_removed_cadences()
     return template_ids

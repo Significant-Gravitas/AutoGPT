@@ -196,6 +196,32 @@ _DAY_ONE_ITEMS: TypeAdapter[list[ExpertDayOneItem]] = TypeAdapter(
 )
 
 
+class ExpertRoutine(BaseModel):
+    """Standing work an expert does unattended, as the API and the fire path
+    see it. A template's row is a proposal; a hire's row is that proposal until
+    somebody switches it on."""
+
+    id: str
+    expert_id: str
+    # Roster/shared slug; None when the expert authored this one in conversation.
+    key: str | None = None
+    title: str
+    prompt: str
+    crons: list[str] = []
+    # What the expert must ask before this can run. Non-empty on a proposal
+    # nobody has answered yet, and answering them is what makes it runnable.
+    asks: list[str] = []
+    session_mode: str = "THREAD"
+    session_id: str | None = None
+    enabled: bool = False
+    # True once the owner resolved the proposal, after which no roster edit
+    # touches this row again.
+    customized: bool = False
+    # Whether this routine's turns may reach the owner's connected services.
+    # Always False on anything a template shipped.
+    grants_credentials: bool = False
+
+
 class Expert(BaseModel):
     id: str
     name: str

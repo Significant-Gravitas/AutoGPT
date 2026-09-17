@@ -1148,6 +1148,7 @@ model Expert {
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
+  Routines        ExpertRoutine[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1196,6 +1197,79 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
+  @@index([expertId, createdAt, id])
+}
+
+// Where a routine's turn lands each time it fires.
+enum ExpertRoutineSession {
+  // A brand-new chat every fire. No memory of the last run.
+  FRESH
+  // The chat the routine was created in.
+  HERE
+  // One durable thread of its own, minted at the first fire and reused after.
+  // Per routine, not per expert, so two routines on the same cadence never
+  // interleave into one conversation. With `graphiti-memory` off this thread
+  // IS the routine's memory, which is why it is the default.
+  THREAD
+}
+
+// Standing work an expert does unattended: a prompt on a cadence, firing as a
+// copilot turn. `schedule_followup` is the primitive underneath; this is the
+// durable record that owns the cadence, the thread, and the on/off state.
+//
+// Template rows are proposals — a draft prompt, a suggested cadence, and the
+// questions an owner has to answer before it can run. Hiring copies them OFF,
+// because a cadence that fires unattended from the day of hire is a much
+// bigger promise than a skill. Switching one on resolves the proposal into the
+// routine that actually runs.
+model ExpertRoutine {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // Roster/shared slug, and the key `_sync_routines` matches on. Null when the
+  // expert authored this one in conversation; Postgres treats NULLs as
+  // distinct, so the unique below still allows many authored rows.
+  key String?
+
+  title String
+  // The proposal on a template row; what actually runs once resolved.
+  prompt String
+  // One routine, several fire times — a callback sweep that runs at 08:30 and
+  // again at 13:00 is one thing the owner switched on, not two. Template rows
+  // hold the suggested cadence; hire rows hold the resolved one.
+  crons String[]
+  // What the owner has to tell the expert before this can run: which repo,
+  // which inbox, what time. Carried from the source package's installer block.
+  // A routine with unanswered asks cannot be switched on.
+  asks String[]
+
+  sessionMode ExpertRoutineSession @default(THREAD)
+  // THREAD: null until the first fire mints it, then reused. HERE: the chat it
+  // was created in. FRESH: stays null.
+  sessionId String?
+
+  // One scheduler job per cron. Empty means off — off is the absence of a job,
+  // not a paused one, so a routine nobody switched on costs the scheduler
+  // nothing.
+  scheduleIds String[]
+  enabledAt   DateTime?
+  // Set when the owner resolved the proposal (a time, a source, a rewrite).
+  // From then on the row is theirs and roster edits never touch it again.
+  customizedAt DateTime?
+  // False means the fire-time turn resolves an EMPTY credential allow-list, so
+  // the routine provably reaches nothing outside the platform — the rule
+  // `PreloadSeed.cron` states for preloads, enforced rather than asserted.
+  // Seeded and shared rows always arrive false; only an owner binding this
+  // routine to their connections sets it.
+  grantsCredentials Boolean @default(false)
+  // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
+  // what archiving paused, never one the owner had switched off themselves.
+  pausedByExpertArchive Boolean @default(false)
+
+  @@unique([expertId, key])
   @@index([expertId, createdAt, id])
 }
 
