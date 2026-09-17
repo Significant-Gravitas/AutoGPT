@@ -260,6 +260,186 @@ STARTER_SKILLS: list[StarterSkill] = [
         "categories": ["support", "operations"],
         "required_providers": [],
     },
+    {
+        "slug": "draft-a-first-touch",
+        "categories": ["content", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "multithread-and-stakeholder-maps",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "retail-jbp-trade-and-sellout",
+        "categories": ["finance", "operations", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "compliance-gated-deal-execution",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "credit-term-sheet-structuring",
+        "categories": ["sales", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "draft-a-follow-up",
+        "categories": ["sales", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "enablement-playbooks-certification",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "marketplace-partner-revenue-growth",
+        "categories": ["sales", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "media-plan-measure-optimize",
+        "categories": ["sales", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "pipeline-review-and-forecast",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "regional-category-gtm-strategy",
+        "categories": ["sales", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "cloud-commit-and-marketplace-selling",
+        "categories": ["sales", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "discovery-and-qualification",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "enterprise-deal-desk-close-plans",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "exec-engagement-and-sponsorship",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "field-call-route-discipline",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "find-the-decision-makers",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "partner-and-channel-co-sell",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "quarterback-the-deal-team",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "renewal-expansion-and-qbr",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "rfp-and-competitive-bid-response",
+        "categories": ["sales", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "sales-team-leadership",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "showroom-fi-and-internet-bdc",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "territory-and-account-planning",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "voice-of-customer-loop",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "alliance-co-commercialization",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "build-the-target-list",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "business-case-and-roi-selling",
+        "categories": ["sales", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "handle-a-reply",
+        "categories": ["sales", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "industrial-pursuit-tender-handover",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "next-step-and-handoff",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "objection-and-negotiation",
+        "categories": ["sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "regulated-access-and-clinical-selling",
+        "categories": ["sales", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "research-an-account",
+        "categories": ["sales", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "sales-ops-coverage-and-quota",
+        "categories": ["sales", "operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "signature-to-launch-and-account-ops",
+        "categories": ["sales", "operations", "support"],
+        "required_providers": [],
+    },
 ]
 
 
