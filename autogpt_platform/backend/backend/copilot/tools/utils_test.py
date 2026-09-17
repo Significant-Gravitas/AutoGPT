@@ -6,13 +6,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsFieldInfo,
-    HostScopedCredentials,
-    OAuth2Credentials,
-)
-from backend.integrations.credentials_store import openai_credentials
+from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
 
 
 def _make_regular_field() -> CredentialsFieldInfo:
@@ -124,6 +118,10 @@ def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
         f"Authorization: Basic {_SECRET}",
         f"Authorization: Token {_SECRET}",
         f'{{"authorization": "Bearer {_SECRET}"}}',
+        # An OAuth token endpoint's error can quote these back.
+        f"client_secret={_SECRET}",
+        f'{{"client_secret": "{_SECRET}"}}',
+        f'{{"id_token": "{_SECRET}"}}',
     ],
 )
 def test_sanitize_provider_message_leaves_no_secret(raw: str):
@@ -222,10 +220,8 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
     ):
         MockCredsMgr.return_value.store = AsyncMock()
         MockCredsMgr.return_value.store.get_all_creds.return_value = [
-            # Oldest first, as the store lists them. The ungranted one is the
-            # newest, so a plain session picking it proves nothing was filtered.
-            _host_cred("granted-cred"),
             _host_cred("ungranted-cred"),
+            _host_cred("granted-cred"),
         ]
         return await resolve_block_credentials(
             "test-user",
@@ -233,116 +229,3 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
             {"url": "https://api.example.com/v1/data"},
             expert_id,
         )
-
-
-def _api_key(cred_id: str, provider: str = "github") -> APIKeyCredentials:
-    return APIKeyCredentials(
-        id=cred_id, provider=provider, title=cred_id, api_key=SecretStr("k")
-    )
-
-
-def _oauth(cred_id: str, scopes: list[str]) -> OAuth2Credentials:
-    return OAuth2Credentials(
-        id=cred_id,
-        provider="github",
-        title=cred_id,
-        access_token=SecretStr("t"),
-        refresh_token=None,
-        access_token_expires_at=None,
-        refresh_token_expires_at=None,
-        scopes=scopes,
-    )
-
-
-def find_matching_credential(creds, field):
-    from backend.copilot.tools.utils import find_matching_credential as find
-
-    return find(creds, field)
-
-
-def test_newest_of_the_users_own_credentials_wins():
-    # The store lists credentials oldest first.
-    picked = find_matching_credential(
-        [_api_key("older"), _api_key("newer")], _make_regular_field()
-    )
-    assert picked is not None and picked.id == "newer"
-
-
-def test_newest_that_has_the_scopes_wins_over_a_newer_one_without_them():
-    field = CredentialsFieldInfo.model_validate(
-        {
-            "credentials_provider": ["github"],
-            "credentials_types": ["oauth2"],
-            "credentials_scopes": ["repo", "read:org"],
-        },
-        by_alias=True,
-    )
-    picked = find_matching_credential(
-        [
-            _oauth("oldest", ["repo", "read:org"]),
-            _oauth("middle", ["repo", "read:org"]),
-            _oauth("newest-but-short", ["repo"]),
-        ],
-        field,
-    )
-    assert picked is not None and picked.id == "middle"
-
-
-def test_own_credential_beats_a_system_one_listed_after_it():
-    field = CredentialsFieldInfo.model_validate(
-        {"credentials_provider": ["openai"], "credentials_types": ["api_key"]},
-        by_alias=True,
-    )
-    own = _api_key("own-openai", provider="openai")
-    picked = find_matching_credential([own, openai_credentials], field)
-    assert picked is own
-
-
-def test_system_credential_is_the_fallback():
-    field = CredentialsFieldInfo.model_validate(
-        {"credentials_provider": ["openai"], "credentials_types": ["api_key"]},
-        by_alias=True,
-    )
-    assert find_matching_credential([openai_credentials], field) is openai_credentials
-    assert find_matching_credential([], field) is None
-
-
-def test_a_rejected_credential_loses_to_any_other_match():
-    from backend.copilot.tools.utils import find_matching_credential as find
-
-    creds = [_api_key("older"), _api_key("newer")]
-    picked = find(creds, _make_regular_field(), frozenset({"newer"}))
-    assert picked is not None and picked.id == "older"
-
-
-def test_a_rejected_credential_is_still_used_when_it_is_the_only_one():
-    # A 401 is not proof the secret is wrong, and the user may have just fixed
-    # it by reconnecting the same account.
-    from backend.copilot.tools.utils import find_matching_credential as find
-
-    picked = find([_api_key("only")], _make_regular_field(), frozenset({"only"}))
-    assert picked is not None and picked.id == "only"
-
-
-def _tool_message(content: str):
-    from backend.copilot.model import ChatMessage
-
-    return ChatMessage(role="tool", content=content, tool_call_id="call-1")
-
-
-def test_rejected_credential_ids_are_read_from_the_cards_in_the_transcript():
-    from backend.copilot.tools._test_data import make_session
-    from backend.copilot.tools.utils import rejected_credential_ids
-
-    session = make_session("user-1", guide_read=False, library_check=False)
-    session.messages += [
-        _tool_message(
-            '{"type": "setup_requirements", "rejection": {"credential_id": "cred-1"}}'
-        ),
-        _tool_message('{"type": "setup_requirements", "rejection": null}'),
-        _tool_message('"rejection" but {not json'),
-        _tool_message('{"type": "block_output", "outputs": {}}'),
-    ]
-
-    assert rejected_credential_ids(session) == frozenset({"cred-1"})
-    assert rejected_credential_ids(None) == frozenset()

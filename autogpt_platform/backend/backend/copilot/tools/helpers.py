@@ -70,7 +70,6 @@ from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
     match_credentials_to_requirements,
-    rejected_credential_ids,
     sanitize_provider_message,
 )
 
@@ -391,14 +390,6 @@ async def execute_block(
                     # Usually a refresh the provider refused (revoked grant,
                     # expired refresh token). The user can only fix that by
                     # reconnecting, so hand them the card rather than an error.
-                    # Never the exception itself: a refresh error can quote
-                    # the token it was refreshing.
-                    logger.warning(
-                        "Could not load credential %s for block %s (%s)",
-                        cred_meta.id,
-                        block.name,
-                        type(e).__name__,
-                    )
                     await _release_credential_leases(credential_leases)
                     return _build_credential_rejected_card(
                         block=block,
@@ -751,13 +742,11 @@ async def resolve_block_credentials(
     block: AnyBlockSchema,
     input_data: dict[str, Any] | None = None,
     expert_id: str | None = None,
-    avoid: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """Resolve credentials for a block by matching user's available credentials.
 
     Handles discriminated credentials (e.g. provider selection based on model).
     ``expert_id`` narrows the pool to that expert's granted credentials.
-    ``avoid`` holds credentials a provider refused earlier in the session.
 
     Returns:
         (matched_credentials, missing_credentials)
@@ -768,9 +757,7 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
-    return await match_credentials_to_requirements(
-        user_id, requirements, expert_id, avoid
-    )
+    return await match_credentials_to_requirements(user_id, requirements, expert_id)
 
 
 @dataclass
@@ -881,7 +868,7 @@ async def prepare_block_for_execution(
             input_data.pop(field_name)
 
     matched_credentials, missing_credentials = await resolve_block_credentials(
-        user_id, block, input_data, session.expert_id, rejected_credential_ids(session)
+        user_id, block, input_data, session.expert_id
     )
 
     try:
