@@ -10,8 +10,8 @@ from backend.integrations.mcp_catalog import get_mcp_catalog
 from .index import CapabilityIndex
 from .registry import MERGED_IMPLEMENTATIONS, build_entries
 from .resolve import resolve_entry
-from .sources.mcp_catalog import setup_hint
 from .sources import RETIRED_TOOLS
+from .sources.mcp_catalog import setup_hint
 
 EXPLICIT_PRIMITIVES = {
     "ExecuteCodeBlock",

@@ -1150,10 +1150,11 @@ async def test_skills_update_notice_names_removed_skill():
 async def test_skills_update_notice_truncates_long_added_lists():
     """Beyond _MAX_UPDATE_NAMES the notice falls back to a remainder count
     instead of inlining the whole registry — it is a nudge, not the index."""
-    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES
+    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES, get_default_skills
 
+    extra = 3
     fake_manager = _FakeWorkspaceManager()
-    for i in range(_MAX_UPDATE_NAMES + 3):
+    for i in range(_MAX_UPDATE_NAMES + extra):
         slug = f"skill-{i:02d}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description=f"skill {i}", body="x")
@@ -1165,8 +1166,13 @@ async def test_skills_update_notice_truncates_long_added_lists():
                 _history_with_index("- name: agent_building_guide — guide")
             ],
         )
+    # Derived, not spelled out: the defaults are part of the added set, so a
+    # default skill added or retired elsewhere should not fail this test.
+    unseen_defaults = sum(
+        1 for s in get_default_skills() if s.name != "agent_building_guide"
+    )
     assert "<skills_update>" in notice
-    assert "and 4 more" in notice
+    assert f"and {extra + unseen_defaults} more" in notice
     assert "list_skills" in notice
 
 

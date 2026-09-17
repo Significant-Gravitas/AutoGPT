@@ -445,53 +445,52 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     for origin in ("automation", None):
         hidden = origin_disabled_tools(origin)
         assert hidden == INTERACTIVE_ORIGIN_TOOLS
 
-        declared = {
-            t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-        }
-        assert not (INTERACTIVE_ORIGIN_TOOLS & declared), (
-            f"origin={origin!r} still declares "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & declared)}"
+        # Reachable, not declared: most of these are deferred now, so the
+        # schema list would read every one of them as gated whether the gate
+        # works or not.  ``run_capability`` answers to the same hidden set.
+        reachable = reachable_tool_names(disabled_tools=hidden)
+        assert not (INTERACTIVE_ORIGIN_TOOLS & reachable), (
+            f"origin={origin!r} can still reach "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & reachable)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
         # still reports through a chat platform, still wakes itself up.
         assert {
             "run_agent",
-            "run_block",
+            "run_capability",
             "run_sub_session",
             "schedule_followup",
             "ask_question",
-        } <= declared
+        } <= reachable
 
 
-def test_interactive_origin_declares_every_tool_it_did_before() -> None:
-    """An interactive session declares exactly what it declared before.
+def test_interactive_origin_reaches_every_tool_it_did_before() -> None:
+    """An interactive session reaches exactly what it reached before.
 
     The counterpart to the test above, and what fails if the gate ever widens
     past ``origin`` into the sessions a person really is driving.
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     hidden = origin_disabled_tools("interactive")
     assert hidden == frozenset()
 
-    declared = {
-        t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-    }
+    reachable = reachable_tool_names(disabled_tools=hidden)
     assert (
-        INTERACTIVE_ORIGIN_TOOLS <= declared
-    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - declared)}"
+        INTERACTIVE_ORIGIN_TOOLS <= reachable
+    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - reachable)}"
 
 
 def test_set_matches_the_tools_that_call_the_origin_guard() -> None:

@@ -392,6 +392,35 @@ def get_tool(tool_name: str) -> BaseTool | None:
     return TOOL_REGISTRY.get(tool_name)
 
 
+def reachable_tool_names(
+    *,
+    disabled_groups: Iterable[ToolGroup] = (),
+    disabled_tools: Iterable[str] = (),
+) -> frozenset[str]:
+    """Names this turn can actually run, declared or reached by id.
+
+    Since the swap, a tool being absent from the schema list no longer means
+    the turn cannot run it: 57 of them are reached through ``run_capability``
+    instead, bounded by the same hidden set. Gate tests that ask "can this
+    session still do X" want this, not ``get_available_tools``; asking the
+    schema list alone reads every deferred tool as removed.
+    """
+    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    declared = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.is_available and name not in hidden and name not in DEFERRED_TOOL_NAMES
+    }
+    if "run_capability" not in declared:
+        # Nothing reaches a deferred tool without the tool that runs them.
+        return frozenset(declared)
+    return frozenset(declared) | frozenset(
+        name
+        for name in DEFERRED_TOOL_NAMES
+        if name not in hidden and TOOL_REGISTRY[name].is_available
+    )
+
+
 async def execute_tool(
     tool_name: str,
     parameters: dict[str, Any],
