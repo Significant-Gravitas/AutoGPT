@@ -176,8 +176,13 @@ export function SkillPage({ slug }: Props) {
                 ) : (
                   skill.source_repo
                 )}
-                {skill.license ? ` (${skill.license})` : null}
               </span>
+            </>
+          ) : null}
+          {skill.license ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>License: {skill.license}</span>
             </>
           ) : null}
           {providers.length > 0 ? (

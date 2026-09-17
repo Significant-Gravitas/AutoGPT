@@ -141,7 +141,7 @@ describe("Marketplace skill page", () => {
     ).toHaveLength(1);
   });
 
-  test("links a vendored skill to the repo it came from, with its licence", async () => {
+  test("links a vendored skill to its source and shows its license", async () => {
     server.use(
       getGetV2GetMarketplaceSkillMockHandler200({
         ...outreach,
@@ -161,7 +161,23 @@ describe("Marketplace skill page", () => {
     expect(source.getAttribute("href")).toBe(
       "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
     );
-    expect(source.parentElement?.textContent).toContain("(MIT)");
+    expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("shows a creator skill license without a source repo", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: null,
+        source_url: null,
+        license: "Proprietary",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText("License: Proprietary")).toBeDefined();
   });
 
   test("installs in one click and offers the connect step afterwards", async () => {
