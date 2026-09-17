@@ -89,7 +89,12 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
 from backend.data.redis_client import get_redis_async
-from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    forget_sandbox,
+)
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata
 
@@ -716,6 +721,7 @@ async def get_or_create_owner_sandbox(
                     await asyncio.wait_for(
                         sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
                     )
+                await forget_sandbox(sandbox.sandbox_id)
                 raise
         except asyncio.CancelledError:
             # Task cancelled during creation — release the slot so followers
@@ -732,6 +738,8 @@ async def get_or_create_owner_sandbox(
                     await asyncio.wait_for(
                         sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
                     )
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await forget_sandbox(sandbox.sandbox_id)
             raise
         except Exception:
             # Release the creation slot so other callers can proceed.
@@ -804,6 +812,9 @@ async def _act_on_sandbox(
 
     try:
         await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)
+        # Paused or killed, the box will not present its proxy credential
+        # again: a resume mints a fresh one.
+        await forget_sandbox(sandbox_id)
         if clear_stored_id:
             await _clear_stored_sandbox_id(owner)
         logger.info(
@@ -871,6 +882,7 @@ async def pause_sandbox_direct(
     try:
         await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
         logger.info("[E2B] Paused sandbox %.12s for %s", sandbox.sandbox_id, owner)
+        await forget_sandbox(sandbox.sandbox_id)
         await _forget_stream(owner)
         return True
     except Exception as exc:

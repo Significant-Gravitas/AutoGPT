@@ -59,6 +59,11 @@ _BOX_KEY_PREFIX = "e2b:egress:box:"
 # lifetime); every reconnect replaces it anyway.
 _CREDENTIAL_TTL = 48 * 3600
 _KILL_TIMEOUT_SECONDS = 10
+_LOCK_KEY_PREFIX = "e2b:egress:lock:"
+# A rotation is one E2B call and three Redis writes; the TTL only matters if
+# the holder dies mid-way.
+_ROTATION_LOCK_TTL = 60
+_ROTATION_LOCK_WAIT = 30
 
 S = TypeVar("S", bound=AsyncSandbox)
 
@@ -166,20 +171,65 @@ async def connect_sandbox(
     The new credential is recorded before the update and the old one is
     forgotten after it, so a failed update leaves the box on a credential
     that still resolves.
+
+    The rotation is serialized per box.  Several turns share an expert's box
+    and may reconnect at once; the order two ``update_network`` calls land at
+    E2B is not the order their awaits return, so without the lock the box
+    could end up presenting a credential the other reconnect just forgot, and
+    E2B's proxy option fails closed.
     """
     # The SDK types ``connect`` as the base class; it returns *sandbox_cls*.
     sandbox = cast(S, await sandbox_cls.connect(sandbox_id, **kwargs))
     address = proxy_address()
     if address is None or not apply_network:
         return sandbox
-    credential = _mint()
-    await _remember(credential, owner, sandbox_id=sandbox_id)
-    await sandbox.update_network(_network_update(address, credential))
-    await _bind(sandbox_id, credential.username)
+    async with _rotation_lock(sandbox_id):
+        credential = _mint()
+        await _remember(credential, owner, sandbox_id=sandbox_id)
+        try:
+            await sandbox.update_network(_network_update(address, credential))
+        except BaseException:
+            # The box never got this credential: do not leave it resolving.
+            with contextlib.suppress(BaseException):
+                await _forget(credential.username)
+            # ``connect`` has already resumed the box.  One that was pinned
+            # before stays pinned, on its previous credential; one that never
+            # was (it predates the proxy) is awake with direct egress and its
+            # handle is about to be lost, so put it back to sleep.
+            with contextlib.suppress(BaseException):
+                if not await _bound_username(sandbox_id):
+                    await asyncio.wait_for(
+                        sandbox.pause(), timeout=_KILL_TIMEOUT_SECONDS
+                    )
+            raise
+        await _bind(sandbox_id, credential.username)
     logger.info(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
     return sandbox
+
+
+async def forget_sandbox(sandbox_id: str) -> None:
+    """Revoke a box's proxy credential: call when the box is paused or killed.
+
+    Nothing will present it again (a resume mints a fresh one), and until its
+    TTL it would keep naming this owner to the proxy.  Best effort: a failure
+    here must not fail the pause or kill it follows.
+    """
+    if proxy_address() is None:
+        return  # no box is pinned; leftovers of an earlier setting expire
+    try:
+        redis = await get_redis_async()
+        username = await _bound_username(sandbox_id)
+        if username:
+            await redis.delete(_CREDENTIAL_KEY_PREFIX + username)
+        await redis.delete(_BOX_KEY_PREFIX + sandbox_id)
+    except Exception:
+        logger.warning(
+            "[E2B] Could not revoke the proxy credential of %.12s",
+            sandbox_id,
+            exc_info=True,
+        )
 
 
 async def credential_record(username: str) -> Optional[dict[str, Any]]:
@@ -236,12 +286,43 @@ async def _forget(username: str) -> None:
     await redis.delete(_CREDENTIAL_KEY_PREFIX + username)
 
 
+async def _bound_username(sandbox_id: str) -> Optional[str]:
+    redis = await get_redis_async()
+    raw = await redis.get(_BOX_KEY_PREFIX + sandbox_id)
+    return raw.decode() if isinstance(raw, bytes) else raw
+
+
+@contextlib.asynccontextmanager
+async def _rotation_lock(sandbox_id: str):
+    """One credential rotation per box at a time, across processes."""
+    # Imported here: backend.executor's package import reaches back to the
+    # blocks, which import this module.
+    from backend.executor.cluster_lock import AsyncClusterLock
+
+    lock = AsyncClusterLock(
+        await get_redis_async(),
+        _LOCK_KEY_PREFIX + sandbox_id,
+        owner_id=secrets.token_hex(8),
+        timeout=_ROTATION_LOCK_TTL,
+    )
+    deadline = asyncio.get_running_loop().time() + _ROTATION_LOCK_WAIT
+    while await lock.try_acquire() != lock.owner_id:
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TimeoutError(
+                f"Another reconnect is still re-pinning sandbox {sandbox_id[:12]}"
+            )
+        await asyncio.sleep(0.2)
+    try:
+        yield
+    finally:
+        await lock.release()
+
+
 async def _bind(sandbox_id: str, username: str) -> None:
     """Make *username* the box's current credential and forget its previous one."""
     redis = await get_redis_async()
     key = _BOX_KEY_PREFIX + sandbox_id
-    raw = await redis.get(key)
-    previous = raw.decode() if isinstance(raw, bytes) else raw
+    previous = await _bound_username(sandbox_id)
     await redis.set(key, username, ex=_CREDENTIAL_TTL)
     if previous and previous != username:
         await redis.delete(_CREDENTIAL_KEY_PREFIX + previous)

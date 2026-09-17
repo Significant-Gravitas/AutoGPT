@@ -1571,3 +1571,54 @@ class TestExpertBoxRecovery:
             )
         assert ok is False
         sb.pause.assert_not_awaited()
+
+
+class TestProxyCredentialIsRevoked:
+    """A box that is paused or killed will not present its proxy credential
+    again; left alone, the record would keep naming its owner to the proxy."""
+
+    _FORGET = "backend.copilot.tools.e2b_sandbox.forget_sandbox"
+
+    def test_on_kill(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_the_turn_end_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_redis(_mock_redis()),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+        forget.assert_awaited_once_with(sb.sandbox_id)
+
+    def test_not_when_the_kill_failed(self):
+        """The box is still there and may yet egress: keep its credential."""
+        sb = _mock_sandbox()
+        sb.kill = AsyncMock(side_effect=RuntimeError("e2b error"))
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
+        forget.assert_not_awaited()

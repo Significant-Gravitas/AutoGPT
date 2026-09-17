@@ -1,6 +1,7 @@
 """The egress chokepoint: every SDK create and connect goes through it, and
 with a proxy configured every box is pinned under a credential of its own."""
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -16,6 +17,7 @@ from backend.util.e2b_network import (
     connect_sandbox,
     create_sandbox,
     credential_record,
+    forget_sandbox,
     secret_digest,
 )
 
@@ -31,9 +33,18 @@ def _redis(values: dict[str, str] | None = None) -> MagicMock:
     async def _get(key):
         return store.get(key, "").encode() or None
 
-    async def _set(key, value, ex=None):
+    async def _set(key, value, ex=None, nx=False):
+        if nx and key in store:
+            return None
         store[key] = value
         return True
+
+    async def _eval(script, numkeys, key, value):
+        # The rotation lock's compare-and-delete release.
+        if store.get(key) == value:
+            del store[key]
+            return 1
+        return 0
 
     async def _delete(*keys):
         for key in keys:
@@ -42,6 +53,7 @@ def _redis(values: dict[str, str] | None = None) -> MagicMock:
     r.get = AsyncMock(side_effect=_get)
     r.set = AsyncMock(side_effect=_set)
     r.delete = AsyncMock(side_effect=_delete)
+    r.eval = AsyncMock(side_effect=_eval)
     r.store = store
     return r
 
@@ -67,6 +79,13 @@ def _configured(address: str | None):
 
 
 class TestOff:
+    @pytest.mark.asyncio
+    async def test_pausing_or_killing_a_box_does_not_touch_redis(self):
+        lookup = AsyncMock()
+        with _configured(None), patch(f"{_M}.get_redis_async", lookup):
+            await forget_sandbox("sb-1")
+        lookup.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_create_and_connect_are_passed_through_untouched(self):
         box, cls, redis = _box(), None, _redis()
@@ -222,6 +241,104 @@ class TestPinned:
         assert redis.store["e2b:egress:box:sb-1"] == first
 
     @pytest.mark.asyncio
+    async def test_a_failed_update_forgets_the_credential_the_box_never_got(self):
+        box, redis = _box("sb-1"), _redis()
+        box.pause = AsyncMock()
+        cls = _sdk(box)
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(cls, _OWNER, template="t")
+            before = dict(redis.store)
+            box.update_network = AsyncMock(side_effect=RuntimeError("502"))
+            with pytest.raises(RuntimeError):
+                await connect_sandbox(cls, "sb-1", _OWNER)
+        # Same records as before the attempt, lock released; and a box that
+        # was pinned stays awake on its previous credential.
+        assert redis.store == before
+        box.pause.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_box_that_was_never_pinned_is_put_back_to_sleep(self):
+        """``connect`` resumed it with direct egress and the handle is lost."""
+        box, redis = _box("sb-old"), _redis()
+        box.pause = AsyncMock()
+        box.update_network = AsyncMock(side_effect=RuntimeError("502"))
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            with pytest.raises(RuntimeError):
+                await connect_sandbox(_sdk(box), "sb-old", _OWNER)
+        box.pause.assert_awaited_once()
+        assert redis.store == {}
+
+    @pytest.mark.asyncio
+    async def test_concurrent_reconnects_leave_the_box_on_a_credential_that_resolves(
+        self,
+    ):
+        """Several turns share an expert's box.  Whatever order the two
+        updates land in, the credential the box ends up presenting must be the
+        one that is still on record."""
+        box, redis = _box("sb-1"), _redis()
+        cls = _sdk(box)
+        applied: list[str] = []
+        first_is_in = asyncio.Event()
+
+        async def _update(network):
+            # The update lands at E2B at once; the first caller only hears
+            # back after the second has come and gone.
+            applied.append(network["egress_proxy"]["username"])
+            if not first_is_in.is_set():
+                first_is_in.set()
+                await asyncio.sleep(0.3)
+
+        box.update_network = AsyncMock(side_effect=_update)
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            first = asyncio.create_task(connect_sandbox(cls, "sb-1", _OWNER))
+            await first_is_in.wait()
+            await connect_sandbox(cls, "sb-1", _OWNER)
+            await first
+            presented = applied[-1]
+            assert await credential_record(presented) is not None
+        assert redis.store["e2b:egress:box:sb-1"] == presented
+        credentials = [k for k in redis.store if k.startswith("e2b:egress:cred:")]
+        assert credentials == ["e2b:egress:cred:" + presented]
+
+    @pytest.mark.asyncio
+    async def test_a_rotation_that_never_gets_its_turn_gives_up(self):
+        box, redis = _box("sb-1"), _redis({"e2b:egress:lock:sb-1": "someone-else"})
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._ROTATION_LOCK_WAIT", 0.3),
+        ):
+            with pytest.raises(TimeoutError):
+                await connect_sandbox(_sdk(box), "sb-1", _OWNER)
+        box.update_network.assert_not_awaited()
+        assert redis.store == {"e2b:egress:lock:sb-1": "someone-else"}
+
+    @pytest.mark.asyncio
+    async def test_a_paused_or_killed_box_has_its_credential_revoked(self):
+        box, redis = _box("sb-1"), _redis()
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            assert redis.store
+            await forget_sandbox("sb-1")
+            assert redis.store == {}
+            await forget_sandbox("sb-never-pinned")
+
+    @pytest.mark.asyncio
+    async def test_a_revocation_that_fails_does_not_fail_the_kill_it_follows(self):
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(side_effect=ConnectionError("redis"))
+        ):
+            await forget_sandbox("sb-1")
+
+    @pytest.mark.asyncio
     async def test_a_connect_that_only_pauses_or_kills_does_not_repin(self):
         box, redis = _box("sb-1"), _redis()
         cls = _sdk(box)
@@ -233,24 +350,57 @@ class TestPinned:
         assert redis.store == {}
 
 
+# ``.create(`` / ``.connect(`` calls that are not a sandbox's, in files that
+# import the SDK.  Anything else in such a file has to be listed here to pass.
+_NOT_A_SANDBOX = ("AsyncVolume.create(",)
+
+
 def test_every_sdk_create_and_connect_goes_through_the_chokepoint():
-    """A new direct call would create a box whose egress nobody pinned."""
+    """A new direct call would create a box whose egress nobody pinned.
+
+    Any ``.create(`` or ``.connect(`` in a file that imports the SDK counts,
+    not only ``AsyncSandbox.create(``: ``connect`` is also an instance method
+    that resumes a box, and the class can be imported under another name.
+    """
     package = Path(backend.__file__).parent
     roots = [package, package.parent / "scripts"]
     chokepoint = Path(e2b_network.__file__).resolve()
-    # A call, not a mention: comments and backticked prose are skipped.
-    pattern = re.compile(r"(?<![`\w])\w*Sandbox\.(create|connect)\(")
+    imports_sdk = re.compile(r"^\s*(from|import)\s+e2b", re.MULTILINE)
+    call = re.compile(r"\.(create|connect)\(")
     offenders = []
     for root in roots:
         for path in root.rglob("*.py"):
             if path.name.endswith("_test.py") or path.resolve() == chokepoint:
                 continue
-            for number, line in enumerate(path.read_text().splitlines(), 1):
-                if line.lstrip().startswith("#"):
-                    continue
-                if pattern.search(line):
+            text = path.read_text()
+            if not imports_sdk.search(text):
+                continue
+            for number, line in enumerate(text.splitlines(), 1):
+                code = line.split("#", 1)[0]
+                # Backticked prose in a docstring is a mention, not a call.
+                code = re.sub(r"``[^`]*``|`[^`]*`", "", code)
+                if call.search(code) and not any(ok in code for ok in _NOT_A_SANDBOX):
                     offenders.append(f"{path.relative_to(package.parent)}:{number}")
     assert offenders == [], (
         "Direct E2B create/connect calls outside backend/util/e2b_network.py: "
         + ", ".join(offenders)
     )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "sb = await AsyncSandbox.create(template=t)",
+        "sb = await Box.connect(sandbox_id)",  # imported under another name
+        "await sandbox.connect(timeout=60)",  # the instance method resumes a box
+        "sb = await AsyncSandbox.create(",  # the call continues on the next line
+    ],
+)
+def test_the_guard_sees_every_shape_of_a_direct_call(line, tmp_path, monkeypatch):
+    package = tmp_path / "backend"
+    package.mkdir()
+    (package / "sneaky.py").write_text(f"from e2b import AsyncSandbox as Box\n{line}\n")
+    (tmp_path / "scripts").mkdir()
+    monkeypatch.setattr(backend, "__file__", str(package / "__init__.py"))
+    with pytest.raises(AssertionError, match="sneaky.py:2"):
+        test_every_sdk_create_and_connect_goes_through_the_chokepoint()
