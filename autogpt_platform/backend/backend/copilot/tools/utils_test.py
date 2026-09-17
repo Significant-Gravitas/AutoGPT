@@ -305,3 +305,44 @@ def test_system_credential_is_the_fallback():
     )
     assert find_matching_credential([openai_credentials], field) is openai_credentials
     assert find_matching_credential([], field) is None
+
+
+def test_a_rejected_credential_loses_to_any_other_match():
+    from backend.copilot.tools.utils import find_matching_credential as find
+
+    creds = [_api_key("older"), _api_key("newer")]
+    picked = find(creds, _make_regular_field(), frozenset({"newer"}))
+    assert picked is not None and picked.id == "older"
+
+
+def test_a_rejected_credential_is_still_used_when_it_is_the_only_one():
+    # A 401 is not proof the secret is wrong, and the user may have just fixed
+    # it by reconnecting the same account.
+    from backend.copilot.tools.utils import find_matching_credential as find
+
+    picked = find([_api_key("only")], _make_regular_field(), frozenset({"only"}))
+    assert picked is not None and picked.id == "only"
+
+
+def _tool_message(content: str):
+    from backend.copilot.model import ChatMessage
+
+    return ChatMessage(role="tool", content=content, tool_call_id="call-1")
+
+
+def test_rejected_credential_ids_are_read_from_the_cards_in_the_transcript():
+    from backend.copilot.tools._test_data import make_session
+    from backend.copilot.tools.utils import rejected_credential_ids
+
+    session = make_session("user-1", guide_read=False, library_check=False)
+    session.messages += [
+        _tool_message(
+            '{"type": "setup_requirements", "rejection": {"credential_id": "cred-1"}}'
+        ),
+        _tool_message('{"type": "setup_requirements", "rejection": null}'),
+        _tool_message('"rejection" but {not json'),
+        _tool_message('{"type": "block_output", "outputs": {}}'),
+    ]
+
+    assert rejected_credential_ids(session) == frozenset({"cred-1"})
+    assert rejected_credential_ids(None) == frozenset()

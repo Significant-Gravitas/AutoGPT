@@ -18,6 +18,7 @@ from backend.data.db_accessors import review_db
 from .base import BaseTool
 from .helpers import execute_block, resolve_block_credentials
 from .models import ErrorResponse, ToolResponseBase
+from .utils import rejected_credential_ids
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,11 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
-            user_id, block, input_data, session.expert_id
+            user_id,
+            block,
+            input_data,
+            session.expert_id,
+            rejected_credential_ids(session),
         )
         if missing_creds:
             return ErrorResponse(

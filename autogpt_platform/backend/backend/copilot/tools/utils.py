@@ -1,8 +1,9 @@
 """Shared utilities for chat tools."""
 
+import json
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.api.features.library import model as library_model
 from backend.data.db_accessors import library_db, store_db
@@ -19,6 +20,9 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +269,7 @@ async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
     expert_id: str | None = None,
+    avoid: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -280,7 +285,7 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id, expert_id)
 
     for field_name, field_info in requirements.items():
-        matching_cred = find_matching_credential(available_creds, field_info)
+        matching_cred = find_matching_credential(available_creds, field_info, avoid)
 
         if matching_cred:
             try:
@@ -351,6 +356,7 @@ async def scope_credentials_to_expert(
 def find_matching_credential(
     available_creds: list[Credentials],
     field_info: CredentialsFieldInfo,
+    avoid: frozenset[str] = frozenset(),
 ) -> Credentials | None:
     """Find a credential that matches the required provider, type, scopes, host,
     and — for MCP OAuth credentials — the server URL.
@@ -359,9 +365,16 @@ def find_matching_credential(
     them oldest first, and the account someone just connected is the one they
     mean — taking the first fit handed every run to the oldest credential, even
     right after a reconnect. Platform system credentials remain the fallback.
+
+    Ids in *avoid* (credentials the provider already refused in this session)
+    lose to any other match, but are still returned when nothing else fits: a
+    401 is not proof the secret is wrong, and the user may have just fixed it.
     """
     matches = [c for c in available_creds if _credential_fits(c, field_info)]
     own = [c for c in matches if not is_system_credential(c.id)]
+    untried = [c for c in own if c.id not in avoid]
+    if untried:
+        return untried[-1]
     if own:
         return own[-1]
     return matches[0] if matches else None
@@ -559,6 +572,26 @@ async def check_user_has_required_credentials(
             missing.append(required)
 
     return missing
+
+
+def rejected_credential_ids(session: "ChatSession | None") -> frozenset[str]:
+    """Credentials a provider refused earlier in this session.
+
+    Read from the setup cards already in the transcript, so a retry does not
+    walk straight back into the credential that just earned a 401.
+    """
+    rejected: set[str] = set()
+    for message in session.messages if session else []:
+        if message.role != "tool" or '"rejection"' not in (message.content or ""):
+            continue
+        try:
+            payload = json.loads(message.content or "")
+        except ValueError:
+            continue
+        rejection = payload.get("rejection") if isinstance(payload, dict) else None
+        if isinstance(rejection, dict) and rejection.get("credential_id"):
+            rejected.add(str(rejection["credential_id"]))
+    return frozenset(rejected)
 
 
 def credential_rejection_status(exc: BaseException) -> int | None:
