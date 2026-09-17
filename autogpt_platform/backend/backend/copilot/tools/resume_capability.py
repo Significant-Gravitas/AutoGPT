@@ -25,9 +25,11 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
+from .capability_gates import gate_denied, gate_denied_error
 from .continue_run_block import ContinueRunBlockTool
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
@@ -105,8 +107,16 @@ class ResumeCapabilityTool(BaseTool):
                 ),
                 session_id=session.session_id,
             )
+        # Resuming runs the capability, so it answers to the gate the run
+        # would have. Permissions, hidden tools and the turn envelope are all
+        # rebuilt per turn, and an approval from an earlier turn is not a
+        # standing exemption from the permissions of this one.
         if is_mcp_review_id(review_id):
+            if gate_denied(MCP_GATE):
+                return gate_denied_error("MCP servers", session_id)
             return await _resume_mcp(review_id, user_id, session, input_overrides)
+        if gate_denied(BLOCK_GATE):
+            return gate_denied_error("blocks", session_id)
         if input_overrides:
             return await _rerun_block(review_id, user_id, session, input_overrides)
         return await ContinueRunBlockTool()._execute(

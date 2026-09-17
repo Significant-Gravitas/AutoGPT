@@ -56,7 +56,10 @@ export function parseOutput(output: unknown): CapabilityListOutput | null {
 }
 
 export function queryOf(part: FindCapabilityToolPart): string | undefined {
-  return (part.input as FindCapabilityInput | undefined)?.query?.trim();
+  // `input` is whatever the model streamed, so `query` is not necessarily a
+  // string -- and this runs while the call is still streaming.
+  const query = (part.input as FindCapabilityInput | undefined)?.query;
+  return typeof query === "string" ? query.trim() : undefined;
 }
 
 export function getAnimationText(part: FindCapabilityToolPart): string {

@@ -72,6 +72,22 @@ describe("run_capability helpers", () => {
     });
   });
 
+  it("reads a resumed call's target out of its review id", () => {
+    expect(capabilityId({ review_id: "copilot-mcp-mcp.linear.app:ab12" })).toBe(
+      "mcp:mcp.linear.app",
+    );
+    expect(capabilityId({ review_id: "copilot-node-abc-123:ab12" })).toBe(
+      "block:abc-123",
+    );
+    expect(capabilityId({ review_id: "something-else:ab12" })).toBe("");
+    expect(capabilityId({ review_id: "copilot-mcp-no-suffix" })).toBe("");
+  });
+
+  it("routes a resumed MCP call to the MCP renderer before its output lands", () => {
+    const id = capabilityId({ review_id: "copilot-mcp-mcp.linear.app:ab12" });
+    expect(isMcpCapability(id, null)).toBe(true);
+  });
+
   it("uses a bare server URL id when the response has none", () => {
     const shaped = asMcpPart(
       part({ id: "https://mcp.example.com/mcp", input: { connect: true } }),

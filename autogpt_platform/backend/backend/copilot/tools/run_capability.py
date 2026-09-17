@@ -20,17 +20,13 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
-from backend.copilot.context import (
-    get_current_envelope,
-    get_current_hidden_tools,
-    get_current_permissions,
-)
 from backend.copilot.model import ChatSession
-from backend.copilot.permissions import ALL_TOOL_NAMES, BLOCK_GATE, MCP_GATE
+from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
+from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT
 from .models import (
     CapabilityDetailsResponse,
@@ -161,30 +157,6 @@ class RunCapabilityTool(BaseTool):
         )
 
 
-def _gate_denied(name: str) -> bool:
-    """True when this turn may not use *name* (a tool or a kind gate)."""
-    if name in get_current_hidden_tools():
-        return True
-    envelope = get_current_envelope()
-    if envelope is not None and not envelope.permits(name):
-        return True
-    permissions = get_current_permissions()
-    return permissions is not None and name not in permissions.effective_allowed_tools(
-        ALL_TOOL_NAMES
-    )
-
-
-def _denied(name: str, session_id: str) -> ErrorResponse:
-    return ErrorResponse(
-        message=(
-            f"'{name}' is not available in this session's permissions. "
-            "If the task needs it, say so instead of working around it."
-        ),
-        error="tool_disabled",
-        session_id=session_id,
-    )
-
-
 async def _run_block(
     entry: CapabilityEntry,
     user_id: str,
@@ -192,8 +164,8 @@ async def _run_block(
     payload: dict[str, Any],
     validate_only: bool,
 ) -> ToolResponseBase:
-    if _gate_denied(BLOCK_GATE):
-        return _denied("blocks", session.session_id)
+    if gate_denied(BLOCK_GATE):
+        return gate_denied_error("blocks", session.session_id)
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
@@ -217,8 +189,8 @@ async def _run_tool(
     tool = configured_tool(name)
     if tool is None:
         return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session.session_id)
-    if _gate_denied(name):
-        return _denied(name, session.session_id)
+    if gate_denied(name):
+        return gate_denied_error(name, session.session_id)
     if validate_only:
         return CapabilityDetailsResponse(
             message=f"{tool.description} Call again without validate_only to run.",
@@ -238,8 +210,8 @@ async def _run_mcp(
     payload: dict[str, Any],
     validate_only: bool,
 ) -> ToolResponseBase:
-    if _gate_denied(MCP_GATE):
-        return _denied("MCP servers", session.session_id)
+    if gate_denied(MCP_GATE):
+        return gate_denied_error("MCP servers", session.session_id)
     tool_name = str(payload.get("tool") or "").strip()
     arguments = payload.get("arguments")
     if arguments is not None and not isinstance(arguments, dict):

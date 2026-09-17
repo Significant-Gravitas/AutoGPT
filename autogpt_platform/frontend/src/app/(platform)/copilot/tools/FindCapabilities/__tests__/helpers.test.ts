@@ -63,4 +63,18 @@ describe("find_capability helpers", () => {
       'Search failed for "linear issue"',
     );
   });
+
+  it("survives a query that is not a string yet", () => {
+    const base = { type: "tool-find_capability", toolCallId: "c" };
+    for (const input of [
+      { query: 1 },
+      { query: null },
+      "not an object",
+      null,
+    ]) {
+      expect(
+        getAnimationText({ ...base, state: "input-streaming", input }),
+      ).toBe("Searching capabilities");
+    }
+  });
 });

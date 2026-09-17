@@ -451,6 +451,28 @@ async def test_resume_mcp_review_reopens_even_when_the_call_would_not_be_gated()
     db.delete_review_by_node_exec_id.assert_not_awaited()
 
 
+async def test_resume_honours_this_turn_s_gates():
+    """An approval is not a standing exemption from later permissions.
+
+    Permissions are rebuilt per turn, and resuming runs the capability, so a
+    turn that may not reach MCP servers may not reach them through a review
+    approved while it still could.
+    """
+    session = make_session(USER)
+    review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:ab12"
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock()
+    set_execution_context(
+        USER, session, permissions=CopilotPermissions(tools=["run_mcp_tool"])
+    )
+    with patch("backend.copilot.tools.resume_capability.review_db", return_value=db):
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id
+        )
+    assert isinstance(result, ErrorResponse) and result.error == "tool_disabled"
+    db.get_reviews_by_node_exec_ids.assert_not_awaited()
+
+
 async def test_resume_mcp_review_waits_for_approval():
     session = make_session(USER)
     review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:cd34"
