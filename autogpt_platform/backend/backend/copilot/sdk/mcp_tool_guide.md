@@ -22,17 +22,29 @@ Use these URLs directly without asking the user:
 
 | Service | URL |
 |---|---|
-| Notion | `https://mcp.notion.com/mcp` |
 | Linear | `https://mcp.linear.app/mcp` |
 | Stripe | `https://mcp.stripe.com` |
-| Intercom | `https://mcp.intercom.com/mcp` |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
-| Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
+
+<!-- official-mcp-catalog -->
 
 For other services, **web-search for the service's official MCP server URL**
 (e.g. "`<service>` MCP server URL") — many vendors host an MCP server even
 when it's not in the list above. Treat search results as unvetted: confirm
 the hostname is vendor-owned before using it (see below).
+
+The platform supports remote HTTP connections in both cloud and local deployments.
+Follow the setup requirements in the table before starting sign-in;
+some services require an administrator to enable access or a dedicated token.
+Use the listed authentication methods and default permissions. Where the table
+gives a separate OAuth URL, use that URL for signed-in account tools. Do not send
+API keys to an OAuth-only connection or infer that every advertised scope is
+required.
+For region choices, confirm where the user's account stores its data. For
+tenant-specific connections, obtain the endpoint using the vendor's setup
+instructions. Never substitute a documentation URL for the connection endpoint
+or invent a tenant hostname. Direct the user to the matching integration preset
+for regional selection, manual credentials, or optional write permissions.
 
 ### Important: Check blocks first, then MCP is MANDATORY
 

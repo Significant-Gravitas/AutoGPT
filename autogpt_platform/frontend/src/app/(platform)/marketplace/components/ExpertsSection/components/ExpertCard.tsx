@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
-import { formatSkillTitle } from "../../SkillsSection/helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -79,7 +78,7 @@ export function ExpertCard({ expert, isHired }: Props) {
                   key={skill.id}
                   className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
                 >
-                  {formatSkillTitle(skill.name)}
+                  {skill.title}
                 </span>
               ))}
               {skills.length > 3 ? (
@@ -92,18 +91,20 @@ export function ExpertCard({ expert, isHired }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-zinc-500">
-            <Icon icon={FlashIcon} size={18} className={accent.icon} />
-            {expert.workflows.length}{" "}
-            {expert.workflows.length === 1 ? "workflow" : "workflows"}
-          </span>
+          {expert.workflows.length > 0 ? (
+            <span className="flex items-center gap-2 text-base text-zinc-500">
+              <Icon icon={FlashIcon} size={18} className={accent.icon} />
+              {expert.workflows.length}{" "}
+              {expert.workflows.length === 1 ? "workflow" : "workflows"}
+            </span>
+          ) : null}
           {isHired ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
               Hired
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               View
               <Icon
                 icon={ArrowRight02Icon}

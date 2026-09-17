@@ -1521,7 +1521,10 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
-        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            return_value=MagicMock(get_parked_job_ids=MagicMock(return_value=[])),
+        ),
         patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
         patch(
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
@@ -1964,4 +1967,29 @@ class TestMorningBriefingSchedule:
         assert any(
             "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
+        )
+
+
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    # Two caches, not one: the default path reads the SQL-filtered
+    # _get_active_jobs_cached and only include_paused reads the unfiltered
+    # _get_jobs_cached. Patching one leaves the other on the real jobstore,
+    # which this Scheduler.__new__ instance does not have.
+    active = [j for j in jobs if j.next_run_time is not None]
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch.object(Scheduler, "_get_active_jobs_cached", return_value=active),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
         )

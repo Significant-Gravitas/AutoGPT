@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.integrations.mcp_guide import render_mcp_guide
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -18,7 +19,7 @@ def _load_guide() -> str:
     global _GUIDE_CACHE
     if _GUIDE_CACHE is None:
         guide_path = Path(__file__).parent.parent / "sdk" / "mcp_tool_guide.md"
-        _GUIDE_CACHE = guide_path.read_text(encoding="utf-8")
+        _GUIDE_CACHE = render_mcp_guide(guide_path.read_text(encoding="utf-8"))
     return _GUIDE_CACHE
 
 

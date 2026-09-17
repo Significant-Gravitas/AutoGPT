@@ -6,6 +6,7 @@ import tarfile
 
 import pytest
 
+from backend.api.features.store.skill_model import skill_title
 from backend.api.features.store.skill_seed import (
     STARTER_SKILLS,
     CatalogEntry,
@@ -188,3 +189,20 @@ def test_archive_fallback_rejects_paths_outside_the_target(
         _extract_catalog_archive(archive, tmp_path)
 
     archive.extractall.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("slug", "title"),
+    [
+        ("seo-content-brief", "SEO content brief"),
+        ("on-page-seo-audit", "On-page SEO audit"),
+        ("icp-and-positioning", "ICP and positioning"),
+        ("brand-voice-guide", "Brand voice guide"),
+    ],
+)
+def test_a_shipped_starter_keeps_the_casing_its_author_wrote(slug, title):
+    """A starter's frontmatter name is its slug, so a title derived from it
+    reads back as "Seo content brief"."""
+    entry = next(entry for entry in STARTER_SKILLS if entry["slug"] == slug)
+    parsed, _ = _load_starter(entry)
+    assert skill_title(parsed.name, parsed.body) == title

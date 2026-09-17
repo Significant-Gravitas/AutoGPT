@@ -11,7 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import backend.copilot.tools.skills as skills
-from backend.copilot.model import ChatSession
+from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
     DEFAULT_SKILLS,
@@ -42,6 +44,7 @@ from backend.copilot.tools.skills import (
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
+    build_skills_update_notice,
     copy_skill_to_expert,
     delete_user_skill,
     find_user_skill_slugs,
@@ -1087,6 +1090,173 @@ async def test_build_skills_context_authed_includes_user_skills():
         ctx = await build_skills_context(user_id="user-1")
     assert "mine" in ctx
     assert "agent_building_guide" in ctx  # defaults still present
+
+
+# ---------------------------------------------------------------------------
+# build_skills_update_notice (per-turn <skills_update> drift notice)
+# ---------------------------------------------------------------------------
+
+
+def _history_with_index(index_body: str) -> str:
+    """A persisted first user message carrying a baked-in skill index."""
+    return f"<available_skills>\n{index_body}\n</available_skills>\n\nhello"
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_index_matches_registry():
+    """Steady-state turns pay nothing — the notice fires only on drift."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(ctx)]
+        )
+    assert notice == ""
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_added_skill():
+    """A skill installed after session start is named with a list_skills nudge."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    stale_index = "- name: agent_building_guide — guide"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "<skills_update>" in notice
+    assert "mine" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_removed_skill():
+    """A skill deleted after session start is reported as removed."""
+    fake_manager = _FakeWorkspaceManager()
+    stale_index = "- name: gone — old skill"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "Removed" in notice
+    assert "gone" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_truncates_long_added_lists():
+    """Beyond _MAX_UPDATE_NAMES the notice falls back to a remainder count
+    instead of inlining the whole registry — it is a nudge, not the index."""
+    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES
+
+    fake_manager = _FakeWorkspaceManager()
+    for i in range(_MAX_UPDATE_NAMES + 3):
+        slug = f"skill-{i:02d}"
+        fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=slug, description=f"skill {i}", body="x")
+        ).encode()
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1",
+            prior_contents=[
+                _history_with_index("- name: agent_building_guide — guide")
+            ],
+        )
+    assert "<skills_update>" in notice
+    assert "and 4 more" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_flag_disabled():
+    """The COPILOT_SKILLS kill-switch suppresses the notice like the index."""
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await build_skills_update_notice(
+            "user-1", prior_contents=["<available_skills>\n</available_skills>\n\nhi"]
+        )
+    assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Engine prepend wiring (SDK helper + baseline helper)
+# ---------------------------------------------------------------------------
+
+
+def _session_with_user_history(contents: list[str]) -> ChatSession:
+    """ChatSession whose persisted history holds the given user messages."""
+    session = _make_session()
+    session.messages = [ChatMessage(role="user", content=c) for c in contents]
+    return session
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_fires_on_drift():
+    """A resumed turn whose index went stale gets the notice + original query."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    session = _session_with_user_history(
+        [_history_with_index("- name: agent_building_guide — guide")]
+    )
+    with _patch_skills_path(fake_manager):
+        result = await _maybe_prepend_skills_update(
+            session, "user-1", True, "do the thing"
+        )
+    assert result.startswith("<skills_update>")
+    assert result.endswith("do the thing")
+    assert "mine" in result
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_noop_when_index_current():
+    """Steady-state resumed turns reach the model untouched."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+        session = _session_with_user_history([_history_with_index(ctx)])
+        result = await _maybe_prepend_skills_update(
+            session, "user-1", True, "do the thing"
+        )
+    assert result == "do the thing"
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_noop_for_non_user_message():
+    """Tool-result turns never carry the notice (and never hit the registry)."""
+    session = _session_with_user_history(["hello"])
+    result = await _maybe_prepend_skills_update(session, "user-1", False, "raw")
+    assert result == "raw"
+
+
+def test_baseline_prepend_targets_current_user_message():
+    """With drained pending rows around, the notice lands on the latest turn."""
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "ack"},
+        {"role": "user", "content": "live"},
+    ]
+    _prepend_skills_notice_to_current_message(messages, "<skills_update>\nnew\n")
+    assert messages[0]["content"] == "first"
+    assert messages[2]["content"] == "<skills_update>\nnew\nlive"
+
+
+def test_baseline_prepend_empty_notice_noop():
+    """No drift means the live model input is left byte-identical."""
+    messages = [{"role": "user", "content": "live"}]
+    assert _prepend_skills_notice_to_current_message(messages, "") is None
+    assert messages == [{"role": "user", "content": "live"}]
 
 
 # ---------------------------------------------------------------------------

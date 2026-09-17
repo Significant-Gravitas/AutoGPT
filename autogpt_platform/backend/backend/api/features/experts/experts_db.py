@@ -21,6 +21,18 @@ from backend.api.features.experts.credential_counts import expert_credential_pro
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
+from backend.api.features.experts.credentials import (
+    grant_expert_credentials as grant_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    list_expert_credentials as list_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    revoke_expert_credential as revoke_expert_credential,
+)
+from backend.api.features.experts.credentials import (
+    settle_credential_seed as settle_credential_seed,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,
@@ -331,7 +343,7 @@ async def _live_bundled_skills(
             ExpertBundledSkill(
                 id=row.skillListingId,
                 slug=skill.slug,
-                name=skill.name,
+                title=skill.title,
                 description=skill.description,
             )
             for row in rows
@@ -466,6 +478,26 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
         )
         > 0
     )
+
+
+async def active_expert_ids(user_id: str, expert_ids: set[str]) -> set[str]:
+    """Which of *expert_ids* are live hires of *user_id*, in one query.
+
+    The batched form of :func:`owns_active_expert`, for callers holding a set:
+    a per-id loop is unbounded in the number of experts on a request that
+    previously did no expert work at all.
+    """
+    if not expert_ids:
+        return set()
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={
+            "id": {"in": sorted(expert_ids)},
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    return {row.id for row in rows}
 
 
 async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
@@ -1784,10 +1816,12 @@ async def _install_marketplace_workflow(
     return _to_workflow_ref(row)
 
 
-async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> None:
-    """Detach a workflow from a hired expert, dropping its install-time
-    schedule. The library agent itself is left alone — it is still the
-    user's, and another expert may share it."""
+async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> list[str]:
+    """Detach a workflow from a hired expert and stop its triggers.
+
+    Returns the names of the triggers that were paused or deactivated, so the
+    caller can say what it stopped. The library agent itself is left alone — it
+    is still the user's, and another expert may share it."""
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1801,14 +1835,24 @@ async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> Non
         raise ExpertNotFoundError(expert_id)
 
     row = await prisma.models.ExpertWorkflow.prisma().find_first(
-        where={"id": workflow_id, "expertId": expert_id}
+        where={"id": workflow_id, "expertId": expert_id},
+        include={"LibraryAgent": True},
     )
     if row is None:
         raise NotFoundError(f"Workflow #{workflow_id} not found on expert")
 
     if row.scheduleId:
         await scheduling.delete_workflow_schedule(row.scheduleId, user_id, expert_id)
+    stopped: list[str] = []
+    if row.LibraryAgent is not None:
+        stopped = await scheduling.suspend_workflow_triggers(
+            user_id,
+            expert_id,
+            row.LibraryAgent.agentGraphId,
+            except_schedule_id=row.scheduleId,
+        )
     await prisma.models.ExpertWorkflow.prisma().delete(where={"id": row.id})
+    return stopped
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
