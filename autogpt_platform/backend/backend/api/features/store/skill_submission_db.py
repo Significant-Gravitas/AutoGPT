@@ -26,6 +26,8 @@ from backend.util.exceptions import NotFoundError, PreconditionFailed
 
 from . import skill_db, skill_model
 
+_MAX_LICENSE_CHARS = 256
+
 
 async def submit_skill(
     user_id: str, request: skill_model.SkillSubmissionRequest
@@ -140,7 +142,12 @@ def _license_of(skill: ParsedSkill) -> str | None:
     value = skill.extra.get("license")
     if value is None:
         return None
-    return str(value).strip() or None
+    if not isinstance(value, str):
+        raise ValueError("license must be a string")
+    license_name = value.strip()
+    if len(license_name) > _MAX_LICENSE_CHARS:
+        raise ValueError(f"license must be ≤{_MAX_LICENSE_CHARS} chars")
+    return license_name or None
 
 
 async def review_skill_submission(
