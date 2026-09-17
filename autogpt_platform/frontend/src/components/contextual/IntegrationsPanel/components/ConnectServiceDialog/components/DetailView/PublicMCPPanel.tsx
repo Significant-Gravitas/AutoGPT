@@ -28,7 +28,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
         <Text variant="body" role="status">
           {toolCount === 0
             ? "Connected, but this server returned no tools."
-            : `${toolCount} tools available.`}
+            : `${toolCount} ${toolCount === 1 ? "tool" : "tools"} available.`}
         </Text>
       )}
       {toolCount !== null && (

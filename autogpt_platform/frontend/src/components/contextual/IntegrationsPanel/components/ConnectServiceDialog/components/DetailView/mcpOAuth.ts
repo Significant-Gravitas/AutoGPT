@@ -2,7 +2,11 @@ import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
+import {
+  getAPIResponseError,
+  getErrorMessage,
+  getErrorStatus,
+} from "@/lib/mcp-errors";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 
 interface Args {
@@ -27,7 +31,13 @@ export async function connectMCPOAuth({ serverURL, scopes, signal }: Args) {
       throw getAPIResponseError(login.status, login.data);
   } catch (error) {
     signal.throwIfAborted();
-    if (getErrorStatus(error) === 400) return null;
+    // The login route writes eight different 400s, each explaining a
+    // different failure. Returning a bare null threw all of them away and
+    // told the user to find an API token, even when the real cause was a
+    // failed client registration on a server that does support OAuth. Hand
+    // the reason back so the caller can show it.
+    if (getErrorStatus(error) === 400)
+      return { reason: getErrorMessage(error) } as const;
     throw error;
   }
   signal.throwIfAborted();

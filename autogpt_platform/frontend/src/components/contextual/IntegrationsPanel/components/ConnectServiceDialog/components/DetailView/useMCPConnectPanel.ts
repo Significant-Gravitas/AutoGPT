@@ -72,12 +72,19 @@ export function useMCPConnectPanel({
         signal,
       });
       signal.throwIfAborted();
-      if (!credential) {
-        if (manualSchemes.length) setPhase("manual-token");
+      if (!credential || "reason" in credential) {
+        const reason =
+          credential && "reason" in credential ? credential.reason : undefined;
+        // Only "this server has no OAuth" should push the user at the manual
+        // token tab; every other 400 is its own problem and says so.
+        const noOAuth =
+          !reason || /does not (advertise|support) oauth/i.test(reason);
+        if (noOAuth && manualSchemes.length) setPhase("manual-token");
         setError(
-          manualSchemes.length
-            ? "This server doesn't support OAuth sign-in. Choose how its API credential should be sent."
-            : "Sign-in is unavailable for this connection. Check its setup instructions and try again.",
+          reason ??
+            (manualSchemes.length
+              ? "This server doesn't support OAuth sign-in. Choose how its API credential should be sent."
+              : "Sign-in is unavailable for this connection. Check its setup instructions and try again."),
         );
         return;
       }

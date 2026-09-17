@@ -520,7 +520,17 @@ async def mcp_oauth_callback(
     # Enrich credential metadata for future lookup and token refresh
     if credentials.metadata is None:
         credentials.metadata = {}
-    credentials.metadata["mcp_server_url"] = meta["server_url"]
+    # Two catalog entries sign in at a different URL from the one their
+    # tools are called on (Context7 and Parallel). Binding the credential to
+    # the sign-in URL made lookup miss: the user completed OAuth, the dialog
+    # said connected, and every later call fell back to public limits with
+    # nothing reporting a problem. Record the URL the tools actually use.
+    catalog_entry = get_mcp_catalog_entry_for_url(meta["server_url"])
+    credentials.metadata["mcp_server_url"] = (
+        catalog_entry.mcp_server.server_url
+        if catalog_entry and catalog_entry.mcp_server.server_url
+        else meta["server_url"]
+    )
     credentials.metadata["mcp_client_id"] = meta["client_id"]
     credentials.metadata["mcp_client_secret"] = (
         ""
