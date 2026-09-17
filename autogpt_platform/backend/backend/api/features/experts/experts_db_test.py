@@ -475,11 +475,15 @@ async def _seed_template(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"jobTitle": "Marketing Manager"}
+    )
     first = await experts_db.hire_expert(test_user.id, template.id, None)
     second = await experts_db.hire_expert(test_user.id, template.id, None)
     assert first.expert.id == second.expert.id
     assert not first.expert.is_template
     assert first.expert.source_template_id == template.id
+    assert first.expert.job_title == "Marketing Manager"
 
 
 @pytest.fixture
@@ -1810,6 +1814,7 @@ async def test_hire_existing_team_expert_fails_closed():
         avatarUrl=None,
         color="",
         role="Marketing Specialist",
+        jobTitle=None,
         tagline=None,
         bio=None,
         skills=[],
@@ -1861,6 +1866,7 @@ async def test_hire_raced_org_expert_fails_closed():
         avatarUrl=None,
         color="",
         role="Marketing Specialist",
+        jobTitle=None,
         tagline=None,
         bio=None,
         skills=[],
@@ -3188,6 +3194,7 @@ async def test_seed_roster_round_trip(
         template = seeded[entry["name"]]
         assert template.is_template
         assert template.role == entry["role"]
+        assert template.job_title == entry["job_title"]
         assert template.identity == entry["identity"]
 
     second_ids = await seed.seed_roster()
@@ -3829,6 +3836,7 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "",
         "avatar_url": None,
         "bio": "",
@@ -3877,6 +3885,7 @@ async def test_sync_preloads_drops_workflows_the_roster_reassigned(
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "",
         "avatar_url": None,
         "bio": "",
@@ -3924,6 +3933,7 @@ async def test_sync_preloads_keeps_rows_when_a_slug_does_not_resolve(
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "",
         "avatar_url": None,
         "bio": "",
@@ -4040,6 +4050,7 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
     entry: seed.RosterEntry = {
         "name": f"Maria {uuid.uuid4().hex[:8]}",
         "role": "Marketing",
+        "job_title": "Marketing Generalist",
         "tagline": "Does all of marketing.",
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a generalist marketer.",
@@ -4068,6 +4079,7 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
             {
                 **entry,
                 "role": "SEO & Content",
+                "job_title": "SEO Content Writer",
                 "identity": "You are Maria, an SEO lead.",
                 "tagline": "Takes a keyword from brief to article.",
                 "bio": "Maria is an SEO and content strategist.",
@@ -4138,6 +4150,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "Refreshed tagline",
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a senior marketing strategist.",
@@ -4158,6 +4171,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
     assert refreshed.avatar_url == "/experts/maria.svg"
+    assert refreshed.job_title == "Marketing Manager"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
     assert refreshed.categories == ["marketing"]
