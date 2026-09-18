@@ -55,17 +55,15 @@ describe("copilot store: computer face", () => {
 
   it("opening a document over the computer face turns the flag off with the mode", () => {
     useCopilotUIStore.getState().openComputer();
-    useCopilotUIStore
-      .getState()
-      .openArtifact(
-        {
-          id: "a1",
-          title: "notes.md",
-          sourceUrl: "/x",
-          origin: "assistant",
-        } as never,
-        { persist: false },
-      );
+    useCopilotUIStore.getState().openArtifact(
+      {
+        id: "a1",
+        title: "notes.md",
+        sourceUrl: "/x",
+        origin: "assistant",
+      } as never,
+      { persist: false },
+    );
     const panel = useCopilotUIStore.getState().artifactPanel;
     expect(panel.mode).toBe("artifact");
     expect(panel.isComputerOpen).toBe(false);
