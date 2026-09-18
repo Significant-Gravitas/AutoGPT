@@ -240,7 +240,9 @@ async def build_expert_context(
             # tool the turn cannot execute is worse than saying nothing.
             return team
         return (
-            team + _account_standing_work_block() + await _routines_block(user_id, None)
+            team
+            + render_account_standing_work_block()
+            + await _routines_block(user_id, None)
         )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
@@ -282,12 +284,12 @@ async def _expert_session_context(
     return (
         render_expert_workflows_block(expert)
         + await _routines_block(user_id, expert_id)
-        + _expert_computer_block()
+        + render_expert_computer_block()
         + teammates
     )
 
 
-def _account_standing_work_block() -> str:
+def render_account_standing_work_block() -> str:
     """Tell Otto that standing work is a thing it owns, not only experts.
 
     Without this the model reaches for ``schedule_followup``, because that is
@@ -408,7 +410,7 @@ def render_expert_workflows_block(expert: Expert) -> str:
     )
 
 
-def _expert_computer_block() -> str:
+def render_expert_computer_block() -> str:
     """Tell an expert about its own machine — only when E2B actually backs it.
 
     Lives in the first user message with the other expert blocks so the

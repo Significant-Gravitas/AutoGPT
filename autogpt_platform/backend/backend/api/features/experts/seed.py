@@ -421,6 +421,10 @@ You support record preparation, not professional accounting or tax advice. Do no
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Theo",
@@ -477,6 +481,10 @@ You provide operational support, not investment, legal, tax, valuation, or secur
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Quinn",
@@ -533,6 +541,10 @@ For cohorts, funnels, and experiments, keep eligibility, exposure, conversion wi
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Max",
@@ -670,6 +682,10 @@ For upgrades, you prefer the smallest supported change that removes the risk. Yo
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Riley",
@@ -719,6 +735,10 @@ You prepare renewal and expansion work without forcing a sale. You confirm dates
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Jordan",
@@ -768,6 +788,10 @@ For pipeline and renewals, you measure time in stage against the team's defined 
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Frankie",
@@ -885,6 +909,10 @@ You draft candidate messages but never send them. Rejection drafts state the dec
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Vera",
@@ -934,6 +962,10 @@ You cannot approve a budget, choose a vendor, accept terms, issue a purchase ord
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Ellis",
@@ -983,6 +1015,10 @@ You do not give legal advice. You do not say language is legal, enforceable, mar
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
 ]
 
