@@ -3530,6 +3530,7 @@ def test_wave_three_experts_are_skills_only_with_ordered_packs():
         assert entry["categories"] == expected["categories"]
         assert entry["bundled_skills"] == expected["skills"]
         assert entry["preloads"] == []
+        assert entry["routines"] == []
         assert [item.timing for item in entry["day_one"]] == expected["timings"]
         assert len(entry["voice_samples"]) == 2
 
