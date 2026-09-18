@@ -78,6 +78,7 @@ stripe = "^11.5.0"
 tenacity = "^9.1.4"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
+typesafe-sdk = "0.6.0"
 uvicorn = { extras = ["standard"], version = "^0.40.0" }
 websockets = "^15.0"
 youtube-transcript-api = "^1.2.1"
@@ -139,6 +140,7 @@ platform-linking-manager = "backend.platform_linking_manager:main"
 executor = "backend.exec:main"
 analytics-setup = "scripts.generate_views:main_setup"
 analytics-views = "scripts.generate_views:main_views"
+build-desktop-template = "scripts.build_desktop_template:main"
 copilot-executor = "backend.copilot.executor.__main__:main"
 batch-executor = "backend.batch_executor:main"
 copilot-bot = "backend.copilot.bot.__main__:main"
@@ -150,10 +152,17 @@ load-store-agents = "test.load_store_agents:run"
 export-api-schema = "backend.cli.generate_openapi_json:main"
 gen-prisma-stub = "scripts.gen_prisma_types_stub:main"
 brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
+expert-style-eval = "backend.copilot.eval.style.runner:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
 profile = "black"
+extend_skip_glob = ["test/fixtures/*", "*/test/fixtures/*"]
+
+[tool.black]
+# A vendored upstream package is test data: the suite compares it byte for byte
+# against what publishing stored, so reformatting it would test our own output.
+force-exclude = "test/fixtures/"
 
 [tool.coverage.run]
 # Offline eval harnesses: run manually with LLM credentials / ffmpeg
@@ -198,3 +207,7 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
+extend-exclude = ["test/fixtures"]
+# `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
+# the vendored fixture it walks into.
+force-exclude = true

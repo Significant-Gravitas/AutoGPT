@@ -1,6 +1,7 @@
 import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import {
   extractToolName,
   getAnimationText,
@@ -86,6 +87,13 @@ const ACTION_RESPONSE_TYPES = new Set([
   "suggested_goal",
 ]);
 
+const BLOCK_ACTION_TOOLS = new Set([
+  "run_block",
+  "continue_run_block",
+  "run_capability",
+  "resume_capability",
+]);
+
 function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   const output = tool.output;
   const data = asObject(output);
@@ -93,7 +101,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
-  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
+  const isBlock = BLOCK_ACTION_TOOLS.has(toolName);
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
@@ -165,7 +173,11 @@ export function isExpertChangePart(part: MessagePart): boolean {
 }
 
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");

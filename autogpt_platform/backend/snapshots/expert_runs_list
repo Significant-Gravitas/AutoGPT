@@ -9,6 +9,7 @@
     "needs_review": false,
     "output_key": "result",
     "output_type": "table",
+    "source": "manual",
     "started_at": null,
     "status": "completed"
   },
@@ -22,6 +23,7 @@
     "needs_review": false,
     "output_key": "result",
     "output_type": "doc",
+    "source": "manual",
     "started_at": null,
     "status": "completed"
   }

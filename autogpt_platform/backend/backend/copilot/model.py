@@ -105,6 +105,7 @@ class ChatSessionMetadata(BaseModel):
     dry_run: bool = False
     llm_auth_provider: CopilotLlmAuthProvider = "platform"
     llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -134,7 +135,7 @@ class ChatSessionMetadata(BaseModel):
     dream_pass_id: str | None = None
 
     # Delegation provenance, set by ``delegate_to_expert``: which expert
-    # (None = plain AutoPilot) asked for this work, and from which session.
+    # (None = plain Otto) asked for this work, and from which session.
     # The session id is the poll capability — ``get_sub_session_result``
     # accepts a cross-expert sub only when it names the caller here.
     delegated_by_expert_id: str | None = None
@@ -144,6 +145,11 @@ class ChatSessionMetadata(BaseModel):
     # transfers ownership rather than borrowing a teammate, so the receiving
     # expert can tell "this is now mine" from "report back to whoever asked".
     handed_off_from_expert_id: str | None = None
+
+    # What this session is for, set by the session itself so a teammate can
+    # find it with ``find_session``. Free text: the task spine (#14240) can
+    # narrow it to its own ids later without a migration.
+    purpose: str | None = None
 
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per
@@ -378,7 +384,7 @@ class ChatSessionInfo(BaseModel):
     team_id: str | None = None
     # Whether the user has pinned this session to the top of the sidebar.
     is_pinned: bool = False
-    # Hired expert this session is scoped to; None = plain Autopilot session.
+    # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
 
     @property
@@ -1355,7 +1361,7 @@ async def create_chat_session(
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
         delegated_by_expert_id: Expert that delegated this session's work
-            (None = plain AutoPilot). Provenance only.
+            (None = plain Otto). Provenance only.
         delegated_by_session_id: Session that delegated this session's work.
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,

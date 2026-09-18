@@ -1,7 +1,7 @@
 "use client";
 
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -31,11 +31,12 @@ interface Props {
   isLoading: boolean;
   marketQuery: string;
   onMarketQueryChange: (query: string) => void;
-  marketplaceSkills: StoreAgent[];
+  marketplaceSkills: MarketplaceSkill[];
   isMarketplaceLoading: boolean;
+  hasMarketplace: boolean;
   isSaving: boolean;
   onAdd: (name: string) => void;
-  onAddMarketplace: (agent: StoreAgent) => void;
+  onAddMarketplace: (skill: MarketplaceSkill) => void;
   onClose: () => void;
 }
 
@@ -49,6 +50,7 @@ export function AddSkillDialog({
   onMarketQueryChange,
   marketplaceSkills,
   isMarketplaceLoading,
+  hasMarketplace,
   isSaving,
   onAdd,
   onAddMarketplace,
@@ -67,6 +69,7 @@ export function AddSkillDialog({
 
   return (
     <Dialog
+      variant="compact"
       controlled={{
         isOpen: open,
         set: (next) => {
@@ -78,33 +81,29 @@ export function AddSkillDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-3">
-          <Text variant="small" className="text-sm !text-zinc-500">
+          <Text variant="body" tone="muted">
             Skills are reusable instructions this expert follows for a specific
-            job. Pick one from your library or install one from the marketplace.
+            job. Pick one from your library
+            {hasMarketplace ? " or install one from the marketplace" : ""}.
           </Text>
-          <TabsLine
-            value={source}
-            onValueChange={(next) => onSourceChange(next as Source)}
-          >
-            <TabsLineList flush indicatorClassName="bg-zinc-900">
-              <TabsLineTrigger
-                value="library"
-                className="gap-1.5 data-[state=active]:text-zinc-900"
-              >
-                <Icon icon={BookOpen01Icon} size={14} />
-                Library
-              </TabsLineTrigger>
-              <TabsLineTrigger
-                value="marketplace"
-                className="gap-1.5 data-[state=active]:text-zinc-900"
-              >
-                <Icon icon={Store01Icon} size={14} />
-                Marketplace
-              </TabsLineTrigger>
-            </TabsLineList>
-          </TabsLine>
+          {hasMarketplace ? (
+            <TabsLine
+              variant="compact"
+              value={source}
+              onValueChange={(next) => onSourceChange(next as Source)}
+            >
+              <TabsLineList>
+                <TabsLineTrigger value="library" icon={BookOpen01Icon}>
+                  Library
+                </TabsLineTrigger>
+                <TabsLineTrigger value="marketplace" icon={Store01Icon}>
+                  Marketplace
+                </TabsLineTrigger>
+              </TabsLineList>
+            </TabsLine>
+          ) : null}
 
-          {source === "library" ? (
+          {!hasMarketplace || source === "library" ? (
             <>
               <SearchInput
                 size="small"
@@ -113,11 +112,11 @@ export function AddSkillDialog({
                 placeholder="Search your library"
               />
               {isLoading ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   Loading your skills…
                 </Text>
               ) : visible.length === 0 ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   {skills.length === 0
                     ? "Every library skill is already on this expert."
                     : "No skills match."}
@@ -140,11 +139,15 @@ export function AddSkillDialog({
                   ))}
                 </ul>
               )}
-              <NextLink
-                href="/library/skills"
-                className="text-sm text-zinc-500 underline underline-offset-2"
-              >
-                Upload a new skill in your library
+              <NextLink href="/library/skills">
+                <Text
+                  variant="body"
+                  as="span"
+                  tone="muted"
+                  className="underline underline-offset-2"
+                >
+                  Upload a new skill in your library
+                </Text>
               </NextLink>
             </>
           ) : (
@@ -156,11 +159,11 @@ export function AddSkillDialog({
                 placeholder="Search the marketplace"
               />
               {isMarketplaceLoading ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   Searching the marketplace…
                 </Text>
               ) : marketplaceSkills.length === 0 ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   No marketplace skills match.
                 </Text>
               ) : (
@@ -169,14 +172,14 @@ export function AddSkillDialog({
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Marketplace skills"
                 >
-                  {marketplaceSkills.map((agent) => (
+                  {marketplaceSkills.map((skill) => (
                     <SkillOption
-                      key={`${agent.creator}/${agent.slug}`}
-                      name={agent.agent_name}
-                      description={agent.sub_heading || agent.description}
+                      key={skill.slug}
+                      name={skill.title}
+                      description={skill.description}
                       icon={Store01Icon}
                       disabled={isSaving}
-                      onAdd={() => onAddMarketplace(agent)}
+                      onAdd={() => onAddMarketplace(skill)}
                     />
                   ))}
                 </ul>
@@ -210,22 +213,27 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3">
+    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
       <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="span"
+          tone="primary"
+          className="block truncate"
+        >
           {name}
-        </span>
-        <span className="block truncate text-xs text-zinc-500">
+        </Text>
+        <Text variant="small" as="span" tone="muted" className="block truncate">
           {description}
-        </span>
+        </Text>
       </span>
       <Button
         variant="secondary"
         size="small"
         disabled={disabled}
         onClick={onAdd}
-        leftIcon={<Icon icon={PlusSignIcon} size={14} />}
+        leadingIcon={PlusSignIcon}
       >
         Add
       </Button>

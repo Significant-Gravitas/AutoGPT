@@ -20,7 +20,12 @@ from backend.copilot.briefing.outcome import (
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
-from .models import HomeBriefing, HomeBriefingOutcome, HomeExpert
+from .models import (
+    AUTOPILOT_BRIEFING_AUTHOR,
+    HomeBriefing,
+    HomeBriefingOutcome,
+    HomeExpert,
+)
 
 _MAX_OUTCOMES = 4
 _BRIEFING_WINDOW = timedelta(hours=24)
@@ -125,6 +130,7 @@ def _briefing(
     shown = outcomes[:_MAX_OUTCOMES]
     shown_completed = sum(outcome.status == "completed" for outcome in shown)
     return HomeBriefing(
+        author=AUTOPILOT_BRIEFING_AUTHOR,
         generated_at=generated_at,
         window_started_at=window_started_at,
         completed_count=completed,
@@ -212,7 +218,16 @@ def to_outcome(
         duration_seconds=item.duration_seconds,
         cost_cents=item.cost_cents,
         link=item.link,
+        trigger=_trigger(item),
     )
+
+
+def _trigger(item: BriefingRunItem) -> Literal["schedule", "webhook", "manual"]:
+    if item.schedule_id:
+        return "schedule"
+    if item.webhook_id:
+        return "webhook"
+    return "manual"
 
 
 def _expert(

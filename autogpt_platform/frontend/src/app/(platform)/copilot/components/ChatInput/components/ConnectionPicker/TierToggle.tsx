@@ -13,6 +13,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 import type { CopilotLlmModel } from "../../../../store";
+import { isComposingEvent } from "@/lib/keyboard";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { Swap } from "./Swap";
 
@@ -59,6 +60,8 @@ export function TierToggle({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.target instanceof Element && event.target.closest("a")) return;
+    // `event.key` goes straight into the roving helper, so guard here instead.
+    if (isComposingEvent(event)) return;
     const to = nextRovingValue(options, value, event.key);
     if (to === null) return;
     event.preventDefault();

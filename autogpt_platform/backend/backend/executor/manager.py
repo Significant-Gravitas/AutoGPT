@@ -52,7 +52,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -74,6 +74,7 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
@@ -442,6 +443,7 @@ async def execute_node(
             input_data=input_data,
             creds_manager=creds_manager,
             user_id=user_id,
+            expert_id=execution_context.expert_id,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)
@@ -699,6 +701,27 @@ async def _enqueue_next_nodes(
     ]
 
 
+def _expert_run_completed_event(
+    graph_exec: GraphExecutionEntry, status: ExecutionStatus
+) -> Optional[dict]:
+    """Funnel payload for a finished top-level expert run, else None.
+
+    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
+    counts exactly the runs that can post: an expert-attributed, non-dry-run,
+    top-level execution that reached a terminal status. Execution origin
+    (schedule vs manual vs webhook) is not persisted anywhere, so the event
+    covers every such run rather than pretending to know the trigger.
+    """
+    expert_id = expert_posts.completed_expert_id(graph_exec, status)
+    if expert_id is None:
+        return None
+    return {
+        "expert_id": expert_id,
+        "status": status.value,
+        "graph_exec_id": graph_exec.graph_exec_id,
+    }
+
+
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -895,7 +918,7 @@ class ExecutionProcessor:
             )
 
             # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
-            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # the default cap; coordination blocks (AgentExecutor, Otto)
             # opt out by overriding `execution_timeout_seconds = None`. Their
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
@@ -1087,6 +1110,7 @@ class ExecutionProcessor:
             activity_events.handle_run_completed(
                 db_client, graph_exec, exec_meta, exec_stats
             )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1094,6 +1118,15 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
+            # Only once the terminal state is persisted.
+            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
+            if run_event is not None:
+                emit_funnel_event(
+                    graph_exec.user_id,
+                    "expert_run_completed",
+                    run_event,
+                    f"expert_run_completed:{graph_exec.graph_exec_id}",
+                )
 
     async def charge_node_usage(
         self,
