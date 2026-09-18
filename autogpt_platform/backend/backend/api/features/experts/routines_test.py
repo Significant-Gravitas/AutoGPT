@@ -133,15 +133,15 @@ def test_spread_leaves_every_cadence_that_is_not_an_H():
 def test_the_unattended_denylist_names_things_that_exist():
     """A name that has been renamed out from under this set denies nothing, and
     the routine would quietly gain the reach the denylist exists to remove."""
-    for trusted in (True, False):
-        for name in routine_disabled_tools(trusted_prompt=trusted):
+    for granted in (True, False):
+        for name in routine_disabled_tools(granted=granted):
             assert name in TOOL_REGISTRY or name in CAPABILITY_GATE_NAMES, name
 
 
 def test_the_unattended_denylist_closes_both_capability_gates():
     """Blocks and MCP servers are reached through ``run_capability``, so only
     the gates withhold them — denying a tool name would leave both open."""
-    assert CAPABILITY_GATE_NAMES <= routine_disabled_tools(trusted_prompt=False)
+    assert CAPABILITY_GATE_NAMES <= routine_disabled_tools(granted=False)
 
 
 def test_no_routine_may_schedule_another_however_trusted_it_is():
@@ -150,28 +150,29 @@ def test_no_routine_may_schedule_another_however_trusted_it_is():
     account is left with standing work — and credentials — nobody agreed to.
     Trusting the owner's own words is not trusting what those words go and
     read."""
-    for trusted in (True, False):
-        denied = routine_disabled_tools(trusted_prompt=trusted)
-        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied, trusted
+    for granted in (True, False):
+        denied = routine_disabled_tools(granted=granted)
+        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied, granted
     assert {"schedule_routine", "schedule_followup"} <= ROUTINE_SELF_ESCALATION_TOOLS
 
 
-def test_an_owners_own_routine_keeps_the_tools_their_chat_has():
-    """The reason the mute is keyed on provenance: the same words typed into
-    the same chat already run with these, so taking them off the owner's own
-    morning briefing protects nobody from anything."""
-    trusted = routine_disabled_tools(trusted_prompt=True)
-    assert "run_agent" not in trusted
-    assert not CAPABILITY_GATE_NAMES & trusted
+def test_a_granted_routine_keeps_the_tools_its_owners_chat_has():
+    """The grant is the owner's answer, per routine, and it has to actually do
+    something — a routine they bound to their inbox that still could not reach
+    it would make the question they were asked meaningless."""
+    granted = routine_disabled_tools(granted=True)
+    assert "run_agent" not in granted
+    assert not CAPABILITY_GATE_NAMES & granted
 
 
-def test_a_template_routine_cannot_reach_a_connected_account():
-    """A roster prompt is read by whoever reviewed the PR, not by the owner
-    whose inbox it would run against."""
-    untrusted = routine_disabled_tools(trusted_prompt=False)
-    assert "run_agent" in untrusted
-    assert "post_to_chat_platform" in untrusted
-    assert CAPABILITY_GATE_NAMES <= untrusted
+def test_an_ungranted_routine_cannot_reach_a_connected_account():
+    """Where seeded routines sit until somebody says otherwise: a roster prompt
+    is read by whoever reviewed the PR, not by the owner whose inbox it would
+    run against."""
+    ungranted = routine_disabled_tools(granted=False)
+    assert "run_agent" in ungranted
+    assert "post_to_chat_platform" in ungranted
+    assert CAPABILITY_GATE_NAMES <= ungranted
 
 
 def test_roster_routines_ask_before_they_run():

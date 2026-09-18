@@ -15,6 +15,11 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.permissions import (
+    CAPABILITY_GATE_NAMES,
+    ROUTINE_SELF_ESCALATION_TOOLS,
+)
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
@@ -33,6 +38,7 @@ from backend.executor.scheduler import (
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
+    _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
@@ -1993,3 +1999,94 @@ def test_graph_schedule_listing_can_include_paused_jobs():
             sched.get_graph_execution_schedules(user_id="other", include_paused=True)
             == []
         )
+
+
+class TestRoutineTurnPermissions:
+    """What a routine's unattended turn is allowed to do.
+
+    This is the single decision the whole safety story rests on, and it is
+    made here rather than in the session, so it is worth pinning directly
+    instead of only through the set that feeds it.
+    """
+
+    @staticmethod
+    def _routine(**overrides) -> ExpertRoutine:
+        return ExpertRoutine(
+            **{
+                "id": "routine-1",
+                "title": "Sweep the queue",
+                "prompt": "Read the queue.",
+                "crons": ["0 9 * * 1-5"],
+                "source": "TEMPLATE",
+                "grants_credentials": False,
+                **overrides,
+            }
+        )
+
+    def _denied(self, routine: ExpertRoutine | None) -> set[str]:
+        return set(_routine_turn_permissions(routine).tools)
+
+    def test_a_template_routine_reaches_nothing_outside_the_platform(self):
+        denied = self._denied(self._routine())
+
+        assert "run_agent" in denied
+        assert "post_to_chat_platform" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_granting_a_template_routine_is_the_owners_call_and_it_counts(self):
+        """The grant is the whole rule at fire time. A template the owner
+        looked at and bound to their queue must actually reach it, or the
+        question they were asked meant nothing."""
+        denied = self._denied(self._routine(grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_a_routine_the_owner_dictated_is_not_muted_like_a_template(self):
+        """``create_routine`` grants an OWNER row by default, which is what
+        settles the complaint this came from: the same words typed into the
+        same chat already run with these, so muting somebody's own morning
+        briefing protected nobody. Fire time reads only the grant — provenance
+        is what decided the grant's starting value."""
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_an_owner_who_asked_for_hands_off_still_gets_hands_off(self):
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=False))
+
+        assert "run_agent" in denied
+
+    @pytest.mark.parametrize(
+        "routine",
+        [
+            None,
+            _routine.__func__(),
+            _routine.__func__(source="OWNER", grants_credentials=True),
+        ],
+    )
+    def test_no_routine_turn_may_schedule_another(self, routine):
+        """An unattended turn reads pages nobody is watching it read. Without
+        this, one injected page buys standing access to the account forever —
+        a routine that can write a routine can grant itself the credentials
+        its own prompt was denied."""
+        denied = set(_routine_turn_permissions(routine).tools)
+
+        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied
+
+    def test_a_routine_that_could_not_be_loaded_is_trusted_least(self):
+        """The row is gone or the lookup failed; the turn still fires, and
+        guessing that it was granted something is the wrong way to be wrong."""
+        denied = self._denied(None)
+
+        assert "run_agent" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_the_filter_is_always_a_denylist_never_an_empty_one(self):
+        """``effective_allowed_tools`` reads an empty ``tools`` as "everything
+        allowed", so a filter that narrowed to nothing would silently widen."""
+        for routine in (None, self._routine(), self._routine(source="OWNER")):
+            permissions = _routine_turn_permissions(routine)
+            assert permissions.tools
+            assert permissions.tools_exclude is True

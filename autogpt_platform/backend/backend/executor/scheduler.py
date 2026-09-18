@@ -377,21 +377,17 @@ async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
 def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
     """The capability filter a routine's turn runs under.
 
-    Every routine turn gets one, even a fully trusted one: no routine may
+    Every routine turn gets one, even a fully granted one: no routine may
     schedule more of itself, because nobody is watching this turn read the page
     that might ask it to. Passing ``None`` would mean "whatever the session
     allows", and the point of this object is that the decision is made here, at
     the boundary, and is visible in the job.
 
     A routine loaded as ``None`` — the row is gone, or the lookup failed — is
-    treated as the least trusted kind there is.
+    treated as ungranted, which is the right way to be wrong.
     """
-    trusted = (
-        routine is not None and routine.source == "OWNER" and routine.grants_credentials
-    )
-    return CopilotPermissions(
-        tools=sorted(routine_disabled_tools(trusted_prompt=trusted))
-    )
+    granted = routine is not None and routine.grants_credentials
+    return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
 
 
 async def _execute_copilot_turn(**kwargs):

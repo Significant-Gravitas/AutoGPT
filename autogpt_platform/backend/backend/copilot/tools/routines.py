@@ -295,7 +295,7 @@ class ScheduleRoutineTool(BaseTool):
 
     async def _pinned_session(
         self, user_id: str, session: ChatSession, kwargs: dict[str, Any]
-    ) -> str | ErrorResponse:
+    ) -> str | None | ErrorResponse:
         """The chat a PINNED routine fires into, validated before it is stored.
 
         Same rule ``schedule_followup`` applies to its ``session_id``: the
@@ -307,7 +307,7 @@ class ScheduleRoutineTool(BaseTool):
         requested: str | None = kwargs.get("session_id")
         current = session.session_id if session else None
         if not requested or requested == current:
-            return current or ""
+            return current
         target = await get_chat_session(requested, user_id)
         if target is None or target.expert_id != session.expert_id:
             return ErrorResponse(
@@ -326,11 +326,12 @@ class ScheduleRoutineTool(BaseTool):
         owner: RoutineOwner,
         routine_id: str,
         enabled: bool,
-        pinned_session_id: str,
+        pinned_session_id: str | None,
         kwargs: dict[str, Any],
     ) -> ExpertRoutine:
         run_at = _run_at(kwargs.get("delay_seconds"))
         crons = kwargs.get("crons")
+        grant = kwargs.get("grants_credentials")
         if not routine_id:
             created = await experts_db().create_routine(
                 user_id,
@@ -343,7 +344,9 @@ class ScheduleRoutineTool(BaseTool):
                 session_id=pinned_session_id,
                 # A routine dictated in conversation is the owner's own words,
                 # so it reaches what they reach unless they said otherwise.
-                grants_credentials=kwargs.get("grants_credentials", True),
+                # ``None`` is "they did not say", which on a new row is the
+                # default rather than a change to leave alone.
+                grants_credentials=True if grant is None else bool(grant),
             )
             if not enabled:
                 return created
@@ -369,7 +372,7 @@ class ScheduleRoutineTool(BaseTool):
             pinned_session_id=pinned_session_id,
             # Absent means "leave the grant alone", so rewording a routine
             # never quietly widens what it can touch.
-            grants_credentials=kwargs.get("grants_credentials"),
+            grants_credentials=grant,
         )
 
 
@@ -395,9 +398,10 @@ def _confirmation(routine: ExpertRoutine) -> str:
         "PINNED": "in the chat it was pinned to",
         "FRESH": "in a new chat each time",
     }.get(routine.session_mode, "in its own thread")
-    when = (
-        f"{', '.join(routine.crons)} in the user's timezone"
-        if routine.crons
-        else f"once at {routine.run_at:%Y-%m-%d %H:%M} UTC"
-    )
+    if routine.crons:
+        when = f"{', '.join(routine.crons)} in the user's timezone"
+    elif routine.run_at is not None:
+        when = f"once at {routine.run_at:%Y-%m-%d %H:%M} UTC"
+    else:
+        when = "at no time it can name"
     return f"'{routine.title}' is on: {when}, {where}. {reach}"
