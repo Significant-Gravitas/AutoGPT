@@ -1171,6 +1171,17 @@ describe("ChatInput transcription failure", () => {
     ).toBe(true);
   });
 
+  it("renders in the card composer too", () => {
+    // The empty-state composer stacks its rows and supplies its own spacing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} stacked />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription failed",
+    );
+  });
+
   it("says nothing when there is no failed recording to act on", () => {
     render(<ChatInput onSend={mockOnSend} />);
 

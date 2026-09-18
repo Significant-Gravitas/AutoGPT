@@ -227,6 +227,31 @@ describe("useVoiceRecording transcription failures", () => {
     expect(result.current.transcriptionError).toBe("Transcription failed");
   });
 
+  it("does not lose the recording when the recorder itself refuses", async () => {
+    // getUserMedia can resolve and the MediaRecorder still throw — an
+    // unsupported mime type, a track that died. The catch has no way to give
+    // the previous recording back, so it must not have been cleared yet.
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    vi.stubGlobal(
+      "MediaRecorder",
+      class {
+        static isTypeSupported = () => false;
+        constructor() {
+          throw new DOMException("mime not supported", "NotSupportedError");
+        }
+      },
+    );
+    await act(async () => result.current.startRecording());
+
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.hasFailedRecording).toBe(true);
+    expect(result.current.transcriptionError).toBe("Transcription failed");
+  });
+
   it("supersedes the failed recording once a new one is under way", async () => {
     failTranscription("Transcription failed");
     const result = await recordAndStop();
@@ -237,6 +262,26 @@ describe("useVoiceRecording transcription failures", () => {
 
     expect(result.current.hasFailedRecording).toBe(false);
     expect(result.current.transcriptionError).toBeNull();
+  });
+
+  it("falls back to a readable message when the failure is not an Error", async () => {
+    // fetch itself rejecting — offline, DNS — does not always throw an Error,
+    // and "undefined" is not a message anyone can act on.
+    fetchMock.mockRejectedValue("network is down");
+    const result = await recordAndStop();
+
+    await waitFor(() =>
+      expect(result.current.transcriptionError).toBe("Transcription failed"),
+    );
+    expect(result.current.hasFailedRecording).toBe(true);
+  });
+
+  it("does nothing when there is no recording to retry", async () => {
+    const { result } = renderVoice();
+
+    act(() => result.current.retryTranscription());
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("drops the failed recording once the user dismisses it", async () => {

@@ -685,6 +685,20 @@ describe("useVoiceMode", () => {
     expect(view.result.current.state).toBe("listening");
   });
 
+  it("falls back to a readable message when the failure is not an Error", async () => {
+    transcribe = async () => {
+      throw "the network went away";
+    };
+    const view = render({});
+
+    await enable(view);
+    await speak();
+
+    expect(view.result.current.failure).toEqual({
+      message: "Transcription failed",
+    });
+  });
+
   it("retries the same recording, byte for byte, and finishes the turn", async () => {
     const onSend = vi.fn();
     transcribe = async () => {
@@ -748,6 +762,39 @@ describe("useVoiceMode", () => {
     });
     expect(view.result.current.state).toBe("off");
     vi.useRealTimers();
+  });
+
+  it("drops a failure that arrives after the user left voice mode", async () => {
+    // Stop while the transcript is in flight, then let it reject. Writing the
+    // failure back from a dead turn used to resurrect the old audio under the
+    // next activation, with a Retry that would send it.
+    let failTranscribing!: (error: Error) => void;
+    transcribe = () => new Promise((_, reject) => (failTranscribing = reject));
+    const view = render({});
+
+    await enable(view);
+    await act(async () => vad.onSpeechStart());
+    await act(async () => vad.onSpeechEnd(new Blob(["wav"])));
+    expect(view.result.current.state).toBe("transcribing");
+
+    await act(async () => view.result.current.toggle());
+    expect(view.result.current.state).toBe("off");
+    await act(async () => failTranscribing(new Error("Transcription failed")));
+    await act(async () => undefined);
+
+    expect(view.result.current.failure).toBeNull();
+
+    // Restarting gets a clean session, not the last one's error and audio.
+    await enable(view);
+    expect(view.result.current.state).toBe("listening");
+    expect(view.result.current.failure).toBeNull();
+    await act(async () => view.result.current.downloadFailedUtterance());
+    expect(downloaded).toHaveLength(0);
+
+    // The dead turn is not counted against the new session either.
+    expect(
+      tracked.filter(([event]) => event === "voice_turn_dropped"),
+    ).toHaveLength(0);
   });
 
   it("forgets the failed recording once the user speaks again", async () => {

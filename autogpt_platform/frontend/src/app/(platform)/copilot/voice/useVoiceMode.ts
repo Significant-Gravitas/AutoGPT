@@ -286,6 +286,12 @@ export function useVoiceMode({
     try {
       transcript = await transcribeUtterance(wav);
     } catch (error) {
+      // A session the user has already left owns none of this: writing the
+      // failure back here would resurrect the old recording under the next
+      // activation, and re-arm a session timer deactivate had just cleared.
+      if (mine !== activation.current || stateRef.current !== "transcribing") {
+        return;
+      }
       console.error("[Voice mode]", error);
       // No toast: it takes the only retry affordance off screen with it after
       // five seconds, and the audio behind it is unrecoverable once dropped.

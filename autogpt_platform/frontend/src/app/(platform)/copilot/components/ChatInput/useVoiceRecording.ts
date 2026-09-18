@@ -143,19 +143,19 @@ export function useVoiceRecording({
   );
 
   /** Re-sends the recording that failed, byte for byte. */
-  const retryTranscription = useCallback(() => {
+  function retryTranscription() {
     if (!failedRecording || isTranscribing || isRecordingRef.current) return;
     void transcribeAudio(failedRecording);
-  }, [failedRecording, isTranscribing, transcribeAudio]);
+  }
 
-  const downloadFailedRecording = useCallback(() => {
+  function downloadFailedRecording() {
     if (failedRecording) downloadRecording(failedRecording);
-  }, [failedRecording]);
+  }
 
-  const dismissTranscriptionError = useCallback(() => {
+  function dismissTranscriptionError() {
     setTranscriptionError(null);
     setFailedRecording(null);
-  }, []);
+  }
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecordingRef.current) {
@@ -175,11 +175,6 @@ export function useVoiceRecording({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-
-      // Only once the mic is really open: a denied permission prompt must not
-      // be what destroys the recording the user still has not got back.
-      setTranscriptionError(null);
-      setFailedRecording(null);
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported("audio/webm")
@@ -212,6 +207,13 @@ export function useVoiceRecording({
       };
 
       mediaRecorder.start(1000); // Collect data every second
+
+      // Only once a new recording is genuinely under way. Everything above
+      // can still throw — a denied prompt, an unsupported mime type — and the
+      // catch has no way to give the previous recording back.
+      setTranscriptionError(null);
+      setFailedRecording(null);
+
       isRecordingRef.current = true;
       setIsRecording(true);
       startTimeRef.current = Date.now();
