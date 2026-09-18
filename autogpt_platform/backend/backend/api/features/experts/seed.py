@@ -2,10 +2,10 @@
 
 Run with: poetry run python -m backend.api.features.experts.seed
 
-Upserts the fifteen roster templates (Maria, Jules, Nadia, Remy, Mina, Theo,
-Quinn, Max, Frankie, Harper, Vera, Ellis, Devon, Riley, Jordan)
-by template name, so repeated runs keep the same template ids. Preload
-workflows and bundled Skills Hub skills are resolved from listing slugs and
+Upserts the twenty-four roster templates (Maria, Jules, Nadia, Remy, Mina,
+Theo, Quinn, Max, Frankie, Harper, Vera, Ellis, Devon, Riley, Jordan, Sasha,
+Priya, Marco, Noor, Casey, Ines, Omar, Lena, Kai) by template name, so repeated
+runs keep the same template ids. Preload workflows and bundled Skills Hub skills are resolved from listing slugs and
 all are validated before any template is mutated, so
 ``backend.api.features.store.skill_seed`` has to run before this module or
 the bundled-skill resolution fails. Each upsert also refreshes the
@@ -28,6 +28,8 @@ from backend.api.features.experts.models import (
     encode_day_one,
     encode_voice_preferences,
 )
+from backend.api.features.experts.roster_types import RosterEntry
+from backend.api.features.experts.roster_wave_three import WAVE_THREE_ROSTER
 from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
@@ -41,44 +43,6 @@ logger = logging.getLogger(__name__)
 # checked-in marketplace assets (backend/agents) publish under and the live
 # marketplace creator of the roster listings.
 OFFICIAL_CREATOR_USERNAME = "autogpt"
-
-
-class PreloadSeed(TypedDict):
-    slug: str
-    # Unix cron cadence for install-time scheduling (issue #13714); None
-    # means the workflow installs without a schedule. Applied to template
-    # rows on every seed run, but only copied to hires made afterwards —
-    # existing hires keep the schedule they were created with.
-    #
-    # A cadence fires unattended from the day of hire, so it may only go on a
-    # workflow that acts on nothing outside the platform — typically research.
-    # The marketplace reviewer is that gate; nothing here enforces it.
-    cron: str | None
-
-
-class RosterEntry(TypedDict):
-    name: str
-    role: str
-    job_title: str
-    tagline: str
-    avatar_url: str | None
-    bio: str
-    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
-    # environment, so the seed resolves these to ids and the relation stores those.
-    bundled_skills: list[str]
-    # Canonical marketplace categories, so the category chip narrows the roster.
-    # Declared here rather than derived from `role`: "Ops" folds onto no
-    # canonical value, and a raised expert's role is free text.
-    categories: list[str]
-    identity: str
-    voice_preferences: str
-    # Two writing samples in the persona's voice; the hire flow shows these as
-    # the "how should {name} write?" pick right after hire.
-    voice_samples: list[VoiceSample]
-    boundaries: str
-    # Up to three rows for the profile's "sets up on day one"; empty hides it.
-    day_one: list[ExpertDayOneItem]
-    preloads: list[PreloadSeed]
 
 
 ROSTER: list[RosterEntry] = [
@@ -780,6 +744,7 @@ You do not give legal advice. You do not say language is legal, enforceable, mar
         ],
         "preloads": [],
     },
+    *WAVE_THREE_ROSTER,
 ]
 
 

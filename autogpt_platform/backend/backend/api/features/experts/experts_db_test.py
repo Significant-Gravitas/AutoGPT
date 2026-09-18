@@ -77,6 +77,15 @@ PERSONAS_WITHOUT_WORKFLOWS = {
     "Devon",
     "Riley",
     "Jordan",
+    "Sasha",
+    "Priya",
+    "Marco",
+    "Noor",
+    "Casey",
+    "Ines",
+    "Omar",
+    "Lena",
+    "Kai",
 }
 EXPECTED_SKILLS_ONLY_ROSTER = {
     "Devon": [
@@ -149,6 +158,143 @@ EXPECTED_OPERATIONS_SKILLS = {
         "contract-obligation-tracker",
         "counsel-escalation-brief",
     ],
+}
+EXPECTED_WAVE_THREE = {
+    "Sasha": {
+        "role": "Support & Help Desk",
+        "categories": ["support"],
+        "skills": [
+            "support-getting-started",
+            "ticket-triage",
+            "support-reply-draft",
+            "support-macro-library",
+            "help-article-from-tickets",
+            "bug-report-handoff",
+            "refund-and-exception-brief",
+            "weekly-ticket-themes",
+        ],
+        "timings": ["after queue access", "on request"],
+    },
+    "Priya": {
+        "role": "Product Management",
+        "categories": ["research", "operations"],
+        "skills": [
+            "product-getting-started",
+            "feedback-synthesis",
+            "feature-request-triage",
+            "user-interview-guide",
+            "opportunity-brief",
+            "product-requirements-draft",
+            "roadmap-prioritisation",
+            "release-notes-draft",
+        ],
+        "timings": ["after feedback input", "on request"],
+    },
+    "Marco": {
+        "role": "Paid Ads & Performance",
+        "categories": ["marketing"],
+        "skills": [
+            "paid-ads-getting-started",
+            "campaign-structure-plan",
+            "ad-copy-variants",
+            "landing-page-message-match",
+            "wasted-spend-audit",
+            "budget-pacing-review",
+            "creative-test-readout",
+            "paid-performance-report",
+        ],
+        "timings": ["after account export", "on request"],
+    },
+    "Noor": {
+        "role": "PR & Communications",
+        "categories": ["marketing", "content"],
+        "skills": [
+            "communications-getting-started",
+            "news-angle-and-key-messages",
+            "press-release-draft",
+            "media-list-research",
+            "media-pitch-email",
+            "launch-communications-plan",
+            "holding-statement-draft",
+            "spokesperson-briefing",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Casey": {
+        "role": "Code Review & QA",
+        "categories": ["development"],
+        "skills": [
+            "code-quality-getting-started",
+            "pull-request-review",
+            "test-plan-draft",
+            "bug-reproduction-report",
+            "flaky-test-triage",
+            "regression-risk-review",
+            "release-readiness-checklist",
+            "incident-postmortem-draft",
+        ],
+        "timings": ["after access", "on request"],
+    },
+    "Ines": {
+        "role": "People Ops & HR (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "people-ops-getting-started",
+            "new-hire-onboarding-plan",
+            "handbook-policy-draft",
+            "one-to-one-agenda",
+            "performance-review-prep",
+            "engagement-survey-readout",
+            "offboarding-checklist",
+            "hr-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Omar": {
+        "role": "RevOps & CRM Hygiene",
+        "categories": ["sales", "operations"],
+        "skills": [
+            "revops-getting-started",
+            "crm-field-audit",
+            "crm-duplicate-review",
+            "pipeline-stage-definitions",
+            "lead-routing-rules",
+            "sales-forecast-rollup",
+            "lost-deal-analysis",
+            "crm-hygiene-report",
+        ],
+        "timings": ["after CRM export", "on request"],
+    },
+    "Lena": {
+        "role": "Privacy & Compliance (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "compliance-ops-getting-started",
+            "security-questionnaire-answers",
+            "personal-data-map",
+            "subprocessor-register",
+            "dpa-checklist-review",
+            "policy-gap-review",
+            "data-subject-request-draft",
+            "compliance-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Kai": {
+        "role": "Executive Assistant",
+        "categories": ["support", "operations"],
+        "skills": [
+            "executive-assistant-getting-started",
+            "inbox-triage",
+            "reply-draft-in-your-voice",
+            "meeting-prep-brief",
+            "meeting-follow-up-draft",
+            "calendar-conflict-review",
+            "travel-plan",
+            "weekly-priorities-review",
+        ],
+        "timings": ["after inbox access", "on request"],
+    },
 }
 
 
@@ -3365,6 +3511,43 @@ def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
         "Riley": ("Customer Success & Retention", ["support"]),
         "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
     }
+
+
+def test_wave_three_experts_are_skills_only_with_ordered_packs():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected in EXPECTED_WAVE_THREE.items():
+        entry = roster[name]
+        assert entry["role"] == expected["role"]
+        assert entry["categories"] == expected["categories"]
+        assert entry["bundled_skills"] == expected["skills"]
+        assert entry["preloads"] == []
+        assert [item.timing for item in entry["day_one"]] == expected["timings"]
+        assert len(entry["voice_samples"]) == 2
+
+
+def test_wave_three_covers_exactly_the_nine_new_experts():
+    assert set(EXPECTED_WAVE_THREE) == {
+        "Sasha",
+        "Priya",
+        "Marco",
+        "Noor",
+        "Casey",
+        "Ines",
+        "Omar",
+        "Lena",
+        "Kai",
+    }
+    assert len(seed.ROSTER) == 24
+    names = [entry["name"] for entry in seed.ROSTER]
+    assert len(names) == len(set(names))
+
+
+def test_every_wave_three_skill_is_a_registered_starter():
+    registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
+    for expected in EXPECTED_WAVE_THREE.values():
+        assert set(expected["skills"]) <= registered
+    slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
+    assert len(slugs) == len(set(slugs)) == 72
 
 
 @pytest.mark.asyncio(loop_scope="session")

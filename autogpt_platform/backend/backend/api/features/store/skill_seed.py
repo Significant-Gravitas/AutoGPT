@@ -17,7 +17,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import TypedDict
 
 import prisma.enums
 import prisma.models
@@ -32,16 +31,11 @@ from backend.copilot.tools.skills import (
 from backend.data import db as database
 
 from .skill_submission_db import snapshot_version_files
+from .starter_skill_catalog_wave_three import WAVE_THREE_STARTER_SKILLS, StarterSkill
 
 logger = logging.getLogger(__name__)
 
 _CONTENT_DIR = Path(__file__).parent / "starter_skills"
-
-
-class StarterSkill(TypedDict):
-    slug: str
-    categories: list[str]
-    required_providers: list[str]
 
 
 STARTER_SKILLS: list[StarterSkill] = [
@@ -369,6 +363,7 @@ STARTER_SKILLS: list[StarterSkill] = [
             "proposal-quality-check",
         )
     ],
+    *WAVE_THREE_STARTER_SKILLS,
 ]
 
 
