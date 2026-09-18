@@ -6,114 +6,112 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
-import { FilesTab } from "./components/FilesTab/FilesTab";
-import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
-import { ProgressTab } from "./components/ProgressTab/ProgressTab";
-import { TabSwitcher } from "./components/TabSwitcher";
+import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
 import { useContextPanel } from "./useContextPanel";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string | null;
   mobile?: boolean;
 }
 
+// iOS sheet curve — decelerates hard at the end so the chat column settles
+// instead of snapping when the panel pushes it aside.
+const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const PANEL_DURATION = 0.3;
+
+// Files render as a card grid above the composer (``WorkspaceFileCards``), so
+// this panel only ever holds the artifacts library. The open flag also drives
+// that card, so both the docked desktop panel and the mobile sheet claim the
+// screen for the artifacts tab only — a "files" tab belongs to the card.
 export function ContextPanel({ sessionId, mobile }: Props) {
   const {
     isOpen,
     activeTab,
     showExpanded,
-    setActiveTab,
     closeArtifactPanel,
     contextPanelWidth,
     setContextPanelWidth,
   } = useContextPanel();
-  const { uploaded, generated } = useSessionFiles(sessionId);
-  const filesCount = uploaded.length + generated.length;
-  // When the task bar (above the chat input) is on, the sidebar drops the
-  // Progress tab and shows Files only.
-  const showProgressTab = !useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // Clamp a persisted "progress" tab to "files" when Progress is hidden, so
-  // the switcher never ends up with no selected tab.
-  const effectiveTab = showProgressTab ? activeTab : "files";
+  const [isResizing, setIsResizing] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
-  const tabs = (
+  const library = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className={cn(
-          "flex items-center justify-between gap-2 p-2",
-          mobile && "mt-12",
-        )}
-      >
-        <TabSwitcher
-          activeTab={effectiveTab}
-          filesCount={filesCount}
-          onChange={setActiveTab}
-          showProgressTab={showProgressTab}
-        />
-        {!mobile && (
-          <button
-            type="button"
-            onClick={() => closeArtifactPanel()}
-            title="Close"
-            aria-label="Close workspace panel"
-            className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-          >
-            <Icon icon={Cancel01Icon} size={16} />
-          </button>
-        )}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col">
-        {showProgressTab && effectiveTab === "progress" ? (
-          <ProgressTab sessionId={sessionId} />
-        ) : (
-          <FilesTab sessionId={sessionId} />
-        )}
-      </div>
+      <ArtifactsTab sessionId={sessionId} />
     </div>
   );
 
   if (mobile) {
     return (
       <Sheet
-        open={isOpen}
+        open={isOpen && activeTab === "artifacts"}
         onOpenChange={(open) => !open && closeArtifactPanel()}
       >
         <SheetContent
           side="right"
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Workspace</SheetTitle>
+          <SheetHeader className="mt-12 p-2 text-left">
+            <SheetTitle className="text-sm font-medium text-zinc-900">
+              Artifacts
+            </SheetTitle>
           </SheetHeader>
-          {tabs}
+          {library}
         </SheetContent>
       </Sheet>
     );
   }
 
-  if (!showExpanded) return null;
+  const isDocked = showExpanded && activeTab === "artifacts";
+
+  // Width is the animated property because the panel pushes the chat column
+  // rather than overlaying it. Dragging the handle bypasses the tween (a
+  // queued 300ms tween per pointer move would trail the cursor). The chat's
+  // sidebar icon toggles the panel, so it carries no header of its own.
+  const transition =
+    shouldReduceMotion || isResizing
+      ? { duration: 0 }
+      : { duration: PANEL_DURATION, ease: PANEL_EASE };
 
   return (
-    <div
-      data-context-panel
-      style={{ width: contextPanelWidth }}
-      className="relative flex h-full shrink-0 flex-col border-l border-l-[#80808017] bg-sidebar"
-    >
-      <PanelResizeHandle
-        panelSelector="[data-context-panel]"
-        onWidthChange={setContextPanelWidth}
-        minWidth={MIN_CONTEXT_PANEL_WIDTH}
-        maxWidth={MAX_CONTEXT_PANEL_WIDTH}
-      />
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-        {tabs}
-      </div>
-    </div>
+    <AnimatePresence initial={false}>
+      {isDocked && (
+        <motion.div
+          data-context-panel
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: contextPanelWidth, opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={transition}
+          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
+        >
+          {/* Sibling of the clip, not a child of it: the handle is
+              -translate-x-1/2 and deliberately straddles the border, so
+              clipping it here would halve the drag target to 6px. */}
+          <PanelResizeHandle
+            panelSelector="[data-context-panel]"
+            onWidthChange={setContextPanelWidth}
+            onResizingChange={setIsResizing}
+            minWidth={MIN_CONTEXT_PANEL_WIDTH}
+            maxWidth={MAX_CONTEXT_PANEL_WIDTH}
+          />
+          <div className="h-full overflow-hidden">
+            {/* Fixed inner width: the library keeps its final layout while
+                the shell widens, so nothing reflows mid-animation. That also
+                means the inner is wider than the shell for the whole tween,
+                so the clip above is what stops it spilling over the chat. */}
+            <div
+              style={{ width: contextPanelWidth }}
+              className="flex h-full min-h-0 flex-col overflow-hidden"
+            >
+              {library}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

@@ -225,7 +225,7 @@ class AutoPilotBlock(Block):
 
         blocks: list[str] = SchemaField(
             description=(
-                "Block identifiers to filter when the copilot uses run_block. "
+                "Block identifiers to filter when the copilot runs blocks via run_capability. "
                 "Each entry can be: a block name (e.g. 'HTTP Request'), "
                 "a full block UUID, or the first 8 hex characters of the UUID "
                 "(e.g. 'c069dc6b'). Works with blocks_exclude. "
@@ -248,7 +248,7 @@ class AutoPilotBlock(Block):
 
         dry_run: bool = SchemaField(
             description=(
-                "When enabled, run_block and run_agent tool calls in this "
+                "When enabled, run_capability and run_agent tool calls in this "
                 "autopilot session are forced to use dry-run simulation mode. "
                 "No real API calls, side effects, or credits are consumed "
                 "by those tools. Useful for testing agent wiring and "
@@ -372,6 +372,10 @@ class AutoPilotBlock(Block):
             dry_run=dry_run,
             organization_id=organization_id,
             team_id=team_id,
+            # The prompt of a graph run is machine-authored and may quote
+            # untrusted upstream data, so this session must not reach the
+            # tools that restaff the user's team.
+            origin="automation",
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
         )
@@ -433,6 +437,10 @@ class AutoPilotBlock(Block):
                 permissions=effective_permissions,
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
+                # Never ride an in-flight turn: the prompt would execute under
+                # THAT turn's envelope and permissions, dropping this block's
+                # own filter. Same hole the three spawn tools close.
+                allow_queue=False,
             )
             if outcome == "rejected_concurrent_turn_cap":
                 # No session record / transcript was created — the slot
@@ -450,6 +458,11 @@ class AutoPilotBlock(Block):
                     f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
                     f"{session_id}"
                 )
+            if outcome == "refused":
+                # Terminal, like the branches above: nothing ran, so the
+                # SessionResult carries only the refusal and its empty
+                # response_text would otherwise render as a successful turn.
+                raise RuntimeError(result.refusal or "AutoPilot turn was refused")
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-
@@ -592,6 +605,26 @@ class AutoPilotBlock(Block):
                 yield "error", (
                     "The AutoPilot session was not found. Start a new session "
                     "or check that the session ID belongs to this account."
+                )
+                return
+
+            # `create_session` stamps origin="automation" so this block's
+            # machine-authored prompt can never reach the staffing tools.
+            # Resuming has to hold the same line: without this check a graph
+            # could pass the user's own interactive session_id and run its
+            # prompt under an origin that `autopilot_session_guard` accepts.
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and every
+            # graph that stores a session_id and re-feeds it on the next run
+            # holds one of those. Refusing those would break live automations
+            # to close a hole they never opened — the staffing guard is where
+            # an unknown origin fails closed instead.
+            if existing_session.metadata.origin == "interactive":
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session was started by a person, not by an "
+                    "automation. Start a new session for this graph run."
                 )
                 return
 
@@ -744,7 +777,7 @@ async def _build_and_validate_permissions(
         if invalid_blocks:
             return (
                 f"Unknown block identifier(s) in 'blocks': {invalid_blocks}. "
-                "Use find_block to discover valid block names and IDs. "
+                "Use find_capability to discover valid block names and IDs. "
                 "You may also use the first 8 characters of a block UUID."
             )
 
@@ -822,6 +855,7 @@ async def _enqueue_for_recovery(
             enqueue_copilot_turn,
         )
         from backend.copilot.model import get_chat_session
+        from backend.copilot.tree import root_envelope
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -831,14 +865,21 @@ async def _enqueue_for_recovery(
             )
             return
 
+        recovery_turn_id = str(uuid.uuid4())
         await asyncio.wait_for(
             enqueue_copilot_turn(
                 session_id=session_id,
                 user_id=user_id,
                 message=message,
-                turn_id=str(uuid.uuid4()),
+                turn_id=recovery_turn_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
+                # The orphaned turn's envelope died with its worker and is not
+                # recoverable, so this re-dispatch roots a fresh tree — which
+                # is what an AutoPilotBlock turn already gets, the graph
+                # executor being a separate process.
+                # TODO(#14244-f5): revisit together with run_agent's tree reset.
+                envelope=root_envelope(recovery_turn_id),
             ),
             timeout=10,
         )

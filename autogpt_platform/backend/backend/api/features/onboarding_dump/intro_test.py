@@ -80,3 +80,41 @@ async def test_greeting_prompt_survives_an_empty_registry(
     content = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
     assert content.startswith(intro._LOCAL_PROMPT[:40])
     assert greeting == GENERATION["greeting"]
+
+
+def test_the_local_prompt_asks_for_the_head_of_ai_voice():
+    """The greeting diagnoses and promises a team; it never casts it.
+
+    The team section under the greeting is built from filtered template
+    ids, so prose that names an expert can promise a colleague who was
+    never recommended — or does not exist on the roster at all.
+    """
+    assert "Head of AI" in intro._LOCAL_PROMPT
+    assert "NEVER name a specific expert" in intro._LOCAL_PROMPT
+    # The JSON contract the parser depends on is unchanged.
+    assert '"greeting"' in intro._LOCAL_PROMPT
+    assert '"prompts"' in intro._LOCAL_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_the_generation_contract_is_still_greeting_plus_prompts(
+    client: MagicMock,
+):
+    greeting, suggested = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == GENERATION["greeting"]
+    assert [p.title for p in suggested] == [
+        item["title"] for item in GENERATION["prompts"]
+    ]
+
+
+def test_the_fallback_greeting_names_nobody():
+    """It runs when the model gave us nothing, so it can claim nothing.
+
+    Naming an expert here would be a hire the roster never made.
+    """
+    for transcript in ("", TRANSCRIPT):
+        greeting, suggested = intro.fallback_intro(transcript)
+        assert "Head of AI" in greeting
+        assert not any(name in greeting for name in ("Maria", "Max", "Frankie"))
+        assert suggested == intro.fallback_prompts()

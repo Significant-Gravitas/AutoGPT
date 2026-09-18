@@ -456,15 +456,16 @@ export function ChatSidebar() {
                   )}
                   {sessionSections.map((group) => {
                     const groupKey = group.expertId ?? "autopilot";
+                    const expert = group.expertId
+                      ? expertsById.get(group.expertId)
+                      : null;
                     return (
                       <ExpertSessionGroup
                         key={groupKey}
                         groupKey={groupKey}
+                        role={group.expertId ? expert?.role : "Head of AI"}
                         label={
-                          group.expertId
-                            ? (expertsById.get(group.expertId)?.name ??
-                              "Expert")
-                            : "Autopilot"
+                          group.expertId ? (expert?.name ?? "Expert") : "Otto"
                         }
                         sessions={group.sessions}
                         renderRow={renderSessionRow}

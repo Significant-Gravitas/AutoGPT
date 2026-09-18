@@ -13,67 +13,53 @@ This guide will help you setup the server and builder for the project.
 
 ## Prerequisites
 
-To setup the server, you need to have the following installed:
+The single-container appliance's only product prerequisite is an installed,
+running Docker CLI and daemon. Select a local Docker endpoint using Linux
+containers on `amd64` or `arm64`. The Unix bootstrap also uses Bash, curl, and
+`sha256sum` or `shasum`. Docker Compose, Git, Node.js, and NPM are not required
+for the appliance installer.
 
-- [Node.js](https://nodejs.org/en/)
-- [Docker](https://docs.docker.com/get-docker/)
-- [Git](https://git-scm.com/downloads)
+Install Docker from the [official Docker documentation](https://docs.docker.com/get-docker/),
+start it, then verify the selected daemon:
 
-### Checking if you have Node.js & NPM installed
-
-We use Node.js to run our frontend application.
-
-If you need assistance installing Node.js:  
-https://nodejs.org/en/download/
-
-NPM is included with Node.js, but if you need assistance installing NPM:
-https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-
-You can check if you have Node.js & NPM installed by running the following command:
-
-```bash
-node -v
-npm -v
-```
-
-Once you have Node.js installed, you can proceed to the next step.
-
-### Checking if you have Docker & Docker Compose installed
-
-Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
-
-If you need assistance installing docker:
-https://docs.docker.com/desktop/
-
-Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose: 
-https://docs.docker.com/compose/install/
-
-You can check if you have Docker installed by running the following command:
-
-```bash
+```console
 docker -v
-docker compose -v
+docker info
 ```
 
-Once you have Docker and Docker Compose installed, you can proceed to the next step.
+## Quick Setup with the Appliance Installer
 
-## Quick Setup with Auto Setup Script (Recommended)
-If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
+The release installer pulls and starts the published single-container
+appliance: one Docker container, one loopback port, no source checkout. It
+needs a running Docker daemon with Linux containers on `amd64` or `arm64`; it
+does not install Docker or build AutoGPT from source. See
+[the installer reference](installer.md) for details.
 
-For macOS/Linux:
-```
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
-```
-
-For Windows (PowerShell):
-```
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
-```
-
-This method is ideal if you're setting up for development or testing and want to skip manual configuration.
+The hosted installer is not live yet: `setup.agpt.co/install.sh` still serves
+the Compose installer, and the appliance image tags are not public until the
+[release gates](installer.md#maintainer-release-gates) pass. This first release
+supports Linux and macOS. Until then, and on Windows, use the
+[from-source setup](#manual-setup) below, which is also the path that supports
+a fully offline install with a local LLM.
 
 
 ## Manual Setup
+
+### Development prerequisites
+
+The manual source checkout requires
+[Git](https://git-scm.com/downloads),
+[Node.js and NPM](https://nodejs.org/en/download/), Docker, and
+[Docker Compose](https://docs.docker.com/compose/install/). Verify them before
+continuing:
+
+```console
+git --version
+node -v
+npm -v
+docker -v
+docker compose version
+```
 
 ### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
@@ -94,13 +80,23 @@ To run the platform, follow these steps:
    cd AutoGPT/autogpt_platform
   ```
 
-- Copy the `.env.default` file to `.env` in `autogpt_platform`:
+- Create the `.env` files and generate your local secrets:
 
   ```
-   cp .env.default .env
+   make init-env
   ```
 
-  This command will copy the `.env.default` file to `.env` in the `autogpt_platform` directory. You can modify the `.env` file to add your own environment variables.
+  This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
+  and `frontend`) and fills in the secrets that `.env.default` deliberately
+  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and
+  `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
+  are public, so shipping working values in them would mean every install in
+  the world shared one publicly-readable key. It is safe to re-run: it never
+  overwrites an existing `.env` or a value you set yourself. You can then edit
+  the `.env` files to add your own environment variables.
+
+  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, so run this
+  before bringing the stack up.
 
 - Run the platform services:
   ```
@@ -120,7 +116,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) |
+| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) and generate the secrets they leave blank |
 | `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
@@ -154,8 +150,8 @@ make help
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 **Notes:**
- 
-By default the application for different services run on the following ports: 
+
+By default the application for different services run on the following ports:
 
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
@@ -176,6 +172,15 @@ three things changed:
    `.env` against its `.env.default` and copy the new keys across yourself.
    The `SUPABASE_*` URL/key variables are gone; the frontend now uses
    `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+
+   **Rotate your secrets.** `backend/.env.default` used to ship working values
+   for `ENCRYPTION_KEY` and `UNSUBSCRIBE_SECRET_KEY`, and
+   `frontend/.env.default` one for `BETTER_AUTH_SECRET`. Those values are
+   public. If your `.env` files still carry them, replace each with a freshly
+   generated secret — the backend now refuses to start on the published
+   `ENCRYPTION_KEY`. Note that rotating `ENCRYPTION_KEY` makes stored
+   integration credentials unreadable, so reconnect those integrations
+   afterwards.
 2. **Database location**: the database now lives in a plain Postgres
    container (`pgvector/pgvector:pg15`) with its data in
    `autogpt_platform/data/db/data`. Your old data is untouched at
@@ -293,9 +298,10 @@ A fresh install (empty database) needs none of this.
 
 ### Additional Notes
 
-You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
-
-To generate a new encryption key, run the following command in python:
+`make init-env` already generates a unique `ENCRYPTION_KEY` for your install, so
+there is normally nothing to change here. To rotate it — for example if you
+carried a key over from an older checkout, back when `.env.default` shipped a
+working (and therefore public) one — generate a new key in python:
 
 ```python
 from cryptography.fernet import Fernet;Fernet.generate_key().decode()
@@ -307,7 +313,11 @@ Or run the following command in the `autogpt_platform/backend` directory:
 poetry run cli gen-encrypt-key
 ```
 
-Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
+Then replace the value in `autogpt_platform/backend/.env`. **Rotating the key
+makes previously stored integration credentials unreadable**, so you will need
+to reconnect those integrations afterwards. The backend refuses to start on any
+value that was once published in `.env.default`: those must be treated as
+compromised.
 
 #### Auth transport security (JWKS over untrusted networks)
 
@@ -476,7 +486,7 @@ make format
 To run the tests:
 
 ```sh
-poetry run pytest -s 
+poetry run pytest -s
 ```
 
 ## Adding a New Agent Block

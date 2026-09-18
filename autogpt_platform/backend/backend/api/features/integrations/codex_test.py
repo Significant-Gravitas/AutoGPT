@@ -10,6 +10,7 @@ from backend.api.features.integrations.codex import (
     CODEX_LOGIN_STATE_KEY,
     CodexDeviceLogin,
     CodexDeviceLoginState,
+    _is_codex_lease,
     build_device_login_cancel_url,
     build_device_login_url,
     render_device_login_page,
@@ -79,6 +80,14 @@ def _oauth_state(login_id: str = "login-123") -> OAuthState:
         scopes=[],
         state_metadata={CODEX_LOGIN_STATE_KEY: login_id},
     )
+
+
+@pytest.mark.parametrize("strategy", ["oauth_handler", "provider_runtime"])
+def test_codex_routes_accept_current_and_legacy_refresh_ownership(strategy: str):
+    lease = MagicMock()
+    lease.credentials = _credentials().model_copy(update={"refresh_strategy": strategy})
+
+    assert _is_codex_lease(lease)
 
 
 def test_codex_login_reuses_generic_oauth_contract():
@@ -231,6 +240,7 @@ def test_codex_callback_persists_one_safe_credential():
         "scopes": [],
         "username": "user@example.com",
         "host": None,
+        "mcp_auth_scheme": None,
         "is_managed": False,
     }
     raw_response = response.text
@@ -423,7 +433,9 @@ def test_provider_discovery_includes_codex_when_user_has_access():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["codex", "github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["codex", "github"]
 
 
 def test_provider_discovery_omits_codex_when_user_lacks_access():
@@ -450,7 +462,9 @@ def test_provider_discovery_omits_codex_when_user_lacks_access():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["github"]
     access.assert_awaited_once_with(TEST_USER_ID)
 
 
@@ -479,7 +493,9 @@ def test_provider_discovery_remains_public_and_omits_codex_anonymously():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["github"]
     access.assert_not_awaited()
 
 

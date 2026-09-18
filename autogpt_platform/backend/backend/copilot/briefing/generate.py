@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.data.db_accessors import (
     execution_db,
@@ -21,7 +21,8 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -248,12 +249,20 @@ async def _compose_fresh_briefing(
     if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
         return content
     return content.model_copy(
-        update={"narrative": await compose_narrative(user_id, content, experts)}
+        update={"narrative": await compose_narrative(user_id, content)}
     )
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
-    if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+    enabled, authoritative = await evaluate_feature_flag(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    if not enabled:
+        # Only a flag that actually evaluated may unregister the cron (see
+        # ``execute_morning_briefing``). A failed read yields False too, and
+        # would delete every user's schedule on one bad boot or DB blip.
+        if not authoritative:
+            return {"status": "skipped", "reason": "flag_unavailable"}
         return {"status": "skipped", "reason": "flag_disabled"}
 
     user = await user_db().get_user_by_id(user_id)
@@ -280,6 +289,16 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 # otherwise be re-gathered and re-composed on every future
                 # run. Stamp it so this user's cron stops reprocessing it.
                 await client.mark_briefing_delivered(user_id, record.id)
+            emit_funnel_event(
+                user_id,
+                "briefing_generated",
+                {"run_count": 0, "decision_count": 0, "has_content": False},
+                (
+                    f"briefing_generated:{record.id}"
+                    if record is not None
+                    else f"briefing_generated:empty:{briefing_date.isoformat()}"
+                ),
+            )
             return {"status": "skipped", "reason": "nothing_to_say"}
         if record is None:
             record = await client.create_briefing(
@@ -292,6 +311,16 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             await client.update_briefing_content(
                 user_id, record.id, content.model_dump(mode="json")
             )
+        emit_funnel_event(
+            user_id,
+            "briefing_generated",
+            {
+                "run_count": content.completed_total + content.failed_total,
+                "decision_count": content.decision_total,
+                "has_content": True,
+            },
+            f"briefing_generated:{record.id}",
+        )
 
     message_id = str(
         uuid.uuid5(
@@ -306,6 +335,12 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
     )
     await client.mark_briefing_delivered(user_id, record.id)
+    emit_funnel_event(
+        user_id,
+        "briefing_delivered",
+        {"briefing_id": record.id},
+        f"briefing_delivered:{record.id}",
+    )
     return {
         "status": "delivered",
         "briefing_id": record.id,

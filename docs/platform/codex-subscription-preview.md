@@ -36,9 +36,9 @@ flag environment variables. The stack mounts `/run/autogpt-codex` as a
 memory-backed temporary filesystem for REST, executor, and Copilot executor
 processes.
 
-Open `http://localhost:3000`, then open **Settings > Integrations** and connect
-**Codex**. In the sign-in window, open the ChatGPT verification page and enter
-the one-time code.
+Open `http://localhost:3000`, then open **Settings > Integrations**, choose
+**OpenAI**, select **ChatGPT**, and click **Sign in with ChatGPT**. In the sign-in
+window, open the ChatGPT verification page and enter the one-time code.
 
 ### Test the Code Generation block
 
@@ -59,9 +59,9 @@ independently of public API model names.
    automatically and no connection selector is shown. If multiple subscription
    transports are connected, choose the desired connection before sending the
    first message.
-3. Choose Fast or Thinking and Balanced or Advanced as usual, then send the
-   message. Text and permitted AutoGPT tool calls stream through the existing
-   AutoPilot event surface.
+3. Choose Balanced or Advanced as available, then send the message. Text and
+   permitted AutoGPT tool calls stream through the existing AutoPilot event
+   surface.
 
 The route and credential are stored on the new session and are immutable for
 that session. Start another task to use a different connected subscription
@@ -70,15 +70,20 @@ queued turn; queued messages carry only the credential ID, never the OAuth
 tokens. A missing, revoked, or busy Codex credential fails visibly. There is no
 silent fallback to an AutoGPT-funded model or another user's credential.
 
-The mode and model controls select a Codex route from the shared model catalog,
-then validate it against the models advertised by the connected account. The
-preview maps Fast/Balanced to GPT-5.6 Luna, Fast/Advanced and Thinking/Balanced
-to GPT-5.6 Terra, and Thinking/Advanced to GPT-5.6 Sol when the account exposes
-them. It otherwise uses the visible account default. File attachments,
-agent-building tools, and SDK sub-sessions use the same Claude Agent SDK path as
-platform-funded AutoPilot. Builder-panel-bound sessions remain platform-funded
-in this preview because their persistent session is created without an AI
-connection selector.
+The visible model tier and the server-selected execution path select a Codex
+route from the shared model catalog, then validate it against the models
+advertised by the connected account.
+
+| Execution path | Balanced | Advanced |
+| --- | --- | --- |
+| Fast | GPT-5.6 Luna | GPT-5.6 Terra |
+| Claude Agent SDK | GPT-5.6 Terra | GPT-5.6 Sol |
+
+If the account does not expose the mapped model, the transport uses the visible
+account default. File attachments, agent-building tools, and SDK sub-sessions
+use the same Claude Agent SDK path as platform-funded AutoPilot.
+Builder-panel-bound sessions remain platform-funded in this preview because
+their persistent session is created without an AI connection selector.
 
 The Copilot executor keeps one exclusive credential lease and one Codex runtime
 per connected account, then multiplexes overlapping chats onto separate Codex
@@ -123,11 +128,12 @@ disabled, and its sandbox is read-only. Any side effect comes only through a
 tool that Claude Code was already permitted to invoke through AutoGPT's MCP and
 security hooks.
 
-The implementation pins `openai-codex` and its bundled runtime together at
-`0.144.4`. Do not float either dependency independently. The Claude Agent SDK
-and bundled CLI are also pinned by the backend lock. Because `dynamicTools` and
-the compatibility surface are version-sensitive, updates require the focused
-protocol, Messages conformance, and bundled-CLI tests to pass before rollout.
+ChatGPT is reached over HTTPS: sign-in, refresh, the model catalog and
+inference all run against `auth.openai.com` and `chatgpt.com`, so no Codex
+binary ships in the image and there is no version to pin. The Claude Agent SDK
+and its CLI are still pinned by the backend lock. Because the compatibility
+surface is version-sensitive, updates require the focused protocol and Messages
+conformance tests to pass before rollout.
 
 ## Verify an existing local login
 
@@ -138,10 +144,11 @@ To test an existing local Codex login before starting the stack, run this from
 poetry run python -m scripts.codex_preview_smoke
 ```
 
-The smoke test copies, never moves, `~/.codex/auth.json` into an isolated home,
-checks account, models, and rate limits, performs one subscription-backed turn,
-and fails if the runtime can read a host canary or mutates the source login. It
-does consume a small amount of the connected account's Codex usage.
+The smoke test reads `~/.codex/auth.json` without writing to it, checks the
+account and model catalog, and performs one subscription-backed turn with a tool
+call over HTTPS -- failing if the model never calls the tool or returns no text.
+It reports the quota the turn's response headers carried. It does consume a
+small amount of the connected account's usage.
 
 ## Deploy a private cloud preview
 
@@ -187,10 +194,12 @@ device-code completion.
   truth.
 - Raw ChatGPT tokens do not enter Redis, RabbitMQ, frontend responses,
   container-wide environment variables, or AutoPilot session records.
-- Each native invocation or shared AutoPilot runtime actor materializes auth
-  into an isolated temporary home. An AutoPilot actor keeps that home only
-  while one or more overlapping chats are attached, checkpoints Codex-managed
-  refresh throughout its lifetime and at shutdown, then cleans the home.
+- Tokens are held in memory for the life of a turn and never written to disk:
+  there is no on-disk auth home, because there is no process to hand one to.
+  A client is built per turn and never cached, so one user's subscription can
+  never serve another's request. Refresh is owned by the credentials manager
+  and serialized behind its Redis mutex, since OpenAI rotates the refresh token
+  on every exchange.
 - Code Generation turns expose no dynamic tools or host workspace. AutoPilot
   exposes only the tools registered by its existing Claude SDK/MCP harness.
 - Runtime reuse is scoped to the exact user and credential. Credentials are

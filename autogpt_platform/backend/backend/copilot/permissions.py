@@ -5,17 +5,24 @@
 - ``AutoPilotBlock`` reads four block-input fields and builds one instance.
 - ``stream_chat_completion_sdk`` applies it when constructing
   ``ClaudeAgentOptions.allowed_tools`` / ``disallowed_tools``.
-- ``run_block`` reads it from the contextvar to gate block execution.
+- ``run_capability`` reads it from the contextvar to gate block execution.
 - Recursive (sub-agent) invocations merge parent and child so children
   can only be *more* restrictive, never more permissive.
 
 Tool names
 ----------
 Users specify the **short name** as it appears in ``TOOL_REGISTRY`` (e.g.
-``run_block``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
+``run_capability``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
 ``Task``, ``WebSearch``).  Internally these are mapped to the full SDK
-format (``mcp__copilot__run_block``, ``Read``, …) by
+format (``mcp__copilot__run_capability``, ``Read``, …) by
 :func:`apply_tool_permissions`.
+
+Two names are **capability gates** rather than tools: ``run_block`` and
+``run_mcp_tool`` no longer exist as tools (blocks and MCP servers run through
+``run_capability``), but denying them still denies that whole kind of
+capability, so saved graphs keep their meaning.  Retired discovery names
+(``find_block``, ``get_mcp_guide``, ``continue_run_block``) are accepted for
+saved graphs and mapped to their registry equivalents.
 
 Block identifiers
 -----------------
@@ -38,6 +45,13 @@ tools are denied and everything else is allowed.  An empty list means
 are allowed.
 
 ``blocks_exclude`` follows the same pattern for ``blocks``.
+
+Denying a capability denies the tools that extend it (see
+``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
+performs it (see ``_IMPLIED_GRANTS``). Either list is written against the
+tools that exist when it is written, so a later tool that reaches the same
+resource would otherwise be silently regained by every existing blacklist,
+and a renamed one silently lost by every existing whitelist.
 
 Recursion inheritance
 ---------------------
@@ -76,55 +90,78 @@ ToolName = Literal[
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "confirm_expert_change",
     "confirm_expert_soul_update",
     "connect_integration",
-    "continue_run_block",
+    "consult_teammate",
     "create_agent",
     "create_feature_request",
     "create_folder",
     "customize_agent",
     "decompose_goal",
+    "delegate_to_expert",
     "delete_folder",
     "delete_preset",
     "delete_schedule",
     "delete_skill",
     "delete_workspace_file",
+    "describe_capability",
     "edit_agent",
+    "edit_chat_platform_message",
     "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
-    "find_block",
+    "find_capability",
     "find_library_agent",
+    "find_session",
     "fix_agent_graph",
     "get_agent_building_guide",
     "get_doc_page",
-    "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "grant_expert_credential",
+    "handoff_to_expert",
+    "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_expert_chats",
+    "list_expert_credentials",
+    "list_expert_workflows",
     "list_folders",
     "list_presets",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
     "memory_search",
     "memory_store",
+    "message_session",
     "move_agents_to_folder",
     "move_folder",
+    "pause_schedule",
     "post_to_chat_platform",
+    "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "remove_expert_workflow",
+    "request_credential_grant",
+    "resume_capability",
+    "resume_schedule",
+    "revoke_expert_credential",
     "run_agent",
-    "run_block",
-    "run_mcp_tool",
+    "run_capability",
     "run_sub_session",
     "schedule_followup",
     "search_docs",
     "search_feature_requests",
     "setup_agent_webhook_trigger",
+    "start_desktop",
     "store_skill",
+    "update_expert",
     "update_expert_soul",
     "update_folder",
     "update_preset",
@@ -133,6 +170,9 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability gates (not tools): deny to withhold a whole kind of capability
+    "run_block",
+    "run_mcp_tool",
     # SDK built-ins
     "Agent",
     "Edit",
@@ -148,7 +188,21 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
+# Capability gates: names a permission list may deny to withhold every block
+# (``run_block``) or every MCP server (``run_mcp_tool``) from ``run_capability``.
+BLOCK_GATE = "run_block"
+MCP_GATE = "run_mcp_tool"
+CAPABILITY_GATE_NAMES: frozenset[str] = frozenset({BLOCK_GATE, MCP_GATE})
+
+# Retired tool names -> the registry tool that replaced them.  Accepted in
+# saved ``AutoPilotBlock`` permission lists and translated on evaluation.
+LEGACY_TOOL_ALIASES: dict[str, str] = {
+    "find_block": "find_capability",
+    "get_mcp_guide": "find_capability",
+    "continue_run_block": "resume_capability",
+}
+
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -169,8 +223,10 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in.
-PLATFORM_TOOL_NAMES: frozenset[str] = ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES
+# Platform tool names — everything that isn't an SDK built-in or a gate.
+PLATFORM_TOOL_NAMES: frozenset[str] = (
+    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+)
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -178,6 +234,46 @@ _FULL_UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+
+# Tools that a blacklist entry must deny alongside the capability named.
+#
+# A blacklist is written against the tools that existed when it was written,
+# so a tool added later that reaches the same resource is silently regained
+# by every blacklist already out there. An operator who revoked proactive
+# posting to their chat platforms should not find the agent able to rewrite
+# everything the bot has already said in them.
+_IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
+    "post_to_chat_platform": ("edit_chat_platform_message",),
+}
+
+
+def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
+    """Expand a deny set with the tools its entries imply."""
+    return denied.union(
+        implied for name in denied for implied in _IMPLIED_DENIALS.get(name, ())
+    )
+
+
+# Tools that a whitelist entry must allow alongside the capability named.
+#
+# The mirror of the above: a whitelist is also written against the tools that
+# existed when it was written, and the gates are the one case where the tool
+# that does the work was renamed out from under it. A saved list naming
+# ``run_block`` meant "you may run blocks", which now happens through
+# ``run_capability`` -- a name no existing list can contain. Without this the
+# gate stays open and the tool that opens it is never handed to the model.
+_IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
+    BLOCK_GATE: ("run_capability",),
+    MCP_GATE: ("run_capability",),
+}
+
+
+def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
+    """Expand an allow set with the tools its entries imply."""
+    return allowed.union(
+        implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +306,7 @@ class CopilotPermissions(BaseModel):
     """Capability filter for a single copilot execution.
 
     Attributes:
-        tools: Tool names to filter (short names, e.g. ``run_block``).
+        tools: Tool names to filter (short names, e.g. ``run_capability``).
         tools_exclude: When True (default) ``tools`` is a blacklist;
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
@@ -241,10 +337,10 @@ class CopilotPermissions(BaseModel):
         """
         if not self.tools:
             return frozenset(all_tools)
-        tool_set = frozenset(self.tools)
+        tool_set = frozenset(LEGACY_TOOL_ALIASES.get(t, t) for t in self.tools)
         if self.tools_exclude:
-            return all_tools - tool_set
-        return all_tools & tool_set
+            return all_tools - _with_implied_denials(tool_set)
+        return all_tools & _with_implied_grants(tool_set)
 
     # ------------------------------------------------------------------
     # Block helpers
@@ -341,6 +437,14 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:
+    """Short names *permissions* withholds from the turn (empty when none)."""
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _assert_tool_names_consistent() -> None:
@@ -480,8 +584,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names

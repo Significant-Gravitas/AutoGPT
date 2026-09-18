@@ -20,6 +20,7 @@
 
 * [Setting Up AutoGPT (Self-Host)](getting-started.md)
 * [AutoGPT Platform Installer](installer.md)
+* [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
 * [Advanced Setup](advanced_setup.md)
 
 ## Tutorials
@@ -52,6 +53,7 @@
 ## Contributing
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
+* [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
 
 ## Changelog
 

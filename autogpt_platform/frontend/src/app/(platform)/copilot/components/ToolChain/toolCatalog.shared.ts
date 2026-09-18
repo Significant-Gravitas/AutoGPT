@@ -18,19 +18,25 @@ export type ChainCategory =
   | "integration"
   | "feature"
   | "question"
+  | "team"
   | "info"
   | "narration";
 
 export type ToolInput = Record<string, unknown>;
 
+export interface ToolDisplayContext {
+  displayName?: unknown;
+  output?: unknown;
+}
+
 export interface ToolMeta {
   category: ChainCategory;
   running: string;
   done: string;
-  subject?: (input: ToolInput) => string | null;
+  subject?: (input: ToolInput, context: ToolDisplayContext) => string | null;
 }
 
-export function str(input: ToolInput, key: string): string | null {
+export function strField(input: ToolInput, key: string): string | null {
   const value = input[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -40,6 +46,9 @@ export function quoted(
   key: string,
   maxLen = 50,
 ): string | null {
-  const value = str(input, key);
+  return quotedName(strField(input, key), maxLen);
+}
+
+export function quotedName(value: string | null, maxLen = 50): string | null {
   return value ? `"${truncate(value, maxLen)}"` : null;
 }

@@ -7,18 +7,18 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import {
+  getExpertInputPlaceholder,
   getGreetingName,
   getInputPlaceholder,
+  getIntroLine,
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { PulseChips } from "../PulseChips/PulseChips";
-import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
@@ -26,10 +26,10 @@ import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
-  inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (
@@ -43,10 +43,13 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  /** Expert the new conversation will address; scopes workspace-file pickers. */
+  expertId?: string | null;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
 }
 
 export function EmptySession({
-  inputLayoutId,
   isCreatingSession,
   onSend,
   isUploadingFiles,
@@ -55,17 +58,23 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  expertId = null,
+  voiceToggle,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const pulseChips = usePulseChips();
-  const { options, recipient, isLoadingRecipient, selectRecipient } =
-    useRecipientPicker();
+  const {
+    options,
+    recipient,
+    selectedExpert,
+    isLoadingRecipient,
+    selectRecipient,
+  } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -81,7 +90,12 @@ export function EmptySession({
     getInputPlaceholder(),
   );
 
-  useEffect(() => {
+  // Layout effect (not a regular effect) so the width-dependent placeholder
+  // is swapped in before the browser paints — otherwise the shorter default
+  // string flashes on screen first and visibly reflows into the longer one,
+  // which is what caused the placeholder to jump between wrapping above the
+  // icons and sitting next to them.
+  useLayoutEffect(() => {
     function handleResize() {
       setInputPlaceholder(getInputPlaceholder(window.innerWidth));
     }
@@ -116,6 +130,11 @@ export function EmptySession({
         isOpen={intro.isWelcomeOpen}
         onClose={intro.closeWelcome}
       />
+      {/* Which connection the new chat runs on, kept out of the composer and
+          in the page corner, level with the inset header's controls. */}
+      <div className="absolute right-3 top-3 z-30 empty:hidden">
+        <ConnectionPicker className="ml-0" />
+      </div>
       <motion.div
         className={cn(
           "relative z-10 w-full max-w-[52rem] text-center",
@@ -148,44 +167,41 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <EmptyHero name={greetingName} />
+            <EmptyHero name={greetingName} intro={introLine} />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-              <motion.div
-                layoutId={inputLayoutId}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+              <div
                 className={cn(
                   isBrainDumpEnabled
-                    ? "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out"
+                    ? "text-left transition-colors duration-300 ease-out"
                     : "w-full px-2",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
-                  // borders line up. The regular hero keeps it centered.
+                  // edges line up. No chrome of its own: the composer card is
+                  // the only outline on screen. The regular hero keeps it
+                  // centered.
                   isBrainDumpEnabled &&
                     (intro.isVisible
                       ? "-mx-5 max-w-[50.5rem]"
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
-                style={
-                  isBrainDumpEnabled
-                    ? {
-                        borderColor: "#e4e4e7",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      }
-                    : undefined
-                }
               >
                 <ChatInput
                   inputId="chat-input-empty"
+                  stacked
+                  voiceToggle={voiceToggle}
                   onSend={onSend}
                   disabled={isComposerDisabled}
-                  hideSubmitWhenEmpty={Boolean(isBrainDumpEnabled)}
                   isUploadingFiles={isUploadingFiles}
-                  placeholder={inputPlaceholder}
+                  placeholder={
+                    selectedExpert
+                      ? getExpertInputPlaceholder(selectedExpert.name)
+                      : inputPlaceholder
+                  }
                   className={
                     isBrainDumpEnabled
                       ? "w-full [&_textarea]:min-h-[4.5rem]"
@@ -193,6 +209,7 @@ export function EmptySession({
                   }
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  expertId={expertId}
                   recipientPicker={
                     isExpertsEnabled ? (
                       <RecipientChip
@@ -204,30 +221,22 @@ export function EmptySession({
                     ) : undefined
                   }
                 />
-              </motion.div>
+              </div>
             </div>
           )}
 
           {/* The recap sits under the composer: the empty state's job is to
               get a message typed, so the briefing reads as context below it
-              rather than as a wall above it. */}
+              rather than as a wall above it. Workflow activity lives on
+              /home, under the briefing, so nothing stands in for a missing
+              recap here. */}
           {!intro.isVisible &&
             !intro.isAwaitingGreeting &&
-            (isExpertsEnabled ? (
+            isExpertsEnabled && (
               <div className="mx-auto mb-6 w-full max-w-[42rem]">
-                <CopilotHome
-                  fallback={
-                    isAgentBriefingEnabled ? (
-                      <PulseChips chips={pulseChips} onChipClick={onSend} />
-                    ) : null
-                  }
-                />
+                <CopilotHome />
               </div>
-            ) : (
-              isAgentBriefingEnabled && (
-                <PulseChips chips={pulseChips} onChipClick={onSend} />
-              )
-            ))}
+            )}
         </div>
 
         {/* The greeting page is deliberately quiet: its own prompts are

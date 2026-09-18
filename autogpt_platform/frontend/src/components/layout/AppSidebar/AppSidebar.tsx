@@ -28,17 +28,16 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
-  Home01Icon,
+  Home10Icon,
   NoteEditIcon,
   Store01Icon,
-  UserGroup02Icon,
+  AddTeamIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -57,7 +56,7 @@ const MAIN_LINKS: NavLink[] = [
 
 // /home 404s without the experts flag, so the entry only exists for the
 // cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
+const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -143,10 +142,9 @@ function NewTaskItem() {
 
 interface NavItemProps {
   link: NavLink;
-  children?: ReactNode;
 }
 
-function NavItem({ link, children }: NavItemProps) {
+function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -167,7 +165,6 @@ function NavItem({ link, children }: NavItemProps) {
           <NavLinkLoader />
         </Link>
       </SidebarMenuButton>
-      {children}
     </SidebarMenuItem>
   );
 }
@@ -175,19 +172,15 @@ function NavItem({ link, children }: NavItemProps) {
 function NavMenu({
   links,
   leading,
-  renderAfterItem,
 }: {
   links: NavLink[];
   leading?: ReactNode;
-  renderAfterItem?: (link: NavLink) => ReactNode;
 }) {
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <NavItem key={link.href} link={link}>
-          {renderAfterItem?.(link)}
-        </NavItem>
+        <NavItem key={link.href} link={link} />
       ))}
     </SidebarMenu>
   );
@@ -258,17 +251,14 @@ export function AppSidebar(props: Props) {
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [
-        { name: "Team", href: "/team", icon: UserGroup02Icon },
-        ...WORKSPACE_LINKS,
-      ]
+    ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "o") return;
       if (!event.metaKey && !event.ctrlKey) return;
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
@@ -317,12 +307,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu
-                links={workspaceLinks}
-                renderAfterItem={(link) =>
-                  link.href === "/team" ? <SidebarTeamMembers /> : null
-                }
-              />
+              <NavMenu links={workspaceLinks} />
             </CollapsibleNavGroup>
           </motion.div>
 

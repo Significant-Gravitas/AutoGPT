@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Drives the devtool gate. Defaults to off so the bulk of these tests
+// exercise the plain fetch path rather than the usage-capturing wrapper.
+const isDevelopmentBuild = vi.fn(() => false);
 
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "http://test.local",
+    isDevelopmentBuild: () => isDevelopmentBuild(),
+    isDev: () => false,
   },
 }));
 
@@ -10,8 +16,24 @@ vi.mock("../helpers", () => ({
   getCopilotAuthHeaders: async () => ({ "x-test": "auth" }),
 }));
 
+const createUsageCapturingFetch = vi.fn((_sessionId: string) => vi.fn());
+
+vi.mock("../tokenDevtool/usageTap", () => ({
+  createUsageCapturingFetch: (sessionId: string) =>
+    createUsageCapturingFetch(sessionId),
+}));
+
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
+
+beforeEach(() => {
+  isDevelopmentBuild.mockReturnValue(false);
+  createUsageCapturingFetch.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,6 +55,23 @@ function lastMessage(text: string, metadata?: unknown) {
     },
   ];
 }
+
+describe("copilotStreamTransport devtool wiring", () => {
+  it("installs the usage-capturing fetch when the devtool gate is on", () => {
+    vi.stubEnv("NEXT_PUBLIC_TOKEN_DEVTOOL", "true");
+    isDevelopmentBuild.mockReturnValue(true);
+
+    createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
+
+    expect(createUsageCapturingFetch).toHaveBeenCalledWith("s-1");
+  });
+
+  it("leaves fetch alone when the devtool gate is off", () => {
+    createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
+
+    expect(createUsageCapturingFetch).not.toHaveBeenCalled();
+  });
+});
 
 describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
   it("reaches fetch when crypto.randomUUID is unavailable on a LAN HTTP origin", async () => {
@@ -84,6 +123,42 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       }
     ).prepareSendMessagesRequest({ messages: lastMessage("hi") });
     expect(body1.body.message_id).toMatch(UUID_RE);
+  });
+
+  it("sends the tier the picker holds, so the turn runs on what was chosen", async () => {
+    // Regression: the tier was gated on CHAT_MODE_OPTION on the way to the
+    // request while the picker that sets it was not gated at all. With the
+    // flag off the control still moved and the turn still ran on the other
+    // tier -- the label said Advanced and the reply came back from the
+    // Balanced model. Whatever the ref holds has to reach the body.
+    const transport = createCopilotTransport({
+      sessionId: "sess-tier",
+      ...makeRefs(),
+      copilotModelRef: { current: "advanced" as const },
+    });
+    const prepared = await (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: ReturnType<typeof lastMessage>;
+        }) => Promise<{ body: { model?: string | null } }>;
+      }
+    ).prepareSendMessagesRequest({ messages: lastMessage("hi") });
+    expect(prepared.body.model).toBe("advanced");
+  });
+
+  it("sends a null tier when nothing is chosen, leaving the call to the server", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-tier-default",
+      ...makeRefs(),
+    });
+    const prepared = await (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: ReturnType<typeof lastMessage>;
+        }) => Promise<{ body: { model?: string | null } }>;
+      }
+    ).prepareSendMessagesRequest({ messages: lastMessage("hi") });
+    expect(prepared.body.model).toBeNull();
   });
 
   it(

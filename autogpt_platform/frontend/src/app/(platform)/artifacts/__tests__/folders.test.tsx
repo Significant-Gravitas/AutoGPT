@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -6,8 +6,10 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
@@ -22,6 +24,12 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => true,
   useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
+
+// The generated default answers with random experts, which would render
+// random filter tabs on the page under test.
+beforeEach(() => {
+  server.use(getListExpertIdentitiesMockHandler([]));
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -89,8 +97,17 @@ function useStorageHandler() {
   );
 }
 
+// "New folder" lives in the header's New menu. Radix DropdownMenu opens on
+// pointerdown, not click, under happy-dom.
+async function openCreateFolderDialog() {
+  fireEvent.pointerDown(screen.getByTestId("artifacts-new-menu"), {
+    button: 0,
+  });
+  fireEvent.click(await screen.findByTestId("create-folder-button"));
+}
+
 describe("ArtifactsPage - folders", () => {
-  test("renders folders at the root with file counts", async () => {
+  test("renders folders as rows at the root with file counts", async () => {
     useStorageHandler();
     server.use(
       getListWorkspaceFilesMockHandler({
@@ -105,9 +122,30 @@ describe("ArtifactsPage - folders", () => {
 
     render(<ArtifactsPage />);
 
-    expect(await screen.findByTestId("workspace-folders")).toBeDefined();
-    expect(await screen.findByText("Reports")).toBeDefined();
+    expect(await screen.findByTestId("workspace-folder")).toBeDefined();
+    expect(screen.getByText("Reports")).toBeDefined();
     expect(screen.getByText("2 files")).toBeDefined();
+  });
+
+  test("grid view shows folders as cards", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [],
+        offset: 0,
+        has_more: false,
+      }),
+      getListWorkspaceFoldersMockHandler({
+        folders: [makeFolder({ name: "Reports", file_count: 2 })],
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-view-grid"));
+
+    expect(await screen.findByTestId("workspace-folders")).toBeDefined();
+    expect(screen.getByText("Reports")).toBeDefined();
   });
 
   test("selecting a folder scopes the list and shows a breadcrumb", async () => {
@@ -140,6 +178,8 @@ describe("ArtifactsPage - folders", () => {
 
     expect(await screen.findByTestId("folder-breadcrumb")).toBeDefined();
     expect(await screen.findByText("inside.txt")).toBeDefined();
+    // Folder rows only appear at the root.
+    expect(screen.queryByTestId("workspace-folder")).toBeNull();
 
     // Back to root via breadcrumb.
     fireEvent.click(screen.getByTestId("folder-breadcrumb-root"));
@@ -167,8 +207,9 @@ describe("ArtifactsPage - folders", () => {
 
     render(<ArtifactsPage />);
 
-    fireEvent.click(await screen.findByTestId("create-folder-button"));
-    fireEvent.change(screen.getByLabelText(/folder name/i), {
+    await screen.findByTestId("artifacts-empty");
+    await openCreateFolderDialog();
+    fireEvent.change(await screen.findByLabelText(/folder name/i), {
       target: { value: "Invoices" },
     });
     fireEvent.click(screen.getByTestId("folder-form-submit"));
@@ -198,7 +239,6 @@ describe("ArtifactsPage - folders", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("movable.txt")).toBeDefined();
-    // Radix DropdownMenu opens on pointerdown, not click, under happy-dom.
     fireEvent.pointerDown(screen.getByTestId("artifacts-card-menu"), {
       button: 0,
     });
@@ -317,7 +357,7 @@ describe("ArtifactsPage - folders", () => {
     expect(await screen.findByText(/something went wrong/i)).toBeDefined();
   });
 
-  test("dragging a file onto a folder moves it", async () => {
+  test("dragging a file onto a folder row moves it", async () => {
     useStorageHandler();
     let movedTo: string | null | undefined;
     server.use(
@@ -355,12 +395,12 @@ describe("ArtifactsPage - folders", () => {
       },
     };
 
-    const card = screen.getByTestId("artifacts-list-item");
-    const folder = screen.getByTestId("workspace-folder");
-    fireEvent.dragStart(card, { dataTransfer });
+    const row = screen.getByTestId("artifacts-list-item");
+    const folder = await screen.findByTestId("workspace-folder");
+    fireEvent.dragStart(row, { dataTransfer });
     fireEvent.dragOver(folder, { dataTransfer });
     fireEvent.drop(folder, { dataTransfer });
-    fireEvent.dragEnd(card, { dataTransfer });
+    fireEvent.dragEnd(row, { dataTransfer });
 
     await waitFor(() => expect(movedTo).toBe("fld-1"));
     expect(store[FILE_DRAG_MIME]).toBe("f1");
@@ -390,9 +430,9 @@ describe("ArtifactsPage - folders", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("root.txt")).toBeDefined();
-    fireEvent.keyDown(await screen.findByTestId("workspace-folder"), {
-      key: "Enter",
-    });
+    const user = userEvent.setup();
+    (await screen.findByTestId("workspace-folder")).focus();
+    await user.keyboard("{Enter}");
     expect(await screen.findByText("inside.txt")).toBeDefined();
   });
 
@@ -412,7 +452,8 @@ describe("ArtifactsPage - folders", () => {
 
     render(<ArtifactsPage />);
 
-    fireEvent.click(await screen.findByTestId("create-folder-button"));
+    await screen.findByTestId("artifacts-empty");
+    await openCreateFolderDialog();
     fireEvent.change(await screen.findByLabelText(/folder name/i), {
       target: { value: "Dupe" },
     });

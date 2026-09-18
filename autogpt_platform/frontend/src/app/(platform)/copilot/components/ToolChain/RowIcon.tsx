@@ -32,6 +32,7 @@ import {
   Settings01Icon,
   SlidersHorizontalIcon,
   TerminalIcon,
+  UserGroupIcon,
   WrenchIcon,
 } from "@hugeicons/core-free-icons";
 import Image from "next/image";
@@ -107,6 +108,8 @@ export function RowIcon({ row }: RowIconProps) {
       return <Icon icon={ConnectIcon} size={16} className={cls} />;
     case "feature":
       return <Icon icon={MegaphoneIcon} size={16} className={cls} />;
+    case "team":
+      return <Icon icon={UserGroupIcon} size={16} className={cls} />;
     case "question":
       return <Icon icon={MessageQuestionIcon} size={16} className={cls} />;
     case "info":

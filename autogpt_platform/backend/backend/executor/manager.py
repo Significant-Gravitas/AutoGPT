@@ -51,7 +51,8 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util import json
+from backend.monitoring.instrumentation import record_graph_run_completion
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -73,6 +74,8 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
@@ -82,7 +85,7 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import billing, expert_posts
+from . import activity_events, billing, expert_posts
 from .activity_status_generator import (
     INSUFFICIENT_BALANCE_GUIDANCE,
     generate_activity_status_for_execution,
@@ -440,6 +443,7 @@ async def execute_node(
             input_data=input_data,
             creds_manager=creds_manager,
             user_id=user_id,
+            expert_id=execution_context.expert_id,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)
@@ -697,6 +701,27 @@ async def _enqueue_next_nodes(
     ]
 
 
+def _expert_run_completed_event(
+    graph_exec: GraphExecutionEntry, status: ExecutionStatus
+) -> Optional[dict]:
+    """Funnel payload for a finished top-level expert run, else None.
+
+    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
+    counts exactly the runs that can post: an expert-attributed, non-dry-run,
+    top-level execution that reached a terminal status. Execution origin
+    (schedule vs manual vs webhook) is not persisted anywhere, so the event
+    covers every such run rather than pretending to know the trigger.
+    """
+    expert_id = expert_posts.completed_expert_id(graph_exec, status)
+    if expert_id is None:
+        return None
+    return {
+        "expert_id": expert_id,
+        "status": status.value,
+        "graph_exec_id": graph_exec.graph_exec_id,
+    }
+
+
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -782,6 +807,12 @@ class ExecutionProcessor:
                 stats=execution_stats,
                 db_client=db_client,
             )
+            if status == ExecutionStatus.COMPLETED:
+                await activity_events.log_node_integration_activity(
+                    node_exec=node_exec,
+                    block=node.block,
+                    db_client=db_client,
+                )
             if not node_exec.execution_context.dry_run:
                 reconciled_delta, _ = await billing.charge_reconciled_usage(
                     node_exec=node_exec,
@@ -887,7 +918,7 @@ class ExecutionProcessor:
             )
 
             # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
-            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # the default cap; coordination blocks (AgentExecutor, Otto)
             # opt out by overriding `execution_timeout_seconds = None`. Their
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
@@ -1069,11 +1100,17 @@ class ExecutionProcessor:
                     "Activity status generation disabled, not setting fields"
                 )
         finally:
-            # Communication handling
-            billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            # No per-run email: a successful run is the system working as
+            # designed, and its evidence belongs in the Briefing's highlights
+            # or behind a deep link. The run is scored for the Briefing when
+            # its terminal stats are written, just below.
             expert_posts.handle_expert_run_post(
                 db_client, graph_exec, exec_meta.status, exec_stats
             )
+            activity_events.handle_run_completed(
+                db_client, graph_exec, exec_meta, exec_stats
+            )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1081,6 +1118,15 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
+            # Only once the terminal state is persisted.
+            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
+            if run_event is not None:
+                emit_funnel_event(
+                    graph_exec.user_id,
+                    "expert_run_completed",
+                    run_event,
+                    f"expert_run_completed:{graph_exec.graph_exec_id}",
+                )
 
     async def charge_node_usage(
         self,
@@ -1579,6 +1625,7 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
+        set_executor_id(self.executor_id)
         self._update_prompt_metrics()
         # Deliberate reuse of pyro_host: despite the legacy name it is the
         # bind address for every service's internal listener (see
@@ -2103,6 +2150,17 @@ def update_node_execution_status(
     return exec_update
 
 
+_TERMINAL_RUN_STATUSES = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED}
+)
+
+
+def _record_terminal_status(status: "ExecutionStatus | None") -> None:
+    """Feed the run-outcome counter exactly once, at the terminal transition."""
+    if status is not None and status in _TERMINAL_RUN_STATUSES:
+        record_graph_run_completion(status.value)
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -2114,6 +2172,7 @@ async def async_update_graph_execution_state(
         graph_exec_id, status, stats
     )
     if graph_update:
+        _record_terminal_status(status)
         await send_async_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
@@ -2129,6 +2188,7 @@ def update_graph_execution_state(
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
+        _record_terminal_status(status)
         send_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")

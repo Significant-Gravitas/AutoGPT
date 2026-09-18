@@ -6,6 +6,8 @@ import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -13,6 +15,7 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
@@ -52,6 +55,7 @@ import {
   str,
   stripBaseFields,
 } from "./resultHelpers";
+import { SubSessionPendingCard } from "./SubSessionLive";
 import {
   FileCard,
   KeyValueList,
@@ -146,16 +150,60 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+}
+
+const CAPABILITY_RUN_TOOLS = new Set([
+  "run_capability",
+  "resume_capability",
+  "describe_capability",
+]);
+
+function isMcpCapabilityRow(
+  row: ChainRow,
+  output: Record<string, unknown>,
+): boolean {
+  if (!row.tool || !CAPABILITY_RUN_TOOLS.has(row.tool)) return false;
+  const input = asObject(row.input);
+  const id = (input && str(input, "id")) ?? "";
+  return (
+    id.startsWith("mcp:") || id.startsWith("https://") || "server_url" in output
+  );
+}
+
+function capabilityAsBlockItem(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...item,
+    description: item.purpose,
+    categories: [
+      item.kind === "mcp_server"
+        ? "integration"
+        : item.class === "primitive"
+          ? "building block"
+          : String(item.kind ?? ""),
+    ],
+  };
+}
+
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   const setupInfo = asObject(output.setup_info);
   if (!setupInfo) return null;
   const setupOutput = output as unknown as SetupRequirementsResponse;
 
-  if (row.tool === "run_mcp_tool") {
+  if (row.tool === "run_mcp_tool" || isMcpCapabilityRow(row, output)) {
     return (
       <MCPSetupCard
         output={setupOutput}
-        retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server URL and arguments."
+        retryInstruction="I've connected the integration. Please retry the same call."
       />
     );
   }
@@ -191,7 +239,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -252,9 +304,31 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "run_sub_session":
     case "get_sub_session_result":
-      return output && str(output, "status") ? (
-        <SubSessionCard output={output} />
+    case "delegate_to_expert":
+    case "handoff_to_expert": {
+      // A teammate's thread is their own workspace: delegated cards stay
+      // minimal (who, status, elapsed, link) — no response preview, no live
+      // step feed. Only the model's own run_sub_session shows its work here,
+      // and it always will: `expert` is written solely by the backend's
+      // apply_delegated_expert, which run_sub_session never calls (its subs
+      // are same-scope by construction, so the identity is None anyway).
+      const delegated =
+        row.tool === "delegate_to_expert" ||
+        row.tool === "handoff_to_expert" ||
+        !!(output && asObject(output.expert));
+      if (output && str(output, "status"))
+        return <SubSessionCard output={output} minimal={delegated} />;
+      // A blocking delegate has no output while the teammate works — show
+      // who's on it and what they were asked from the tool input instead.
+      // Not for result polls: the delegation card above is already showing
+      // this sub-session live, a second identical card would stack under it.
+      return row.state === "running" &&
+        row.tool !== "get_sub_session_result" ? (
+        <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
+    }
+    case "consult_teammate":
+      return output ? <ConsultVerdictCard output={output} /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);
@@ -264,13 +338,28 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       const blocks = output && asItems(output.blocks);
       return blocks ? <BlockListCard blocks={blocks} /> : null;
     }
+    case "find_capability": {
+      const items = output && asItems(output.capabilities);
+      return items ? (
+        <BlockListCard blocks={items.map(capabilityAsBlockItem)} />
+      ) : null;
+    }
     case "run_block":
-    case "continue_run_block": {
+    case "continue_run_block":
+    case "describe_capability":
+    case "run_capability":
+    case "resume_capability": {
       if (!output) return null;
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
         return <BlockOutputCard output={output} />;
+      if ("result" in output) return <KeyValueList value={output.result} />;
       return null;
     }
     case "connect_integration":
@@ -364,6 +453,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -378,9 +469,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -409,7 +501,7 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, readOnly);
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
