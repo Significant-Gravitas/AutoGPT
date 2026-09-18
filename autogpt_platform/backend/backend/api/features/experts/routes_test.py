@@ -447,6 +447,28 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     )
 
 
+def test_create_raised_expert_trims_job_title_before_length_check(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+    job_title = "j" * 100
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "job_title": f"  {job_title}  "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["job_title"] == job_title
+
+
 def test_create_raised_expert_forwards_about(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -663,6 +685,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
 
     assert response.status_code == 200
     assert mock_create.await_args.kwargs == {
+        "job_title": None,
         "avatar_url": None,
         "color": None,
         "about": None,
@@ -868,6 +891,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "avatar_url": None,
             "color": "orange-500",
             "role": "Marketing Specialist",
+            "job_title": None,
             "is_archived": True,
         }
     ]

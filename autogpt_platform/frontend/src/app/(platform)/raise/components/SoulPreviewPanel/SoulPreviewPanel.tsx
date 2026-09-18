@@ -16,7 +16,7 @@ type SoulDetail = {
   value: string;
 };
 
-type Props = {
+interface Props {
   name: string;
   role: string | null;
   jobTitle?: string | null;
@@ -25,7 +25,7 @@ type Props = {
   about: string | null;
   voiceLabel: string | null;
   kit: RaiseKit | null;
-};
+}
 
 // Starts as just the orb — an expert with nothing to say about itself yet.
 // Answers stack beneath it, which pushes the identity card up as they land.

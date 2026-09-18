@@ -100,7 +100,7 @@ class RaiseExpertTool(BaseTool):
                 "name": {
                     "type": "string",
                     "description": (
-                        "Personal first name, not a job title (use role for that)."
+                        "Personal first name, not a job title (use job_title for that)."
                     ),
                 },
                 "role": {

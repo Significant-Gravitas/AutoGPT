@@ -872,11 +872,32 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = screen.getByTestId("expert-thread-header");
-    const chip = within(header).getByLabelText(`Maria — ${mariaExpert.role}`);
+    const chip = within(header).getByLabelText("Maria — Marketing Manager");
 
     // A tooltip opens on focus as well as hover; an unfocusable trigger
     // hides the role from keyboard users entirely.
     expect(chip.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("does not rewrite a job title that matches a special area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          jobTitle: "Social & Content Repurposing",
+        }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(
+      within(header).getByText("Social & Content Repurposing"),
+    ).toBeDefined();
+    expect(within(header).queryByText("Social media")).toBeNull();
   });
 });
 

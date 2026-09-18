@@ -384,6 +384,33 @@ test("picking a job title records it and asks for a name", async () => {
   });
 });
 
+test("typing a job title trims it and asks for a name", async () => {
+  saveDraft({
+    ...EMPTY_DRAFT,
+    hasStarted: true,
+    role: "Custom role",
+    step: "jobTitle",
+  });
+  renderRaise();
+  await userEvent.type(
+    await screen.findByRole("textbox", { name: "Job title" }),
+    "  Chief of Staff  ",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Add title" }));
+
+  expect(
+    await screen.findByRole(
+      "group",
+      { name: "Suggested names" },
+      { timeout: 5000 },
+    ),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({
+    jobTitle: "Chief of Staff",
+    step: "name",
+  });
+});
+
 test("picking a weekly budget advances to marketplace workflows", async () => {
   seedAtBudget();
   renderRaise();
