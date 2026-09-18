@@ -150,6 +150,16 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+}
+
 const CAPABILITY_RUN_TOOLS = new Set([
   "run_capability",
   "resume_capability",
@@ -340,6 +350,10 @@ function toolCard(
     case "run_capability":
     case "resume_capability": {
       if (!output) return null;
+      // start_desktop is deferred, so the model reaches it through
+      // run_capability: same payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
@@ -438,16 +452,8 @@ function toolCard(
     }
     case "bash_exec":
       return <Terminal row={row} />;
-    case "start_desktop": {
-      // The live desktop is the whole point of the tool: embed the stream
-      // instead of letting the payload fall through to a truncated key/value
-      // dump. The same renderer serves block outputs and attachments.
-      const stream = output ? output.desktop_stream : null;
-      if (stream && desktopStreamRenderer.canRender(stream)) {
-        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
-      }
-      return null;
-    }
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":

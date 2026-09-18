@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
 
+vi.mock("../components/FilesTab/useSessionFiles", () => ({
+  useSessionFiles: () => ({ generated: [], uploaded: [] }),
+}));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -36,6 +40,9 @@ beforeEach(() => {
     activeTab: "files",
     lastArtifact: null,
     history: [],
+    mode: "artifact",
+    isComputerOpen: false,
+    computer: null,
   });
 });
 
@@ -46,6 +53,9 @@ afterEach(() => {
     activeTab: "files",
     lastArtifact: null,
     history: [],
+    mode: "artifact",
+    isComputerOpen: false,
+    computer: null,
   });
 });
 
@@ -90,5 +100,82 @@ describe("ContextPanelToggle", () => {
     render(<ContextPanelToggle />);
 
     expect(screen.getByLabelText("Hide artifacts")).toBeDefined();
+  });
+
+  test("sidebar toggle turns the computer face back to the artifact under it", () => {
+    setPanel({
+      activeArtifact: ARTIFACT,
+      isOpen: true,
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().mode).toBe("artifact");
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(panelState().isOpen).toBe(true);
+  });
+
+  test("sidebar toggle turns the computer face to the library when nothing is under it", () => {
+    setPanel({
+      isOpen: true,
+      activeTab: "artifacts",
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().activeTab).toBe("artifacts");
+  });
+});
+
+describe("ContextPanelToggle computer button", () => {
+  test("is there for a chat with a session and absent without one", () => {
+    const { unmount } = render(<ContextPanelToggle />);
+    expect(screen.queryByLabelText("Open computer")).toBeNull();
+    unmount();
+
+    render(<ContextPanelToggle sessionId="s1" />);
+    expect(screen.getByLabelText("Open computer")).toBeDefined();
+  });
+
+  test("opens the computer face with no artifact and no desktop started", () => {
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().mode).toBe("computer");
+    expect(panelState().isComputerOpen).toBe(true);
+  });
+
+  test("opens the computer face over an artifact without dropping it", () => {
+    setPanel({ activeArtifact: ARTIFACT, isOpen: true });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+
+    expect(panelState().mode).toBe("computer");
+    expect(panelState().isComputerOpen).toBe(true);
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(screen.getByLabelText("Hide computer")).toBeDefined();
+    expect(screen.getByLabelText("Open artifacts")).toBeDefined();
+  });
+
+  test("hides the computer face when it is showing", () => {
+    setPanel({ isOpen: true, mode: "computer", isComputerOpen: true });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Hide computer"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(false);
   });
 });
