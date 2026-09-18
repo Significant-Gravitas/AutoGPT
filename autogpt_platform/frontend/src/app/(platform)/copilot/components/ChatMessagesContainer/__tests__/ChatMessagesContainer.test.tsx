@@ -1,4 +1,5 @@
 import { act } from "@testing-library/react";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
@@ -43,11 +44,17 @@ vi.mock("@/components/ai-elements/message", () => ({
   Message: ({
     children,
     from,
+    "data-message-id": messageId,
   }: {
     children: React.ReactNode;
     from?: string;
+    "data-message-id"?: string;
   }) => (
-    <div data-testid={`message-${from ?? "unknown"}`} data-from={from}>
+    <div
+      data-testid={`message-${from ?? "unknown"}`}
+      data-from={from}
+      data-message-id={messageId}
+    >
       {children}
     </div>
   ),
@@ -67,8 +74,18 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: ({ parts }: { parts: unknown[] }) => (
-    <div data-testid="chain-message-parts" data-parts={JSON.stringify(parts)} />
+  ChainMessageParts: ({
+    parts,
+    isCurrentlyStreaming,
+  }: {
+    parts: unknown[];
+    isCurrentlyStreaming?: boolean;
+  }) => (
+    <div
+      data-testid="chain-message-parts"
+      data-parts={JSON.stringify(parts)}
+      data-streaming={String(!!isCurrentlyStreaming)}
+    />
   ),
 }));
 
@@ -868,5 +885,113 @@ describe("ChatMessagesContainer — expert kickoff", () => {
     );
 
     expect(screen.getAllByTestId("message-user")).toHaveLength(1);
+  });
+});
+
+// ── mid-turn drain split ──────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — mid-turn follow-up", () => {
+  afterEach(cleanup);
+
+  const toolPart = {
+    type: "tool-read_file",
+    toolCallId: "call-1",
+    state: "output-available",
+    input: {},
+    output: "ok",
+  };
+
+  const drainedTurn = [
+    {
+      id: "user-1",
+      role: "user" as const,
+      parts: [{ type: "text" as const, text: "plan my week" }],
+    },
+    {
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [
+        toolPart,
+        {
+          type: "data-pending-drained",
+          id: "hint-0",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pm-1", content: "also check Friday" }],
+          },
+        },
+        { ...toolPart, toolCallId: "call-2" },
+      ],
+    },
+  ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+  function renderedRowIds() {
+    return Array.from(document.querySelectorAll("[data-message-id]")).map(
+      (el) => el.getAttribute("data-message-id"),
+    );
+  }
+
+  it("renders the drained message between the work before and after it", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(
+      Array.from(document.querySelectorAll('[data-testid="message-user"]')),
+    ).toHaveLength(2);
+  });
+
+  it("settles the chain above the follow-up and streams only the last one", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByTestId("chain-message-parts")
+        .map((el) => el.getAttribute("data-streaming")),
+    ).toEqual(["false", "true"]);
+  });
+
+  it("leaves the turn whole when the hint carries no text", () => {
+    const withoutText = [
+      drainedTurn[0],
+      {
+        ...drainedTurn[1],
+        parts: [
+          drainedTurn[1].parts[0],
+          {
+            type: "data-pending-drained",
+            id: "hint-0",
+            data: { drainedCount: 1 },
+          },
+          drainedTurn[1].parts[2],
+        ],
+      },
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withoutText}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
   });
 });

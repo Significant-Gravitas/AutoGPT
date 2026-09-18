@@ -433,15 +433,22 @@ export function useCopilotStream({
       // at the last user message: a turn the backend started on its own
       // (engine-switch continuation) has no user row in front of it, so a
       // user-anchored cut would also delete the completed answer above it
-      // — content the resume never replays. Never cut past the last user
-      // message either, so the prompt itself always survives.
+      // — content the resume never replays. The turn's own opening prompt
+      // is kept (the replay does not re-emit it); everything after it goes,
+      // INCLUDING a user row the backend drained into the middle of the
+      // turn — the replay re-emits that one as a `data-pending-drained`
+      // hint, which the transcript renders as its own bubble, so keeping
+      // the hydrated copy would both duplicate the bubble and stop the cut
+      // at it, leaving the pre-drain chain on screen twice.
       const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
       const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
       const activeTurnIndex = activeTurnStartMessageId
         ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
         : -1;
       const cutIndex =
-        activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
+        activeTurnIndex === -1
+          ? userCut
+          : activeTurnIndex + (prev[activeTurnIndex].role === "user" ? 1 : 0);
       const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
       if (tail.length > 0 && tail.every((m) => extractDbSequence(m) !== null)) {
         return prev.slice(0, cutIndex);

@@ -25,9 +25,13 @@ import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  getTurnMessages,
   parseSpecialMarkers,
 } from "./helpers";
+import {
+  isMidTurnSegmentRow,
+  splitMessagesAtDrainHints,
+  turnMessagesForRow,
+} from "./midTurnSplit";
 import {
   getLatestAssistantStatusMessage,
   isBookkeepingPart,
@@ -343,6 +347,10 @@ export function ChatMessagesContainer({
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
 
+  // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
+  // was drained mid-stream renders as chain → follow-up bubble → chain, while
+  // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
   const lastUserMessageID =
     messages.findLast((message) => message.role === "user")?.id ?? null;
@@ -522,7 +530,7 @@ export function ChatMessagesContainer({
               <LoadingSpinner className="text-neutral-600" />
             </div>
           )}
-          {messages.map((message, messageIndex) => {
+          {renderRows.map((message, rowIndex) => {
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
             // and fall through to normal rendering).
@@ -552,7 +560,7 @@ export function ChatMessagesContainer({
             }
 
             const isLastAssistant =
-              messageIndex === messages.length - 1 &&
+              rowIndex === renderRows.length - 1 &&
               message.role === "assistant";
 
             const isCurrentlyStreaming =
@@ -561,11 +569,15 @@ export function ChatMessagesContainer({
 
             const isAssistant = message.role === "assistant";
 
-            const nextMessage = messages[messageIndex + 1];
+            const nextRow = renderRows[rowIndex + 1];
+            // A segment that only runs up to a mid-turn drain is never the end
+            // of its turn — the same backend turn continues under the follow-up
+            // bubble, so the stats bar and the assistant actions belong to the
+            // last segment alone.
             const isLastInTurn =
               isAssistant &&
-              messageIndex <= messages.length - 1 &&
-              (!nextMessage || nextMessage.role === "user");
+              !isMidTurnSegmentRow(message) &&
+              (!nextRow || nextRow.role === "user");
             // Bookkeeping parts are stripped before any render/split logic so
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
@@ -667,9 +679,9 @@ export function ChatMessagesContainer({
                   )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
-                      turnMessages={getTurnMessages(messages, messageIndex)}
+                      turnMessages={turnMessagesForRow(messages, message)}
                       elapsedSeconds={
-                        messageIndex === messages.length - 1
+                        rowIndex === renderRows.length - 1
                           ? frozenElapsedRef.current
                           : undefined
                       }
