@@ -75,7 +75,7 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 # lifecycle-email listings was ever published under the official marketplace
 # creator, and _resolve_roster_preloads fails the whole seed on a slug it
 # cannot resolve.
-PERSONAS_WITHOUT_WORKFLOWS = {"Remy", "Alex", "Daniel", "Sofia"}
+PERSONAS_WITHOUT_WORKFLOWS = {"Alex", "Daniel", "James", "Remy", "Sofia"}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
