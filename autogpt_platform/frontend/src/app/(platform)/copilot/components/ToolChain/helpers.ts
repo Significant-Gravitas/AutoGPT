@@ -7,7 +7,7 @@ import {
   getAnimationText,
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
-import { capabilityTargetRow } from "./capabilityRow";
+import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
@@ -169,10 +169,13 @@ export const EXPERT_CHANGE_TOOLS = new Set([
 ]);
 
 export function isExpertChangePart(part: MessagePart): boolean {
-  return (
-    part.type.startsWith("tool-") &&
-    EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))
+  if (!part.type.startsWith("tool-")) return false;
+  if (EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))) return true;
+  const target = capabilityTargetToolName(
+    part.type,
+    "input" in part ? part.input : undefined,
   );
+  return target !== null && EXPERT_CHANGE_TOOLS.has(target);
 }
 
 export function isChainPart(part: MessagePart): boolean {

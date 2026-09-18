@@ -36,3 +36,17 @@ export function capabilityTargetRow(row: ChainRow): ChainRow {
   if (!tool || CAPABILITY_TOOLS.has(tool)) return row;
   return { ...row, tool, input: asObject(call.input) ?? {} };
 }
+
+/** The part-level sibling of `capabilityTargetRow`, for cards that are lifted
+ *  out of the chain by tool name. It reads the input alone: an approval card
+ *  has to be on screen while the call is still pending. */
+export function capabilityTargetToolName(
+  type: string,
+  input: unknown,
+): string | null {
+  if (type !== "tool-run_capability") return null;
+  const call = asObject(input);
+  if (!call || call.validate_only === true) return null;
+  const tool = platformToolName(str(call, "id") ?? "");
+  return tool && !CAPABILITY_TOOLS.has(tool) ? tool : null;
+}
