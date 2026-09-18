@@ -606,6 +606,6 @@ _AUTH_HEADER_RE = re.compile(
 # Optional quotes around the key and value cover the JSON and dict shapes a
 # provider echoes back; without them the quote before the colon defeats the match.
 _SECRET_PARAM_RE = re.compile(
-    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token"
-    r"|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
+    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token"
+    r"|client[_-]?secret|token|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )

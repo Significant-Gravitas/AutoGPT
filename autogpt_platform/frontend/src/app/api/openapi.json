@@ -19778,6 +19778,13 @@
             ],
             "title": "Role"
           },
+          "job_title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Job Title"
+          },
           "avatar_url": {
             "anyOf": [
               { "type": "string", "maxLength": 2000 },
@@ -21664,6 +21671,10 @@
             "title": "Color"
           },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },
         "type": "object",

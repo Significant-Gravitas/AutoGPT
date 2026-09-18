@@ -47,6 +47,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.request import HTTPClientError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
@@ -353,11 +354,40 @@ async def execute_block(
                     exec_kwargs[field_name] = credentials
                     continue
 
-                credentials = await creds_manager.get(
-                    user_id,
-                    cred_meta.id,
-                    lock=False,
-                )
+                try:
+                    credentials = await creds_manager.get(
+                        user_id,
+                        cred_meta.id,
+                        lock=False,
+                    )
+                except HTTPClientError as e:
+                    # The provider refused the refresh (revoked grant, expired
+                    # refresh token). The user can only fix that by
+                    # reconnecting, so hand them the card rather than an error.
+                    # Anything else (store, config, handler setup) is not
+                    # theirs to fix and takes the usual error path below.
+                    await _release_credential_leases(credential_leases)
+                    return _build_credential_rejected_card(
+                        block=block,
+                        block_id=block_id,
+                        input_data=input_data,
+                        matched_credentials={field_name: cred_meta},
+                        session_id=session_id,
+                        status_code=credential_rejection_status(e),
+                        exc=e,
+                    )
+                except Exception:
+                    # Not the provider's doing (store, config, handler setup),
+                    # so not the user's to fix, and its text can name internal
+                    # ids: a fixed message, with the detail kept to the log.
+                    logger.exception(
+                        "Could not load credential for block %s", block.name
+                    )
+                    await _release_credential_leases(credential_leases)
+                    return ErrorResponse(
+                        message=f"Failed to retrieve credentials for {field_name}",
+                        session_id=session_id,
+                    )
                 if not (
                     credentials is not None
                     and provider_matches(credentials.provider, cred_meta.provider)
@@ -607,8 +637,8 @@ def _build_credential_rejected_card(
     input_data: dict[str, Any],
     matched_credentials: dict[str, CredentialsMetaInput],
     session_id: str,
-    status_code: int,
-    exc: BlockError,
+    status_code: int | None,
+    exc: BaseException,
 ) -> SetupRequirementsResponse:
     """Setup card for a credential the provider refused mid-execution.
 
@@ -635,6 +665,9 @@ def _build_credential_rejected_card(
         message=(
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+            if status_code is not None
+            else f"The saved {provider_name} credential{named} could not be "
+            "refreshed. Reconnect it or pick a different one, then re-run."
         ),
         session_id=session_id,
         setup_info=SetupInfo(
@@ -778,11 +811,10 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    # Lazy import: find_block imports from .base and .models (siblings), not
-    # from helpers — no actual circular dependency exists today.  Kept lazy as a
-    # precaution since find_block is the block-registry module and future changes
-    # could introduce a cycle.
-    from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
+    from backend.copilot.capabilities.block_meta import (
+        COPILOT_EXCLUDED_BLOCK_IDS,
+        COPILOT_EXCLUDED_BLOCK_TYPES,
+    )
 
     block = get_block(block_id)
     if not block:

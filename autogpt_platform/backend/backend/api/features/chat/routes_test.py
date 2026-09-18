@@ -3150,6 +3150,59 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_enqueue.assert_called_once_with("sess-1")
 
 
+def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Stop the executor never confirms is still the user's Stop.
+
+    The force-complete branch used to publish a ``StreamError``, which every
+    live and resumed stream renders as "the assistant encountered an error" --
+    the user's own cancel reported back to them as the assistant failing.
+    ``skip_error_publish`` keeps the status flip (locks released, queued turns
+    promoted) without the error frame, and the ``reason`` tells the caller the
+    turn may still be draining, which is what the frontend's "Stop may take a
+    moment" toast is keyed on.
+    """
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    running = ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-1",
+        status="running",
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(running, "1-0"))
+    # Never leaves "running": the executor did not confirm inside the window.
+    mock_registry.get_session = AsyncMock(return_value=running)
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.02)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS", 0.01)
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    mock_registry.mark_session_completed.assert_awaited_once()
+    assert (
+        mock_registry.mark_session_completed.await_args.kwargs.get("skip_error_publish")
+        is True
+    ), "a user cancel must not be published to the stream as an error"
+    assert response.json()["reason"] == "cancel_published_not_confirmed"
+
+
 def test_cancel_session_clears_pending_buffer(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
