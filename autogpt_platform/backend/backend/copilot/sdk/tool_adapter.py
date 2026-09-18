@@ -339,10 +339,6 @@ async def _execute_tool_sync(
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
-    # The baseline executor announces every dispatch so same-turn gates can
-    # see it before the row reaches history; the SDK path had no such call,
-    # leaving turn-scoped gates (require_library_check) permanently unmet.
-    session.announce_inflight_tool_call(base_tool.name, args)
     result = await base_tool.execute(
         user_id=user_id,
         session=session,

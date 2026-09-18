@@ -1174,19 +1174,6 @@ async def _baseline_tool_executor(
         ),
     )
 
-    # Announce the tool call to the session so in-turn guards like
-    # ``require_guide_read`` can see it *right now*, before the tool
-    # actually runs.  Without this, the tool_call row lives only in
-    # ``state.session_messages`` until the ``finally`` block flushes it
-    # into ``session.messages`` at turn end — so a second tool in the
-    # same turn (e.g. ``create_agent`` after ``get_agent_building_guide``)
-    # scans a stale ``session.messages`` and the guard re-fires despite
-    # the guide having been called.  The announce-set is cleared at turn
-    # end; we deliberately don't touch ``session.messages`` here to avoid
-    # duplicating the assistant row that ``_baseline_conversation_updater``
-    # persists at turn end.
-    session.announce_inflight_tool_call(called_name, called_args)
-
     def on_display_name(name: str) -> None:
         state.tool_persistence.set_display_name(tool_call_id, name)
         _emit(

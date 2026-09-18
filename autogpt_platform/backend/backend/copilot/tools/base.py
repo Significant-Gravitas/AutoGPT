@@ -432,6 +432,11 @@ class BaseTool:
                 success=False,
             )
 
+        # After the gates, so a refused call never looks to a turn-scoped gate
+        # like the tool having run, and before the await, because the gates ask
+        # whether it was dispatched rather than whether it succeeded.
+        session.announce_inflight_tool_call(self.name, kwargs)
+
         try:
             result = await self._execute(user_id, session, **kwargs)
             if user_id:

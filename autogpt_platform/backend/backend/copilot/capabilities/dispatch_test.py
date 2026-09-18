@@ -18,6 +18,7 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
@@ -25,6 +26,7 @@ from backend.copilot.response_model import (
 from backend.copilot.sdk.tool_adapter import (
     _check_circuit_breaker,
     _make_truncating_wrapper,
+    _text_from_mcp_result,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_tool_failure_counters,
@@ -246,6 +248,28 @@ async def test_sdk_history_row_names_the_inner_call():
 
     rows = [r for r in responses if isinstance(r, StreamToolInputAvailable)]
     assert [(r.toolName, r.input) for r in rows] == [(INNER, ARGS)]
+
+
+@pytest.mark.asyncio
+async def test_a_whitelist_grants_the_dispatcher_but_not_every_tool(_sdk_context):
+    """Allowing a deferred tool implies ``run_capability``, so the dispatcher is
+    reachable whenever any deferred tool is allowed. Denial then rests entirely
+    on gating the RESOLVED tool: without that, one whitelisted tool would open
+    every other one through the same dispatcher."""
+    session = _sdk_context
+    permissions = CopilotPermissions(tools=[INNER], tools_exclude=False)
+    set_execution_context(USER, session, permissions=permissions)
+    assert "run_capability" in permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+
+    denied = _StubTool("hire_expert")
+    wrapper = _make_truncating_wrapper(_never, "run_capability", required_args=["id"])
+    with _dispatch_of(denied):
+        result = await wrapper({"id": "tool:hire_expert", "input": {}})
+
+    assert result.get("isError") is True
+    assert "tool_disabled" in _text_from_mcp_result(result)
+    assert denied.seen is None
+    assert session.has_tool_been_called("hire_expert") is False
 
 
 @pytest.mark.asyncio
