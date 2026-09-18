@@ -198,7 +198,7 @@ move them to the new key instead of losing them. Run everything from
    down:
 
    ```bash
-   cp -n backend/.env ~/autogpt-backend.env.before-upgrade
+   cp backend/.env ~/autogpt-backend.env.$(date +%Y%m%d-%H%M%S)
    ```
 
 3. Generate the new values. `make init-env` creates any missing `.env` file
