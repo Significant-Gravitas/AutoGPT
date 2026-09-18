@@ -458,7 +458,7 @@ develop = true
 
 [package.dependencies]
 colorama = "^0.4.6"
-cryptography = "^46.0"
+cryptography = ">=46,<51"
 expiringdict = "^1.2.2"
 fastapi = "^0.128.7"
 google-cloud-logging = "^3.13.0"
