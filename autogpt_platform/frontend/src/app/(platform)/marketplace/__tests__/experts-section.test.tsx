@@ -232,6 +232,28 @@ describe("Marketplace ExpertsSection", () => {
     expect(within(card).queryByText("Content strategy")).toBeNull();
   });
 
+  test("shows the job title on the card's pill, and the area when there is none", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, job_title: "SEO Content Manager" },
+        { ...mariaTemplate, id: "template-max", name: "Max", role: "Sales" },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const maria = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
+    );
+    expect(within(maria).getByText("SEO Content Manager")).toBeDefined();
+    expect(within(maria).queryByText("Marketing Strategist")).toBeNull();
+    const max = screen.getByRole("link", { name: /Max/ });
+    expect(within(max).getByText("Sales")).toBeDefined();
+  });
+
   test("shows no skills row on a card without Hub skills", async () => {
     server.use(
       getListExpertTemplatesMockHandler([

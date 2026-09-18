@@ -1081,3 +1081,291 @@ describe("ToolResult run_capability", () => {
     expect(screen.getByText(/total/i)).toBeDefined();
   });
 });
+
+describe("ToolResult deferred platform tools", () => {
+  const cases: {
+    tool: string;
+    input: Record<string, unknown>;
+    output: Record<string, unknown>;
+    marker: string | RegExp;
+  }[] = [
+    {
+      tool: "find_agent",
+      input: { query: "leads" },
+      output: { agents: [{ id: "lib-1", source: "library", name: "Leads" }] },
+      marker: "Leads",
+    },
+    {
+      tool: "find_library_agent",
+      input: { query: "leads" },
+      output: {
+        agents: [{ id: "lib-2", source: "library", name: "Lib", runs: 1200 }],
+      },
+      marker: "1,200 runs",
+    },
+    {
+      tool: "list_schedules",
+      input: {},
+      output: {
+        schedules: [
+          {
+            name: "Daily run",
+            next_run_time: "2026-08-21T10:00:00Z",
+            cron: "0 10 * * *",
+            kind: "copilot_turn",
+          },
+        ],
+      },
+      marker: "chat",
+    },
+    {
+      tool: "list_folders",
+      input: {},
+      output: { folders: [{ name: "Marketing", agent_count: 3 }] },
+      marker: "3 agents",
+    },
+    {
+      tool: "search_docs",
+      input: { query: "blocks" },
+      output: {
+        results: [
+          {
+            title: "Blocks",
+            section: "Guide",
+            snippet: "How blocks work",
+            doc_url: "https://docs.agpt.co/blocks",
+          },
+        ],
+      },
+      marker: "How blocks work",
+    },
+    {
+      tool: "list_skills",
+      input: {},
+      output: { skills: [{ name: "summarize" }, { name: "draft" }] },
+      marker: "Skills",
+    },
+    {
+      tool: "get_sub_session_result",
+      input: { sub_session_id: "sub-1" },
+      output: {
+        status: "COMPLETED",
+        response: "Everything worked",
+        elapsed_seconds: 75,
+        sub_autopilot_session_link: "/copilot?session=sub-1",
+      },
+      marker: "1m 15s",
+    },
+    {
+      tool: "validate_agent_graph",
+      input: { agent_json: {} },
+      output: { valid: true },
+      marker: "Graph is valid",
+    },
+    {
+      tool: "setup_agent_webhook_trigger",
+      input: { library_agent_id: "lib-1" },
+      output: {
+        message: "Webhook ready",
+        webhook_url: "https://hooks.example.com/h1",
+      },
+      marker: "https://hooks.example.com/h1",
+    },
+    {
+      tool: "setup_agent_webhook_trigger",
+      input: { library_agent_id: "lib-1" },
+      output: {
+        message: "Connect an account",
+        setup_info: { agent_id: "agent-1", agent_name: "Tracker" },
+      },
+      marker: "mode:trigger",
+    },
+  ];
+
+  it.each(cases)(
+    "renders the $tool card the same when it ran through run_capability",
+    ({ tool, input, output, marker }) => {
+      const direct = render(<ToolResult row={row(output, tool, input)} />);
+      expect(screen.getByText(marker)).toBeDefined();
+      const expected = direct.container.innerHTML;
+      direct.unmount();
+
+      const wrapped = render(
+        <ToolResult
+          row={row(output, "run_capability", { id: `tool:${tool}`, input })}
+        />,
+      );
+
+      expect(wrapped.container.innerHTML).toBe(expected);
+    },
+  );
+
+  it("keeps the open-agent link for a deferred find_agent", () => {
+    render(
+      <ToolResult
+        row={row(
+          { agents: [{ id: "lib-1", source: "library", name: "Leads" }] },
+          "run_capability",
+          { id: "tool:find_agent", input: { query: "leads" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+      "/library/agents/lib-1",
+    );
+  });
+
+  it("resolves a bare tool name the way the backend does", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "run_capability", {
+          id: "validate_agent_graph",
+          input: {},
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Graph is valid")).toBeDefined();
+  });
+
+  it("reads the nested input as the tool's input", () => {
+    render(
+      <ToolResult
+        row={row(
+          { execution_id: "exec-2", graph_id: "graph-9" },
+          "run_capability",
+          {
+            id: "tool:schedule_agent",
+            input: { username_agent_slug: "creator/scraper" },
+          },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("creator/scraper")).toBeDefined();
+  });
+
+  it.each(["delete_workspace_file", "store_skill", "validate_agent_graph"])(
+    "shows the error when a deferred %s call failed",
+    (tool) => {
+      render(
+        <ToolResult
+          row={row(
+            { type: "error", message: "File not found: notes.txt" },
+            "run_capability",
+            { id: `tool:${tool}`, input: { path: "notes.txt" } },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("File not found: notes.txt")).toBeDefined();
+    },
+  );
+
+  it("does not take an inherited object key for a tool name", () => {
+    render(
+      <ToolResult
+        row={row({ note: "first", other: "second" }, "run_capability", {
+          id: "constructor",
+          input: { url: "https://nested.example.com/page" },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/nested\.example\.com/)).toBeNull();
+    expect(screen.getByText("first")).toBeDefined();
+  });
+
+  it("does not render a validate_only response as an execution card", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "run_capability", {
+          id: "tool:validate_agent_graph",
+          input: {},
+          validate_only: true,
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("does not render capability details as an execution card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "capability_details",
+            message: "Validate a graph.",
+            capability: { id: "tool:validate_agent_graph", kind: "tool" },
+            valid: true,
+          },
+          "run_capability",
+          { id: "tool:validate_agent_graph", input: {} },
+        )}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("does not render a describe_capability response as an execution card", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "describe_capability", {
+          id: "tool:validate_agent_graph",
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("leaves a resumed call alone, since it names a review and not a tool", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "resume_capability", {
+          review_id: "copilot-node-abc:1f",
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("keeps block capability rows on the block card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            block_id: "b1",
+            block_name: "Get Weather",
+            outputs: { temperature: [21] },
+          },
+          "run_capability",
+          { id: "block:b1", input: { city: "Oslo" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Get Weather")).toBeDefined();
+  });
+
+  it("keeps MCP capability rows on the MCP setup card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            message: "Connect the tracker",
+            setup_info: { agent_id: "mcp", agent_name: "Tracker" },
+          },
+          "run_capability",
+          { id: "mcp:mcp.example.com", input: { tool: "list_issues" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("mcp-setup-card")).toBeDefined();
+  });
+});
