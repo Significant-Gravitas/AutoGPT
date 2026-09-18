@@ -384,6 +384,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeArtifact: ref,
           history,
           mode: "artifact",
+          // A document opened over the computer face takes the panel; the
+          // flag must follow, or the controls read the computer as showing.
+          isComputerOpen: false,
         },
       };
     }),
@@ -519,10 +522,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     })),
   toggleContextPanelTab: (tab) =>
     set((state) => {
-      const { isOpen, activeTab, activeArtifact } = state.artifactPanel;
-      // An open preview covers the panel, so a click there means "show me the
-      // tab again" rather than "close" — only a visible matching tab closes.
-      const nextOpen = !(isOpen && activeTab === tab && activeArtifact == null);
+      const { isOpen, activeTab, activeArtifact, isComputerOpen } =
+        state.artifactPanel;
+      // An open preview or the computer face covers the panel, so a click
+      // there means "show me the tab again" rather than "close" — only a
+      // visible matching tab closes.
+      const nextOpen = !(
+        isOpen &&
+        activeTab === tab &&
+        activeArtifact == null &&
+        !isComputerOpen
+      );
       if (isClient) {
         storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, String(nextOpen));
         storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
@@ -538,6 +548,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           // Closing from the tab view forgets the remembered preview, so the
           // next sidebar click reopens the tab rather than an older artifact.
           lastArtifact: nextOpen ? state.artifactPanel.lastArtifact : null,
+          // The tab takes the panel from the computer face.
+          mode: "artifact",
+          isComputerOpen: false,
         },
       };
     }),
@@ -554,12 +567,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         activeArtifact: null,
         history: [],
+        mode: "artifact",
+        isComputerOpen: false,
       },
     }));
   },
 
   // Explicit user action (the artifact panel's files button): drops the open
-  // preview and hands the region to the floating files card.
+  // preview or the computer face and hands the region to the floating files
+  // card.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
@@ -572,6 +588,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         activeArtifact: null,
         history: [],
+        mode: "artifact",
+        isComputerOpen: false,
       },
     }));
   },

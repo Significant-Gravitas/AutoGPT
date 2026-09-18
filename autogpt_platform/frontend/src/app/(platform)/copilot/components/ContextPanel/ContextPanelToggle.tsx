@@ -67,9 +67,11 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const showComputerToggle = !!sessionId && !isMobile;
 
   // The open activity card already lists the same file, so the labeled
-  // button floating above it is pure duplication — the card's rows are the
-  // way in while it shows.
-  if (isFilesCardOpen) return null;
+  // artifacts button floating above it is pure duplication — the card's rows
+  // are the way in while it shows. The Computer button is not about files
+  // and stays, or "Turn on screen" is out of reach until the card closes.
+  const showArtifactsToggle = !isFilesCardOpen;
+  if (!showArtifactsToggle && !showComputerToggle) return null;
 
   // With the panel open its own header already names the document, so the
   // button collapses to the bare icon; closed, the name is the reminder of
@@ -86,6 +88,9 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
       openArtifact(target);
       return;
     }
+    // Already on the library (the computer face was just turned off it):
+    // toggling would close it.
+    if (isArtifactsOpen) return;
     toggleContextPanelTab("artifacts");
   }
 
@@ -95,7 +100,6 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
       // the computer if there is one, else wherever a closed panel opens.
       setArtifactPanelMode("artifact");
       if (hasArtifact) return;
-      closeArtifactPanel();
       openDocument();
       return;
     }
@@ -112,6 +116,11 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
 
   function handleComputerToggle() {
     if (isComputerOpen) {
+      // Reveal the preview the computer was covering, else close the panel.
+      if (hasArtifact) {
+        setArtifactPanelMode("artifact");
+        return;
+      }
       closeArtifactPanel();
       return;
     }
@@ -141,35 +150,37 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
           />
         </Button>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size={showFileName ? "sm" : "icon"}
-        onClick={handleSidebarToggle}
-        aria-label={
-          isDocumentOpen
-            ? "Hide artifacts"
-            : lastGenerated
-              ? `Open ${lastGenerated.item.name}`
-              : "Open artifacts"
-        }
-        aria-pressed={isDocumentOpen}
-        className={cn(
-          toggleClass,
-          showFileName ? "h-8 gap-1.5 px-2" : "size-8",
-          isDocumentOpen && "bg-zinc-100",
-        )}
-      >
-        <Icon
-          icon={LicenseDraftIcon}
-          className="!size-4 text-sidebar-foreground/90"
-        />
-        {showFileName && (
-          <span className="max-w-[9rem] truncate text-xs font-medium text-sidebar-foreground/90">
-            {lastGenerated.item.name}
-          </span>
-        )}
-      </Button>
+      {showArtifactsToggle && (
+        <Button
+          type="button"
+          variant="ghost"
+          size={showFileName ? "sm" : "icon"}
+          onClick={handleSidebarToggle}
+          aria-label={
+            isDocumentOpen
+              ? "Hide artifacts"
+              : lastGenerated
+                ? `Open ${lastGenerated.item.name}`
+                : "Open artifacts"
+          }
+          aria-pressed={isDocumentOpen}
+          className={cn(
+            toggleClass,
+            showFileName ? "h-8 gap-1.5 px-2" : "size-8",
+            isDocumentOpen && "bg-zinc-100",
+          )}
+        >
+          <Icon
+            icon={LicenseDraftIcon}
+            className="!size-4 text-sidebar-foreground/90"
+          />
+          {showFileName && (
+            <span className="max-w-[9rem] truncate text-xs font-medium text-sidebar-foreground/90">
+              {lastGenerated.item.name}
+            </span>
+          )}
+        </Button>
+      )}
     </div>
   );
 }

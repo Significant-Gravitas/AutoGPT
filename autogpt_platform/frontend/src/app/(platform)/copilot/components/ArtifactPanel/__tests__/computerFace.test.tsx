@@ -53,6 +53,52 @@ describe("copilot store: computer face", () => {
     );
   });
 
+  it("opening a document over the computer face turns the flag off with the mode", () => {
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore
+      .getState()
+      .openArtifact(
+        {
+          id: "a1",
+          title: "notes.md",
+          sourceUrl: "/x",
+          origin: "assistant",
+        } as never,
+        { persist: false },
+      );
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.mode).toBe("artifact");
+    expect(panel.isComputerOpen).toBe(false);
+    // A desktop started now must not flip the panel over the document.
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    expect(useCopilotUIStore.getState().artifactPanel.mode).toBe("artifact");
+  });
+
+  it("the files tab takes the panel from the computer face instead of closing it", () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore.getState().toggleContextPanelTab("files");
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(true);
+    expect(panel.activeTab).toBe("files");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+    // The same click with the tab already showing closes, as before.
+    useCopilotUIStore.getState().toggleContextPanelTab("files");
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("the panel header's files button leaves the computer face", () => {
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore.getState().showFilesTab();
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.activeTab).toBe("files");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+  });
+
   it("closing the panel and entering a new chat both drop the computer face", () => {
     useCopilotUIStore.getState().registerComputerStream(STREAM);
     useCopilotUIStore.getState().closeArtifactPanel({ persist: false });

@@ -350,8 +350,9 @@ function toolCard(
     case "run_capability":
     case "resume_capability": {
       if (!output) return null;
-      // start_desktop is deferred, so the model reaches it through
-      // run_capability: same payload, same card.
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
       const desktop = desktopCard(output, readOnly);
       if (desktop) return desktop;
       const block = asObject(output.block);
