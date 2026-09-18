@@ -221,12 +221,20 @@ class DesktopSession:
         """Whether the whole stream is still up (it survives a pause).
 
         Both halves, not just the proxy: noVNC keeps listening after x11vnc
-        has died, and a URL handed back then opens onto nothing.
+        has died, and a URL handed back then opens onto nothing.  A listener
+        on the VNC port is not proof of x11vnc either: once it is gone the
+        box's user can bind that port itself, so root's own process is asked
+        for as well, which that user cannot forge.
         """
-        return await self._check(
-            f'netstat -tln | grep -q ":{VNC_PORT} "'
-            f' && netstat -tln | grep -q ":{STREAM_PORT} "'
-        )
+        try:
+            await self._vnc_command(
+                f"pgrep -x -u {VNC_USER} x11vnc >/dev/null"
+                f' && netstat -tln | grep -q ":{VNC_PORT} "'
+                f' && netstat -tln | grep -q ":{STREAM_PORT} "'
+            )
+        except Exception:
+            return False
+        return True
 
     async def _vnc_command(self, command: str):
         return await self.run_command(command, user=VNC_USER)

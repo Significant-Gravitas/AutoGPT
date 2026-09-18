@@ -16,21 +16,28 @@ from backend.blocks.desktop._api import (
 
 
 def _session(
-    listening: bool, vnc_listening: bool | None = None
+    listening: bool,
+    vnc_listening: bool | None = None,
+    x11vnc_running: bool | None = None,
 ) -> tuple[DesktopSession, AsyncMock]:
     """A box where noVNC (and, unless told otherwise, x11vnc with it) is (not)
-    serving; ``run`` records every command."""
+    serving; ``run`` records every command.  *x11vnc_running* is root's own
+    process, which by default is what holds the VNC port."""
+    vnc_listening = listening if vnc_listening is None else vnc_listening
     up = {
-        STREAM_PORT: listening,
-        VNC_PORT: listening if vnc_listening is None else vnc_listening,
+        f":{STREAM_PORT} ": listening,
+        f":{VNC_PORT} ": vnc_listening,
+        f"pgrep -x -u {VNC_USER} x11vnc": (
+            vnc_listening if x11vnc_running is None else x11vnc_running
+        ),
     }
     run = AsyncMock()
 
     async def fake_run(command: str, **kwargs):
-        if command.startswith("netstat") and "grep -q" in command:
-            # As the shell would: the check passes only if every port it
-            # asks about is listening.
-            if all(is_up for port, is_up in up.items() if f":{port} " in command):
+        if "grep -q" in command:
+            # As the shell would: the check passes only if everything it
+            # asks about is there.
+            if all(is_up for asked, is_up in up.items() if asked in command):
                 return MagicMock()
             raise RuntimeError("Command exited with code 1 and error:")
         return MagicMock()
@@ -84,7 +91,7 @@ async def test_reopen_reuses_the_issued_password_while_novnc_still_serves():
 
     assert password == "issued-before" and "password=issued-before" in stream.url
     # Restarting the stack would sever the stream the user is watching.
-    assert not any("x11vnc" in cmd for cmd, _ in _commands(run))
+    assert not any(cmd.startswith(("pkill", "x11vnc")) for cmd, _ in _commands(run))
 
 
 @pytest.mark.asyncio
@@ -103,6 +110,21 @@ async def test_reopen_restarts_a_stream_whose_x11vnc_died_behind_a_live_novnc():
     assert "ovnc_proxy" in commands[stopped] and "x11vnc" in commands[stopped]
     assert any(cmd.startswith("x11vnc") for cmd in commands[stopped + 1 :])
     assert any("novnc_proxy --vnc" in cmd for cmd in commands[stopped + 1 :])
+
+
+@pytest.mark.asyncio
+async def test_a_listener_on_the_vnc_port_does_not_pass_for_x11vnc():
+    """With x11vnc gone the box's user can bind its port with a server of its
+    own; only root's process, asked for as root, cannot be forged."""
+    session, run = _session(listening=True, vnc_listening=True, x11vnc_running=False)
+
+    _, password = await session.start_stream("issued-before")
+
+    assert password != "issued-before"
+    commands = _commands(run)
+    assert any(cmd.startswith("x11vnc") for cmd, _ in commands)
+    (check,) = [(cmd, user) for cmd, user in commands if "grep -q" in cmd]
+    assert check[1] == VNC_USER
 
 
 @pytest.mark.asyncio
