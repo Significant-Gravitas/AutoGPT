@@ -134,8 +134,8 @@ _MAX_WAIT_ATTEMPTS = math.ceil(_CREATION_LOCK_TTL / _WAIT_INTERVAL_SECONDS * 1.2
 # on the next turn.
 _E2B_API_TIMEOUT_SECONDS = 10
 
-# Stopping the screen's stream rides inside the pause's budget above, so a box
-# that does not answer must still leave the pause time to go through.
+# Bound on stopping the screen's stream before a pause: a box that does not
+# answer must not hold the pause up for long.
 _STOP_STREAM_TIMEOUT_SECONDS = 5
 
 # Held in place of a stream password once the stream has been stopped in the
@@ -776,6 +776,7 @@ async def _act_on_sandbox(
     *,
     sandbox_id: str | None = None,
     clear_stored_id: bool = False,
+    timeout: float = _E2B_API_TIMEOUT_SECONDS,
 ) -> bool:
     """Connect to the owner's sandbox and run *fn* on it.
 
@@ -794,7 +795,7 @@ async def _act_on_sandbox(
         await fn(await connect_owned(sandbox_id, owner, api_key))
 
     try:
-        await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)
+        await asyncio.wait_for(_run(), timeout=timeout)
         if clear_stored_id:
             await _clear_stored_sandbox_id(owner)
         logger.info(
@@ -844,7 +845,15 @@ async def pause_sandbox(
         revoked = await _revoke_stream(owner, sandbox)
         await sandbox.pause()
 
-    paused = await _act_on_sandbox(owner, api_key, "pause", _pause)
+    # The stop gets its own share of the budget, so a box slow to answer it
+    # still leaves the connect and the pause the time they always had.
+    paused = await _act_on_sandbox(
+        owner,
+        api_key,
+        "pause",
+        _pause,
+        timeout=_E2B_API_TIMEOUT_SECONDS + _STOP_STREAM_TIMEOUT_SECONDS,
+    )
     if paused and not revoked:
         await _forget_stream(owner)
     return paused

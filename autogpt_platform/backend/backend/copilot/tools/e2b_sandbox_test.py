@@ -944,6 +944,31 @@ class TestPauseStopsTheStream:
         sb.pause.assert_awaited_once()
         redis.delete.assert_awaited_once_with(_STREAM_KEY)
 
+    def test_the_stop_does_not_eat_into_the_time_the_pause_has(self):
+        """The lookup pause runs connect, stop and pause under one deadline:
+        the stop's own limit is added to it rather than taken out of it."""
+        sb = _mock_sandbox()
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"})
+        real_wait_for = asyncio.wait_for
+        budgets: list[float] = []
+
+        async def _recording_wait_for(awaitable, timeout):
+            budgets.append(timeout)
+            return await real_wait_for(awaitable, timeout)
+
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.wait_for",
+                _recording_wait_for,
+            ),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY)) is True
+
+        assert budgets == [15, 5]
+
     def test_unreadable_screen_state_does_not_block_the_pause(self):
         sb = _mock_sandbox()
         redis = _screen_redis()
