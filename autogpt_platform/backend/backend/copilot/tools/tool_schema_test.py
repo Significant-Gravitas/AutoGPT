@@ -217,7 +217,24 @@ from ._test_data import make_session
 #     + #14207 multi-expert-teams  +981          71,751 (86 tools)
 # consult_teammate has measured +981 at every dev tip since 2026-09-09; what
 # moves this line is dev, not this branch.
-_CHAR_BUDGET = 73_030
+# Bumped 73_030 -> 75_260 for the two tools this PR adds: set_expert_routine
+# measures 1,823 (nine parameters, because it both creates standing work and
+# switches it on, and because the modes and the credential grant are each a
+# decision the owner makes out loud) and list_expert_routines 403. Measured on
+# the branch merged with dev, plus one — this line carries no margin by design.
+# Bumped 75_261 -> 75_693 in the same PR, for two arguments those tools grew:
+# `delay_seconds` (a routine can now be a one-shot, so the durable record
+# covers "check the deploy at six" and not only work that repeats) and
+# `session_id` (PINNED can name any chat the owner holds, which is the one
+# thing schedule_followup could do that a routine could not). Every other
+# description in both tools was cut first — that paid back 377 of the 808 —
+# so what is left here is the two new arguments, not wording. Measured on the
+# branch merged with dev at 75,692, plus one.
+# Bumped 75_693 -> 75_839 after merging dev, which reworded `raise_expert`,
+# `setup_agent_webhook_trigger` and `run_agent` — no tool was added and this
+# branch's own delta did not move. Re-measured on the merged tree at 75,838,
+# plus one, per the rule above about measuring on the merge ref.
+_CHAR_BUDGET = 75_839
 
 
 @pytest.fixture(scope="module")
@@ -372,7 +389,17 @@ def test_total_schema_char_budget() -> None:
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 65_630
+# Raised 65_630 -> 67_767 for the same two tools. They ride the
+# ``expert_resources`` group, so they are declared in every session that can
+# manage an expert's resources — which is the largest one. Measured 67,767,
+# plus one.
+# Raised 67_768 -> 68_188 for the same two arguments as ``_CHAR_BUDGET`` above;
+# both tools are in that largest session, so the whole delta lands here too.
+# Measured 68,187, plus one.
+# Raised 68_188 -> 68_329 for the same dev rewordings; all three tools are in
+# the largest session, so the whole delta lands here too. Measured 68,328,
+# plus one.
+_SESSION_WIRE_BUDGET = 68_329
 
 
 def test_largest_declared_session_wire_budget() -> None:

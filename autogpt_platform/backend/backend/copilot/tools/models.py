@@ -58,6 +58,9 @@ class ResponseType(str, Enum):
     EXPERT_WORKFLOW = "expert_workflow"
     EXPERT_WORKFLOWS = "expert_workflows"
     EXPERT_CREDENTIALS = "expert_credentials"
+    # Standing work: the routines an expert offers, and one switched on or off.
+    ROUTINES = "routines"
+    ROUTINE = "routine"
     CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 

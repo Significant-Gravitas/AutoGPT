@@ -19527,6 +19527,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "routine_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Id"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -28021,6 +28025,8 @@
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
+          "routines",
+          "routine",
           "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",
