@@ -126,7 +126,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("Autopilot low-credit banner", () => {
+describe("Otto low-credit banner", () => {
   test("shows the banner when the user is out of credits", async () => {
     // Suppress the daily auto-opener so only the banner is under test.
     localStorage.setItem(

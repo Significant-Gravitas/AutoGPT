@@ -1,8 +1,9 @@
-import { useContext } from "react";
+import { useContext, useEffect, useRef } from "react";
 
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
 import {
   BlockIOCredentialsSubSchema,
@@ -10,6 +11,7 @@ import {
   CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
+import { trackCredentialConnectionFailure } from "@/services/credentials/connection-analytics";
 import {
   getCredentialProviderFromSchema,
   getDiscriminatorValue,
@@ -136,6 +138,7 @@ export default function useCredentials(
     credsInputSchema,
     selectedProvider,
   );
+  useReportProviderUnknown(providerName, allProviders);
   if (!providerName) return null;
   const provider = allProviders ? allProviders[providerName] : null;
 
@@ -181,4 +184,26 @@ export default function useCredentials(
     discriminatorValue,
     isLoading: false,
   };
+}
+
+/** A provider missing from the *loaded* map renders as a permanent loading
+ *  state, never an error — the card silently drops the row it owes the user.
+ *  A null map is still in flight and means nothing, and an empty one is what a
+ *  settled logged-out session publishes — neither says a provider is unknown. */
+function useReportProviderUnknown(
+  providerName: string | null,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  const reportedFor = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!providerName || !allProviders) return;
+    if (Object.keys(allProviders).length === 0) return;
+    if (providerName in allProviders) return;
+    if (reportedFor.current.has(providerName)) return;
+    reportedFor.current.add(providerName);
+    trackCredentialConnectionFailure("credential_card_never_rendered", {
+      provider: providerName,
+    });
+  }, [providerName, allProviders]);
 }

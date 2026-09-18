@@ -9,14 +9,14 @@ Use `ask_question` whenever the user's intent is ambiguous — before
 starting or mid-workflow. Typical gaps: output format, delivery channel,
 data source, trigger, or a choice between candidate blocks.
 
-Discover the platform's real options first (e.g. `find_block`), then
+Discover the platform's real options first (e.g. `find_capability`), then
 call `ask_question` listing those options ("The platform supports
 Gmail, Slack, and Google Docs — which for delivery?") and **wait for
 the answer**.
 
 **Skip** when the goal already specifies every dimension (e.g. "scrape
 prices from Amazon and email me daily"). Data-shape questions are usually
-better answered by sampling (`run_block`, workflow step 2) than by asking
+better answered by sampling (`run_capability`, workflow step 2) than by asking
 the user.
 
 ### Workflow for Creating/Editing Agents
@@ -39,7 +39,7 @@ sampling (step 2), not by deliberation.
 
 2. **Sample real data BEFORE designing (data-driven agents)**: when the
    agent will consume external data (a database, API, mailbox, feed), fetch
-   a real sample **before** planning the graph: `run_block` the reader block
+   a real sample **before** planning the graph: `run_capability` the reader block
    with the user's actual source. Two benefits: you design against the real
    field names/types instead of guesses, and missing credentials surface
    immediately as a connect card the user can complete while you continue.
@@ -65,14 +65,14 @@ sampling (step 2), not by deliberation.
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-5. **Discover blocks**: Call `find_block(query, for_agent_generation=true)` to
+5. **Discover blocks**: Call `find_capability(query, context="graph")` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and categories; to see a block's full input/output schema, call
-   `run_block` with the block's id and no inputs. The `for_agent_generation=true` flag is
+   `run_capability` with the block's id and no inputs. The `context="graph"` argument is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
-   in CoPilot outside agent generation, use `run_mcp_tool` instead.)
+   in CoPilot outside agent generation, use `run_capability` on the MCP server entry instead.)
 6. **Find library agents for sub-agent composition**: Call `find_library_agent`
    (default mode, no `for_creation` flag) to discover reusable agents that
    can be composed as sub-agents via `AgentExecutorBlock`. This is distinct
@@ -132,7 +132,7 @@ agents call this one via `AgentExecutorBlock`, update their pinned
   "nodes": [
     {
       "id": "<UUID v4>",
-      "block_id": "<block UUID from find_block>",
+      "block_id": "<block UUID from find_capability>",
       "input_default": {
         "field_name": "design-time value"
       },
@@ -200,7 +200,7 @@ this requirement on their own — do NOT add a throwaway base
 `AgentInputBlock` alongside a specialized one. Each subclass carries its
 own usage guidance (when it is required, how to configure it, how to
 wire it to consumers, concrete link shape) in its block and field
-descriptions; read and follow those when `find_block` surfaces a match.
+descriptions; read and follow those when `find_capability` surfaces a match.
 
 ### Key Rules
 
@@ -223,7 +223,7 @@ descriptions; read and follow those when `find_block` surfaces a match.
   do NOT redirect to the Builder. Credentials are set up inline as part
   of the run flow: `run_agent` surfaces the setup card automatically
   when credentials are missing or invalid, then proceeds to execute once
-  connected. Use `connect_integration` only for a standalone provider
+  connected. Use `run_capability(id="tool:connect_integration", ...)` only for a standalone provider
   setup not tied to a specific run.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
@@ -277,7 +277,7 @@ To compose agents using other agents as sub-agents:
 
 > **Agent graph vs CoPilot direct execution**: This section covers embedding MCP
 > tools as persistent nodes in an agent graph. When running MCP tools directly in
-> CoPilot (outside agent generation), use `run_mcp_tool` instead — it handles
+> CoPilot (outside agent generation), use `run_capability` on the MCP server entry instead — it handles
 > server discovery and authentication interactively. Use `MCPToolBlock` here only
 > when the user wants the MCP call baked into a reusable agent graph.
 
@@ -452,7 +452,7 @@ A minimal agent with input, processing, and output:
 
 A **webhook trigger** runs an agent automatically when an external HTTP event
 arrives. The agent must contain a webhook trigger block (surfaced by
-`find_block(..., for_agent_generation=true)`); such an agent can only be
+`find_capability(..., context="graph")`); such an agent can only be
 triggered, not run manually.
 
 **To set up a webhook trigger:** call `setup_agent_webhook_trigger` with the
@@ -480,7 +480,7 @@ Call `setup_agent_webhook_trigger` without `credentials` first: it returns a
 setup card listing the available accounts per credential field. Ask the user
 which to use, then call again with `credentials={<field_name>: <credential_id>}`.
 If a field has no connected account, that **same card lets the user connect
-one** — do NOT also call `connect_integration` (that just shows a second,
+one** — do NOT also call `run_capability(id="tool:connect_integration", ...)` (that just shows a second,
 duplicate card).
 
 **Trigger config must come from the user, not a guess.** If the tool returns

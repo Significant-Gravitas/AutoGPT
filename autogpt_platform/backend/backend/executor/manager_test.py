@@ -522,7 +522,7 @@ async def test_store_listing_graph(server: SpinTestServer):
         video_url=None,
         image_urls=[],
         description="Test description",
-        categories=[],
+        categories=["operations"],
     )
 
     store_listing = await server.agent_server.test_create_store_listing(
