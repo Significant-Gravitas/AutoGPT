@@ -899,6 +899,22 @@ describe("ChatMessagesContainer — expert identity", () => {
     ).toBeDefined();
     expect(within(header).queryByText("Social media")).toBeNull();
   });
+
+  it("falls back to the default role when an expert has no title or area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{ ...mariaIdentity, role: null, jobTitle: null }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Head of AI")).toBeDefined();
+    expect(within(header).getByLabelText("Maria — Head of AI")).toBeDefined();
+  });
 });
 
 function RecipientPickerHarness() {

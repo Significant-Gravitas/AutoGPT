@@ -62,9 +62,7 @@ export function ThreadHeader({
   const name = expertIdentity?.name ?? "Otto";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   const jobTitle = expertIdentity?.jobTitle;
-  const roleLabel = expertIdentity
-    ? expertIdentity.jobTitle || getExpertRoleLabel(expertIdentity.role ?? "")
-    : DEFAULT_EXPERT_ROLE;
+  const roleLabel = jobTitle || getExpertRoleLabel(role);
   // Assistive tech gets a loading identity too, not Otto's.
   const identityLabel = isResolving
     ? "Loading expert"
