@@ -11,8 +11,9 @@ interface Props {
   provider: string;
   displayName: string;
   credentials: ExistingCredential[];
-  selectedId: string;
+  selectedId: string | null;
   onSelect: (id: string) => void;
+  purpose?: "grant" | "choose";
 }
 
 // The step before the connect methods when the account already has a
@@ -24,6 +25,7 @@ export function ExistingCredentialsView({
   credentials,
   selectedId,
   onSelect,
+  purpose = "grant",
 }: Props) {
   return (
     <div className="flex flex-col gap-5 pt-2">
@@ -46,11 +48,14 @@ export function ExistingCredentialsView({
 
       <div className="flex flex-col gap-1.5 text-center">
         <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
-          Give this expert access to {displayName}
+          {purpose === "choose"
+            ? `Choose a ${displayName} account`
+            : `Give this expert access to ${displayName}`}
         </Text>
         <Text variant="body" className="!text-zinc-500">
-          Your account is already connected, but this expert can&apos;t use it
-          yet. Pick an account to share, or add a new one.
+          {purpose === "choose"
+            ? "You have more than one account connected. Pick the one this chat should use, or add a new one."
+            : "Your account is already connected, but this expert can't use it yet. Pick an account to share, or add a new one."}
         </Text>
       </div>
 

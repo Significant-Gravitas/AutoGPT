@@ -101,7 +101,7 @@ class _LockedTTLCache(TTLCache):
 
 # (user_id, provider) → token string, or (user_id, provider, required_scopes)
 # when the caller asked for specific scopes.  TTLCache handles expiry + eviction.
-_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str]]
+_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str], str | None]
 _token_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
@@ -110,13 +110,16 @@ _null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
-# GitHub user identity caches (keyed by user_id only, not provider tuple).
+# GitHub user identity caches, keyed (user_id, credential_id): a user with two
+# GitHub accounts has two identities, and a chat that picked one must not be
+# served the other's. credential_id is None when no account was picked.
 # Declared here so invalidate_user_provider_cache() can reference them.
 _GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
-_gh_identity_cache: TTLCache[str, dict[str, str]] = _LockedTTLCache(
+_IdentityKey = tuple[str, str | None]
+_gh_identity_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
 )
-_gh_identity_null_cache: TTLCache[str, bool] = _LockedTTLCache(
+_gh_identity_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
@@ -153,8 +156,8 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     _null_cache.pop_prefix((user_id, provider))
 
     if provider == "github":
-        _gh_identity_cache.pop(user_id, None)
-        _gh_identity_null_cache.pop(user_id, None)
+        _gh_identity_cache.pop_prefix((user_id,))
+        _gh_identity_null_cache.pop_prefix((user_id,))
 
 
 # Same-process writes (a token refresh performed by this process) invalidate
@@ -171,12 +174,19 @@ except RuntimeError:
 _manager = IntegrationCredentialsManager()
 
 
-def _cache_key(user_id: str, provider: str, required: frozenset[str]) -> _CacheKey:
-    return (user_id, provider, required) if required else (user_id, provider)
+def _cache_key(
+    user_id: str, provider: str, required: frozenset[str], credential_id: str | None
+) -> _CacheKey:
+    if required or credential_id:
+        return (user_id, provider, required, credential_id)
+    return (user_id, provider)
 
 
 async def get_provider_token(
-    user_id: str, provider: str, required_scopes: frozenset[str] = frozenset()
+    user_id: str,
+    provider: str,
+    required_scopes: frozenset[str] = frozenset(),
+    credential_id: str | None = None,
 ) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -185,11 +195,13 @@ async def get_provider_token(
     *required_scopes* wins: that is the credential the connect card shows as
     connected, so injecting any other would send the model back to a card that
     already says "Connected".
+    *credential_id* is the credential the user picked for this provider in the
+    chat; when it is still stored, it is the only candidate.
     Both found tokens and "not connected" results are cached for 60 s, and a
     credential write in any process evicts the entry before that lapses.
     """
     _ensure_cache_invalidation_listener()
-    cache_key = _cache_key(user_id, provider, required_scopes)
+    cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
 
     if cache_key in _null_cache:
         return None
@@ -207,6 +219,11 @@ async def get_provider_token(
             exc_info=True,
         )
         return None
+
+    if credential_id is not None:
+        # The user picked this one. If it is gone, that is "not connected",
+        # never a reason to hand the sandbox another account's token.
+        creds_list = [c for c in creds_list if c.id == credential_id]
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
     # Credentials covering the requested scopes come first, then ones with
@@ -295,19 +312,24 @@ _listener_thread: threading.Thread | None = None
 
 
 async def get_integration_env_vars(
-    user_id: str, required_scopes: Mapping[str, frozenset[str]] | None = None
+    user_id: str,
+    required_scopes: Mapping[str, frozenset[str]] | None = None,
+    selected: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Return env vars for all providers the user has connected.
 
     Iterates :data:`PROVIDER_ENV_VARS`, fetches each token, and builds a flat
     ``{env_var: token}`` dict ready to pass to a subprocess or E2B sandbox.
     Only providers with a stored credential contribute entries.
-    *required_scopes* maps a provider to the scopes its token should carry.
+    *required_scopes* maps a provider to the scopes its token should carry, and
+    *selected* to the credential the user picked for it in this chat.
     """
     env: dict[str, str] = {}
     for provider, var_names in PROVIDER_ENV_VARS.items():
         scopes = (required_scopes or {}).get(provider, frozenset())
-        token = await get_provider_token(user_id, provider, scopes)
+        token = await get_provider_token(
+            user_id, provider, scopes, (selected or {}).get(provider)
+        )
         if token:
             for var in var_names:
                 env[var] = token
@@ -319,7 +341,9 @@ async def get_integration_env_vars(
 # ---------------------------------------------------------------------------
 
 
-async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
+async def get_github_user_git_identity(
+    user_id: str, credential_id: str | None = None
+) -> dict[str, str] | None:
     """Fetch the GitHub user's name and email for git committer env vars.
 
     Uses the ``/user`` GitHub API endpoint with the user's stored token.
@@ -327,17 +351,21 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
     ``GIT_COMMITTER_NAME``, and ``GIT_COMMITTER_EMAIL`` if the user has a
     connected GitHub account.  Returns ``None`` otherwise.
 
+    *credential_id* is the GitHub account the user picked in this chat, so the
+    identity matches the token the sandbox was given for the same account.
+
     Results are cached for 10 minutes; "not connected" results are cached for
     60 s (same as null-token cache).
     """
-    if user_id in _gh_identity_null_cache:
+    key: _IdentityKey = (user_id, credential_id)
+    if key in _gh_identity_null_cache:
         return None
-    if cached := _gh_identity_cache.get(user_id):
+    if cached := _gh_identity_cache.get(key):
         return cached
 
-    token = await get_provider_token(user_id, "github")
+    token = await get_provider_token(user_id, "github", frozenset(), credential_id)
     if not token:
-        _gh_identity_null_cache[user_id] = True
+        _gh_identity_null_cache[key] = True
         return None
 
     import aiohttp
@@ -383,5 +411,5 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
         "GIT_COMMITTER_NAME": name,
         "GIT_COMMITTER_EMAIL": email,
     }
-    _gh_identity_cache[user_id] = identity
+    _gh_identity_cache[key] = identity
     return identity

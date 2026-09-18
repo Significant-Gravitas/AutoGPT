@@ -30,6 +30,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.credential_selection import remember_selection
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
@@ -156,6 +157,8 @@ from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
 from backend.integrations.codex.access import enforce_codex_access_http
+from backend.integrations.credentials_store import provider_matches
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
@@ -997,6 +1000,59 @@ async def disconnect_session_stream(
     await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
+
+
+class CredentialSelectionRequest(BaseModel):
+    """The credential the user picked for each provider on a connect card."""
+
+    selections: dict[str, str] = Field(
+        description="Provider slug to credential id.", max_length=20
+    )
+
+
+@router.put(
+    "/sessions/{session_id}/credential-selection",
+    summary="Record credential picks for this chat",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session or credential not found"}},
+)
+async def select_session_credentials_route(
+    session_id: str,
+    request: CredentialSelectionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Keep the account the user chose on a connect card for the rest of the chat.
+
+    The card shows one account and the tools used to re-match on their own, so
+    with two accounts for a provider a run could land on the other one. The
+    tools now use exactly what is recorded here, and ask when several
+    credentials qualify and nothing was picked.
+
+    Every id is checked against the caller's own credentials and the provider
+    it is filed under; one bad entry rejects the request and records nothing.
+    """
+    if await get_chat_session_metadata(session_id, user_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    store = IntegrationCredentialsManager().store
+    selections: dict[str, str] = {}
+    for provider, credential_id in request.selections.items():
+        provider = provider.strip().lower()
+        if provider in selections:
+            # " GitHub " and "github" name the same provider; keeping only the
+            # later one would silently drop a credential the caller validated.
+            raise HTTPException(status_code=422, detail="duplicate_provider")
+        credential = await store.get_creds_by_id(user_id, credential_id)
+        if credential is None or not provider_matches(credential.provider, provider):
+            raise HTTPException(status_code=404, detail="credential_not_found")
+        selections[provider] = credential_id
+
+    await remember_selection(session_id, selections)
+    return {"status": "ok"}
 
 
 class ChangeSessionConnectionRequest(BaseModel):

@@ -16,6 +16,7 @@ from backend.copilot.integration_creds import (
     _gh_identity_null_cache,
     _null_cache,
     _token_cache,
+    get_github_user_git_identity,
     get_integration_env_vars,
     get_provider_token,
     invalidate_user_provider_cache,
@@ -101,31 +102,64 @@ class TestInvalidateUserProviderCache:
 
     def test_clears_gh_identity_cache_for_github_provider(self):
         """When provider is 'github', identity caches must also be cleared."""
-        _gh_identity_cache[_USER] = {
+        _gh_identity_cache[(_USER, None)] = {
             "GIT_AUTHOR_NAME": "Old Name",
             "GIT_AUTHOR_EMAIL": "old@example.com",
             "GIT_COMMITTER_NAME": "Old Name",
             "GIT_COMMITTER_EMAIL": "old@example.com",
         }
         invalidate_user_provider_cache(_USER, "github")
-        assert _USER not in _gh_identity_cache
+        assert (_USER, None) not in _gh_identity_cache
 
     def test_clears_gh_identity_null_cache_for_github_provider(self):
         """When provider is 'github', the identity null-cache must also be cleared."""
-        _gh_identity_null_cache[_USER] = True
+        _gh_identity_null_cache[(_USER, None)] = True
         invalidate_user_provider_cache(_USER, "github")
-        assert _USER not in _gh_identity_null_cache
+        assert (_USER, None) not in _gh_identity_null_cache
+
+    def test_clears_the_identity_of_every_github_account_the_user_has(self):
+        """A picked account's identity is cached under its own key; a change
+        to the user's GitHub credentials must drop all of them, not just the
+        unpicked one."""
+        _gh_identity_cache[(_USER, None)] = {"GIT_AUTHOR_NAME": "a"}
+        _gh_identity_cache[(_USER, "cred-b")] = {"GIT_AUTHOR_NAME": "b"}
+        _gh_identity_cache[("other-user", "cred-b")] = {"GIT_AUTHOR_NAME": "o"}
+        invalidate_user_provider_cache(_USER, "github")
+        assert (_USER, None) not in _gh_identity_cache
+        assert (_USER, "cred-b") not in _gh_identity_cache
+        assert ("other-user", "cred-b") in _gh_identity_cache
 
     def test_does_not_clear_gh_identity_cache_for_other_providers(self):
         """When provider is NOT 'github', identity caches must be left alone."""
-        _gh_identity_cache[_USER] = {
+        _gh_identity_cache[(_USER, None)] = {
             "GIT_AUTHOR_NAME": "Some Name",
             "GIT_AUTHOR_EMAIL": "some@example.com",
             "GIT_COMMITTER_NAME": "Some Name",
             "GIT_COMMITTER_EMAIL": "some@example.com",
         }
         invalidate_user_provider_cache(_USER, "some-other-provider")
-        assert _USER in _gh_identity_cache
+        assert (_USER, None) in _gh_identity_cache
+
+
+class TestGitHubIdentityFollowsThePick:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_picked_account_is_the_one_looked_up(self):
+        lookup = AsyncMock(return_value=None)
+        with patch("backend.copilot.integration_creds.get_provider_token", lookup):
+            assert await get_github_user_git_identity(_USER, "cred-b") is None
+        lookup.assert_awaited_once_with(_USER, "github", frozenset(), "cred-b")
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_one_accounts_cached_result_is_not_served_for_another(self):
+        """Keyed by user alone, the first account looked up would answer for
+        every other account the user picks for the next ten minutes."""
+        lookup = AsyncMock(return_value=None)
+        with patch("backend.copilot.integration_creds.get_provider_token", lookup):
+            await get_github_user_git_identity(_USER, "cred-a")
+            await get_github_user_git_identity(_USER, "cred-b")
+        assert [c.args[3] for c in lookup.await_args_list] == ["cred-a", "cred-b"]
+        assert (_USER, "cred-a") in _gh_identity_null_cache
+        assert (_USER, "cred-b") in _gh_identity_null_cache
 
 
 class TestGetProviderToken:
@@ -305,11 +339,34 @@ class TestRequiredScopes:
         scoped = (_USER, _PROVIDER, frozenset({"repo"}))
         _token_cache[(_USER, _PROVIDER)] = "tok"
         _token_cache[scoped] = "tok"
-        _gh_identity_cache[_USER] = {"GIT_AUTHOR_NAME": "x"}
+        _gh_identity_cache[(_USER, None)] = {"GIT_AUTHOR_NAME": "x"}
         invalidate_user_provider_cache(_USER, "ProviderName.GITHUB")
         assert (_USER, _PROVIDER) not in _token_cache
         assert scoped not in _token_cache
-        assert _USER not in _gh_identity_cache
+        assert (_USER, None) not in _gh_identity_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_credential_picked_in_the_chat_is_the_only_candidate(self):
+        # Without scopes asked for, stored order would hand over the older one.
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            token = await get_provider_token(
+                _USER, _PROVIDER, credential_id=self.newer.id
+            )
+            env = await get_integration_env_vars(
+                _USER, selected={"github": self.newer.id}
+            )
+        assert token == "tok-newer"
+        assert env["GH_TOKEN"] == "tok-newer"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_deleted_pick_yields_no_token_rather_than_another_account(self):
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            token = await get_provider_token(
+                _USER, _PROVIDER, credential_id="deleted-id"
+            )
+        assert token is None
 
     def test_invalidation_drops_scoped_entries_too(self):
         scoped = (_USER, _PROVIDER, frozenset({"repo", "read:org"}))

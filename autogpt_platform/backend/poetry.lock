@@ -1616,18 +1616,22 @@ tests = ["coverage", "coveralls", "dill", "mock", "nose"]
 
 [[package]]
 name = "faker"
-version = "38.3.0"
+version = "40.39.0"
 description = "Faker is a Python package that generates fake data for you."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "faker-38.3.0-py3-none-any.whl", hash = "sha256:b5499b6f2d090dec9b90ded8eae6a27daed10fda3e0dba7a182bb2be8a4d4a6b"},
-    {file = "faker-38.3.0.tar.gz", hash = "sha256:4997de214510db9328ed83b9591891c66e91d7e9a903e5744e0255a68f51ac16"},
+    {file = "faker-40.39.0-py3-none-any.whl", hash = "sha256:c4c7ec2cddfaf602c5a8a2c960614946aa8c161250bd9d49a8846cd24d1ef028"},
+    {file = "faker-40.39.0.tar.gz", hash = "sha256:52799ad96fcf92aab2fc96a9e03869bbf1a634300f7cd91c38dbfd51f639f6fa"},
 ]
 
 [package.dependencies]
-tzdata = "*"
+tzdata = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+image = ["pillow"]
+tzdata = ["tzdata"]
 
 [[package]]
 name = "falkordb"
@@ -7790,6 +7794,7 @@ files = [
     {file = "tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1"},
     {file = "tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7"},
 ]
+markers = {dev = "platform_system == \"Windows\""}
 
 [[package]]
 name = "tzlocal"
@@ -8933,4 +8938,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "beb9549a8a006d017f23bf4c935328a9adf4dde7ee1a761bdbd6f0e992235389"
+content-hash = "7d9a80a8ed128246b295f1d0a7036797479a6c58669dff1f0b108694a1fe9fd6"
