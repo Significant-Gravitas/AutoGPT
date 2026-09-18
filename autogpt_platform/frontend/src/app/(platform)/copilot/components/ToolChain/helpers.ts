@@ -7,6 +7,7 @@ import {
   getAnimationText,
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
+import { capabilityTargetRow } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
@@ -42,7 +43,8 @@ const SUB_SESSION_CARD_TOOLS = new Set([
 ]);
 
 function subSessionIdOf(row: ChainRow): string | null {
-  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const tool = capabilityTargetRow(row).tool;
+  if (!tool || !SUB_SESSION_CARD_TOOLS.has(tool)) return null;
   const output = asObject(row.output);
   const sid = output?.sub_session_id;
   return typeof sid === "string" && sid ? sid : null;
@@ -68,7 +70,8 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
     const sid = subSessionIdOf(row);
     if (!sid) continue;
     const open = openRowKey.get(sid);
-    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+    const tool = capabilityTargetRow(row).tool ?? "";
+    if (open && !SUB_SESSION_START_TOOLS.has(tool)) {
       supersededKeys.add(open);
     }
     openRowKey.set(sid, row.key);
