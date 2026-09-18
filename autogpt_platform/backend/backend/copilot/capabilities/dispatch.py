@@ -53,6 +53,8 @@ def resolve_tool_dispatch(
     if tool is None:
         return None
     payload = args.get("input")
-    return DispatchedToolCall(
-        tool, name, dict(payload) if isinstance(payload, Mapping) else {}
-    )
+    if payload is not None and not isinstance(payload, Mapping):
+        # Coercing it to {} would run the tool on its defaults; the dispatcher
+        # owns the "input must be an object" answer, so leave the call to it.
+        return None
+    return DispatchedToolCall(tool, name, dict(payload or {}))

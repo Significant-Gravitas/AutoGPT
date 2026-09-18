@@ -107,6 +107,28 @@ def test_resolver_leaves_everything_else_alone(tool_name, args):
     assert resolve_tool_dispatch(tool_name, args) is None
 
 
+@pytest.mark.parametrize("payload", ["a string", [1, 2], 42, True])
+def test_resolver_refuses_an_input_that_is_not_an_object(payload):
+    """Coercing a malformed ``input`` to ``{}`` would run the tool on its
+    defaults, and disagree with the dispatcher, which answers "input must be an
+    object" for the same call. Declining here routes it back to that answer."""
+    assert (
+        resolve_tool_dispatch(
+            "run_capability", {"id": f"tool:{INNER}", "input": payload}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "args", [{"id": f"tool:{INNER}", "input": {}}, {"id": f"tool:{INNER}"}]
+)
+def test_resolver_runs_on_defaults_when_input_is_empty_or_absent(args):
+    """An absent or empty ``input`` is a legitimate "run with defaults"."""
+    call = resolve_tool_dispatch("run_capability", args)
+    assert call is not None and call.name == INNER and call.args == {}
+
+
 # ------------------------------------------------------- the baseline engine
 
 
@@ -143,6 +165,38 @@ async def test_baseline_dispatch_is_recorded_as_the_inner_call():
     assert [(e.toolName, e.input) for e in inputs] == [(INNER, ARGS)]
     outputs = [e for e in events if isinstance(e, StreamToolOutputAvailable)]
     assert [e.toolName for e in outputs] == [INNER]
+
+
+@pytest.mark.asyncio
+async def test_baseline_answers_a_malformed_input_without_running_anything():
+    """What the model sees for a malformed ``input``: the dispatcher's own
+    validation error, under the dispatcher's name, and the target untouched."""
+    session = ChatSession.new(USER, dry_run=False)
+    state = _BaselineStreamState()
+    tool = _StubTool(INNER)
+
+    with _dispatch_of(tool):
+        await _baseline_tool_executor(
+            LLMToolCall(
+                id="call-3",
+                name="run_capability",
+                arguments=json.dumps({"id": f"tool:{INNER}", "input": "a string"}),
+            ),
+            tools=[],
+            state=state,
+            user_id=USER,
+            session=session,
+            disabled_groups=[],
+            disabled_tools=frozenset(),
+        )
+
+    assert tool.seen is None
+    assert session.has_tool_been_called(INNER) is False
+    outputs = [
+        e for e in state.emitted_events if isinstance(e, StreamToolOutputAvailable)
+    ]
+    assert [e.toolName for e in outputs] == ["run_capability"]
+    assert "input must be an object" in str(outputs[0].output)
 
 
 @pytest.mark.asyncio
