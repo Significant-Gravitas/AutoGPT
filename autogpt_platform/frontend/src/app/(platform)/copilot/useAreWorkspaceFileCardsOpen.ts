@@ -12,6 +12,6 @@ export function useAreWorkspaceFileCardsOpen() {
     (s) =>
       s.artifactPanel.isOpen &&
       s.artifactPanel.activeArtifact == null &&
-      s.artifactPanel.activeTab !== "artifacts",
+      s.artifactPanel.activeTab === "files",
   );
 }

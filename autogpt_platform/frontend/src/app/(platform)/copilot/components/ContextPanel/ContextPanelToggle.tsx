@@ -11,6 +11,7 @@ import {
 } from "./components/FilesTab/useSessionFiles";
 import { LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { TeamToggle } from "./components/TeamTab/components/TeamToggle";
 
 interface Props {
   sessionId?: string | null;
@@ -26,7 +27,8 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
   );
 }
 
-/** The chat's one top-right control: the artifacts toggle. It wears the name
+/** The chat's top-right controls: the team toggle (only once someone has
+ *  been delegated to) and the artifacts toggle. The artifacts toggle wears the name
  *  of the session's most recently generated file so the current working
  *  document stays visible, and clicking it opens that file directly in the
  *  artifact panel. Workspace files open from the thread chip instead. */
@@ -84,6 +86,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
 
   return (
     <div className="flex shrink-0 items-center gap-1 p-2">
+      <TeamToggle sessionId={sessionId} />
       <Button
         type="button"
         variant="ghost"
