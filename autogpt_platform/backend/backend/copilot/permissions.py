@@ -348,10 +348,24 @@ _IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
 
 
 def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
-    """Expand an allow set with the tools its entries imply."""
-    return allowed.union(
+    """Expand an allow set with the tools its entries imply.
+
+    A deferred tool is no longer handed to the model, so allowing it without
+    ``run_capability`` allows nothing: the dispatcher is the only way in.
+    """
+    grants = allowed.union(
         implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
     )
+    if grants & _deferred_tool_names():
+        grants = grants | {"run_capability"}
+    return grants
+
+
+def _deferred_tool_names() -> frozenset[str]:
+    """The registry's deferred set, imported late (heavy tool imports)."""
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES  # noqa: PLC0415
+
+    return DEFERRED_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
