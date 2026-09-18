@@ -195,14 +195,29 @@ describe("ContextPanelToggle computer button", () => {
     expect(screen.getByLabelText("Open artifacts")).toBeDefined();
   });
 
-  test("hides the computer face when it is showing", () => {
-    setPanel({ isOpen: true, mode: "computer", isComputerOpen: true });
+  test("hiding the computer closes the panel it opened over, keeping the remembered preview", () => {
+    setPanel({ isOpen: false, lastArtifact: ARTIFACT });
     render(<ContextPanelToggle sessionId="s1" />);
 
+    fireEvent.click(screen.getByLabelText("Open computer"));
     fireEvent.click(screen.getByLabelText("Hide computer"));
 
     expect(panelState().isComputerOpen).toBe(false);
     expect(panelState().isOpen).toBe(false);
+    expect(panelState().lastArtifact).toEqual(ARTIFACT);
+  });
+
+  test("hiding the computer returns to the tab that was open under it", () => {
+    setPanel({ isOpen: true, activeTab: "artifacts" });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+    fireEvent.click(screen.getByLabelText("Hide computer"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().activeTab).toBe("artifacts");
+    expect(screen.getByLabelText("Hide artifacts")).toBeDefined();
   });
 
   test("hiding the computer reveals the preview it was covering, history intact", () => {

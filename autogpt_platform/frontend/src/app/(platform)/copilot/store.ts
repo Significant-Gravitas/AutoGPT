@@ -233,6 +233,9 @@ interface CopilotUIState {
   registerComputerStream: (ref: DesktopStreamRef) => void;
   /** Open the side panel on its computer face. */
   openComputer: () => void;
+  /** Leave the computer face for whatever was under it: the preview, the
+   *  tab, or a closed panel. Remembered previews survive either way. */
+  closeComputer: () => void;
   setArtifactPanelMode: (mode: ArtifactPanelMode) => void;
   openContextPanelForFiles: () => void;
   showFilesTab: () => void;
@@ -270,6 +273,9 @@ interface CopilotUIState {
 const _autoOpenKnownIds = new Set<string>();
 let _autoOpenReady = false;
 let _autoOpenUserClosed = false;
+// Whether the computer face was opened over a closed panel, so leaving it
+// closes the panel again instead of revealing a tab nobody had open.
+let _computerOverClosedPanel = false;
 
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
@@ -441,10 +447,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     })),
   registerComputerStream: (ref) =>
     set((state) => {
-      const { activeArtifact, isComputerOpen } = state.artifactPanel;
+      const { activeArtifact, isComputerOpen, isOpen } = state.artifactPanel;
       // A desktop the model just started is the thing to look at: show it
       // unless an artifact preview is already holding the panel.
       const showNow = activeArtifact == null || isComputerOpen;
+      if (showNow && !isComputerOpen) _computerOverClosedPanel = !isOpen;
       return {
         artifactPanel: {
           ...state.artifactPanel,
@@ -457,14 +464,37 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       };
     }),
   openComputer: () =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        mode: "computer",
-        isComputerOpen: true,
-      },
-    })),
+    set((state) => {
+      if (!state.artifactPanel.isComputerOpen)
+        _computerOverClosedPanel = !state.artifactPanel.isOpen;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: true,
+          mode: "computer",
+          isComputerOpen: true,
+        },
+      };
+    }),
+  closeComputer: () =>
+    set((state) => {
+      const { activeArtifact } = state.artifactPanel;
+      // Under a preview or an open tab the document face is already there;
+      // over a panel that was closed, close it again. Neither path touches
+      // lastArtifact, unlike closeArtifactPanel.
+      const closeAgain = activeArtifact == null && _computerOverClosedPanel;
+      _computerOverClosedPanel = false;
+      if (closeAgain && isClient)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: closeAgain ? false : state.artifactPanel.isOpen,
+          mode: "artifact",
+          isComputerOpen: false,
+        },
+      };
+    }),
   setArtifactPanelMode: (mode) =>
     set((state) => ({
       artifactPanel: {

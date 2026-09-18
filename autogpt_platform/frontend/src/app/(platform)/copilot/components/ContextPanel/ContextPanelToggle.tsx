@@ -51,6 +51,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
     (s) => s.artifactPanel.isComputerOpen,
   );
   const openComputer = useCopilotUIStore((s) => s.openComputer);
+  const closeComputer = useCopilotUIStore((s) => s.closeComputer);
   const setArtifactPanelMode = useCopilotUIStore((s) => s.setArtifactPanelMode);
   const isMobile = useIsMobile();
   const { generated } = useSessionFiles(sessionId);
@@ -115,16 +116,10 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   }
 
   function handleComputerToggle() {
-    if (isComputerOpen) {
-      // Reveal the preview the computer was covering, else close the panel.
-      if (hasArtifact) {
-        setArtifactPanelMode("artifact");
-        return;
-      }
-      closeArtifactPanel();
-      return;
-    }
-    openComputer();
+    // Back to whatever the computer was covering: the preview, the tab, or
+    // nothing at all.
+    if (isComputerOpen) closeComputer();
+    else openComputer();
   }
 
   // Sized and stroked like the sidebar's nav icons so the chat's top-right
