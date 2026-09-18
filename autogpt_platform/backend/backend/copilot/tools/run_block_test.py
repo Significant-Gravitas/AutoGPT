@@ -1470,11 +1470,13 @@ class TestExecuteBlockCredentialRejection:
 
         response = await self._run(
             RuntimeError("the block must not run"),
-            load_error=RuntimeError("credential store unavailable"),
+            load_error=RuntimeError("store down for user u-1 credential cred-1"),
         )
 
         assert isinstance(response, ErrorResponse)
-        assert "Failed to execute block" in response.message
+        assert response.message == "Failed to retrieve credentials for credentials"
+        # The internal detail stays out of the reply.
+        assert "u-1" not in response.message and "store down" not in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_provider_401_returns_a_card_naming_the_credential(self):

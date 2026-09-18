@@ -403,6 +403,18 @@ async def execute_block(
                         status_code=credential_rejection_status(e),
                         exc=e,
                     )
+                except Exception:
+                    # Not the provider's doing (store, config, handler setup),
+                    # so not the user's to fix, and its text can name internal
+                    # ids: a fixed message, with the detail kept to the log.
+                    logger.exception(
+                        "Could not load credential for block %s", block.name
+                    )
+                    await _release_credential_leases(credential_leases)
+                    return ErrorResponse(
+                        message=f"Failed to retrieve credentials for {field_name}",
+                        session_id=session_id,
+                    )
                 if not (
                     credentials is not None
                     and provider_matches(credentials.provider, cred_meta.provider)
