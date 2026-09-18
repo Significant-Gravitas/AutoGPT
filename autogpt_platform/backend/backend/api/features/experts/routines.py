@@ -49,7 +49,10 @@ def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
         prompt=row.prompt,
         crons=row.crons,
         asks=row.asks,
-        session_mode=row.sessionMode.value,
+        # ``str``, not ``.value``: the generated type says StrEnum but Prisma
+        # hydrates a row with a plain string, so ``.value`` type-checks and then
+        # raises. StrEnum subclasses str, so this is right for both.
+        session_mode=str(row.sessionMode),
         session_id=row.sessionId,
         enabled=row.enabledAt is not None,
         customized=row.customizedAt is not None,
@@ -167,7 +170,7 @@ async def enable_routine(
     for cron in resolved_crons:
         CronTrigger.from_crontab(cron, timezone=user_timezone)
 
-    mode = _session_mode(session_mode or row.sessionMode.value)
+    mode = _session_mode(session_mode or str(row.sessionMode))
     # Only HERE pins a session up front. THREAD leaves it null for the first
     # fire to mint; FRESH leaves it null for good.
     pinned = here_session_id if mode == prisma.enums.ExpertRoutineSession.HERE else None
