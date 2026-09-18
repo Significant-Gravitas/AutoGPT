@@ -1011,3 +1011,73 @@ describe("ToolResult start_desktop", () => {
     expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
   });
 });
+
+describe("ToolResult run_capability", () => {
+  afterEach(() => cleanup());
+
+  const desktopPayload = {
+    type: "desktop_stream",
+    message: "Desktop started.",
+    desktop_stream: {
+      kind: "desktop_stream",
+      url: "/api/proxy/api/desktop-preview?token=abc",
+      provider: "e2b",
+      sandbox_id: "sbx-2",
+    },
+  };
+
+  it("embeds the desktop when start_desktop ran as a capability", () => {
+    render(
+      <ToolResult
+        row={row(desktopPayload, "run_capability", {
+          id: "tool:start_desktop",
+          input: {},
+        })}
+      />,
+    );
+
+    const frame = screen.getByTitle("Interactive desktop (sbx-2)");
+    expect(frame.getAttribute("src")).toBe(
+      "/api/proxy/api/desktop-preview?token=abc",
+    );
+    expect(screen.queryByText(/"kind"/)).toBeNull();
+    expect(screen.queryByText(/desktop stream/i)).toBeNull();
+  });
+
+  it("keeps the shared-transcript notice on the capability path", () => {
+    render(
+      <ToolResult
+        readOnly
+        row={row(
+          {
+            ...desktopPayload,
+            desktop_stream: {
+              ...desktopPayload.desktop_stream,
+              requires_auth: true,
+            },
+          },
+          "resume_capability",
+          { id: "tool:start_desktop" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("still renders a plain capability result as before", () => {
+    render(
+      <ToolResult
+        row={row(
+          { message: "Ran it.", result: { total: 3 } },
+          "run_capability",
+          { id: "tool:count" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/total/i)).toBeDefined();
+  });
+});

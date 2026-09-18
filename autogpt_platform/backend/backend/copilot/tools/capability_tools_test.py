@@ -67,6 +67,13 @@ def test_eager_and_deferred_split_the_registry():
     assert len(get_available_tools(include_deferred=True)) > len(shown)
 
 
+def test_start_desktop_stays_eager_because_the_prompt_names_it():
+    """``expert_context`` tells the model "Use start_desktop"; a deferred
+    tool called by name is refused, so the instruction only works eager."""
+    assert "start_desktop" in EAGER_CORE
+    assert "start_desktop" not in DEFERRED_TOOL_NAMES
+
+
 def test_prompt_names_only_registry_tools():
     for legacy in (
         "find_block",
