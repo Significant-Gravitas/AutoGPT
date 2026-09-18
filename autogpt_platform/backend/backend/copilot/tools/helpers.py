@@ -1307,17 +1307,17 @@ def require_guide_read(session: ChatSession, tool_name: str):
             message=(
                 "The engine switch is pending — building continues "
                 "automatically on the next turn with the guide loaded. End "
-                f"your turn now with a brief note; do not retry {tool_name} "
+                f"your turn now with a brief note; do not retry tool:{tool_name} "
                 "in this turn."
             ),
             session_id=session.session_id,
         )
     return ErrorResponse(
         message=(
-            f"Call enter_agent_building_mode first, then retry {tool_name}. "
+            f"Call tool:enter_agent_building_mode first, then retry tool:{tool_name}. "
             "It loads the agent-building guide into your system prompt where "
-            "it survives context compaction. (get_agent_building_guide or "
-            'read_skill(name="agent_building_guide") also satisfy this gate.) '
+            "it survives context compaction. (tool:get_agent_building_guide or "
+            'tool:read_skill with name="agent_building_guide" also satisfy this gate.) '
             "The guide documents required block ids, input/output schemas, "
             "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
             "generating agent JSON without it produces schema mismatches."
@@ -1362,14 +1362,14 @@ def require_library_check(session: ChatSession, tool_name: str):
         return None
     return ErrorResponse(
         message=(
-            f"Before {tool_name} can run, search the user's library for an "
+            f"Before tool:{tool_name} can run, search the user's library for an "
             "agent that already does what they want. Call "
             "`find_library_agent` with `for_creation=true` and "
             "`goal_summary=<one-sentence description of the user's goal>` "
             "(default-mode substring search does NOT satisfy this gate). "
             "If any agents are returned, present them to the user and ask "
             "whether they want to reuse one. Only retry "
-            f"{tool_name} with `library_check_ack=true` if the user "
+            f"tool:{tool_name} with `library_check_ack=true` if the user "
             "explicitly chooses to build a new agent anyway."
         ),
         session_id=session.session_id,

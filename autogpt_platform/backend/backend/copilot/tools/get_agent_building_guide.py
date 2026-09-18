@@ -51,7 +51,7 @@ class GetAgentBuildingGuideTool(BaseTool):
     def description(self) -> str:
         return (
             "Returns the agent JSON building guide (incl. dry-run loop) "
-            "inline. Fallback — prefer enter_agent_building_mode "
+            "inline. Fallback — prefer tool:enter_agent_building_mode "
             "(compaction-proof)."
         )
 

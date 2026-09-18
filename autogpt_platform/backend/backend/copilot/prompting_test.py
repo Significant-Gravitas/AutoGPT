@@ -202,7 +202,7 @@ class TestSchedulingGuidance:
 
     def test_supplement_names_schedule_followup_as_the_only_primitive(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `schedule_followup`" in result
+        assert "### Scheduling future work — use `tool:schedule_followup`" in result
         assert "ONLY way to schedule a future copilot turn" in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
@@ -210,7 +210,7 @@ class TestSchedulingGuidance:
         # become a recurring copilot turn that re-decides what to run.
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "use `run_agent` with `schedule_name` +" in result
-        assert "use `setup_agent_webhook_trigger`" in result
+        assert "use `tool:setup_agent_webhook_trigger`" in result
 
     def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
         result = prompting.get_sdk_supplement(use_e2b=False)

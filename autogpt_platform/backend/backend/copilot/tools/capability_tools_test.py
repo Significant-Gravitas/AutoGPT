@@ -1,6 +1,10 @@
 """find/describe/run/resume_capability over the real registry with the
 execution paths mocked at their boundaries."""
 
+import ast
+import json
+import re
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -86,6 +90,133 @@ def test_prompt_names_only_registry_tools():
     assert (
         "find_capability" in SHARED_TOOL_NOTES
         and "resume_capability" in SHARED_TOOL_NOTES
+    )
+
+
+# A deferred tool called by name is refused, so model-facing text must name it
+# by capability id (``tool:<name>``), which ``SHARED_TOOL_NOTES`` teaches the
+# model to pass to ``run_capability``.
+_COPILOT_DIR = Path(__file__).resolve().parent.parent
+# Not a mention: ``tool:<name>`` ids, dotted module paths, ``<name>.py`` files,
+# and the ``[<name>]`` / ``copilot:<name>`` labels that usage tracking records.
+_BARE_DEFERRED_NAME = re.compile(
+    r"(?<![\w.\[])(?<!tool:)(?<!copilot:)("
+    + "|".join(sorted(DEFERRED_TOOL_NAMES, key=len, reverse=True))
+    + r")(?!\w|\.py)"
+)
+# Files left out of the literal scan, each with the reason it is safe.
+_UNSCANNED_MODULES = {
+    # Registry keys and permission tables: tool names as data, not prose.
+    "__init__.py",
+    # Response-model ``Field(description=...)`` text feeds the OpenAPI schema
+    # and the generated frontend client; the model never reads it.
+    "models.py",
+}
+# Modules whose string literals reach the model: prompt builders, injected
+# context blocks, and the tools' descriptions and result messages.
+_MODEL_FACING_MODULES = sorted(
+    path
+    for path in [
+        _COPILOT_DIR / "prompting.py",
+        _COPILOT_DIR / "service.py",
+        _COPILOT_DIR / "expert_context.py",
+        _COPILOT_DIR / "builder_context.py",
+        *(_COPILOT_DIR / "tools").rglob("*.py"),
+    ]
+    if "test" not in path.name and path.name not in _UNSCANNED_MODULES
+)
+_NAME = "(?:" + "|".join(sorted(DEFERRED_TOOL_NAMES, key=len, reverse=True)) + ")"
+_NAMES = rf"`*{_NAME}`*(?:(?: ?/ ?| or | and )`*{_NAME}`*)*"
+# Mentions that are not call instructions, so they keep the bare name.  Each
+# pattern is matched against whitespace-normalised text and blanked out before
+# the scan; everything else naming a deferred tool must use ``tool:<name>``.
+_ALLOWED_MENTIONS = re.compile(
+    "|".join(
+        [
+            # Where a value came from: that tool has already run.
+            rf"\b(?:from|returned by|proposed by|sent with|ids for|in the original) (?:an earlier )?{_NAMES}",
+            rf"`(?:channel_id|ref_id)` {_NAME} returned",
+            # Ordering relative to a call the model has made or will make.
+            rf"\b(?i:before|after every) {_NAMES}|\bafter {_NAME} returns",
+            # Prohibitions: telling the model NOT to call the tool.
+            rf"\b(?i:do not) (?:call|make a follow-up) {_NAMES}",
+            rf"no reason to reach for {_NAMES}",
+            # A tool describing its own or a sibling's behaviour.
+            rf"{_NAME} (?:creates|applies) exactly",
+            rf"{_NAME} is for reaching",
+            rf"{_NAMES} accepts the same node/link payload that {_NAMES} would",
+            rf"{_NAMES} will reject",
+            rf"not supported by {_NAME}",
+            rf"Apply a {_NAMES} proposal",
+            rf"runs the {_NAME} similarity",
+            rf"set on the trigger node via {_NAMES}",
+            # Feature-flag notices naming the tools the flag gates.
+            rf"flag to use ``{_NAME}``(?: / ``{_NAME}``)*",
+        ]
+    )
+)
+
+
+def _unread_literals(tree: ast.AST) -> set[int]:
+    """Docstrings, bare string statements and logger arguments: strings the
+    model never sees."""
+    unread: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            unread.add(id(node.value))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "logger"
+        ):
+            unread.update(id(sub) for sub in ast.walk(node))
+    return unread
+
+
+def _bare_mentions(source: str, text: str, line: int | None = None) -> list[str]:
+    where = source if line is None else f"{source}:{line}"
+    instructions = _ALLOWED_MENTIONS.sub(" ", " ".join(text.split()))
+    return [
+        f"{where}: {match.group(1)}"
+        for match in _BARE_DEFERRED_NAME.finditer(instructions)
+    ]
+
+
+def _bare_mentions_in_module(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    unread = _unread_literals(tree)
+    return [
+        mention
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in unread
+        # A literal that is exactly a tool name is an identifier
+        # (``name = "edit_agent"``), not prose.
+        and node.value not in DEFERRED_TOOL_NAMES
+        for mention in _bare_mentions(path.name, node.value, node.lineno)
+    ]
+
+
+def test_model_facing_text_names_deferred_tools_by_capability_id():
+    assert 'run_capability(id="tool:<name>"' in SHARED_TOOL_NOTES
+    offenders = [
+        mention
+        for path in _MODEL_FACING_MODULES
+        for mention in _bare_mentions_in_module(path)
+    ]
+    guide = _COPILOT_DIR / "sdk" / "agent_generation_guide.md"
+    offenders += _bare_mentions(guide.name, guide.read_text(encoding="utf-8"))
+    # Schemas as the model receives them, which also covers text a tool
+    # interpolates into its description at runtime.
+    for name, tool in TOOL_REGISTRY.items():
+        offenders += _bare_mentions(
+            f"{name} schema", f"{tool.description} {json.dumps(tool.parameters)}"
+        )
+    assert not offenders, (
+        "A deferred tool is refused when called by name. Write `tool:<name>` "
+        "(its run_capability id) instead of the bare name in:\n" + "\n".join(offenders)
     )
 
 

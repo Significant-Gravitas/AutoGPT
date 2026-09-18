@@ -330,7 +330,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "configuration and pass it as `trigger_config` — do NOT guess "
                 "values (e.g. don't invent a repository name). The required "
                 "fields and their schema are below; once you have the user's "
-                "answers, call setup_agent_webhook_trigger again with "
+                "answers, call tool:setup_agent_webhook_trigger again with "
                 "`trigger_config` filled in."
             ),
             session_id=session_id,

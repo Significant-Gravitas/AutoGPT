@@ -89,7 +89,7 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
+        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling tool:confirm_expert_change with that id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -254,7 +254,7 @@ class RaiseExpertTool(BaseTool):
                     f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
                     "do not raise them again. Delegate work to them with "
                     "delegate_to_expert, or change their charter with "
-                    "update_expert. Only propose a differently-named expert "
+                    "tool:update_expert. Only propose a differently-named expert "
                     "if the user truly wants a second, separate one."
                 ),
                 session_id=session_id,
@@ -297,7 +297,7 @@ class RaiseExpertTool(BaseTool):
                 "a card with Approve and Decline buttons — do not repeat any "
                 "of it in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
+                "tool:confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,
