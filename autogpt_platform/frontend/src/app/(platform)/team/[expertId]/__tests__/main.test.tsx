@@ -145,6 +145,7 @@ const maria: Expert = {
   bio: "Maria is a senior marketing strategist.",
   skills: ["Content strategy"],
   tagline: "Grows your brand while you sleep",
+  job_title: "Marketing Manager",
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
@@ -325,6 +326,8 @@ describe("ExpertDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
     expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.queryByText("Marketing Manager")).toBeNull();
+    expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
@@ -351,7 +354,7 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
-  test("shows the expert's integrations as logos after the role pill", async () => {
+  test("shows the expert's integrations beside the name", async () => {
     server.use(
       getGetExpertMockHandler(() => ({
         ...maria,
@@ -371,9 +374,9 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const pill = within(header).getByText("Marketing Strategist");
+    const name = within(header).getByRole("heading", { name: "Maria" });
     expect(
-      pill.compareDocumentPosition(integrations) &
+      name.compareDocumentPosition(integrations) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

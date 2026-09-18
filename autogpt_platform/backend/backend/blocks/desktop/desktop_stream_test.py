@@ -1,7 +1,7 @@
 """The live stream: its password never rests on the box, and a re-open hands
 back the URL the user holds only while the box has kept running."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -55,6 +55,14 @@ async def test_a_fresh_stream_keeps_its_password_out_of_the_shells_reach():
     (x11vnc,) = [cmd for cmd, _ in commands if cmd.startswith("x11vnc")]
     assert f"-passwdfile rm:{VNC_PASSWORD_PATH}" in x11vnc
     assert "-storepasswd" not in x11vnc and password not in x11vnc
+    # Root's x11vnc and the user's Xvfb cannot share memory: with MIT-SHM on,
+    # x11vnc exits 1 (BadAccess on ShmAttach) and no desktop ever opens.
+    assert " -noshm " in x11vnc
+    # Root's logs stay out of /tmp, where the box's user could own a file of
+    # the same name (a box that once ran its stream as the user does) and the
+    # kernel would refuse root the open.
+    (novnc,) = [cmd for cmd, _ in commands if "novnc_proxy --vnc" in cmd]
+    assert "/tmp/" not in x11vnc and "/tmp/" not in novnc
 
 
 @pytest.mark.asyncio
@@ -89,3 +97,110 @@ async def test_a_remembered_password_is_dropped_once_the_proxy_is_gone():
 
     assert password != "issued-before"
     assert any(cmd.startswith("x11vnc") for cmd, _ in _commands(run))
+
+
+@pytest.mark.asyncio
+async def test_a_failed_x11vnc_says_why_in_its_own_words():
+    """Its stderr goes to a file in the box, so the bare exception is empty."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat"):
+            raise RuntimeError("nothing on the stream port")
+        if command.startswith("x11vnc"):
+            raise RuntimeError("Command exited with code 1 and error:")
+        if command.startswith("tail"):
+            return MagicMock(stdout="X Error of failed request:  BadAccess\n")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with pytest.raises(RuntimeError, match="x11vnc did not start: X Error.*BadAccess"):
+        await DesktopSession(sandbox).start_stream(None)
+    (tail,) = [(c, u) for c, u in _commands(run) if c.startswith("tail")]
+    assert tail[1] == VNC_USER
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tail, said",
+    [
+        (MagicMock(stdout="  \n"), "(empty log)"),
+        (RuntimeError("gone"), "(log unreadable)"),
+    ],
+    ids=["empty", "unreadable"],
+)
+async def test_a_failed_x11vnc_with_no_log_to_show_still_raises(tail, said):
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith(("netstat", "x11vnc")):
+            raise RuntimeError("Command exited with code 1 and error:")
+        if command.startswith("tail"):
+            if isinstance(tail, Exception):
+                raise tail
+            return tail
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with pytest.raises(RuntimeError, match="x11vnc did not start") as raised:
+        await DesktopSession(sandbox).start_stream(None)
+    assert said in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_an_x11vnc_that_dies_after_detaching_is_caught_before_novnc_starts():
+    """``-bg`` reports success once it has forked; the port never opening is
+    the only sign, and noVNC's own port would come up regardless."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat"):
+            raise RuntimeError("not listening")
+        if command.startswith("tail"):
+            return MagicMock(stdout="caught X11 error")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with (
+        patch("backend.blocks.desktop._api._READY_POLL_ATTEMPTS", 2),
+        patch("backend.blocks.desktop._api._READY_POLL_SECONDS", 0),
+        pytest.raises(RuntimeError, match="x11vnc did not start: caught X11 error"),
+    ):
+        await DesktopSession(sandbox).start_stream(None)
+    commands = [cmd for cmd, _ in _commands(run)]
+    assert not any("novnc_proxy --vnc" in cmd for cmd in commands)
+    # Detached but never serving, it is still running: stopped, not left.
+    started = next(i for i, cmd in enumerate(commands) if cmd.startswith("x11vnc"))
+    assert any(cmd.startswith("pkill") for cmd in commands[started + 1 :])
+
+
+@pytest.mark.asyncio
+async def test_a_novnc_that_never_serves_takes_x11vnc_down_with_it():
+    """Otherwise x11vnc keeps serving under a password nobody was handed."""
+    run = AsyncMock()
+
+    async def fake_run(command: str, **kwargs):
+        if command.startswith("netstat") and "5900" not in command:
+            raise RuntimeError("not listening")
+        if command.startswith("tail"):
+            return MagicMock(stdout="websockify: address in use")
+        return MagicMock()
+
+    run.side_effect = fake_run
+    sandbox = MagicMock()
+    sandbox.commands.run = run
+    with (
+        patch("backend.blocks.desktop._api._READY_POLL_ATTEMPTS", 2),
+        patch("backend.blocks.desktop._api._READY_POLL_SECONDS", 0),
+        pytest.raises(RuntimeError, match="noVNC did not start: websockify"),
+    ):
+        await DesktopSession(sandbox).start_stream(None)
+    commands = [cmd for cmd, _ in _commands(run)]
+    started = next(i for i, cmd in enumerate(commands) if cmd.startswith("x11vnc"))
+    assert any(cmd.startswith("pkill") for cmd in commands[started + 1 :])

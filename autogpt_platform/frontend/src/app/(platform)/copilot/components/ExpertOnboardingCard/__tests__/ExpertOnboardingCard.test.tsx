@@ -23,7 +23,7 @@ vi.mock("../../../useExpertMap", () => ({
           id: EXPERT_ID,
           name: "Ada",
           avatarUrl: null,
-          role: "Head of Marketing",
+          role: "Social & Content Repurposing",
           isArchived: false,
           readOnlyReason: null,
         },
@@ -87,11 +87,12 @@ function actionButton(label: string): HTMLButtonElement {
 }
 
 describe("ExpertOnboardingCard", () => {
-  it("greets the user under the expert's own identity", () => {
+  it("greets the user under the expert's identity with the shared area label", () => {
     renderCard(onboardingPart());
 
     expect(screen.getByText("Ada")).toBeDefined();
-    expect(screen.getByText("Head of Marketing")).toBeDefined();
+    expect(screen.getByText("Social media")).toBeDefined();
+    expect(screen.queryByText("Social & Content Repurposing")).toBeNull();
     expect(
       screen.getByText("Hi, I'm Ada — good to be working with you."),
     ).toBeDefined();

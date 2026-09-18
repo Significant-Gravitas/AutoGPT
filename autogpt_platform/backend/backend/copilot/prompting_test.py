@@ -62,31 +62,34 @@ class TestCredentialsSurfacingGuardrails:
 
 
 class TestToolDiscoveryPriorityAntiPattern:
-    """The Tool Discovery Priority section must forbid claiming a capability
-    gap without calling ``find_block`` first — this is the regression the
+    """The Discovery section must forbid claiming a capability gap without
+    calling ``find_capability`` first — this is the regression the
     LinkedIn-skip incident on dev (May 2026) exposed.
     """
 
-    def test_supplement_contains_find_block_mandatory_language(self):
+    def test_supplement_contains_find_capability_mandatory_language(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The header must signal that find_block is mandatory before any
-        # "no integration" reply.
-        assert "find_block` is MANDATORY" in result
+        # The header must signal that find_capability is mandatory before
+        # any "no integration" reply.
+        assert "find_capability` is MANDATORY" in result
 
     def test_supplement_lists_the_forbidden_phrases(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         # The anti-pattern section must explicitly enumerate the
         # phrases the model emitted in the regression so the model
         # can pattern-match on its own draft and reject it.
-        assert "We don't have a native X integration yet." in result
-        assert "There's no block for X." in result
+        assert "we don't have an X integration" in result
+        assert "there's no block for X" in result
 
-    def test_supplement_includes_correct_flow_template(self):
+    def test_supplement_includes_the_flow_and_no_legacy_names(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The 3-step correct-flow block must be present so the model
-        # has a concrete template to follow, not just a prohibition.
-        assert "Correct flow" in result
-        assert 'find_block(query="<service> <action>")' in result
+        # The numbered flow gives the model a concrete template to follow,
+        # not just a prohibition; the retired tools must not be named.
+        assert 'find_capability(query="<service>' in result
+        assert "describe_capability(id)" in result
+        assert "resume_capability(review_id)" in result
+        for legacy in ("find_block", "run_block", "run_mcp_tool", "get_mcp_guide"):
+            assert legacy not in result, legacy
 
 
 class TestGraphitiMemoryScope:

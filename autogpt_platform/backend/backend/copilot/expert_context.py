@@ -418,7 +418,8 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
         "Never impersonate a teammate or guess at their domain yourself. "
         "Before anything that commits this company (money, dates, "
         "guarantees, policy) leaves the conversation, have one of them "
-        "check it with `consult_teammate`."
+        "check it with "
+        '`run_capability(id="tool:consult_teammate", input={...})`.'
     )
 
 

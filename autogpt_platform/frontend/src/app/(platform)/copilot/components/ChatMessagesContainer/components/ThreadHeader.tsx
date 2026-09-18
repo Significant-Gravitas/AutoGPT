@@ -2,6 +2,8 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import {
   Tooltip,
   TooltipContent,
@@ -58,7 +60,9 @@ export function ThreadHeader({
   // Otto's identity, which would be wrong for an expert session.
   const isResolving = isResolvingExpertIdentity && !expertIdentity;
   const name = expertIdentity?.name ?? "Otto";
-  const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
+  const role = expertIdentity
+    ? getExpertRoleLabel(expertIdentity.role ?? "")
+    : DEFAULT_EXPERT_ROLE;
   // Assistive tech gets a loading identity too, not Otto's.
   const identityLabel = isResolving ? "Loading expert" : `${name}, ${role}`;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
@@ -106,8 +110,8 @@ export function ThreadHeader({
       {isResolving ? (
         <Skeleton className="h-3.5 w-16 rounded" />
       ) : (
-        <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
-          {name}
+        <span className="min-w-0 max-w-[10rem]">
+          <ExpertIdentityDetails name={name} role={role} size="compact" />
         </span>
       )}
       {counters.map(({ icon, count, noun }) => (
@@ -147,21 +151,17 @@ export function ThreadHeader({
                         : `${identityLabel}. Open session activity`
                     }
                     onClick={() => toggleContextPanelTab("files")}
-                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-5 transition-colors hover:bg-zinc-100/80"
                   >
                     {chipContent}
                   </button>
                 ) : (
-                  // The role lives only in the tooltip, and a tooltip opens
-                  // on focus as well as hover — so even this passive chip has
-                  // to be reachable by keyboard, or read-only viewers never
-                  // get the role at all.
                   <div
                     tabIndex={0}
                     aria-label={
                       isResolving ? identityLabel : `${name} — ${role}`
                     }
-                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-5"
                   >
                     {chipContent}
                   </div>

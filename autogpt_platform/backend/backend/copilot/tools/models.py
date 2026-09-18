@@ -46,6 +46,10 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
 
+    # Capability registry (find/describe/run_capability)
+    CAPABILITY_LIST = "capability_list"
+    CAPABILITY_DETAILS = "capability_details"
+
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
@@ -919,16 +923,39 @@ class BlockInfoSummary(BaseModel):
 
 
 class BlockListResponse(ToolResponseBase):
-    """Response for find_block tool."""
+    """Response for a block search (find_capability / legacy find_block)."""
 
     type: ResponseType = ResponseType.BLOCK_LIST
     blocks: list[BlockInfoSummary]
     count: int
     query: str
     usage_hint: str = Field(
-        default="To execute a block, call run_block with block_id set to the block's "
-        "'id' field and input_data containing the fields listed in required_inputs."
+        default="To execute a block, call run_capability with id set to the block's "
+        "'id' field and input containing the fields listed in required_inputs."
     )
+
+
+class CapabilityListResponse(ToolResponseBase):
+    """Ranked capabilities for a ``find_capability`` query.  Each entry is a
+    compact listing (id, name, purpose, kind, class, connected)."""
+
+    type: ResponseType = ResponseType.CAPABILITY_LIST
+    query: str
+    capabilities: list[dict[str, Any]]
+    count: int
+    # Generic primitives offered when the query named a service.
+    fallback: list[dict[str, Any]] = Field(default_factory=list)
+    service: str | None = None
+
+
+class CapabilityDetailsResponse(ToolResponseBase):
+    """Schema for one capability whose implementation is a platform tool.
+    Blocks and MCP servers describe themselves with their existing
+    ``block_details`` / ``mcp_tools_discovered`` responses."""
+
+    type: ResponseType = ResponseType.CAPABILITY_DETAILS
+    capability: dict[str, Any]
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class BlockDetails(BaseModel):
@@ -943,7 +970,7 @@ class BlockDetails(BaseModel):
 
 
 class BlockDetailsResponse(ToolResponseBase):
-    """Response for block details (first run_block attempt)."""
+    """Response for block details (describe_capability / first run attempt)."""
 
     type: ResponseType = ResponseType.BLOCK_DETAILS
     block: BlockDetails
@@ -951,7 +978,7 @@ class BlockDetailsResponse(ToolResponseBase):
 
 
 class BlockOutputResponse(ToolResponseBase):
-    """Response for run_block tool."""
+    """Response for a block run via run_capability."""
 
     type: ResponseType = ResponseType.BLOCK_OUTPUT
     block_id: str
