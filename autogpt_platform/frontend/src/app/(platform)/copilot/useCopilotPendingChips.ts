@@ -3,6 +3,7 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import { v4 as uuidv4 } from "uuid";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -86,7 +87,10 @@ export function useCopilotPendingChips({
   });
 
   const queueMessage = useCallback((text: string) => {
-    setQueue((prev) => [...prev, { id: crypto.randomUUID(), text }]);
+    // Options force uuid's getRandomValues path: crypto.randomUUID does not
+    // exist on a plain-HTTP LAN origin, and this updater runs during render,
+    // so there it took the whole chat page down instead of queueing.
+    setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
   }, []);
 
   return { queuedMessages, queueMessage };
@@ -194,7 +198,7 @@ function usePeekOnBoundary({
       // disappears.
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
-          id: crypto.randomUUID(),
+          id: uuidv4({}),
           text,
         }));
         const queuedDuringWindow = current.filter(
