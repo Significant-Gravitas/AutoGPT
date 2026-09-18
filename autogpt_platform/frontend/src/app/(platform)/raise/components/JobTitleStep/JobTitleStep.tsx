@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { cn } from "@/lib/utils";
+import { Forward02Icon } from "@hugeicons/core-free-icons";
 import { bubbleClassFor } from "../ColorStep/helpers";
 import { JOB_TITLE_MAX_LENGTH, useJobTitleStep } from "./useJobTitleStep";
 
@@ -11,6 +13,7 @@ interface Props {
   suggestions: string[];
   color: string | null;
   onSubmit: (jobTitle: string) => void;
+  onSkip: () => void;
 }
 
 export function JobTitleStep({
@@ -18,10 +21,27 @@ export function JobTitleStep({
   suggestions,
   color,
   onSubmit,
+  onSkip,
 }: Props) {
   const { custom, setCustom, trimmed, submitCustom } = useJobTitleStep({
     onSubmit,
   });
+
+  if (selectedTitle === "") {
+    return (
+      <div
+        className={cn(
+          "ml-auto rounded-2xl border px-4 py-3 text-[15px] leading-relaxed text-foreground",
+          "flex w-fit items-center gap-2",
+          bubbleClassFor(color) ?? "border-accent bg-accent/5",
+        )}
+      >
+        <Icon icon={Forward02Icon} size={16} aria-hidden />
+        Skipped
+      </div>
+    );
+  }
+
   const chips = selectedTitle ? [selectedTitle] : suggestions;
 
   return (
@@ -60,7 +80,10 @@ export function JobTitleStep({
         </span>
       )}
       {selectedTitle ? null : (
-        <form onSubmit={submitCustom} className="flex items-center gap-2">
+        <form
+          onSubmit={submitCustom}
+          className="flex flex-wrap items-center justify-end gap-2"
+        >
           <Input
             id="raise-job-title"
             label="Job title"
@@ -80,6 +103,15 @@ export function JobTitleStep({
             className="h-[2.625rem] rounded-xl py-3"
           >
             Add title
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            onClick={onSkip}
+            className="h-[2.625rem] rounded-xl py-3"
+          >
+            Skip
           </Button>
         </form>
       )}
