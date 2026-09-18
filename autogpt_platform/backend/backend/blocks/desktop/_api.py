@@ -263,6 +263,14 @@ class DesktopSession:
     async def kill(self) -> None:
         await self.sandbox.kill()
 
+    async def stop_stream(self) -> None:
+        """Stop serving the screen; the display itself stays up.
+
+        Whatever password the stream ran under stops working with it, and the
+        next ``start_stream`` brings the stack back under a fresh one.
+        """
+        await self._vnc_command(_STOP_STREAM)
+
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):
             return

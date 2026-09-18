@@ -87,7 +87,7 @@ from e2b import (
 from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
-from backend.blocks.desktop._api import resolve_volume
+from backend.blocks.desktop._api import DesktopSession, resolve_volume
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata
@@ -133,6 +133,15 @@ _MAX_WAIT_ATTEMPTS = math.ceil(_CREATION_LOCK_TTL / _WAIT_INTERVAL_SECONDS * 1.2
 # control-plane operations; if the sandbox is unreachable, fail fast and retry
 # on the next turn.
 _E2B_API_TIMEOUT_SECONDS = 10
+
+# Stopping the screen's stream rides inside the pause's budget above, so a box
+# that does not answer must still leave the pause time to go through.
+_STOP_STREAM_TIMEOUT_SECONDS = 5
+
+# Held in place of a stream password once the stream has been stopped in the
+# box: nothing is serving, so a reconnect has nothing to stop.  Empty on
+# purpose, so every reader that wants a password sees none.
+_STREAM_STOPPED = ""
 
 # Redis TTL for a session sandbox key.  Must be ≥ the E2B project "paused
 # sandbox lifetime" setting (recommended: set both to 48 h).
@@ -224,10 +233,15 @@ class SandboxOwner(BaseModel):
 
         The password never rests on the box (see ``DesktopSession.start_stream``);
         this is what lets a re-open hand back the URL the user already holds.
-        It is dropped whenever the box pauses, so a URL that may have leaked
-        is good for one running stretch only.
+        It is dropped whenever the box pauses, and the stream it opened is
+        stopped with it (``_revoke_stream``), so a URL that may have leaked is
+        good for one running stretch only.
         """
         return f"{self.key()}:stream"
+
+    def display_lock_key(self) -> str:
+        """Redis key held by whoever is turning the screen on right now."""
+        return f"{self.display_key()}:lock"
 
     def legacy_desktop_key(self) -> str:
         """Where the pre-one-box desktop's id was cached; swept on kill."""
@@ -580,6 +594,7 @@ async def get_or_create_owner_sandbox(
                 continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
+                await _revoke_orphaned_stream(owner, sandbox)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
@@ -822,8 +837,15 @@ async def pause_sandbox(
     owner = SandboxOwner.for_session(session_id, expert_id)
     if not await _release_turn(owner):
         return False
-    paused = await _act_on_sandbox(owner, api_key, "pause", lambda sb: sb.pause())
-    if paused:
+    revoked = False
+
+    async def _pause(sandbox: AsyncSandbox) -> None:
+        nonlocal revoked
+        revoked = await _revoke_stream(owner, sandbox)
+        await sandbox.pause()
+
+    paused = await _act_on_sandbox(owner, api_key, "pause", _pause)
+    if paused and not revoked:
         await _forget_stream(owner)
     return paused
 
@@ -844,10 +866,12 @@ async def pause_sandbox_direct(
     owner = SandboxOwner.for_session(session_id, expert_id)
     if not await _release_turn(owner):
         return False
+    revoked = await _revoke_stream(owner, sandbox)
     try:
         await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
         logger.info("[E2B] Paused sandbox %.12s for %s", sandbox.sandbox_id, owner)
-        await _forget_stream(owner)
+        if not revoked:
+            await _forget_stream(owner)
         return True
     except Exception as exc:
         logger.warning(
@@ -979,11 +1003,73 @@ async def _forget_owner_state(owner: SandboxOwner) -> None:
         )
 
 
+async def _revoke_stream(owner: SandboxOwner, sandbox: AsyncSandbox) -> bool:
+    """Stop the screen's stream in *sandbox* so its password stops working.
+
+    Forgetting the password is not enough on its own: a pause keeps the box's
+    processes, so the stream would come back with the box and still answer to
+    it.  Only the stream goes; the display stays up and the next open serves
+    it again under a fresh password.  A box whose screen was never turned on
+    costs one Redis read and no command.  Never raises, because a box that
+    cannot be told to stop must still pause.  Returns whether the stream is
+    known to be stopped.
+    """
+    try:
+        redis = await get_redis_async()
+        if not await _screen_started_in(owner, sandbox.sandbox_id):
+            return False
+        await asyncio.wait_for(
+            DesktopSession(sandbox).stop_stream(),
+            timeout=_STOP_STREAM_TIMEOUT_SECONDS,
+        )
+        await redis.set(owner.stream_key(), _STREAM_STOPPED, ex=owner.ttl)
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Could not stop the screen stream in %.12s for %s: %s",
+            sandbox.sandbox_id,
+            owner,
+            exc,
+        )
+        return False
+    logger.info("[E2B] Stopped the screen stream in %.12s", sandbox.sandbox_id)
+    return True
+
+
+async def _revoke_orphaned_stream(owner: SandboxOwner, sandbox: AsyncSandbox) -> None:
+    """Stop a stream that came back with the box under a forgotten password.
+
+    E2B's own timeout pause gives us no chance to stop the stream first, and
+    a stop before our pause can fail.  Either way the box returns with its
+    screen on and no password remembered, which is what this looks for.  An
+    open in progress is left alone: it restarts the stream itself.
+    """
+    try:
+        redis = await get_redis_async()
+        if not await _screen_started_in(owner, sandbox.sandbox_id):
+            return
+        if await redis.get(owner.stream_key()) is not None:
+            return
+        if await redis.get(owner.display_lock_key()) is not None:
+            return
+    except Exception as exc:
+        logger.warning("[E2B] Could not read %s's screen state: %s", owner, exc)
+        return
+    await _revoke_stream(owner, sandbox)
+
+
+async def _screen_started_in(owner: SandboxOwner, sandbox_id: str) -> bool:
+    redis = await get_redis_async()
+    raw = await redis.get(owner.display_key())
+    value = raw.decode() if isinstance(raw, bytes) else raw
+    return value == sandbox_id
+
+
 async def _forget_stream(owner: SandboxOwner) -> None:
     """Drop the stream password: the screen's next open issues a fresh one.
 
-    Called whenever the box pauses, so the window in which a stream URL
-    works is one running stretch of the box (``SandboxOwner.stream_key``).
+    Called whenever the box pauses without its stream known to be stopped, so
+    the window in which a stream URL works is one running stretch of the box
+    (``SandboxOwner.stream_key``).
     """
     with contextlib.suppress(Exception):
         redis = await get_redis_async()

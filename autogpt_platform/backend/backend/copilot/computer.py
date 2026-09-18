@@ -7,8 +7,10 @@ that box* and hands back the live stream, whether the ask comes from the
 ``start_desktop`` tool inside a turn or from the Computer tab and side
 panel.  The box pauses at turn end like any other and comes back with the
 screen exactly as it was, but under a fresh stream password: the password
-is kept here, off the box, and forgotten whenever the box pauses, so a
-stream URL that may have leaked is good for one running stretch only.
+is kept here, off the box, and whenever the box pauses it is forgotten and
+the stream it opened is stopped, so a stream URL that may have leaked is
+good for one running stretch only.  "Screen on" therefore means the display
+was started in this box; the next open is what serves it again.
 
 ``describe_computer`` only lists: it never connects, so a paused box stays
 paused (connecting is what E2B's auto-resume reacts to).  Whether the screen
@@ -151,7 +153,7 @@ async def open_desktop(
     if not user_id:
         raise ValueError("A desktop needs an authenticated user to issue its link to")
     redis = await get_redis_async()
-    lock_key = f"{owner.display_key()}:lock"
+    lock_key = owner.display_lock_key()
     token = uuid.uuid4().hex
     waited = 0.0
     while not await redis.set(lock_key, token, nx=True, ex=_DESKTOP_LOCK_TTL_SECONDS):
@@ -225,7 +227,8 @@ async def _remember_screen(owner: SandboxOwner, sandbox_id: str, password: str) 
 
     The password outlives a pause only as long as the box could have kept
     running: its expiry is the box's running-time limit, and the turn-end
-    pause drops it outright (``e2b_sandbox._forget_stream``).
+    pause stops the stream and drops it outright
+    (``e2b_sandbox._revoke_stream``).
     """
     redis = await get_redis_async()
     await redis.set(owner.display_key(), sandbox_id, ex=owner.ttl)

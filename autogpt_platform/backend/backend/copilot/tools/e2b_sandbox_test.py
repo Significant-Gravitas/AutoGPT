@@ -21,7 +21,7 @@ import pytest
 from e2b import SandboxState
 from e2b.exceptions import SandboxNotFoundException
 
-from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop._api import _STOP_STREAM, SHARED_PATH, WORKSPACE_PATH
 from backend.blocks.desktop._common import (
     expert_volume_name,
     user_volume_name,
@@ -69,6 +69,7 @@ def _mock_sandbox(
     sb.is_running = AsyncMock(return_value=running)
     sb.pause = AsyncMock()
     sb.kill = AsyncMock()
+    sb.commands.run = AsyncMock()
     stamped = (owner or SandboxOwner(kind="session", id=_SESSION_ID)).metadata()
     sb.get_info = AsyncMock(return_value=MagicMock(metadata=stamped))
     _STAMPS[sandbox_id] = sb.get_info.return_value
@@ -251,6 +252,8 @@ class TestGetOrCreateSandbox:
             )
 
         assert result is sb
+        # A box whose screen was never on pays no command on the way back.
+        sb.commands.run.assert_not_awaited()
         mock_cls.create.assert_not_called()
         # redis.set called once to refresh TTL, not to claim a creation slot
         redis.set.assert_awaited_once()
@@ -786,7 +789,9 @@ class TestPauseSandboxDirect:
 
         assert result is True
         sb.pause.assert_awaited_once()
-        redis.get.assert_not_awaited()
+        # The screen was never on: one flag read, and no command in the box.
+        redis.get.assert_awaited_once_with(f"copilot:e2b:sandbox:{_SESSION_ID}:display")
+        sb.commands.run.assert_not_awaited()
         # The turn-end pause is where the stream password is dropped.
         redis.delete.assert_awaited_once_with(
             f"copilot:e2b:sandbox:{_SESSION_ID}:stream"
@@ -817,6 +822,192 @@ class TestPauseSandboxDirect:
             result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# A pause ends the stream: the password is forgotten *and* nothing serves it
+# ---------------------------------------------------------------------------
+
+_SHELL_KEY = f"copilot:e2b:sandbox:{_SESSION_ID}"
+_DISPLAY_KEY = f"{_SHELL_KEY}:display"
+_STREAM_KEY = f"{_SHELL_KEY}:stream"
+_DISPLAY_LOCK_KEY = f"{_DISPLAY_KEY}:lock"
+
+
+def _screen_redis(**keys: str) -> AsyncMock:
+    """Redis holding the box id plus the given screen keys, as bytes.
+
+    Unlike ``_keyed_redis`` an empty value is a value: the stopped-stream
+    marker is an empty string, and a missing key is ``None``.
+    """
+    values = {_SHELL_KEY: _SANDBOX_ID, **keys}
+    r = AsyncMock()
+    r.get = AsyncMock(
+        side_effect=lambda key: values[key].encode() if key in values else None
+    )
+    r.set = AsyncMock(return_value=True)
+    r.delete = AsyncMock()
+    return r
+
+
+def _stream_key_writes(redis: AsyncMock) -> list:
+    return [c for c in redis.set.await_args_list if c.args[0] == _STREAM_KEY]
+
+
+def _assert_stream_stopped_as_root(sb: MagicMock) -> None:
+    sb.commands.run.assert_awaited_once()
+    call = sb.commands.run.await_args
+    assert call.args[0] == _STOP_STREAM
+    assert call.kwargs["user"] == "root"
+
+
+class TestPauseStopsTheStream:
+    def test_pause_stops_the_stream_before_the_box_pauses(self):
+        sb = _mock_sandbox()
+        order: list[str] = []
+        sb.commands.run = AsyncMock(side_effect=lambda *_, **__: order.append("stop"))
+        sb.pause = AsyncMock(side_effect=lambda: order.append("pause"))
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"})
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY)) is True
+
+        assert order == ["stop", "pause"]
+        _assert_stream_stopped_as_root(sb)
+        # The password is replaced by the stopped marker, not just deleted,
+        # so the next reconnect knows there is nothing left to stop.
+        [write] = _stream_key_writes(redis)
+        assert write.args[1] == ""
+        redis.delete.assert_not_awaited()
+
+    def test_direct_pause_stops_the_stream_before_the_box_pauses(self):
+        sb = _mock_sandbox()
+        order: list[str] = []
+        sb.commands.run = AsyncMock(side_effect=lambda *_, **__: order.append("stop"))
+        sb.pause = AsyncMock(side_effect=lambda: order.append("pause"))
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"})
+        with _patch_redis(redis):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+
+        assert order == ["stop", "pause"]
+        _assert_stream_stopped_as_root(sb)
+        [write] = _stream_key_writes(redis)
+        assert write.args[1] == ""
+        redis.delete.assert_not_awaited()
+
+    def test_a_screen_flag_for_a_replaced_box_stops_nothing(self):
+        sb = _mock_sandbox()
+        redis = _screen_redis(**{_DISPLAY_KEY: "sb-old", _STREAM_KEY: "issued"})
+        with _patch_redis(redis):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+
+        sb.commands.run.assert_not_awaited()
+        redis.delete.assert_awaited_once_with(_STREAM_KEY)
+
+    @pytest.mark.parametrize("direct", [True, False])
+    def test_a_stop_that_fails_does_not_block_the_pause(self, direct: bool):
+        sb = _mock_sandbox()
+        sb.commands.run = AsyncMock(side_effect=RuntimeError("box not answering"))
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"})
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            paused = asyncio.run(
+                pause_sandbox_direct(sb, _SESSION_ID)
+                if direct
+                else pause_sandbox(_SESSION_ID, _API_KEY)
+            )
+
+        assert paused is True
+        sb.commands.run.assert_awaited_once()
+        sb.pause.assert_awaited_once()
+        # Not known to be stopped: the password is dropped with no marker, so
+        # the box's next reconnect tries the stop again.
+        assert _stream_key_writes(redis) == []
+        redis.delete.assert_awaited_once_with(_STREAM_KEY)
+
+    def test_a_stop_that_hangs_is_cut_off_and_the_box_still_pauses(self):
+        async def _hang(*_, **__):
+            await asyncio.sleep(30)
+
+        sb = _mock_sandbox()
+        sb.commands.run = AsyncMock(side_effect=_hang)
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"})
+        with (
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox._STOP_STREAM_TIMEOUT_SECONDS", 0.01
+            ),
+        ):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+
+        sb.commands.run.assert_awaited_once()
+        sb.pause.assert_awaited_once()
+        redis.delete.assert_awaited_once_with(_STREAM_KEY)
+
+    def test_unreadable_screen_state_does_not_block_the_pause(self):
+        sb = _mock_sandbox()
+        redis = _screen_redis()
+        redis.get = AsyncMock(side_effect=ConnectionError("redis down"))
+        with _patch_redis(redis):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+
+        redis.get.assert_awaited_once_with(_DISPLAY_KEY)
+        sb.pause.assert_awaited_once()
+
+
+class TestReconnectStopsAnOrphanedStream:
+    """A box E2B paused on its own comes back with its stream still up."""
+
+    def _reconnect(self, redis: AsyncMock, sb: MagicMock):
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            return asyncio.run(
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+            )
+
+    def test_screen_on_with_no_password_remembered_stops_the_stream(self):
+        sb = _mock_sandbox()
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID})
+
+        assert self._reconnect(redis, sb) is sb
+
+        _assert_stream_stopped_as_root(sb)
+        [write] = _stream_key_writes(redis)
+        assert write.args[1] == ""
+
+    def test_a_stop_that_fails_still_hands_the_box_back(self):
+        sb = _mock_sandbox()
+        sb.commands.run = AsyncMock(side_effect=RuntimeError("box not answering"))
+        redis = _screen_redis(**{_DISPLAY_KEY: _SANDBOX_ID})
+
+        assert self._reconnect(redis, sb) is sb
+
+        sb.commands.run.assert_awaited_once()
+        assert _stream_key_writes(redis) == []
+
+    @pytest.mark.parametrize(
+        "keys",
+        [
+            pytest.param(
+                {_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: "issued"},
+                id="password-still-remembered",
+            ),
+            pytest.param(
+                {_DISPLAY_KEY: _SANDBOX_ID, _STREAM_KEY: ""}, id="already-stopped"
+            ),
+            pytest.param(
+                {_DISPLAY_KEY: _SANDBOX_ID, _DISPLAY_LOCK_KEY: "token"},
+                id="open-in-progress",
+            ),
+            pytest.param({_DISPLAY_KEY: "sb-old"}, id="flag-for-a-replaced-box"),
+        ],
+    )
+    def test_a_stream_that_is_accounted_for_is_left_alone(self, keys: dict):
+        sb = _mock_sandbox()
+
+        assert self._reconnect(_screen_redis(**keys), sb) is sb
+
+        sb.commands.run.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
