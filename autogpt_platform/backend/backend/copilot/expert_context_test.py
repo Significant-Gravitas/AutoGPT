@@ -1042,6 +1042,43 @@ class TestExpertComputerBlock:
         assert result.index("</expert_workflows>") < result.index("<expert_computer>")
 
     @pytest.mark.asyncio
+    async def test_expert_learns_the_screen_shows_only_its_own_machine(self):
+        from backend.blocks.desktop._api import DISPLAY
+        from backend.copilot.expert_context import build_expert_context
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert f"DISPLAY={DISPLAY}" in result
+        assert "browser_* tools run elsewhere" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_id", [None, "exp-1"])
+    async def test_a_session_is_told_about_its_computer_exactly_once(self, expert_id):
+        """The system prompt carries the plain chat's note and the first user
+        message carries the expert's block; a turn sees both strings."""
+        from backend.copilot.expert_context import build_expert_context
+        from backend.copilot.prompting import get_sdk_supplement
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            context = await build_expert_context("user-1", expert_id)
+        supplement = get_sdk_supplement(use_e2b=True, expert_session=bool(expert_id))
+        turn = supplement + context
+
+        assert turn.count("### Your computer") + turn.count("<expert_computer>") == 1
+        assert ("<expert_computer>" in turn) is bool(expert_id)
+
+    @pytest.mark.asyncio
     async def test_no_computer_block_without_e2b(self):
         from backend.copilot.expert_context import build_expert_context
 
