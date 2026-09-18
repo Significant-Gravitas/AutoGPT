@@ -11,8 +11,15 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+const downloaded: Blob[] = [];
+vi.mock("../../../voice/downloadRecording", () => ({
+  downloadRecording: (blob: Blob) => downloaded.push(blob),
+}));
+
 const getUserMedia = vi.fn();
 const recorderStop = vi.fn();
+/** Only the transcription tests want a real stop; the rest assert on the call. */
+let firesOnStop = false;
 
 function keydown(key: string, isComposing = false) {
   return {
@@ -35,8 +42,18 @@ class FakeMediaRecorder {
   ondataavailable: ((event: unknown) => void) | null = null;
   onstop: (() => void) | null = null;
   start = vi.fn();
-  stop = recorderStop;
+  stop = () => {
+    recorderStop();
+    if (!firesOnStop) return;
+    this.ondataavailable?.({
+      data: new Blob([RECORDED], { type: "audio/webm" }),
+    });
+    this.onstop?.();
+  };
 }
+
+/** Unique, so a re-sent recording is provably the recorded one. */
+const RECORDED = "the-one-recording";
 
 async function renderRecording() {
   getUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -55,6 +72,8 @@ function renderVoice(value = "") {
 }
 
 beforeEach(() => {
+  firesOnStop = false;
+  downloaded.length = 0;
   getUserMedia.mockRejectedValue(new Error("no microphone"));
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
   Object.defineProperty(navigator, "mediaDevices", {
@@ -133,4 +152,118 @@ describe("useVoiceRecording Space shortcut", () => {
     expect(recorderStop).not.toHaveBeenCalled();
     expect(result.current.isRecording).toBe(true);
   });
+});
+
+describe("useVoiceRecording transcription failures", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    firesOnStop = true;
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("keeps the recording and offers it back when transcription fails", async () => {
+    failTranscription("Transcription service unavailable");
+    const result = await recordAndStop();
+
+    await waitFor(() =>
+      expect(result.current.transcriptionError).toBe(
+        "Transcription service unavailable",
+      ),
+    );
+    // The whole point: the audio survives the failure.
+    expect(result.current.hasFailedRecording).toBe(true);
+
+    act(() => result.current.downloadFailedRecording());
+    expect(downloaded).toHaveLength(1);
+    expect(await downloaded[0].text()).toBe(RECORDED);
+  });
+
+  it("re-sends the same recording on retry, without recording again", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "the words I said" }),
+    });
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await sentAudio(0)).toBe(RECORDED);
+    expect(await sentAudio(1)).toBe(RECORDED);
+    // One microphone session: the retry reused the audio, it did not re-record.
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.transcriptionError).toBeNull());
+    expect(result.current.hasFailedRecording).toBe(false);
+  });
+
+  it("still has the recording after a retry fails as well", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.transcriptionError).toBe("Transcription failed");
+    expect(result.current.hasFailedRecording).toBe(true);
+  });
+
+  it("does not lose the recording to a denied microphone prompt", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    getUserMedia.mockRejectedValue(
+      new DOMException("denied", "NotAllowedError"),
+    );
+    await act(async () => result.current.startRecording());
+
+    expect(result.current.hasFailedRecording).toBe(true);
+    expect(result.current.transcriptionError).toBe("Transcription failed");
+  });
+
+  it("supersedes the failed recording once a new one is under way", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    await act(async () => result.current.startRecording());
+
+    expect(result.current.hasFailedRecording).toBe(false);
+    expect(result.current.transcriptionError).toBeNull();
+  });
+
+  it("drops the failed recording once the user dismisses it", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    act(() => result.current.dismissTranscriptionError());
+
+    expect(result.current.transcriptionError).toBeNull();
+    expect(result.current.hasFailedRecording).toBe(false);
+    act(() => result.current.downloadFailedRecording());
+    expect(downloaded).toHaveLength(0);
+  });
+
+  function failTranscription(error: string) {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error }) });
+  }
+
+  async function recordAndStop() {
+    const result = await renderRecording();
+    await act(async () => result.current.stopRecording());
+    return result;
+  }
+
+  async function sentAudio(call: number) {
+    const body = fetchMock.mock.calls[call][1].body as FormData;
+    return (body.get("audio") as Blob).text();
+  }
 });

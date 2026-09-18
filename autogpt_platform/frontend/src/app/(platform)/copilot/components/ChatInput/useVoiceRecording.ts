@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { isKey } from "@/lib/keyboard";
+import { downloadRecording } from "../../voice/downloadRecording";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -29,6 +30,14 @@ export function useVoiceRecording({
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kept apart from `error`: a failed transcription is answered inline, next
+  // to the audio it still holds, not by a toast that expires in five seconds.
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(
+    null,
+  );
+  // Up to two minutes of speech. Dropping it on a transient 500 is the whole
+  // bug — the user cannot get those two minutes back.
+  const [failedRecording, setFailedRecording] = useState<Blob | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -91,6 +100,8 @@ export function useVoiceRecording({
     async (audioBlob: Blob) => {
       setIsTranscribing(true);
       setError(null);
+      // The previous failure stays on screen through a retry: clearing it here
+      // would blink the row away and back, and take the Retry button with it.
 
       try {
         const formData = new FormData();
@@ -114,10 +125,15 @@ export function useVoiceRecording({
         if (data.text) {
           handleTranscription(data.text);
         }
+        setTranscriptionError(null);
+        setFailedRecording(null);
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Transcription failed";
-        setError(message);
+          err instanceof Error && err.message
+            ? err.message
+            : "Transcription failed";
+        setTranscriptionError(message);
+        setFailedRecording(audioBlob);
         console.error("Transcription error:", err);
       } finally {
         setIsTranscribing(false);
@@ -125,6 +141,21 @@ export function useVoiceRecording({
     },
     [handleTranscription, inputId],
   );
+
+  /** Re-sends the recording that failed, byte for byte. */
+  const retryTranscription = useCallback(() => {
+    if (!failedRecording || isTranscribing || isRecordingRef.current) return;
+    void transcribeAudio(failedRecording);
+  }, [failedRecording, isTranscribing, transcribeAudio]);
+
+  const downloadFailedRecording = useCallback(() => {
+    if (failedRecording) downloadRecording(failedRecording);
+  }, [failedRecording]);
+
+  const dismissTranscriptionError = useCallback(() => {
+    setTranscriptionError(null);
+    setFailedRecording(null);
+  }, []);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecordingRef.current) {
@@ -144,6 +175,11 @@ export function useVoiceRecording({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
+      // Only once the mic is really open: a denied permission prompt must not
+      // be what destroys the recording the user still has not got back.
+      setTranscriptionError(null);
+      setFailedRecording(null);
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported("audio/webm")
@@ -275,6 +311,11 @@ export function useVoiceRecording({
     isRecording,
     isTranscribing,
     error,
+    transcriptionError,
+    hasFailedRecording: failedRecording !== null,
+    retryTranscription,
+    downloadFailedRecording,
+    dismissTranscriptionError,
     elapsedTime,
     startRecording,
     stopRecording,
