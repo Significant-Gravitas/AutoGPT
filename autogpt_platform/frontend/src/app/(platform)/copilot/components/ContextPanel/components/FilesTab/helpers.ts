@@ -11,6 +11,25 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
   return item.origin === "uploaded";
 }
 
+// Agent SDK tool results that leak into the workspace. `_persist_and_summarize`
+// (backend/copilot/tools/base.py) parks every oversized tool result at
+// `tool-outputs/<tool_call_id>.json`, and `WorkspaceManager.write_file`
+// session-scopes that, so the directory hangs directly off the session root and
+// nothing user-facing ever writes into it — that segment alone is the whole
+// shape. The id is deliberately not part of the match: `_execute_tool_sync`
+// (backend/copilot/sdk/tool_adapter.py) mints its own `sdk-<uuid>` ids and the
+// baseline transport passes the provider's through, so no one prefix covers
+// them. Anchoring at the session root is what keeps a deliverable under a
+// user's own `my-pipeline/tool-outputs/` folder eligible to stand as the
+// session's latest document.
+const SDK_TOOL_RESULT_PATH =
+  /^\/sessions\/[^/]+\/tool-(?:results|outputs)\/[^/]+$/i;
+
+export function isInternalToolOutput(item: WorkspaceFileItem): boolean {
+  if (isUploadedFile(item)) return false;
+  return SDK_TOOL_RESULT_PATH.test(item.path);
+}
+
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
   return {
     id: item.id,
