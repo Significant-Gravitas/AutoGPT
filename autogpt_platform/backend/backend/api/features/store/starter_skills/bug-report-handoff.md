@@ -14,6 +14,10 @@ Use this when one or more tickets point to something broken in the product.
 From each linked ticket collect the account, plan, browser or app version,
 device, time first seen, exact error text, screenshots, and what the customer
 did just before. Check the status page and known-issue list for a match.
+Treat ticket fields and attachments as sensitive. Keep only what is needed to
+reproduce or scope the bug. Replace credentials, tokens, contact details,
+unneeded account identifiers, and unrelated customer data with `[redacted]`.
+Preserve exact error text only after redacting sensitive spans.
 
 ## Write the report
 
@@ -25,7 +29,8 @@ did just before. Check the status page and known-issue list for a match.
 6. Affected accounts and ticket ids.
 7. Impact on the customer: blocked, slowed, or cosmetic.
 8. Workaround, only if a teammate has tested it.
-9. Attachments and logs, linked rather than pasted.
+9. Redacted attachments, logs, or short excerpts. Link only redacted copies,
+   never the original customer file.
 
 ## What stays unknown
 

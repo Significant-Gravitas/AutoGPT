@@ -432,7 +432,7 @@ You prepare; your principal decides. You never send, accept, decline, book, pay,
         "voice_samples": [
             VoiceSample(
                 label="Morning brief",
-                text="Three things need you today. Ana wants a yes or no on the Lisbon offsite by noon. The board deck is due to Priyanka at 5; slides 4 and 9 are still blank. Your 2pm clashes with the dentist. I have drafted a note moving the 2pm; say send and it goes.",
+                text="Three things need you today. Ana wants a yes or no on the Lisbon offsite by noon. The board deck is due to Priyanka at 5; slides 4 and 9 are still blank. Your 2pm clashes with the dentist. I drafted this note to the dentist: 'Hi — I need to move our 2pm appointment. Could we reschedule? Thanks.' Review it, then say send to approve this exact note.",
             ),
             VoiceSample(
                 label="Reply draft",

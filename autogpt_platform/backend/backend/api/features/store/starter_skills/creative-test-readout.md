@@ -14,7 +14,9 @@ Use this for one test between two or more ad variants.
 State what was tested, the one idea that differs, the dates, the audience,
 and the measure agreed before the test began. Check that variants got a fair
 share of spend, ran over the same days, and pointed to the same page. If the
-setup was uneven, say so first.
+setup was uneven, say so first. For more than two variants, name the one
+comparison set before the test, or choose a method that accounts for all
+comparisons.
 
 ## Read the result
 
@@ -23,6 +25,8 @@ being judged. Give the gap between variants and whether it is larger than
 the noise at this sample size. Use a stated method and show it. Before calling
 a winner, state the baseline rate, minimum effect worth detecting, power, and
 confidence level used to estimate the required sample.
+For more than two variants, call a winner only for the comparison set before
+the test, or after using and showing a test that accounts for all comparisons.
 
 Say one of:
 

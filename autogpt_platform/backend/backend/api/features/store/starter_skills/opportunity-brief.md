@@ -13,12 +13,12 @@ Use this for one problem the team is deciding whether to work on.
 
 State who has the problem, what they are trying to do, and what goes wrong.
 Give the evidence with counts, sources, and dates: tickets, interviews,
-usage, and sales notes. Quote users word for word. Mark the evidence
-**strong**, **moderate**, or **thin**, and say what would make it stronger.
-Link the problem to one of the team's stated goals.
-Before quoting evidence, remove names, contact details, account identifiers,
-credentials, and unrelated customer data. Keep only the words needed to show
-the problem.
+usage, and sales notes. Quote users word for word except for redacted spans.
+Replace each removed span with `[redacted]` and keep all other words unchanged.
+Mark the evidence **strong**, **moderate**, or **thin**, and say what would make
+it stronger. Link the problem to one of the team's stated goals. Before quoting
+evidence, redact names, contact details, account identifiers, credentials, and
+unrelated customer data. Keep only the words needed to show the problem.
 
 ## Options and trade-offs
 

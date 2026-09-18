@@ -13,8 +13,8 @@ Use this for a business trip, from one night to a multi-city week.
 
 Record the purpose, dates, fixed meetings and their addresses, budget, travel
 policy, loyalty schemes, seat and hotel preferences, and who pays. Check the
-calendar for clashes on travel days. Ask about anything unclear before
-searching.
+calendar for clashes on every date in the full itinerary window, including
+meeting and buffer days. Ask about anything unclear before searching.
 
 ## Compare options
 
