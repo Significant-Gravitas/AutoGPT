@@ -25,7 +25,7 @@ import asyncio
 import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
-from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
@@ -311,7 +311,8 @@ def _expert_computer_block() -> str:
         "everything on it, and so can they.\n"
         "- The screen shows only what runs on this machine's display: launch "
         "the app or browser with bash_exec, in the background with "
-        "DISPLAY=:0. browser_* tools run elsewhere and never appear on it.\n"
+        f"DISPLAY={DISPLAY}. browser_* tools run elsewhere and never appear on "
+        "it.\n"
         "- Never ask the user to sign into personal accounts on this "
         "desktop; use their connected integrations instead.\n"
         "</expert_computer>\n\n"
