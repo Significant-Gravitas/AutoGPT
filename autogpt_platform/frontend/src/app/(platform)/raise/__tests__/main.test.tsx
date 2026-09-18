@@ -216,6 +216,25 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
   );
 });
 
+test("posts null when the job title was skipped", async () => {
+  let captured: unknown = null;
+  server.use(
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return raiseResult();
+    }),
+  );
+
+  seedAtSkills();
+  saveDraft({ ...loadDraft(), jobTitle: "" });
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: /Bring Otto to life/ }),
+  );
+
+  await waitFor(() => expect(captured).toMatchObject({ job_title: null }));
+});
+
 test("posts a chosen weekly budget", async () => {
   let captured: unknown = null;
   server.use(
@@ -409,6 +428,29 @@ test("typing a job title trims it and asks for a name", async () => {
     jobTitle: "Chief of Staff",
     step: "name",
   });
+});
+
+test("skipping a job title records it and asks for a name", async () => {
+  saveDraft({
+    ...EMPTY_DRAFT,
+    hasStarted: true,
+    role: "marketer",
+    step: "jobTitle",
+  });
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+  );
+
+  expect(await screen.findByText("Skipped")).toBeDefined();
+  expect(
+    await screen.findByRole(
+      "group",
+      { name: "Suggested names" },
+      { timeout: 5000 },
+    ),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({ jobTitle: "", step: "name" });
 });
 
 test("picking a weekly budget advances to marketplace workflows", async () => {

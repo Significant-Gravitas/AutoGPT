@@ -44,6 +44,7 @@ export function BeatControl({ beat, flow }: Props) {
           suggestions={jobTitleSuggestionsFor(flow.role)}
           color={flow.color}
           onSubmit={flow.submitJobTitle}
+          onSkip={flow.skipJobTitle}
         />
       );
     case "name":
