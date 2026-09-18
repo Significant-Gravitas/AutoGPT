@@ -41,7 +41,6 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
-from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
@@ -614,7 +613,6 @@ async def _load_roster_store_assets() -> dict[str, str]:
 
 async def _hire_roster_and_assert_preloads(
     roster: dict[str, seed.RosterEntry],
-    hire_user: User,
     templates: dict[str, prisma.models.Expert],
     expected: dict[str, str],
 ) -> dict[str, HireResult]:
@@ -623,8 +621,11 @@ async def _hire_roster_and_assert_preloads(
         return_value=SimpleNamespace(id="sched-1")
     )
     results: dict[str, HireResult] = {}
+    hire_user = await _create_seed_user()
     with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
-        for persona, entry in roster.items():
+        for index, (persona, entry) in enumerate(roster.items()):
+            if index and index % experts_db.ACTIVE_EXPERT_LIMIT == 0:
+                hire_user = await _create_seed_user()
             result = await experts_db.hire_expert(
                 hire_user.id, templates[entry["name"]].id, None
             )
@@ -3728,11 +3729,10 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
             w.store_listing_version_id for w in templates[entry["name"]].workflows
         } == expected_versions
 
-    # A fresh user per run: a reused fixture user would make hire_expert
-    # short-circuit to a previous run's copy and skip _install_preloads.
-    hire_user = await _create_seed_user()
+    # Fresh users keep every hire below the active-expert cap. Reusing fixture
+    # users would also make hire_expert return old copies and skip preloads.
     results = await _hire_roster_and_assert_preloads(
-        fixture_roster, hire_user, templates, expected
+        fixture_roster, templates, expected
     )
 
     frankie_crons = [
