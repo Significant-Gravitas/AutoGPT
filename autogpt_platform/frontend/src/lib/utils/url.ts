@@ -1,7 +1,7 @@
 /**
- * Extracts the hostname from a URL string.
- * @param url - The URL string to extract the hostname from
- * @returns The hostname if valid, null if invalid
+ * Extracts the host from a URL string.
+ * @param url - The URL string to extract the host from
+ * @returns The host, including a non-default port, if valid; null if invalid
  */
 export const getHostFromUrl = (url: string): string | null => {
   try {
@@ -9,7 +9,9 @@ export const getHostFromUrl = (url: string): string | null => {
       url = "http://" + url; // Add a scheme if missing for URL parsing
     }
     const urlObj = new URL(url);
-    return urlObj.hostname;
+    // `host`, not `hostname`: the backend refuses a request port outside
+    // 80/443 unless the credential's host names it. `URL` drops default ports.
+    return urlObj.host;
   } catch {
     return null;
   }
