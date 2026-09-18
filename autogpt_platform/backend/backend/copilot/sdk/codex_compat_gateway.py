@@ -495,6 +495,31 @@ class CodexAnthropicGateway:
                 raise _DuplicateToolResultError(
                     "This tool-result request refers to a closed model call"
                 )
+            if not _delivers_tool_results(payload.get("messages")):
+                # Settled results that are *not* what this request is for.
+                # A continuation exists to hand back a tool result, so it ends
+                # on those blocks and nothing else; this one carries them as
+                # history and then asks for something new.  The CLI's
+                # auto-compaction is exactly that shape — whole conversation
+                # replayed, satisfied ``tool_result`` included, summarisation
+                # instruction appended to the final user message.
+                #
+                # Rejecting it costs a round trip and an upstream call for
+                # nothing.  Measured against CLI 2.1.274: the CLI does retry
+                # through the 409 and still writes its summary, so this is not
+                # what strands a turn — an arm answering the compaction
+                # request normally took 6 compactions / 0 rejections, the
+                # arm 409-ing it took 3 compactions / 11 rejections, and every
+                # turn completed in both.  The fix is worth making because the
+                # rejection is wrong, not because it is fatal.
+                #
+                # A byte-identical *replay* never reaches here: it matches a
+                # ``claim_fingerprint`` and is answered from the replay cache
+                # above, so one tool result still buys one upstream call.
+                #
+                # Starting a new conversation is safe here: requests carry
+                # ``store: False``, so there is no upstream state to lose.
+                return None
             raise _DuplicateToolResultError(
                 "This tool-result request refers to a completed model call"
             )
@@ -1085,6 +1110,28 @@ def _content_text(value: object) -> str:
         str(block.get("text"))
         for block in value
         if isinstance(block, dict) and block.get("type") == "text" and block.get("text")
+    )
+
+
+def _delivers_tool_results(value: object) -> bool:
+    """Is this request's purpose to hand back tool results?
+
+    True when the conversation ends on a message whose content is nothing but
+    ``tool_result`` blocks — the shape a client sends to answer an outstanding
+    ``tool_use``.  False when results appear only as history under some new
+    ask, which is how the CLI's auto-compaction request looks.
+    """
+    if not isinstance(value, list) or not value:
+        return False
+    last = value[-1]
+    if not isinstance(last, dict):
+        return False
+    content = last.get("content")
+    if not isinstance(content, list) or not content:
+        return False
+    return all(
+        isinstance(block, dict) and block.get("type") == "tool_result"
+        for block in content
     )
 
 

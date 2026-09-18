@@ -11,8 +11,14 @@ from aiohttp import ClientSession, web
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
+    _Continuation,
+    _Conversation,
+    _DuplicateSubmission,
+    _DuplicateToolResultError,
     _safe_tool_name,
     _serialize_messages,
+    _tool_result_request_fingerprint,
+    _ToolCallRecord,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -1150,3 +1156,127 @@ def test_replay_cache_evicts_the_oldest_entry_first() -> None:
         _entry(b"x" * (codex_compat_gateway._MAX_REPLAY_BYTES + 1)),
     )
     assert "oversized" not in conversation.replays
+
+
+# ---------------------------------------------------------------------------
+# Auto-compaction requests must not be mistaken for duplicate tool results
+# ---------------------------------------------------------------------------
+
+
+def _satisfied_tool_call(
+    gateway: CodexAnthropicGateway, call_id: str, output: str
+) -> None:
+    """Record a tool call the gateway already asked for and got back."""
+    conversation = _Conversation(id="conv-1")
+    record = _ToolCallRecord(
+        gateway_call_id=call_id,
+        raw_call_id=call_id,
+        conversation=conversation,
+        future=asyncio.get_event_loop().create_future(),
+        result=CodexDynamicToolResult(content=output, success=True),
+        claim_fingerprint="fingerprint-of-the-original-request",
+    )
+    gateway._conversations[conversation.id] = conversation
+    gateway._tool_calls[call_id] = record
+
+
+def _compaction_payload(call_id: str, output: str) -> dict:
+    """The shape the CLI actually sends when auto-compaction fires.
+
+    Captured from claude 2.1.274 against a stub: the whole conversation is
+    replayed — settled ``tool_result`` included — with the summarisation
+    instruction appended to the final user message.
+    """
+    return {
+        "model": "gpt-6-astra",
+        "stream": True,
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "list the files"}]},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": call_id, "name": "Glob", "input": {}}
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": call_id,
+                        "content": output,
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "CRITICAL: Respond with TEXT ONLY. Do NOT call any "
+                            "tools. You already have all the context you need to "
+                            "write a detailed summary of the conversation."
+                        ),
+                    },
+                ],
+            },
+        ],
+    }
+
+
+class TestCompactionRequestRouting:
+    def test_compaction_request_starts_a_new_conversation(self) -> None:
+        """Settled results + a new fingerprint is a fresh request, not a
+        replay.  Returning None routes it to ``_start_conversation``; raising
+        here is what 409s the CLI's compaction mid-turn."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        assert (
+            gateway._continue_conversation(_compaction_payload("toolu_1", "notes.txt"))
+            is None
+        )
+
+    def test_true_replay_takes_the_replay_path_not_the_new_conversation(
+        self,
+    ) -> None:
+        """A real duplicate carries the same fingerprint, and that branch is
+        checked before the new-conversation fallthrough.  It is answered with
+        the stored response rather than a fresh turn."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+        payload = _compaction_payload("toolu_1", "notes.txt")
+        fingerprint = _tool_result_request_fingerprint(payload)
+        gateway._tool_calls["toolu_1"].claim_fingerprint = fingerprint
+
+        outcome = gateway._continue_conversation(payload)
+
+        assert isinstance(outcome, _DuplicateSubmission)
+        assert outcome.replay_key == fingerprint
+
+    def test_conflicting_result_still_rejected(self) -> None:
+        """Same id, different output, is a genuine protocol conflict."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        with pytest.raises(_DuplicateToolResultError):
+            gateway._continue_conversation(
+                _compaction_payload("toolu_1", "something-else.txt")
+            )
+
+    def test_unclaimed_result_still_continues_its_conversation(self) -> None:
+        """The ordinary path — a result the gateway is still waiting on —
+        must keep resolving against its own conversation."""
+        gateway = _unstarted_gateway()
+        conversation = _Conversation(id="conv-live")
+        record = _ToolCallRecord(
+            gateway_call_id="toolu_2",
+            raw_call_id="toolu_2",
+            conversation=conversation,
+            future=asyncio.get_event_loop().create_future(),
+        )
+        gateway._conversations[conversation.id] = conversation
+        gateway._tool_calls["toolu_2"] = record
+
+        outcome = gateway._continue_conversation(
+            _compaction_payload("toolu_2", "notes.txt")
+        )
+
+        assert isinstance(outcome, _Continuation)
+        assert outcome.conversation is conversation
