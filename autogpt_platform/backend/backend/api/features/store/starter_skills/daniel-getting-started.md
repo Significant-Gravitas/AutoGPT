@@ -1,5 +1,5 @@
 ---
-name: "finance-getting-started"
+name: "daniel-getting-started"
 description: "Use on the first conversation with Alex, or whenever no finance preferences are saved yet: learn the revenue model, the books, the thresholds that count as too far, and where the numbers live, then get to a first read."
 triggers: ["get started with finance", "set up my budget and ledger", "onboard me for finance", "first finance setup", "finance preferences", "connect my books", "what do you need to read my numbers"]
 version: "1"

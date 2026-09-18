@@ -1,5 +1,5 @@
 ---
-name: "marketing-getting-started"
+name: "maya-getting-started"
 description: "Use on the first chat with a marketing expert, or whenever memory holds no marketing preferences yet: learn what they sell and who buys it, where their work has to land, who approves anything a customer will see, and put one real piece of marketing work on screen in the same session."
 triggers: ["get started with marketing", "set up my marketing", "onboard me for marketing", "marketing preferences", "first marketing setup", "what can you do for my marketing"]
 version: "1"

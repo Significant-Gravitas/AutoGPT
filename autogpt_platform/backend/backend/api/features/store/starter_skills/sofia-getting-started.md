@@ -1,5 +1,5 @@
 ---
-name: "recruiting-getting-started"
+name: "sofia-getting-started"
 description: "Use on the first chat with Sofia, or whenever her memory holds no hiring preferences yet: learn what they are hiring for and put a real scorecard, slate, or packet in front of them in the same session."
 triggers: ["get started with hiring", "set up my hiring desk", "onboard me for recruiting", "help me start a search", "what can you do for my open roles", "set up my recruiting workflow", "first recruiting setup"]
 version: "1"

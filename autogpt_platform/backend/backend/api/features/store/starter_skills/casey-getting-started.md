@@ -1,5 +1,5 @@
 ---
-name: "support-getting-started"
+name: "casey-getting-started"
 description: "Use on the first conversation with Casey, or whenever her memory has no support preferences yet: learn how the user runs phone support, their knowledge base, staffing, and sensitive-data handling, and get them to a first worked case."
 triggers: ["get started with support", "set up my support desk", "onboard me for support", "first ticket", "set up my queues", "support preferences", "first support setup"]
 version: "1"

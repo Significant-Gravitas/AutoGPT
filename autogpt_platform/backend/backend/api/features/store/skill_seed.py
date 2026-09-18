@@ -101,12 +101,12 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": ["google"],
     },
     {
-        "slug": "support-getting-started",
+        "slug": "casey-getting-started",
         "categories": ["support", "operations"],
         "required_providers": ["google", "notion", "slack"],
     },
     {
-        "slug": "sales-getting-started",
+        "slug": "sasha-getting-started",
         "categories": ["sales"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -446,7 +446,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": [],
     },
     {
-        "slug": "partnerships-getting-started",
+        "slug": "priya-getting-started",
         "categories": ["sales", "operations"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -616,7 +616,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": [],
     },
     {
-        "slug": "finance-getting-started",
+        "slug": "daniel-getting-started",
         "categories": ["finance", "operations"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -666,7 +666,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": ["google"],
     },
     {
-        "slug": "product-getting-started",
+        "slug": "alex-getting-started",
         "categories": ["development", "research"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -721,7 +721,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": [],
     },
     {
-        "slug": "recruiting-getting-started",
+        "slug": "sofia-getting-started",
         "categories": ["operations"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -776,7 +776,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": [],
     },
     {
-        "slug": "ops-getting-started",
+        "slug": "james-getting-started",
         "categories": ["operations"],
         "required_providers": ["google", "notion", "slack"],
     },
@@ -826,7 +826,7 @@ STARTER_SKILLS: list[StarterSkill] = [
         "required_providers": [],
     },
     {
-        "slug": "marketing-getting-started",
+        "slug": "maya-getting-started",
         "categories": ["marketing", "content"],
         "required_providers": ["google", "notion", "slack", "hubspot"],
     },

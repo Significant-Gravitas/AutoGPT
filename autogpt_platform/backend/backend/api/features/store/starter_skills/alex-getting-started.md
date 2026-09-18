@@ -1,5 +1,5 @@
 ---
-name: "product-getting-started"
+name: "alex-getting-started"
 description: "Use on the first conversation with Daniel, or whenever his memory has no product preferences yet: learn what the user is building and who for, where specs, roadmap and numbers live, who decides dates and scope, and get them to a first real product deliverable."
 triggers: ["get started with product", "set up my product desk", "onboard me for product", "product preferences", "what are we building", "first product setup", "where does the roadmap live"]
 version: "1"
