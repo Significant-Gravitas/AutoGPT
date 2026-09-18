@@ -100,31 +100,21 @@ def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     try:
         base_dir = (TEMP_DIR / "exec_file").resolve()
         exec_dir = (base_dir / graph_exec_id).resolve()
-
-        if exec_dir == base_dir:
-            raise ValueError("Invalid execution directory")
-
         full_path = (exec_dir / path).resolve()
 
-        # Keep the execution directory itself inside the exec_file sandbox.
-        exec_dir.relative_to(base_dir)
-
-        # Keep the requested file inside this specific execution directory.
-        full_path.relative_to(exec_dir)
+        # The execution id must name exactly one directory inside the exec_file sandbox.
+        if exec_dir.parent != base_dir or not full_path.is_relative_to(exec_dir):
+            raise ValueError(
+                f"Invalid file path: {path!r} escapes execution directory"
+            )
 
         return str(full_path)
-    except ValueError:
-        raise ValueError(
-            f"Invalid file path: {path!r} escapes execution directory"
-        ) from None
     except OSError as e:
         if "File name too long" in str(e):
             raise ValueError(
                 f"File path too long: {len(path)} characters. Maximum path length exceeded."
             ) from e
         raise ValueError(f"Invalid file path: {e}") from e
-
-
 def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
     """
     Utility to remove the {temp}/exec_file/{exec_id} folder and its contents.
