@@ -451,8 +451,11 @@ write_local_env() {
 check_backend_running() {
     # `up -d` succeeds as soon as the containers are created, so a backend
     # that exits on startup would otherwise be reported as a working install.
+    # Wait for it to answer rather than for a fixed time: on a slow host the
+    # imports alone can take longer than any short window.
+    print_color "BLUE" "Waiting for the backend to come up..."
     local attempt
-    for attempt in 1 2 3 4 5 6; do
+    for attempt in $(seq 1 36); do
         sleep 5
         if $DOCKER_COMPOSE_CMD ps --status exited --services 2>/dev/null | grep -qx rest_server; then
             print_color "RED" "The backend exited right after starting. Last log lines:"
@@ -460,7 +463,13 @@ check_backend_running() {
             print_color "YELLOW" "If it names a missing or retired secret, see 'Upgrading: secrets are generated per install' in docs/platform/getting-started.md."
             exit 1
         fi
+        if $DOCKER_COMPOSE_CMD exec -T rest_server python -c \
+            "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=3)" \
+            &> /dev/null; then
+            return 0
+        fi
     done
+    print_color "YELLOW" "The backend has not answered yet. It may still be starting: check 'docker compose logs -f rest_server'."
 }
 
 run_docker() {

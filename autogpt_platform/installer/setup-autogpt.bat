@@ -180,7 +180,12 @@ if errorlevel 1 (
 
 REM `up -d` succeeds as soon as the containers are created, so a backend
 REM that exits on startup would otherwise be reported as a working install.
-timeout /t 30 /nobreak >nul
+REM Wait for it to answer rather than for a fixed time: on a slow host the
+REM imports alone can take longer than any short window.
+echo Waiting for the backend to come up...
+set BACKEND_TRIES=0
+:backend_wait
+timeout /t 5 /nobreak >nul
 docker compose ps --status exited --services 2>nul | findstr /x /c:"rest_server" >nul
 if not errorlevel 1 (
     echo The backend exited right after starting. Last log lines:
@@ -191,6 +196,13 @@ if not errorlevel 1 (
     pause
     exit /b 1
 )
+docker compose exec -T rest_server python -c "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=3)" >nul 2>&1
+if not errorlevel 1 goto backend_ready
+set /a BACKEND_TRIES+=1
+if %BACKEND_TRIES% LSS 36 goto backend_wait
+echo The backend has not answered yet. It may still be starting: check
+echo "docker compose logs -f rest_server".
+:backend_ready
 
 echo =============================
 echo      Setup Complete!

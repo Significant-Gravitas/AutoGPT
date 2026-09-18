@@ -86,6 +86,22 @@ async def test_a_dry_run_writes_nothing(rotation, capsys):
     assert "1 to re-encrypt" in capsys.readouterr().out
 
 
+async def test_a_dry_run_with_unreadable_values_still_offers_apply(rotation, capsys):
+    rotation.credentials = [
+        SimpleNamespace(
+            id="c1",
+            encryptedPayload=_encrypted(Fernet.generate_key().decode(), {"b": 2}),
+        ),
+        SimpleNamespace(id="c2", encryptedPayload=_encrypted(OLD_KEY, {"c": 3})),
+    ]
+
+    await _run_rotation(old_key=OLD_KEY, apply=False)
+
+    out = capsys.readouterr().out
+    assert "written under some other key" in out
+    assert "Re-run with --apply" in out
+
+
 async def test_a_value_already_on_the_new_key_is_left_alone(rotation):
     rotation.credentials = [
         SimpleNamespace(id="c1", encryptedPayload=_encrypted(NEW_KEY, {"b": 2}))
@@ -109,7 +125,13 @@ async def test_a_value_neither_key_reads_is_reported_and_left_alone(rotation, ca
     assert [id for id, _ in rotation.writes] == ["c2"]
     out = capsys.readouterr().out
     assert "c1: neither key can read it" in out
-    assert "1 unreadable" in out
+    assert (
+        "User.integrations: 0 re-encrypted, 0 already on the new key, 0 unreadable"
+    ) in out
+    assert (
+        "IntegrationCredential.encryptedPayload: 1 re-encrypted, "
+        "0 already on the new key, 1 unreadable"
+    ) in out
 
 
 @pytest.mark.parametrize(

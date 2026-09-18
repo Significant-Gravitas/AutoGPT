@@ -192,7 +192,14 @@ move them to the new key instead of losing them. Run everything from
      | grep '^ENCRYPTION_KEY=' | cut -d= -f2-)
    ```
 
-   If you did set one and are replacing it, export that value instead.
+   If you did set one and are replacing it, export that value instead, and keep
+   a copy of the file outside the checkout until step 4 reports nothing
+   unreadable, because step 3 removes the only other place the key is written
+   down:
+
+   ```bash
+   cp -n backend/.env ~/autogpt-backend.env.before-upgrade
+   ```
 
 3. Generate the new values. `make init-env` creates any missing `.env` file
    and fills in every secret whose line is present but empty; it never
@@ -248,10 +255,17 @@ move them to the new key instead of losing them. Run everything from
    Running the backend outside Docker, the same command is
    `poetry run cli rotate-encryption-key` in `autogpt_platform/backend`.
 
-5. Start the stack again:
+5. Start the stack again. If `BETTER_AUTH_SECRET` changed in step 3, first
+   clear the token signing key the frontend stored under the old value: it can
+   no longer be decrypted, and until it is removed nobody can reach the
+   backend, even after signing in again. A new one is created on the next
+   sign-in. `--build` brings the remaining services to the release you built
+   in step 4:
 
    ```bash
-   docker compose up -d
+   docker compose up -d --wait db
+   docker compose exec db psql -U postgres -c 'DELETE FROM platform."UserAuthJwks";'
+   docker compose up -d --build
    ```
 
 Two smaller effects of the new values: unsubscribe links in emails sent before
@@ -260,8 +274,10 @@ again once (`BETTER_AUTH_SECRET`).
 
 Do step 4 before step 5. On a new key the stored values are still in the
 database but read as empty, and a user who connects an integration in that
-state replaces their stored set. If the stack already ran on the new key, stop
-it and run step 4 now: everything not replaced since is recovered.
+state replaces their stored set: their other credentials are marked revoked.
+If the stack already ran on the new key, stop it and run step 4 now. Whatever
+nobody touched is recovered; a user who connected something in between gets
+their older credentials re-encrypted but still revoked, and reconnects those.
 
 ### Upgrading an existing (Supabase-based) installation
 

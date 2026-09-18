@@ -124,7 +124,7 @@ async def _run_rotation(*, old_key: str, apply: bool) -> None:
                 f"{unreadable} value(s) were written under some other key. "
                 "Re-run with that key as --old-key, or reconnect those integrations."
             )
-        elif not apply:
+        if not apply:
             print("Re-run with --apply to write the changes.")
     finally:
         await disconnect()
