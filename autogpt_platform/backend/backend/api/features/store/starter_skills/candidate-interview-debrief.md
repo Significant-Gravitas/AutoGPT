@@ -24,7 +24,7 @@ Remove protected-trait data and proxies from the decision record. If a comment s
 
 ## Run the handoff
 
-Give the panel the unresolved questions first, then the evidence table, then process risks such as a missed question or unequal work sample. Record the named human decision-maker and the reason they approve.
+Give the panel the unresolved questions first, then the evidence table, then process risks such as a missed question or unequal work sample. Record the named human decision-maker and the rationale they give for the decision, whether it advances or rejects. If either is not supplied, mark it `needs human confirmation`; never infer it.
 
 ## Output
 

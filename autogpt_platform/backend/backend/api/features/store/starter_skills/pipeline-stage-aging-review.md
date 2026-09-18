@@ -13,7 +13,8 @@ Use this on a CRM export or deal table.
 
 Get the team's stage definitions and age limits. Record the report time, stage
 entry date, last customer action, next step, next-step date, owner, amount, and
-close date source. Do not apply generic limits when the team has its own.
+close date source. Flag repeated close-date moves only from close-date change
+history; without it, mark that check **insufficient data**. Do not apply generic limits when the team has its own.
 
 ## Classify each deal
 

@@ -19,7 +19,7 @@ Derive four to seven criteria from the approved role outcomes. For each, write:
 - one interview question or work sample that can confirm it;
 - the owner who scores it.
 
-A one means no job-related evidence found. A two means partial or indirect evidence. A three means clear evidence at the required scope. A four means clear evidence at greater scope with a stated result. Missing evidence is not a zero and must be marked "not assessed".
+A one means the evidence method was completed and found no qualifying evidence. A two means partial or indirect evidence. A three means clear evidence at the required scope. A four means clear evidence at greater scope with a stated result. When the source or method is unavailable, or the criterion was not yet tested, mark it "not assessed", not one or zero. A resume that simply omits a criterion is "not assessed" until the interview or work sample tests it.
 
 ## Guardrails
 

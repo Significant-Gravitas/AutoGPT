@@ -20,7 +20,7 @@ If no user-supplied playbook exists, limit work to text extraction, version comp
 1. Check document completeness and version names.
 2. Extract key terms with section cites.
 3. Compare clauses only with supplied playbook text.
-4. Label each item `MATCH`, `DEVIATION`, `MISSING`, or `UNCLEAR`.
+4. With a supplied playbook, label each item `MATCH`, `DEVIATION`, `MISSING`, or `UNCLEAR`. Without one, report only the version difference and mark gaps `MISSING` or `UNCLEAR`.
 5. Triage by the user's stated priority, not by an invented legal risk.
 6. Prepare a counsel brief for every substantive decision.
 7. Record obligations only after the final signed version is supplied.

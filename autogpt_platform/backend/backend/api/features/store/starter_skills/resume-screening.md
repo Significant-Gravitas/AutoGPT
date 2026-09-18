@@ -11,7 +11,7 @@ Use only when the approved role rubric is present. If it is missing, stop and bu
 
 ## Prepare the record
 
-Hide or ignore names, photos, addresses, graduation dates, and other non-job data when the source lets you. Never infer age, race, ethnicity, nationality, religion, sex, gender, sexual orientation, disability, health, pregnancy, family status, or any other protected trait.
+Hide names, photos, addresses, graduation dates, and other non-job data when the source lets you. Whether or not it does, never copy them into the record or an `EVIDENCE FOUND` passage; quote only the job-related text. Never infer age, race, ethnicity, nationality, religion, sex, gender, sexual orientation, disability, health, pregnancy, family status, or any other protected trait.
 
 ## Screen criterion by criterion
 

@@ -11,7 +11,7 @@ Use source records for two comparable periods: invoices, approved orders, usage 
 
 ## Reconcile the change
 
-For each vendor, calculate prior spend, current spend, absolute change, percentage change, and materiality against the threshold the owner supplies. Decompose the change into:
+For each vendor, calculate prior spend, current spend, absolute change, percentage change, and materiality against the threshold the owner supplies. When prior spend is a recorded zero, show percentage change as `N/A` and judge materiality on the absolute change. Decompose the change into:
 
 - price or rate;
 - volume, seats, or usage;

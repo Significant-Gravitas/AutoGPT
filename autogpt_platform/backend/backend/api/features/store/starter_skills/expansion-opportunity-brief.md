@@ -13,7 +13,8 @@ Use this when an account may need more scope, seats, products, or services.
 
 Look for an explicit request, repeated limit, new team or use case, sustained
 adoption near capacity, stated goal the current scope cannot meet, or approved
-account plan. Cite the source and period. High usage alone is not permission to
+account plan that cites one of these customer signals. An account plan with no
+documented customer signal is **needs evidence**. Cite the source and period. High usage alone is not permission to
 sell, and low usage is not an expansion case.
 
 ## Build the brief
