@@ -23,6 +23,7 @@ creds-changed bus does.  See ``_ensure_cache_invalidation_listener``.
 import asyncio
 import logging
 import threading
+from collections.abc import Mapping
 from typing import cast
 
 from cachetools import TTLCache
@@ -34,6 +35,7 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.retry import continuous_retry
 
 logger = logging.getLogger(__name__)
@@ -90,13 +92,21 @@ class _LockedTTLCache(TTLCache):
         with self._lock:
             return super().popitem()
 
+    def pop_prefix(self, prefix: tuple) -> None:
+        """Drop every entry whose key starts with *prefix*."""
+        with self._lock:
+            for key in [k for k in self.keys() if k[: len(prefix)] == prefix]:
+                super().pop(key, None)
 
-# (user_id, provider) → token string.  TTLCache handles expiry + eviction.
-_token_cache: TTLCache[tuple[str, str], str] = _LockedTTLCache(
+
+# (user_id, provider) → token string, or (user_id, provider, required_scopes)
+# when the caller asked for specific scopes.  TTLCache handles expiry + eviction.
+_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str]]
+_token_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
 # Separate cache for "no credentials" results with a shorter TTL.
-_null_cache: TTLCache[tuple[str, str], bool] = _LockedTTLCache(
+_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
@@ -111,6 +121,21 @@ _gh_identity_null_cache: TTLCache[str, bool] = _LockedTTLCache(
 )
 
 
+def _canonical_provider(provider: str) -> str:
+    """``"ProviderName.GITHUB"`` -> ``"github"``.
+
+    Credentials persisted under Python 3.13's ``str(StrEnum)`` carry the enum's
+    repr as their provider, and change events pass it on as stored, while
+    lookups (and so cache keys) use the canonical value.
+    """
+    if provider.startswith("ProviderName."):
+        try:
+            return ProviderName[provider.removeprefix("ProviderName.")].value
+        except KeyError:
+            pass
+    return provider
+
+
 def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     """Remove the cached entry for *user_id*/*provider* from both caches.
 
@@ -122,9 +147,10 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     ``get_github_user_git_identity()`` re-fetches the user's profile on
     the next call instead of serving stale identity data.
     """
-    key = (user_id, provider)
-    _token_cache.pop(key, None)
-    _null_cache.pop(key, None)
+    provider = _canonical_provider(provider)
+    # Every scope-specific entry for this pair is stale too.
+    _token_cache.pop_prefix((user_id, provider))
+    _null_cache.pop_prefix((user_id, provider))
 
     if provider == "github":
         _gh_identity_cache.pop(user_id, None)
@@ -145,15 +171,25 @@ except RuntimeError:
 _manager = IntegrationCredentialsManager()
 
 
-async def get_provider_token(user_id: str, provider: str) -> str | None:
+def _cache_key(user_id: str, provider: str, required: frozenset[str]) -> _CacheKey:
+    return (user_id, provider, required) if required else (user_id, provider)
+
+
+async def get_provider_token(
+    user_id: str, provider: str, required_scopes: frozenset[str] = frozenset()
+) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
     OAuth2 tokens are preferred (refreshed if needed); API keys are the fallback.
+    Among several OAuth2 credentials, one granting every scope in
+    *required_scopes* wins: that is the credential the connect card shows as
+    connected, so injecting any other would send the model back to a card that
+    already says "Connected".
     Both found tokens and "not connected" results are cached for 60 s, and a
     credential write in any process evicts the entry before that lapses.
     """
     _ensure_cache_invalidation_listener()
-    cache_key = (user_id, provider)
+    cache_key = _cache_key(user_id, provider, required_scopes)
 
     if cache_key in _null_cache:
         return None
@@ -173,20 +209,26 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
         return None
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
-    # Sort so broader-scoped tokens come first: a token with "repo" scope covers
-    # full git access, while a public-data-only token lacks push/pull permission.
+    # Credentials covering the requested scopes come first, then ones with
+    # "repo" (full git access, where a public-data-only token lacks push/pull).
+    # The sort is stable, so ties keep their stored order, as the card does.
     # lock=False — background injection; not worth a distributed lock acquisition.
+    def rank(creds: OAuth2Credentials) -> tuple[int, int]:
+        granted = set(creds.scopes or [])
+        return (
+            0 if required_scopes <= granted else 1,
+            0 if "repo" in granted else 1,
+        )
+
     oauth2_creds = sorted(
-        [c for c in creds_list if c.type == "oauth2"],
-        key=lambda c: 0 if "repo" in (cast(OAuth2Credentials, c).scopes or []) else 1,
+        [cast(OAuth2Credentials, c) for c in creds_list if c.type == "oauth2"],
+        key=rank,
     )
     refresh_failed = False
     for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
-                fresh = await manager.refresh_if_needed(
-                    user_id, cast(OAuth2Credentials, creds), lock=False
-                )
+                fresh = await manager.refresh_if_needed(user_id, creds, lock=False)
                 token = fresh.access_token.get_secret_value()
             except Exception:
                 logger.warning(
@@ -252,16 +294,20 @@ _listener_start_lock = threading.Lock()
 _listener_thread: threading.Thread | None = None
 
 
-async def get_integration_env_vars(user_id: str) -> dict[str, str]:
+async def get_integration_env_vars(
+    user_id: str, required_scopes: Mapping[str, frozenset[str]] | None = None
+) -> dict[str, str]:
     """Return env vars for all providers the user has connected.
 
     Iterates :data:`PROVIDER_ENV_VARS`, fetches each token, and builds a flat
     ``{env_var: token}`` dict ready to pass to a subprocess or E2B sandbox.
     Only providers with a stored credential contribute entries.
+    *required_scopes* maps a provider to the scopes its token should carry.
     """
     env: dict[str, str] = {}
     for provider, var_names in PROVIDER_ENV_VARS.items():
-        token = await get_provider_token(user_id, provider)
+        scopes = (required_scopes or {}).get(provider, frozenset())
+        token = await get_provider_token(user_id, provider, scopes)
         if token:
             for var in var_names:
                 env[var] = token
