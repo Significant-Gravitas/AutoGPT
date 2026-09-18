@@ -388,6 +388,7 @@ async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
     expert_id: str | None = None,
+    available_credentials: list[Credentials] | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[str]]:
     """
     Match user's available credentials against graph's required credentials.
@@ -398,6 +399,8 @@ async def match_user_credentials_to_graph(
     Args:
         user_id: The user's ID
         graph: The Graph with credential requirements
+        expert_id: Optional expert whose credential grants constrain matching.
+        available_credentials: Pre-resolved credentials to reuse for this match.
 
     Returns:
         tuple[matched_credentials dict, missing_credential_descriptions list]
@@ -414,11 +417,15 @@ async def match_user_credentials_to_graph(
     if not aggregated_creds:
         return graph_credentials_inputs, missing_creds
 
-    # Get the credentials available for the user, narrowed to the expert's grants
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-    )
+    # Get the credentials available for the user, narrowed to the expert's grants.
+    # Card-building callers can pass a pre-resolved snapshot so matching and the
+    # subsequent grant UI use the same data without repeated store reads.
+    available_creds = available_credentials
+    if available_creds is None:
+        creds_manager = IntegrationCredentialsManager()
+        available_creds = await scope_credentials_to_expert(
+            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+        )
 
     # For each required credential field, find a matching user credential
     # field_info.provider is a frozenset because aggregate_credentials_inputs()

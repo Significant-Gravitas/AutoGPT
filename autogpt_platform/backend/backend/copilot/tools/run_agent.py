@@ -47,6 +47,7 @@ from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
     require_installed_workflow,
+    resolve_credential_scope,
     ungranted_credential_hint,
 )
 from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
@@ -669,8 +670,18 @@ class RunAgentTool(BaseTool):
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.
         """
+        credential_scope = (
+            await resolve_credential_scope(user_id, expert_id)
+            if graph.regular_credentials_inputs
+            else None
+        )
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph, expert_id
+            user_id,
+            graph,
+            expert_id,
+            available_credentials=(
+                credential_scope.available if credential_scope is not None else None
+            ),
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
@@ -702,6 +713,7 @@ class RunAgentTool(BaseTool):
                 user_id,
                 expert_id,
                 build_missing_credentials_from_graph(graph, graph_credentials),
+                credential_scope=credential_scope,
             )
             return graph_credentials, SetupRequirementsResponse(
                 message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
@@ -713,6 +725,7 @@ class RunAgentTool(BaseTool):
                         for m in missing_credentials_dict.values()
                     }
                     - {""},
+                    credential_scope=credential_scope,
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
