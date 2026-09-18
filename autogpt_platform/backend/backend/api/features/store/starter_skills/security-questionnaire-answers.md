@@ -31,8 +31,10 @@ which. Do not soften a "no" into a vague yes.
 ## Gaps and owners
 
 List every question the evidence does not answer, with the owner who can,
-and a date to ask by. Keep legal questions (liability, legal basis, breach
-terms) on a separate list for counsel. Give counts: answered, partial, gap.
+and the owner-approved date to ask by. If no date was supplied, mark it
+unknown and ask the owner to set it. Keep legal questions (liability, legal
+basis, breach terms) on a separate list for counsel. Give counts: answered,
+partial, gap.
 
 Never answer yes to a certification, control, or audit result without
 evidence; mark it as a gap. This is not legal advice. Do not submit the

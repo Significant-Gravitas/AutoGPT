@@ -33,7 +33,7 @@ Give the user:
 2. Source map and stale, missing, or unreadable sources.
 3. Agreed priority rules and response targets.
 4. Approval owners for replies, refunds, exceptions, and bugs.
-5. The first ten tickets to triage, with reasons.
+5. Up to ten available tickets to triage, with reasons.
 
 Never fill a gap in the docs or account record with a guess. Do not send a
 reply, close a ticket, issue a refund, or edit an account; draft for approval.

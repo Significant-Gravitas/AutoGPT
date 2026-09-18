@@ -31,8 +31,9 @@ between two groups, pick the higher one and say why.
 
 ## Today's short list
 
-Open with the three to five items that need the principal today, decision
-first, with the deadline. Then say how many drafts are ready for review.
+Open with up to five items that need the principal today, decision first, with
+the deadline. If none need them, say so. Then say how many drafts are ready
+for review.
 
 Never send, archive, or delete mail without a clear yes for that action. Do
 not quote one person's message to another, and do not invent a deadline that

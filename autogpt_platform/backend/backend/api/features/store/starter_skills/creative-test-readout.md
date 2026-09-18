@@ -20,8 +20,9 @@ setup was uneven, say so first.
 
 For each variant show impressions, clicks, conversions, spend, and the rate
 being judged. Give the gap between variants and whether it is larger than
-the noise at this sample size. Use a stated method and show it. Small samples
-often show large gaps that vanish; 80 clicks is rarely enough.
+the noise at this sample size. Use a stated method and show it. Before calling
+a winner, state the baseline rate, minimum effect worth detecting, power, and
+confidence level used to estimate the required sample.
 
 Say one of:
 

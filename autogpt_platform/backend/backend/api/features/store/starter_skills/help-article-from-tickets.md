@@ -16,6 +16,9 @@ Choose one question. Count the tickets that asked it, the period, and the
 plans affected. Pull the phrases customers used, since those are the words
 they will search for. Check whether an existing article already covers it and
 should be fixed rather than replaced.
+Remove names, contact details, account identifiers, and private business
+details before using customer wording. Generalise any phrase that could point
+back to one customer.
 
 ## Write the article
 
@@ -31,8 +34,9 @@ any step that needs a screenshot or a check in the product.
 
 ## Source list
 
-Close with the ticket ids the article came from, the notes or teammates that
-confirmed each step, and the open questions.
+In an internal approval note, list the ticket ids the article came from, the
+notes or teammates that confirmed each step, and the open questions. Keep that
+note out of the publishable article.
 
 Do not publish the article or edit the help centre yourself. Never document a
 workaround or limit that nobody has tested or confirmed.

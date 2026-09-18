@@ -26,6 +26,9 @@ rep's call (commit, best case, pipeline). Then give:
 - the gap between weighted and called, with the deals that drive it.
 
 Every total must trace back to the deals in the list.
+Keep totals separate by currency. Combine them only when the owner supplies
+or approves the exchange rate, rate date, and source; state all three beside
+the converted total.
 
 ## Risks and stale deals
 

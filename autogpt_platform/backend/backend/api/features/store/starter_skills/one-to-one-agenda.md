@@ -13,7 +13,8 @@ Use this before a manager's regular meeting with one person.
 
 Read the last two or three sets of notes, the person's current goals, and
 open actions for both sides. Note what was promised, by whom, and whether it
-happened. Leave out anything the manager has not shared.
+happened. Use items the manager or employee supplied for this agenda. Leave
+out private notes that neither person approved for the meeting.
 
 ## Build the agenda
 

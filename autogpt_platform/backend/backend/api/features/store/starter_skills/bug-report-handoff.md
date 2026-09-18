@@ -1,7 +1,7 @@
 ---
 name: "bug-report-handoff"
 description: "Turn customer reports into an engineering bug report with steps, scope, frequency, and evidence."
-triggers: ["bug report", "escalate to engineering", "reproduce issue", "customer bug", "file a bug"]
+triggers: ["escalate to engineering", "support bug handoff", "customer bug escalation", "ticket escalation", "engineering handoff"]
 version: "1"
 ---
 

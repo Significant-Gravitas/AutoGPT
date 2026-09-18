@@ -18,7 +18,9 @@ searching.
 
 ## Compare options
 
-Give two or three options for flights or trains and for hotels. For each show:
+Give up to three available options for flights or trains and for hotels. If no
+valid option meets the constraints, say so rather than padding the list. For
+each option show:
 
 - times, including door-to-door travel to the first meeting;
 - price, with the currency and whether it is refundable;

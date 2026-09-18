@@ -16,6 +16,9 @@ Give the evidence with counts, sources, and dates: tickets, interviews,
 usage, and sales notes. Quote users word for word. Mark the evidence
 **strong**, **moderate**, or **thin**, and say what would make it stronger.
 Link the problem to one of the team's stated goals.
+Before quoting evidence, remove names, contact details, account identifiers,
+credentials, and unrelated customer data. Keep only the words needed to show
+the problem.
 
 ## Options and trade-offs
 

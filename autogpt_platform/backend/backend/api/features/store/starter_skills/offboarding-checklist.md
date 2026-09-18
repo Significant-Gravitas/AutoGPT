@@ -19,8 +19,9 @@ they own, such as final pay, benefits, and documents.
 ## Build the checklist
 
 - Knowledge: open work, documents, contacts, and who takes each over.
-- Access: every account to remove or transfer, and when, usually at the end
-  of the last day.
+- Access: every account to remove or transfer, at the separation time approved
+  by HR and security. Use the end of the last day only for an ordinary
+  departure when they confirm it.
 - Equipment: what to return, and how.
 - Customers and partners: who needs to know, and who tells them.
 - Farewell: how and when the team hears, and any goodbye.

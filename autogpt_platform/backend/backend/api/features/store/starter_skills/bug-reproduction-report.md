@@ -1,7 +1,7 @@
 ---
 name: "bug-reproduction-report"
 description: "Write a bug report with exact steps, expected and actual results, environment, and frequency."
-triggers: ["bug report", "reproduce bug", "repro steps", "write up a bug", "file an issue"]
+triggers: ["reproduce bug", "repro steps", "write a bug report", "document a reproduction", "file an issue"]
 version: "1"
 ---
 
@@ -14,6 +14,9 @@ Use this when someone reports a fault and an engineer needs to act on it.
 Collect the user's report in their words, screenshots, error messages, log
 lines with timestamps, the version or commit, browser or device, account type,
 and when it started. Note which details came from the user and which from logs.
+Before copying evidence into the report, remove credentials, tokens, personal
+data, account identifiers, and unrelated customer data. Keep only the detail
+needed to reproduce the fault.
 
 ## Smallest reproduction
 

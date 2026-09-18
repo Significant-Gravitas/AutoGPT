@@ -25,8 +25,9 @@ Rank by impact and urgency, not tone:
 - **normal**: a workaround exists or the question is answered in the docs;
 - **low**: how-to or feature request with no blocker.
 
-Group tickets that share the same symptom, browser, plan, or start date, and
-cite the ticket ids in each group. A loud customer is not automatically
+Group tickets only when they share the same symptom and at least one other
+piece of evidence. Use browser, plan, and start date as supporting context,
+and cite the ticket ids in each group. A loud customer is not automatically
 urgent, and a polite one is not automatically low.
 
 ## Queue brief
