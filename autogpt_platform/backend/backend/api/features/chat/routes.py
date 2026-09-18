@@ -22,7 +22,6 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -101,6 +100,7 @@ from backend.copilot.response_model import (
     StreamStatus,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
@@ -354,7 +354,7 @@ class CreateSessionRequest(BaseModel):
       hides tools that conflict with the panel's scope
       (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
       — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
-      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
+      (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.
 
     ``expert_id`` scopes the session to a hired expert. It must reference
     an expert owned by the caller that is neither a template nor archived,
@@ -749,7 +749,7 @@ async def create_session(
     Two modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
-      run_block and run_agent calls to use dry-run simulation.
+      run_capability and run_agent calls to use dry-run simulation.
     - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
       on ``(user_id, builder_graph_id)``. Returns the existing session for
       that graph or creates one locked to it.  Graph ownership is validated

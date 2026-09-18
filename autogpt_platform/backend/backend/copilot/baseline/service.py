@@ -79,6 +79,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
+from backend.copilot.permissions import denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     get_chat_platform_supplement,
@@ -131,6 +132,7 @@ from backend.copilot.tools import (
     get_available_tools,
     kickoff_turn_disabled_tools,
     origin_disabled_tools,
+    tool_names_in_groups,
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
@@ -2288,6 +2290,22 @@ async def stream_chat_completion_baseline(
     if permissions is not None:
         tools = _filter_tools_by_permissions(tools, permissions)
 
+    # run_capability reaches deferred tools by id; bound it with the same
+    # hidden set that shaped the schema list above.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+        envelope=envelope,
+        hidden_tools=(
+            tool_names_in_groups(disabled_tool_groups)
+            | disabled_tools
+            | denied_tool_names(permissions)
+        ),
+    )
+
     # Pre-mark cache_control on the last tool schema once per session.  The
     # tool set is static within a request, so doing this here (instead of in
     # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
@@ -2322,7 +2340,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-baseline",
-            tags=["baseline"],
+            tags=["baseline", "tool_surface:registry"],
         )
         _trace_ctx.__enter__()
     except Exception:

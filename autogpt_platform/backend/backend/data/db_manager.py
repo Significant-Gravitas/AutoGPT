@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import routines as experts_routines
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
@@ -531,6 +532,14 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    # The scheduler's fire path reads the routine behind a copilot-turn job to
+    # find its durable thread and whether the owner granted it anything.
+    create_routine = _(experts_db.create_routine)
+    list_routines = _(experts_db.list_routines)
+    enable_routine = _(experts_db.enable_routine)
+    disable_routine = _(experts_db.disable_routine)
+    get_routine = _(experts_db.get_routine)
+    record_routine_thread = _(experts_routines.record_routine_thread)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
     spend_approval_required = _(experts_spend_approval.spend_approval_required)
     park_execution_for_spend_approval = _(
@@ -930,6 +939,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_routine = d.get_routine
+    record_routine_thread = d.record_routine_thread
+    create_routine = d.create_routine
+    list_routines = d.list_routines
+    enable_routine = d.enable_routine
+    disable_routine = d.disable_routine
     enforce_expert_run_budget = d.enforce_expert_run_budget
     spend_approval_required = d.spend_approval_required
     park_execution_for_spend_approval = d.park_execution_for_spend_approval
