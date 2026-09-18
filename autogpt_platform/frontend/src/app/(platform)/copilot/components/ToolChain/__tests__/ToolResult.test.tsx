@@ -1246,6 +1246,37 @@ describe("ToolResult deferred platform tools", () => {
     expect(screen.getByText("creator/scraper")).toBeDefined();
   });
 
+  it.each(["delete_workspace_file", "store_skill", "validate_agent_graph"])(
+    "shows the error when a deferred %s call failed",
+    (tool) => {
+      render(
+        <ToolResult
+          row={row(
+            { type: "error", message: "File not found: notes.txt" },
+            "run_capability",
+            { id: `tool:${tool}`, input: { path: "notes.txt" } },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("File not found: notes.txt")).toBeDefined();
+    },
+  );
+
+  it("does not take an inherited object key for a tool name", () => {
+    render(
+      <ToolResult
+        row={row({ note: "first", other: "second" }, "run_capability", {
+          id: "constructor",
+          input: { url: "https://nested.example.com/page" },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/nested\.example\.com/)).toBeNull();
+    expect(screen.getByText("first")).toBeDefined();
+  });
+
   it("does not render a validate_only response as an execution card", () => {
     render(
       <ToolResult

@@ -16,7 +16,7 @@ function platformToolName(id: string): string | null {
   if (key.toLowerCase().startsWith(TOOL_ID_PREFIX)) {
     return key.slice(TOOL_ID_PREFIX.length).trim() || null;
   }
-  return key in COPILOT_TOOL_CATALOG ? key : null;
+  return Object.hasOwn(COPILOT_TOOL_CATALOG, key) ? key : null;
 }
 
 /** A deferred platform tool runs through `run_capability`, which returns the
@@ -24,12 +24,14 @@ function platformToolName(id: string): string | null {
  *  name, with its arguments nested one level down. Only `run_capability` is
  *  unwrapped — `describe_capability` and `validate_only` describe a call
  *  instead of making it, and `resume_capability` replays block and MCP
- *  reviews only, never a platform tool. */
+ *  reviews only, never a platform tool. A failed call stays as it is too:
+ *  several tool cards draw from the input alone and would hide the error. */
 export function capabilityTargetRow(row: ChainRow): ChainRow {
   if (row.tool !== "run_capability") return row;
   const call = asObject(row.input);
   if (!call || call.validate_only === true) return row;
-  if (asObject(row.output)?.type === "capability_details") return row;
+  const type = asObject(row.output)?.type;
+  if (type === "capability_details" || type === "error") return row;
   const tool = platformToolName(str(call, "id") ?? "");
   if (!tool || CAPABILITY_TOOLS.has(tool)) return row;
   return { ...row, tool, input: asObject(call.input) ?? {} };
