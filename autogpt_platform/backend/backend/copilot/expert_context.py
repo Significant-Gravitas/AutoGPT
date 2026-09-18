@@ -191,7 +191,10 @@ async def build_expert_context(
     own role, and a teammate's workflows are the easiest thing for the model
     to borrow questions from. Plain sessions always get their roster.
 
-    Returns ``""`` when there is nothing to inject or any lookup fails.
+    Returns ``""`` when there is nothing to inject or any lookup fails, except
+    that an expert session always keeps its computer block: the system prompt
+    leaves the plain chat's computer note out for every expert session, so
+    this is the only place the expert hears about its machine.
     """
     if not user_id:
         return ""
@@ -213,7 +216,7 @@ async def build_expert_context(
         return await _team_context(user_id, delegation_enabled=delegation_enabled)
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
-        return ""
+        return _expert_computer_block() if expert_id else ""
 
 
 async def _expert_session_context(
@@ -245,9 +248,9 @@ async def _expert_session_context(
         _load_teammates(),
     )
     # Identity validation already failed closed before this context lookup.
-    # If the expert changes between those reads, omit only this optional block.
+    # If the expert changes between those reads, omit only the optional blocks.
     if expert is None or expert.is_archived:
-        return ""
+        return _expert_computer_block()
     return render_expert_workflows_block(expert) + _expert_computer_block() + teammates
 
 

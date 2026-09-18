@@ -8,6 +8,8 @@ handling the distinction between:
 
 from functools import cache
 
+from backend.blocks.desktop._api import DISPLAY
+
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
 # template).  These are cross-tool rules (file sharing, @@agptfile: refs,
@@ -578,14 +580,14 @@ what happened so the user knows the turn is complete.
 
 # Plain chats only: an expert session is told about its own machine by
 # ``expert_context._expert_computer_block``. bash_exec does not set DISPLAY.
-_COMPUTER_NOTE = """
+_COMPUTER_NOTE = f"""
 ### Your computer
 The cloud sandbox is also a computer with a screen. `start_desktop` turns the
 screen on and streams it to the user; use it when a task needs a GUI app, or a
 browser the user should watch or take over.
 - The screen shows only what runs in the sandbox on its display: after
   `start_desktop`, launch the app or browser with `bash_exec`, in the
-  background with `DISPLAY=:0`. `browser_*` tools run elsewhere and never
+  background with `DISPLAY={DISPLAY}`. `browser_*` tools run elsewhere and never
   appear on it.
 - It lives with this session: files and installed tools outside `~/workspace`
   are lost when the session expires.

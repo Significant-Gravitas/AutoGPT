@@ -528,7 +528,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -539,7 +542,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=None)
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -550,7 +556,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -1056,6 +1065,39 @@ class TestExpertComputerBlock:
 
         assert f"DISPLAY={DISPLAY}" in result
         assert "browser_* tools run elsewhere" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "get_expert",
+        [
+            AsyncMock(return_value=None),
+            AsyncMock(return_value=_expert(is_archived=True)),
+            AsyncMock(side_effect=RuntimeError("db down")),
+        ],
+        ids=["missing", "archived", "lookup-error"],
+    )
+    async def test_failed_expert_lookup_still_tells_the_expert_once(self, get_expert):
+        """The system prompt drops the plain chat's note for every expert
+        session, so a failed lookup must not cost the expert its block."""
+        from backend.copilot.expert_context import (
+            _expert_computer_block,
+            build_expert_context,
+        )
+        from backend.copilot.prompting import get_sdk_supplement
+
+        mock_db = self._db()
+        mock_db.get_expert = get_expert
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            context = await build_expert_context("user-1", "exp-1")
+            assert context == _expert_computer_block()
+        turn = get_sdk_supplement(use_e2b=True, expert_session=True) + context
+
+        assert turn.count("### Your computer") + turn.count("<expert_computer>") == 1
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("expert_id", [None, "exp-1"])
