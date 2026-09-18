@@ -10,7 +10,6 @@ Covers both halves of the public API:
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -411,48 +410,6 @@ async def test_system_prompt_suffix_for_enter_building_mode_call():
             role="assistant",
             content="",
             tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
-        )
-    ]
-    with patch(
-        "backend.copilot.builder_context._load_guide",
-        return_value="# Guide body",
-    ):
-        result = await build_builder_system_prompt_suffix(session)
-
-    assert "<building_guide>" in result
-    assert "# Guide body" in result
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "capability_id,payload",
-    [
-        ("tool:enter_agent_building_mode", {}),
-        ("enter_agent_building_mode", {}),
-        ("tool:read_skill", {"name": "agent_building_guide"}),
-    ],
-)
-async def test_system_prompt_suffix_for_activation_via_run_capability(
-    capability_id, payload
-):
-    """Deferred tools arrive as ``run_capability`` rows (#14569). An empty
-    suffix here is what made the refusal self-sealing: the SDK restart left
-    ``guide_in_system_prompt`` False, so the next turn started blind."""
-    session = _session(None)
-    session.messages = [
-        ChatMessage(
-            role="assistant",
-            content="",
-            tool_calls=[
-                {
-                    "function": {
-                        "name": "run_capability",
-                        "arguments": json.dumps(
-                            {"id": capability_id, "input": payload}
-                        ),
-                    }
-                }
-            ],
         )
     ]
     with patch(

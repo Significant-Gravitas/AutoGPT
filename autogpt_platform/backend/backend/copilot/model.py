@@ -600,11 +600,6 @@ class ChatSession(ChatSessionInfo):
         contract — once the guide has been read in the session, the
         agent doesn't need to re-read it for later create/edit/fix
         tools.
-
-        A deferred tool is reached through ``run_capability``, whose own
-        name is what lands in history, so rows are read via
-        :func:`resolve_tool_call_targets` rather than by their literal
-        name.
         """
         if tool_name in self._inflight_tool_calls:
             return True
@@ -612,7 +607,8 @@ class ChatSession(ChatSessionInfo):
             if msg.role != "assistant" or not msg.tool_calls:
                 continue
             for tc in msg.tool_calls:
-                if any(name == tool_name for name, _ in resolve_tool_call_targets(tc)):
+                name = tc.get("function", {}).get("name") or tc.get("name")
+                if name == tool_name:
                     return True
         return False
 
@@ -765,42 +761,6 @@ class ChatSession(ChatSessionInfo):
                     else list(curr_tool_calls)
                 )
         return result
-
-
-RUN_CAPABILITY_TOOL_NAME = "run_capability"
-
-
-def resolve_tool_call_targets(tool_call: dict) -> list[tuple[str, dict]]:
-    """Every ``(tool name, arguments)`` pair a persisted tool-call row counts as.
-
-    A deferred tool is reachable only as ``run_capability(id="tool:<name>",
-    input={...})`` (#14569), so such a row counts as a call to the dispatcher
-    *and* to the tool it dispatched — without the second pair, a gate matching
-    on the inner name never sees the call. ``id`` is accepted bare or
-    ``tool:``-prefixed, as ``resolve_entry`` accepts it. Malformed rows yield
-    no inner pair rather than raising: this runs inside tool gates.
-    """
-    fn_raw = tool_call.get("function")
-    fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
-    name = fn.get("name") or tool_call.get("name") or ""
-    raw_args = fn.get("arguments") if fn else tool_call.get("arguments")
-    if isinstance(raw_args, str):
-        args = json.loads(raw_args, fallback={}) if raw_args else {}
-    else:
-        args = raw_args
-    if not isinstance(args, dict):
-        args = {}
-    targets = [(name, args)]
-    if name != RUN_CAPABILITY_TOOL_NAME:
-        return targets
-    kind, sep, rest = str(args.get("id") or "").strip().partition(":")
-    if sep and kind.lower() != "tool":
-        return targets  # a block uuid or an MCP host/URL, never a tool name
-    inner_name = (rest if sep else kind).strip().lower()
-    inner_args = args.get("input")
-    if inner_name:
-        targets.append((inner_name, inner_args if isinstance(inner_args, dict) else {}))
-    return targets
 
 
 def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:

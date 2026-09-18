@@ -45,6 +45,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
@@ -1152,16 +1153,24 @@ async def _baseline_tool_executor(
             )
         )
 
+    # A dispatch of a platform tool IS a call to that tool, so everything below
+    # names the tool that runs rather than the dispatcher it arrived through.
+    # ``execute_tool`` still gets the call the model made: refusing a deferred
+    # tool named directly is a judgement about that call, not this one.
+    called_name, called_args = tool_name, tool_args
+    if dispatch := resolve_tool_dispatch(tool_name, tool_args):
+        called_name, called_args = dispatch.name, dispatch.args
+
     _emit(
         state,
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name),
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=called_name),
     )
     _emit(
         state,
         StreamToolInputAvailable(
             toolCallId=tool_call_id,
-            toolName=tool_name,
-            input=tool_args,
+            toolName=called_name,
+            input=called_args,
         ),
     )
 
@@ -1176,7 +1185,7 @@ async def _baseline_tool_executor(
     # end; we deliberately don't touch ``session.messages`` here to avoid
     # duplicating the assistant row that ``_baseline_conversation_updater``
     # persists at turn end.
-    session.announce_inflight_tool_call(tool_name, tool_args)
+    session.announce_inflight_tool_call(called_name, called_args)
 
     def on_display_name(name: str) -> None:
         state.tool_persistence.set_display_name(tool_call_id, name)
@@ -1206,7 +1215,7 @@ async def _baseline_tool_executor(
         return state.tool_persistence.record_result(
             ToolCallResult(
                 tool_call_id=tool_call_id,
-                tool_name=tool_name,
+                tool_name=called_name,
                 content=tool_output,
             )
         )
@@ -1214,7 +1223,7 @@ async def _baseline_tool_executor(
         error_output = f"Tool execution error: {e}"
         logger.error(
             "[Baseline] Tool %s failed: %s",
-            tool_name,
+            called_name,
             error_output,
             exc_info=True,
         )
@@ -1222,7 +1231,7 @@ async def _baseline_tool_executor(
             state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
-                toolName=tool_name,
+                toolName=called_name,
                 output=error_output,
                 success=False,
             ),
@@ -1230,7 +1239,7 @@ async def _baseline_tool_executor(
         return state.tool_persistence.record_result(
             ToolCallResult(
                 tool_call_id=tool_call_id,
-                tool_name=tool_name,
+                tool_name=called_name,
                 content=error_output,
                 is_error=True,
             )

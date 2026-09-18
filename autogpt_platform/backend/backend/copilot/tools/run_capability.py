@@ -140,7 +140,7 @@ class RunCapabilityTool(BaseTool):
         if entry.kind == "block":
             return await _run_block(entry, user_id, session, payload, validate_only)
         if entry.kind == "tool":
-            return await _run_tool(entry, user_id, session, payload, validate_only)
+            return await _describe_tool(entry, session)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -178,31 +178,27 @@ async def _run_block(
     )
 
 
-async def _run_tool(
-    entry: CapabilityEntry,
-    user_id: str,
-    session: ChatSession,
-    payload: dict[str, Any],
-    validate_only: bool,
+async def _describe_tool(
+    entry: CapabilityEntry, session: ChatSession
 ) -> ToolResponseBase:
+    """What a platform tool needs, without running it.
+
+    Running one never reaches here: the engines resolve the dispatch into a
+    call to the tool itself (``capabilities/dispatch.py``) and run it through
+    the one tool path, so its gate, announce, history row and events name it.
+    """
     name = entry.implementations[0].ref
     tool = configured_tool(name)
     if tool is None:
         return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session.session_id)
     if gate_denied(name):
         return gate_denied_error(name, session.session_id)
-    if validate_only:
-        return CapabilityDetailsResponse(
-            message=f"{tool.description} Call again without validate_only to run.",
-            capability=entry.listing(),
-            parameters=tool.parameters,
-            session_id=session.session_id,
-        )
-    emit_tool_display_name(name)
-    # The dispatcher's own name is all that reaches history, so announce the
-    # inner call or a same-turn gate (require_guide_read) cannot see it.
-    session.announce_inflight_tool_call(name, payload)
-    return await tool._execute(user_id, session, **payload)
+    return CapabilityDetailsResponse(
+        message=f"{tool.description} Call again without validate_only to run.",
+        capability=entry.listing(),
+        parameters=tool.parameters,
+        session_id=session.session_id,
+    )
 
 
 async def _run_mcp(
