@@ -199,6 +199,9 @@ async def _run_tool(
             session_id=session.session_id,
         )
     emit_tool_display_name(name)
+    # The dispatcher's own name is all that reaches history, so announce the
+    # inner call or a same-turn gate (require_guide_read) cannot see it.
+    session.announce_inflight_tool_call(name, payload)
     return await tool._execute(user_id, session, **payload)
 
 

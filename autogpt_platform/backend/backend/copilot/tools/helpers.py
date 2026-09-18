@@ -1,7 +1,6 @@
 """Shared helpers for chat tools."""
 
 import asyncio
-import json
 import logging
 import uuid
 from collections import defaultdict
@@ -19,7 +18,7 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     MAX_TOOL_WAIT_SECONDS,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, resolve_tool_call_targets
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
@@ -1279,31 +1278,18 @@ def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
         if str(args.get("name") or "").strip().lower() == skill_name:
             return True
     # Durable scan of past turns + already-flushed current turn.
+    # ``resolve_tool_call_targets`` reads both the direct row and the
+    # ``run_capability`` dispatcher a deferred ``read_skill`` arrives as, and
+    # absorbs malformed payloads so the gate path never raises on bad data.
     for msg in reversed(session.messages):
         if msg.role != "assistant" or not msg.tool_calls:
             continue
         for tc in msg.tool_calls:
-            # Defensive: a persisted row may carry ``function`` as ``None`` or
-            # a non-dict if a past producer ever shipped a malformed payload —
-            # treat the flat ``name`` / ``arguments`` shape as the fallback so
-            # the gate path never raises on bad data.
-            fn_raw = tc.get("function")
-            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
-            name = fn.get("name") or tc.get("name")
-            if name != "read_skill":
-                continue
-            raw_args = fn.get("arguments") if fn else tc.get("arguments")
-            if isinstance(raw_args, str):
-                try:
-                    parsed = json.loads(raw_args) if raw_args else {}
-                except json.JSONDecodeError:
+            for name, args in resolve_tool_call_targets(tc):
+                if name != "read_skill":
                     continue
-            elif isinstance(raw_args, dict):
-                parsed = raw_args
-            else:
-                continue
-            if str(parsed.get("name") or "").strip().lower() == skill_name:
-                return True
+                if str(args.get("name") or "").strip().lower() == skill_name:
+                    return True
     return False
 
 

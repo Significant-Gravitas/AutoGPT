@@ -7,6 +7,8 @@ tokens and then produce JSON that fails validation — wasting turns on
 auto-fix loops.
 """
 
+import json
+
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
@@ -359,3 +361,116 @@ def test_enter_call_satisfies_gate_on_sdk_less_deployment(mocker):
     )
     session = _session_with_messages([_enter_call_message()])
     assert require_guide_read(session, "create_agent") is None
+
+
+# --------------------------------------- the run_capability dispatcher shape
+#
+# Deferred tools (#14569) reach the model only as
+# ``run_capability(id="tool:<name>", input={...})``, so that is the row the
+# gate has to read out of history.  Every gated tool shares one matcher, so
+# each case is parametrized over all four.
+
+GATED_TOOLS = ["create_agent", "edit_agent", "fix_agent_graph", "validate_agent_graph"]
+
+
+def _run_capability_message(capability_id: str, payload: dict | None = None):
+    return ChatMessage(
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "call_rc",
+                "type": "function",
+                "function": {
+                    "name": "run_capability",
+                    "arguments": json.dumps(
+                        {"id": capability_id, "input": payload or {}}
+                    ),
+                },
+            }
+        ],
+    )
+
+
+@pytest.mark.parametrize("tool_name", GATED_TOOLS)
+@pytest.mark.parametrize(
+    "capability_id", ["tool:read_skill", "read_skill"]  # resolve_entry takes either
+)
+def test_read_skill_via_run_capability_satisfies_gate(tool_name, capability_id):
+    """The regression #14569 shipped: the guide was loaded through the
+    dispatcher, so history holds ``run_capability`` and the gate refused
+    every build tool forever."""
+    session = _session_with_messages(
+        [
+            ChatMessage(role="user", content="build it"),
+            _run_capability_message(capability_id, {"name": "agent_building_guide"}),
+        ]
+    )
+    assert require_guide_read(session, tool_name) is None
+
+
+@pytest.mark.parametrize(
+    "capability_id", ["tool:enter_agent_building_mode", "enter_agent_building_mode"]
+)
+def test_enter_via_run_capability_registers_the_engine_switch(mocker, capability_id):
+    """The enter tool through the dispatcher must reach the engine-switch
+    branch, not the refusal — the refusal is what looped."""
+    mocker.patch(
+        "backend.copilot.tools.helpers.chat_config",
+        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=True)),
+    )
+    session = _session_with_messages([_run_capability_message(capability_id)])
+    result = require_guide_read(session, "create_agent")
+    assert isinstance(result, ErrorResponse)
+    assert "engine switch is pending" in result.message
+
+
+def test_enter_via_run_capability_satisfies_gate_on_sdk_less_deployment(mocker):
+    mocker.patch(
+        "backend.copilot.tools.helpers.chat_config",
+        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=False)),
+    )
+    session = _session_with_messages(
+        [_run_capability_message("tool:enter_agent_building_mode")]
+    )
+    assert require_guide_read(session, "create_agent") is None
+
+
+@pytest.mark.parametrize(
+    "capability_id,payload",
+    [
+        ("tool:read_skill", {"name": "mcp_tool_guide"}),  # wrong skill
+        ("block:enter_agent_building_mode", {}),  # a block id, never a tool
+        ("https://enter_agent_building_mode", {}),  # an MCP server URL
+        ("tool:", {}),  # empty inner name
+        ("", {}),  # missing id
+        ("tool:find_capability", {}),  # an unrelated tool
+    ],
+)
+def test_run_capability_rows_that_must_not_open_the_gate(capability_id, payload):
+    session = _session_with_messages(
+        [
+            ChatMessage(role="user", content="build it"),
+            _run_capability_message(capability_id, payload),
+        ]
+    )
+    assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)
+
+
+def test_run_capability_malformed_arguments_do_not_crash_the_gate():
+    """A history row the gate cannot parse must fall through, not raise."""
+    session = _session_with_messages(
+        [
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {"function": {"name": "run_capability", "arguments": "{not-json"}},
+                    {"function": {"name": "run_capability", "arguments": None}},
+                    {"function": None, "name": "run_capability", "arguments": "[1,2]"},
+                    {"function": {"name": "run_capability", "arguments": '{"id": 42}'}},
+                ],
+            )
+        ]
+    )
+    assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)

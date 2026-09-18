@@ -523,3 +523,43 @@ async def test_resume_mcp_review_waits_for_approval():
             USER, session, review_id=review_id
         )
     assert isinstance(result, ErrorResponse) and "not been approved" in result.message
+
+
+async def test_run_tool_announces_the_inner_call_for_same_turn_gates():
+    """``require_guide_read`` and friends look up the tool the model asked
+    for, but only ``run_capability`` reaches history — so the dispatcher
+    announces the inner name, or a gate later in the same turn refuses a
+    tool that has already run (#14569 regression)."""
+    session = make_session(USER)
+    stub = _stub_tool("enter_agent_building_mode")
+    with patch(
+        "backend.copilot.tools.run_capability.configured_tool", return_value=stub
+    ):
+        await RunCapabilityTool()._execute(
+            USER,
+            session,
+            id="tool:enter_agent_building_mode",
+            input={"goal": "a thing"},
+        )
+    assert session.has_tool_been_called("enter_agent_building_mode") is True
+    assert session.get_inflight_tool_call_args("enter_agent_building_mode") == [
+        {"goal": "a thing"}
+    ]
+
+
+async def test_run_tool_does_not_announce_when_only_validating():
+    """``validate_only`` describes the call without running it, so it must
+    not satisfy a gate that asks whether the tool ran."""
+    session = make_session(USER)
+    stub = _stub_tool("enter_agent_building_mode")
+    with patch(
+        "backend.copilot.tools.run_capability.configured_tool", return_value=stub
+    ):
+        await RunCapabilityTool()._execute(
+            USER,
+            session,
+            id="tool:enter_agent_building_mode",
+            input={},
+            validate_only=True,
+        )
+    assert session.has_tool_been_called("enter_agent_building_mode") is False
