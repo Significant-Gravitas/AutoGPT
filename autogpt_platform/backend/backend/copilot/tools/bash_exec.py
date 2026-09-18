@@ -207,15 +207,18 @@ class BashExecTool(BaseTool):
         # Collect injected secret values so we can scrub them from output.
         secret_values: list[str] = []
         if user_id is not None:
+            selected = await selected_credentials(session_id)
             integration_env = await get_integration_env_vars(
-                user_id, required_scopes, await selected_credentials(session_id)
+                user_id, required_scopes, selected
             )
             secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
             # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(user_id)
+            git_identity = await get_github_user_git_identity(
+                user_id, selected.get("github")
+            )
             if git_identity:
                 envs.update(git_identity)
 

@@ -1042,6 +1042,10 @@ async def select_session_credentials_route(
     selections: dict[str, str] = {}
     for provider, credential_id in request.selections.items():
         provider = provider.strip().lower()
+        if provider in selections:
+            # " GitHub " and "github" name the same provider; keeping only the
+            # later one would silently drop a credential the caller validated.
+            raise HTTPException(status_code=422, detail="duplicate_provider")
         credential = await store.get_creds_by_id(user_id, credential_id)
         if credential is None or not provider_matches(credential.provider, provider):
             raise HTTPException(status_code=404, detail="credential_not_found")

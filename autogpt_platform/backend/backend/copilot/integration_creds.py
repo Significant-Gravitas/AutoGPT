@@ -110,13 +110,16 @@ _null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
-# GitHub user identity caches (keyed by user_id only, not provider tuple).
+# GitHub user identity caches, keyed (user_id, credential_id): a user with two
+# GitHub accounts has two identities, and a chat that picked one must not be
+# served the other's. credential_id is None when no account was picked.
 # Declared here so invalidate_user_provider_cache() can reference them.
 _GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
-_gh_identity_cache: TTLCache[str, dict[str, str]] = _LockedTTLCache(
+_IdentityKey = tuple[str, str | None]
+_gh_identity_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
 )
-_gh_identity_null_cache: TTLCache[str, bool] = _LockedTTLCache(
+_gh_identity_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
@@ -153,8 +156,8 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     _null_cache.pop_prefix((user_id, provider))
 
     if provider == "github":
-        _gh_identity_cache.pop(user_id, None)
-        _gh_identity_null_cache.pop(user_id, None)
+        _gh_identity_cache.pop_prefix((user_id,))
+        _gh_identity_null_cache.pop_prefix((user_id,))
 
 
 # Same-process writes (a token refresh performed by this process) invalidate
@@ -338,7 +341,9 @@ async def get_integration_env_vars(
 # ---------------------------------------------------------------------------
 
 
-async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
+async def get_github_user_git_identity(
+    user_id: str, credential_id: str | None = None
+) -> dict[str, str] | None:
     """Fetch the GitHub user's name and email for git committer env vars.
 
     Uses the ``/user`` GitHub API endpoint with the user's stored token.
@@ -346,17 +351,21 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
     ``GIT_COMMITTER_NAME``, and ``GIT_COMMITTER_EMAIL`` if the user has a
     connected GitHub account.  Returns ``None`` otherwise.
 
+    *credential_id* is the GitHub account the user picked in this chat, so the
+    identity matches the token the sandbox was given for the same account.
+
     Results are cached for 10 minutes; "not connected" results are cached for
     60 s (same as null-token cache).
     """
-    if user_id in _gh_identity_null_cache:
+    key: _IdentityKey = (user_id, credential_id)
+    if key in _gh_identity_null_cache:
         return None
-    if cached := _gh_identity_cache.get(user_id):
+    if cached := _gh_identity_cache.get(key):
         return cached
 
-    token = await get_provider_token(user_id, "github")
+    token = await get_provider_token(user_id, "github", frozenset(), credential_id)
     if not token:
-        _gh_identity_null_cache[user_id] = True
+        _gh_identity_null_cache[key] = True
         return None
 
     import aiohttp
@@ -402,5 +411,5 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
         "GIT_COMMITTER_NAME": name,
         "GIT_COMMITTER_EMAIL": email,
     }
-    _gh_identity_cache[user_id] = identity
+    _gh_identity_cache[key] = identity
     return identity

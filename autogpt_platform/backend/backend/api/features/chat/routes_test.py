@@ -4431,3 +4431,32 @@ def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
     owns_active.assert_awaited_once()
     assert owns_active.await_args.args[1] == "exp-archived"
     open_desktop.assert_not_awaited()
+
+
+def test_credential_selection_rejects_a_provider_named_twice(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """ " GitHub " and "github" normalise to the same provider. Keeping only the
+    later one would silently drop a credential the request had validated."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(return_value=MagicMock(provider="github"))
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {" GitHub ": "cred-a", "github": "cred-b"}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "duplicate_provider"
+    remember.assert_not_awaited()
