@@ -190,7 +190,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
-    "vitest": "4.1.0"
+    "vitest": "4.1.11"
   },
   "msw": {
     "workerDirectory": [
