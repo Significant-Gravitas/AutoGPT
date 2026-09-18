@@ -369,10 +369,14 @@ def test_total_schema_char_budget() -> None:
 # registry's delta. Prose lands byte-for-byte in both, so the two brakes only
 # diverge on tool shape — `required` and separators — not on wording.
 #
+# Raised 65_630 -> 65_639 for the ``tool:`` capability ids in tool descriptions
+# (SECRT-2667): a deferred tool named bare is refused, so the text that points
+# at one spells its id. Measured merged with dev: 65,638, +163.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 65_630
+_SESSION_WIRE_BUDGET = 65_639
 
 
 def test_largest_declared_session_wire_budget() -> None:
