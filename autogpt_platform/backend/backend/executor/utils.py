@@ -993,8 +993,8 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
 )
 # Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
 # ExecutionManager pod, so RabbitMQ round-robined each cancel to a single
-# arbitrary pod. Kept only so a deploy can unbind it, and so the admin
-# diagnostics keep a queue to read a depth from.
+# arbitrary pod. Old-image pods keep draining it through a rollout; each new pod
+# deletes it once none is left, so no operator step is needed on any install.
 LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants

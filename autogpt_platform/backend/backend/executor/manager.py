@@ -44,7 +44,7 @@ from backend.data.model import (
 from backend.data.rabbitmq import (
     SyncRabbitMQ,
     declare_broadcast_queue,
-    unbind_shared_queue,
+    start_shared_queue_reaper,
 )
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
@@ -1661,18 +1661,15 @@ class ExecutionManager(AppProcess):
             self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
-        # Bind before unbinding: the cancel exchange is auto-delete, so removing
-        # the last binding would drop the exchange itself and the bind that
-        # follows would 404. Both run on every reconnect — an exclusive queue
-        # dies with its connection, and a draining old-image pod re-binds the
-        # shared queue whenever it reconnects.
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        # It is also declared before the reaper runs, because this exchange is
+        # auto-delete and losing its last binding would drop the exchange.
         cancel_queue_name = declare_broadcast_queue(
             cancel_channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, self.executor_id
         )
-        unbind_shared_queue(
-            cancel_channel,
-            GRAPH_EXECUTION_CANCEL_EXCHANGE,
-            LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+        start_shared_queue_reaper(
+            cancel_channel, LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME
         )
         cancel_channel.basic_consume(
             queue=cancel_queue_name,

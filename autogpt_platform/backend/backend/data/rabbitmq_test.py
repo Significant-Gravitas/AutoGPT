@@ -21,7 +21,7 @@ from backend.data.rabbitmq import (
     Queue,
     RabbitMQConfig,
     declare_broadcast_queue,
-    unbind_shared_queue,
+    reap_shared_queue,
 )
 from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
@@ -96,31 +96,34 @@ class TestDeclareBroadcastQueue:
         assert len(names) == 3
 
 
-class TestUnbindSharedQueue:
-    def test_unbinds_on_a_scratch_channel(self) -> None:
+class TestReapSharedQueue:
+    def test_leaves_a_queue_that_an_old_instance_still_drains(self) -> None:
+        """Deleting it then would take that instance's broadcasts away."""
         channel = MagicMock()
         scratch = channel.connection.channel.return_value
-        assert (
-            unbind_shared_queue(channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "old_queue")
-            is True
-        )
-        scratch.queue_unbind.assert_called_once_with(
-            queue="old_queue",
-            exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE.name,
-            routing_key="",
-        )
-        scratch.close.assert_called_once()
-        channel.queue_unbind.assert_not_called()
+        scratch.queue_declare.return_value.method.consumer_count = 1
 
-    def test_a_broker_error_is_swallowed_and_the_channel_closed(self) -> None:
+        assert reap_shared_queue(channel, "old_queue") is False
+        scratch.queue_delete.assert_not_called()
+        scratch.close.assert_called_once()
+
+    def test_deletes_a_queue_nothing_consumes(self) -> None:
         channel = MagicMock()
         scratch = channel.connection.channel.return_value
-        scratch.queue_unbind.side_effect = RuntimeError("NOT_FOUND")
-        assert (
-            unbind_shared_queue(channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "old_queue")
-            is False
-        )
+        scratch.queue_declare.return_value.method.consumer_count = 0
+
+        assert reap_shared_queue(channel, "old_queue") is True
+        scratch.queue_declare.assert_called_once_with(queue="old_queue", passive=True)
+        scratch.queue_delete.assert_called_once_with(queue="old_queue")
         scratch.close.assert_called_once()
+
+    def test_a_missing_queue_is_not_an_error(self) -> None:
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_declare.side_effect = RuntimeError("NOT_FOUND")
+
+        assert reap_shared_queue(channel, "old_queue") is False
+        scratch.queue_delete.assert_not_called()
 
 
 def test_copilot_execution_queue_is_quorum_with_consumer_timeout() -> None:
