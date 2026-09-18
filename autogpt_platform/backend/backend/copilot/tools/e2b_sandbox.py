@@ -233,9 +233,10 @@ class SandboxOwner(BaseModel):
 
         The password never rests on the box (see ``DesktopSession.start_stream``);
         this is what lets a re-open hand back the URL the user already holds.
-        It is dropped whenever the box pauses, and the stream it opened is
-        stopped with it (``_revoke_stream``), so a URL that may have leaked is
-        good for one running stretch only.
+        When we pause the box the stream is stopped and the password dropped
+        (``_revoke_stream``), so a URL that may have leaked stops working at
+        the turn-end pause.  A pause E2B makes on its own timeout is only
+        caught up with at our next connect (``_settle_stream``).
         """
         return f"{self.key()}:stream"
 
@@ -304,12 +305,20 @@ async def connect_owned(
     is that limit for the owner's box (a resumed box would otherwise get the
     SDK's default).
     """
+    await _owned_info(sandbox_id, owner, api_key)
+    return await AsyncSandbox.connect(sandbox_id, api_key=api_key, timeout=timeout)
+
+
+async def _owned_info(
+    sandbox_id: str, owner: SandboxOwner, api_key: str
+) -> SandboxInfo:
+    """What E2B says about *sandbox_id*, refused unless it is *owner*'s box."""
     info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
     expected = owner.metadata()
     stamped = info.metadata or {}
     if any(stamped.get(key) != value for key, value in expected.items()):
         raise SandboxNotOwnedError(f"Sandbox {sandbox_id[:12]} is not {owner}'s box")
-    return await AsyncSandbox.connect(sandbox_id, api_key=api_key, timeout=timeout)
+    return info
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
@@ -422,7 +431,13 @@ async def _try_reconnect(
     """
     owner = _as_owner(owner)
     try:
-        sandbox = await connect_owned(sandbox_id, owner, api_key, timeout=timeout)
+        # Same order as ``connect_owned``: the stamp is read before the connect
+        # wakes anything.  The state read with it says whether this connect is
+        # what resumes the box.
+        info = await _owned_info(sandbox_id, owner, api_key)
+        sandbox = await AsyncSandbox.connect(
+            sandbox_id, api_key=api_key, timeout=timeout
+        )
     except SandboxNotOwnedError as exc:
         logger.warning("[E2B] Refusing reconnect: %s", exc)
     except NotFoundException as exc:
@@ -431,6 +446,12 @@ async def _try_reconnect(
         if await sandbox.is_running():
             # Refresh TTL so an active owner cannot lose its sandbox_id at expiry.
             await _set_stored_sandbox_id(owner, sandbox_id)
+            await _settle_stream(
+                owner,
+                sandbox,
+                resumed=info.state == SandboxState.PAUSED,
+                timeout=timeout,
+            )
             return sandbox
         logger.warning("[E2B] Box %.12s came back not running", sandbox_id)
 
@@ -594,7 +615,6 @@ async def get_or_create_owner_sandbox(
                 continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
-                await _revoke_orphaned_stream(owner, sandbox)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
@@ -1044,22 +1064,48 @@ async def _revoke_stream(owner: SandboxOwner, sandbox: AsyncSandbox) -> bool:
     return True
 
 
-async def _revoke_orphaned_stream(owner: SandboxOwner, sandbox: AsyncSandbox) -> None:
-    """Stop a stream that came back with the box under a forgotten password.
+async def _settle_stream(
+    owner: SandboxOwner,
+    sandbox: AsyncSandbox,
+    *,
+    resumed: bool,
+    timeout: int | None,
+) -> None:
+    """On reconnect, stop a stream that outlived its running stretch.
 
-    E2B's own timeout pause gives us no chance to stop the stream first, and
-    a stop before our pause can fail.  Either way the box returns with its
-    screen on and no password remembered, which is what this looks for.  An
-    open in progress is left alone: it restarts the stream itself.
+    *resumed* is exact: E2B reported the box paused just before this connect
+    woke it.  Unless the stream is already known to be stopped, it came back
+    with the box (E2B paused it on its own timeout, or our stop before the
+    pause failed) and is stopped now, whatever Redis still remembers.
+
+    A box that was already running is left alone while its password is
+    remembered, and the password's expiry is pushed out to the running-time
+    limit this connect just re-armed, so a stream someone is watching on a
+    box that never pauses is not mistaken for a leftover.  Only a running box
+    with no stream key at all is stopped: the password outlived the box's
+    limit, so the box did pause and something other than us resumed it.  An
+    open in progress is left alone there; it restarts the stream itself.
+
+    What this cannot reach: a box E2B paused on its timeout is resumed by any
+    request to the stream URL, with no call through here, and serves under
+    the old password until our next connect.  Closing that takes a stop the
+    box runs itself, or a sweep, neither of which exists yet.
     """
     try:
         redis = await get_redis_async()
         if not await _screen_started_in(owner, sandbox.sandbox_id):
             return
-        if await redis.get(owner.stream_key()) is not None:
+        raw = await redis.get(owner.stream_key())
+        password = raw.decode() if isinstance(raw, bytes) else raw
+        if password == _STREAM_STOPPED:
             return
-        if await redis.get(owner.display_lock_key()) is not None:
-            return
+        if not resumed:
+            if password is not None:
+                if timeout:
+                    await redis.expire(owner.stream_key(), timeout)
+                return
+            if await redis.get(owner.display_lock_key()) is not None:
+                return
     except Exception as exc:
         logger.warning("[E2B] Could not read %s's screen state: %s", owner, exc)
         return
@@ -1076,9 +1122,9 @@ async def _screen_started_in(owner: SandboxOwner, sandbox_id: str) -> bool:
 async def _forget_stream(owner: SandboxOwner) -> None:
     """Drop the stream password: the screen's next open issues a fresh one.
 
-    Called whenever the box pauses without its stream known to be stopped, so
-    the window in which a stream URL works is one running stretch of the box
-    (``SandboxOwner.stream_key``).
+    Called when we pause the box without its stream known to be stopped; the
+    next connect finds the box paused and stops the stream then
+    (``_settle_stream``).
     """
     with contextlib.suppress(Exception):
         redis = await get_redis_async()
