@@ -1,11 +1,15 @@
 -- CreateEnum
-CREATE TYPE "ExpertRoutineSession" AS ENUM ('FRESH', 'HERE', 'THREAD');
+CREATE TYPE "ExpertRoutineSession" AS ENUM ('FRESH', 'PINNED', 'THREAD');
+
+-- CreateEnum
+CREATE TYPE "ExpertRoutineSource" AS ENUM ('TEMPLATE', 'OWNER');
 
 -- CreateTable
 CREATE TABLE "ExpertRoutine" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "expertId" TEXT NOT NULL,
+    "expertId" TEXT,
+    "userId" TEXT,
     "key" TEXT,
     "title" TEXT NOT NULL,
     "prompt" TEXT NOT NULL,
@@ -13,6 +17,9 @@ CREATE TABLE "ExpertRoutine" (
     "asks" TEXT[],
     "sessionMode" "ExpertRoutineSession" NOT NULL DEFAULT 'THREAD',
     "sessionId" TEXT,
+    "source" "ExpertRoutineSource" NOT NULL DEFAULT 'TEMPLATE',
+    "runAt" TIMESTAMP(3),
+    "firedAt" TIMESTAMP(3),
     "scheduleIds" TEXT[],
     "enabledAt" TIMESTAMP(3),
     "customizedAt" TIMESTAMP(3),
@@ -28,5 +35,11 @@ CREATE UNIQUE INDEX "ExpertRoutine_expertId_key_key" ON "ExpertRoutine"("expertI
 -- CreateIndex
 CREATE INDEX "ExpertRoutine_expertId_createdAt_id_idx" ON "ExpertRoutine"("expertId", "createdAt", "id");
 
+-- CreateIndex
+CREATE INDEX "ExpertRoutine_userId_createdAt_id_idx" ON "ExpertRoutine"("userId", "createdAt", "id");
+
 -- AddForeignKey
 ALTER TABLE "ExpertRoutine" ADD CONSTRAINT "ExpertRoutine_expertId_fkey" FOREIGN KEY ("expertId") REFERENCES "Expert"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExpertRoutine" ADD CONSTRAINT "ExpertRoutine_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

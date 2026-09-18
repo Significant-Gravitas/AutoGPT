@@ -10,10 +10,12 @@ account.
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.features.experts import seed
-from backend.api.features.experts.routines import _session_mode, _spread_cron
+from backend.api.features.experts.routine_jobs import spread_cron
+from backend.api.features.experts.routines import _session_mode
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
-    unattended_routine_disabled_tools,
+    ROUTINE_SELF_ESCALATION_TOOLS,
+    routine_disabled_tools,
 )
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -33,7 +35,7 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Frankie", "week-ahead-review"),
 }
 
-VALID_SESSION_MODES = {"FRESH", "HERE", "THREAD"}
+VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
 
 
 def test_roster_routines_are_declared():
@@ -69,7 +71,7 @@ def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
         for routine in entry["routines"]:
             for index, cron in enumerate(routine["crons"]):
                 assert len(cron.split()) == 5, (entry["name"], routine["key"], cron)
-                resolved = _spread_cron(cron, seed=f"u:{routine['key']}:{index}")
+                resolved = spread_cron(cron, seed=f"u:{routine['key']}:{index}")
                 CronTrigger.from_crontab(resolved, timezone="UTC")
 
 
@@ -84,7 +86,7 @@ def test_roster_routines_spread_their_hour():
 
 
 def test_spread_moves_a_fixed_minute_within_its_hour():
-    spread = _spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
+    spread = spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
     minute, hour, dom, month, dow = spread.split()
     assert (hour, dom, month, dow) == ("9", "*", "*", "1")
     assert 0 <= int(minute) < 60
@@ -93,8 +95,8 @@ def test_spread_moves_a_fixed_minute_within_its_hour():
 def test_spread_is_stable_for_the_same_owner_and_routine():
     """The owner has to be able to rely on it: a routine that lands on a
     different minute after every deploy is not a cadence."""
-    first = _spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
-    second = _spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
+    first = spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
+    second = spread_cron("H 9 * * 1", seed="user-a:morning-sweep:0")
     assert first == second
 
 
@@ -102,22 +104,22 @@ def test_spread_separates_two_owners_on_the_same_cadence():
     """The whole point: five experts all say Monday 9am, and the turns that
     lose the race to run do not fail loudly, they simply never happen."""
     minutes = {
-        _spread_cron("H 9 * * 1", seed=f"user-{n}:morning-sweep:0").split()[0]
+        spread_cron("H 9 * * 1", seed=f"user-{n}:morning-sweep:0").split()[0]
         for n in range(20)
     }
     assert len(minutes) > 10
 
 
 def test_spread_separates_two_routines_on_one_account():
-    a = _spread_cron("H 9 * * 1", seed="user-a:queue-sweep:0")
-    b = _spread_cron("H 9 * * 1", seed="user-a:pipeline-read:0")
+    a = spread_cron("H 9 * * 1", seed="user-a:queue-sweep:0")
+    b = spread_cron("H 9 * * 1", seed="user-a:pipeline-read:0")
     assert a != b
 
 
 def test_spread_separates_the_fire_times_of_one_routine():
     """A routine with two crons in the same hour must not collapse onto one."""
-    a = _spread_cron("H 8 * * *", seed="user-a:callback-sweep:0")
-    b = _spread_cron("H 8 * * *", seed="user-a:callback-sweep:1")
+    a = spread_cron("H 8 * * *", seed="user-a:callback-sweep:0")
+    b = spread_cron("H 8 * * *", seed="user-a:callback-sweep:1")
     assert a != b
 
 
@@ -125,20 +127,51 @@ def test_spread_leaves_every_cadence_that_is_not_an_H():
     """A named minute is a decision — a roster author who wrote 07:40 meant it,
     and so does an owner who asked for 10am. Only ``H`` defers the choice."""
     for cron in ["0 9 * * 1", "40 7 * * *", "*/15 * * * *", "* 9 * * 1", "not a cron"]:
-        assert _spread_cron(cron, seed="user-a:x:0") == cron
+        assert spread_cron(cron, seed="user-a:x:0") == cron
 
 
 def test_the_unattended_denylist_names_things_that_exist():
     """A name that has been renamed out from under this set denies nothing, and
     the routine would quietly gain the reach the denylist exists to remove."""
-    for name in unattended_routine_disabled_tools():
-        assert name in TOOL_REGISTRY or name in CAPABILITY_GATE_NAMES, name
+    for trusted in (True, False):
+        for name in routine_disabled_tools(trusted_prompt=trusted):
+            assert name in TOOL_REGISTRY or name in CAPABILITY_GATE_NAMES, name
 
 
 def test_the_unattended_denylist_closes_both_capability_gates():
     """Blocks and MCP servers are reached through ``run_capability``, so only
     the gates withhold them — denying a tool name would leave both open."""
-    assert CAPABILITY_GATE_NAMES <= unattended_routine_disabled_tools()
+    assert CAPABILITY_GATE_NAMES <= routine_disabled_tools(trusted_prompt=False)
+
+
+def test_no_routine_may_schedule_another_however_trusted_it_is():
+    """The escalation this whole design has to refuse: an unattended turn reads
+    a page nobody is watching it read, the page asks for a routine, and the
+    account is left with standing work — and credentials — nobody agreed to.
+    Trusting the owner's own words is not trusting what those words go and
+    read."""
+    for trusted in (True, False):
+        denied = routine_disabled_tools(trusted_prompt=trusted)
+        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied, trusted
+    assert {"schedule_routine", "schedule_followup"} <= ROUTINE_SELF_ESCALATION_TOOLS
+
+
+def test_an_owners_own_routine_keeps_the_tools_their_chat_has():
+    """The reason the mute is keyed on provenance: the same words typed into
+    the same chat already run with these, so taking them off the owner's own
+    morning briefing protects nobody from anything."""
+    trusted = routine_disabled_tools(trusted_prompt=True)
+    assert "run_agent" not in trusted
+    assert not CAPABILITY_GATE_NAMES & trusted
+
+
+def test_a_template_routine_cannot_reach_a_connected_account():
+    """A roster prompt is read by whoever reviewed the PR, not by the owner
+    whose inbox it would run against."""
+    untrusted = routine_disabled_tools(trusted_prompt=False)
+    assert "run_agent" in untrusted
+    assert "post_to_chat_platform" in untrusted
+    assert CAPABILITY_GATE_NAMES <= untrusted
 
 
 def test_roster_routines_ask_before_they_run():
@@ -162,7 +195,7 @@ def test_roster_routines_ask_for_a_timezone():
 def test_every_session_mode_is_reachable_by_name():
     """The three modes are the tool's enum, so a name that stopped parsing here
     would silently collapse every routine onto THREAD."""
-    for name in ["THREAD", "HERE", "FRESH"]:
+    for name in ["THREAD", "PINNED", "FRESH"]:
         assert _session_mode(name).value == name
 
 
@@ -174,4 +207,4 @@ def test_an_unknown_session_mode_falls_back_to_thread():
     """It arrives as a model argument. A typo should give the routine its own
     thread — the mode that keeps its memory — not fail a call the owner already
     agreed to."""
-    assert _session_mode("pinned").value == "THREAD"
+    assert _session_mode("here").value == "THREAD"

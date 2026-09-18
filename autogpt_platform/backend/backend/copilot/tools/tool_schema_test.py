@@ -222,7 +222,15 @@ from ._test_data import make_session
 # switches it on, and because the modes and the credential grant are each a
 # decision the owner makes out loud) and list_expert_routines 403. Measured on
 # the branch merged with dev, plus one — this line carries no margin by design.
-_CHAR_BUDGET = 75_261
+# Bumped 75_261 -> 75_693 in the same PR, for two arguments those tools grew:
+# `delay_seconds` (a routine can now be a one-shot, so the durable record
+# covers "check the deploy at six" and not only work that repeats) and
+# `session_id` (PINNED can name any chat the owner holds, which is the one
+# thing schedule_followup could do that a routine could not). Every other
+# description in both tools was cut first — that paid back 377 of the 808 —
+# so what is left here is the two new arguments, not wording. Measured on the
+# branch merged with dev at 75,692, plus one.
+_CHAR_BUDGET = 75_693
 
 
 @pytest.fixture(scope="module")
@@ -381,7 +389,10 @@ def test_total_schema_char_budget() -> None:
 # ``expert_resources`` group, so they are declared in every session that can
 # manage an expert's resources — which is the largest one. Measured 67,767,
 # plus one.
-_SESSION_WIRE_BUDGET = 67_768
+# Raised 67_768 -> 68_188 for the same two arguments as ``_CHAR_BUDGET`` above;
+# both tools are in that largest session, so the whole delta lands here too.
+# Measured 68,187, plus one.
+_SESSION_WIRE_BUDGET = 68_188
 
 
 def test_largest_declared_session_wire_budget() -> None:

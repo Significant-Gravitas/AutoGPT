@@ -38,10 +38,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
-from backend.copilot.permissions import (
-    CopilotPermissions,
-    unattended_routine_disabled_tools,
-)
+from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
@@ -380,13 +377,21 @@ async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
 def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
     """The capability filter a routine's turn runs under.
 
-    Every routine turn gets one, even a granted one: passing ``None`` would
-    mean "whatever the session allows", and the point of this object is that
-    the decision is made here, at the boundary, and is visible in the job.
+    Every routine turn gets one, even a fully trusted one: no routine may
+    schedule more of itself, because nobody is watching this turn read the page
+    that might ask it to. Passing ``None`` would mean "whatever the session
+    allows", and the point of this object is that the decision is made here, at
+    the boundary, and is visible in the job.
+
+    A routine loaded as ``None`` — the row is gone, or the lookup failed — is
+    treated as the least trusted kind there is.
     """
-    if routine is not None and routine.grants_credentials:
-        return CopilotPermissions()
-    return CopilotPermissions(tools=sorted(unattended_routine_disabled_tools()))
+    trusted = (
+        routine is not None and routine.source == "OWNER" and routine.grants_credentials
+    )
+    return CopilotPermissions(
+        tools=sorted(routine_disabled_tools(trusted_prompt=trusted))
+    )
 
 
 async def _execute_copilot_turn(**kwargs):
@@ -539,7 +544,7 @@ async def _execute_copilot_turn(**kwargs):
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
-            # Per turn, not per session: a HERE routine fires into a chat the
+            # Per turn, not per session: a PINNED routine fires into a chat the
             # user also drives themselves, and muting the conversation would
             # take capabilities away from the person sitting in it. What is
             # unattended is this turn.
@@ -549,6 +554,19 @@ async def _execute_copilot_turn(**kwargs):
                 else None
             ),
         )
+        if routine is not None and routine.run_at is not None:
+            # APScheduler drops a one-shot job once it fires, so without this
+            # the row would go on describing itself as scheduled for a time
+            # that has passed. After dispatch, not before: a turn that never
+            # reached the queue has not run.
+            try:
+                await experts_db().record_routine_fired(routine.id)
+            except Exception:
+                logger.warning(
+                    "Could not mark one-shot routine %s fired",
+                    routine.id[:12],
+                    exc_info=True,
+                )
         product_analytics.track_schedule_fired(
             user_id=args.user_id,
             schedule_id=args.schedule_id,
@@ -745,6 +763,23 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
+    # A job with no schedule_id predates the field and cannot be matched
+    # against the ids a routine row holds, so there is nothing to drop.
+    if args.routine_id is None or args.schedule_id is None:
+        return
+    # The row outlives the job it lost, and a routine still listed as switched
+    # on with nothing scheduled behind it is the one state the owner cannot act
+    # on: the UI offers to switch off something that is already not running.
+    # Most often this is a PINNED routine whose chat the owner deleted.
+    try:
+        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not switch off routine %s after removing its schedule %s",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:

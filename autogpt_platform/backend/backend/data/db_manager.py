@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
-from backend.api.features.experts import routines as experts_routines
+from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
@@ -539,7 +539,9 @@ class DatabaseManager(AppService):
     enable_routine = _(experts_db.enable_routine)
     disable_routine = _(experts_db.disable_routine)
     get_routine = _(experts_db.get_routine)
-    record_routine_thread = _(experts_routines.record_routine_thread)
+    record_routine_thread = _(experts_routine_jobs.record_routine_thread)
+    record_routine_fired = _(experts_routine_jobs.record_routine_fired)
+    mark_routine_unscheduled = _(experts_routine_jobs.mark_routine_unscheduled)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
     spend_approval_required = _(experts_spend_approval.spend_approval_required)
     park_execution_for_spend_approval = _(
@@ -941,6 +943,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
+    record_routine_fired = d.record_routine_fired
+    mark_routine_unscheduled = d.mark_routine_unscheduled
     create_routine = d.create_routine
     list_routines = d.list_routines
     enable_routine = d.enable_routine

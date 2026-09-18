@@ -72,7 +72,7 @@ class RoutineSeed(TypedDict):
     # on).
     #
     # A minute of `H` means "some minute inside this hour" — plain cron has no
-    # way to say that, so this borrows Jenkins's spelling, and `_spread_cron`
+    # way to say that, so this borrows Jenkins's spelling, and `spread_cron`
     # picks the real minute per owner and routine at install. Use it whenever
     # the hour is what matters, which for a standing job it almost always is:
     # five personas that all literally say `0 9` arrive on one account as a
@@ -877,6 +877,9 @@ def _routine_fields(
     ``grantsCredentials`` is absent on purpose: it is never roster-declared, so
     a template row keeps the schema default of False and no roster edit can
     hand a seeded routine the keys to somebody's inbox.
+
+    ``source`` is written rather than defaulted, because it is what decides
+    that a hired copy of this row reaches nothing until its owner says so.
     """
     return {
         "title": routine["title"],
@@ -884,6 +887,7 @@ def _routine_fields(
         "crons": routine["crons"],
         "asks": routine["asks"],
         "sessionMode": prisma.enums.ExpertRoutineSession(routine["session_mode"]),
+        "source": prisma.enums.ExpertRoutineSource.TEMPLATE,
     }
 
 

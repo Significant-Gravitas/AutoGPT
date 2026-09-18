@@ -127,10 +127,10 @@ ToolName = Literal[
     "list_chat_platform_channels",
     "list_expert_chats",
     "list_expert_credentials",
-    "list_expert_routines",
     "list_expert_workflows",
     "list_folders",
     "list_presets",
+    "list_routines",
     "list_schedules",
     "list_skills",
     "list_team",
@@ -157,9 +157,9 @@ ToolName = Literal[
     "run_capability",
     "run_sub_session",
     "schedule_followup",
+    "schedule_routine",
     "search_docs",
     "search_feature_requests",
-    "set_expert_routine",
     "setup_agent_webhook_trigger",
     "start_desktop",
     "store_skill",
@@ -207,7 +207,7 @@ LEGACY_TOOL_ALIASES: dict[str, str] = {
 DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
 
 
-# What a routine may reach when nobody bound it to anything.  A roster template
+# What a routine whose prompt somebody else wrote may reach.  A roster template
 # is read by whoever reviews the PR, not by the owner whose account it will run
 # on, so a seeded routine ships able to research, think, read its own workspace
 # and write to its own thread — and nothing else.  Denying the names that carry
@@ -215,7 +215,12 @@ DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
 # nothing outside the platform" (``PreloadSeed.cron``) a boundary rather than a
 # comment.  An owner who wants their queue swept says so when they switch the
 # routine on, and that answer — not a template — is what grants this.
-UNATTENDED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
+#
+# Keyed on where the prompt came from, not on being a routine.  A routine the
+# owner dictated in their own chat has no third party in it: the same words,
+# typed into the same chat, already run with every tool here, and taking
+# ``run_agent`` off the owner's own morning briefing buys nothing at all.
+UNTRUSTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
     {
         # The two capability gates, so denying them withholds every block and
         # every MCP server rather than one tool's worth of them.
@@ -223,13 +228,34 @@ UNATTENDED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
         MCP_GATE,
         "run_agent",
         "post_to_chat_platform",
+    }
+)
+
+
+# Refused on EVERY routine turn, however the routine was written and whatever
+# its owner granted it.  An unattended turn reads things nobody is watching it
+# read — an issue tracker, an inbox, a web page — and text in any of them can
+# ask it to schedule more work.  Without this, one injected page buys standing
+# access to the account forever: a routine that can write a routine can grant
+# itself the credentials its own prompt was denied, and the owner sees a
+# schedule they never agreed to.  Standing work is created where somebody is
+# present to refuse it.
+ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
+    {
+        "schedule_routine",
+        "schedule_followup",
         "setup_agent_webhook_trigger",
     }
 )
 
 
-def unattended_routine_disabled_tools() -> frozenset[str]:
-    """Tools to refuse on a routine turn its owner has not bound to anything.
+def routine_disabled_tools(*, trusted_prompt: bool) -> frozenset[str]:
+    """Tools to refuse on a routine's unattended turn.
+
+    *trusted_prompt* is true when the owner wrote the prompt themselves and
+    bound the routine to their connections — an ``OWNER`` row they granted.  It
+    only ever removes the outward-reaching denials; nothing makes a routine able
+    to schedule more of itself.
 
     Deliberately a denylist of what reaches *outward*, not a narrow allowlist:
     reading, searching, and drafting into the thread are the whole point of an
@@ -241,7 +267,9 @@ def unattended_routine_disabled_tools() -> frozenset[str]:
     ``copilot.tools`` closes a cycle (tools -> helpers -> executor -> scheduler).
     ``routines_test`` asserts every name here is a live tool or gate.
     """
-    return UNATTENDED_ROUTINE_DENIED_TOOLS
+    if trusted_prompt:
+        return ROUTINE_SELF_ESCALATION_TOOLS
+    return UNTRUSTED_ROUTINE_DENIED_TOOLS | ROUTINE_SELF_ESCALATION_TOOLS
 
 
 """Tool names accepted only for backwards compatibility with saved graphs.
