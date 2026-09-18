@@ -1801,6 +1801,30 @@ class TestRequireLibraryCheck:
         result = require_library_check(session, "create_agent")
         assert isinstance(result, ErrorResponse)
 
+    async def test_sdk_dispatch_satisfies_the_gate(self):
+        """The SDK engine is the one that runs this gate in production, and
+        it reaches ``find_library_agent`` through the MCP adapter rather than
+        the baseline executor — so the adapter has to announce the dispatch
+        or the gate refuses create_agent forever. Every other test here
+        fabricates the announcement, which is why the hole stayed green."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        tool = MagicMock()
+        tool.name = "find_library_agent"
+        tool.execute = AsyncMock(return_value=MagicMock(output="{}", success=True))
+
+        await _execute_tool_sync(
+            tool,
+            "user-lib-check",
+            session,
+            {"for_creation": True, "goal_summary": "summarise emails"},
+        )
+
+        assert require_library_check(session, "create_agent") is None
+
     def test_inflight_name_only_does_not_satisfy(self):
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.announce_inflight_tool_call("find_library_agent")
