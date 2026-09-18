@@ -568,7 +568,11 @@ def _build_return_adapter(
         return adapter
 
     try:
-        resolved = get_type_hints(inspect.unwrap(func)).get("return", annotation)
+        # include_extras keeps Annotated metadata — a constraint or discriminator
+        # carried there is part of the validation contract.
+        resolved = get_type_hints(inspect.unwrap(func), include_extras=True).get(
+            "return", annotation
+        )
     except Exception as e:
         logger.warning(
             f"RPC return annotation {annotation!r} of {method_name} could not be "

@@ -1,10 +1,11 @@
 import asyncio
 import contextlib
 import inspect
+import logging
 import time
 from datetime import datetime, timezone
 from functools import cached_property
-from typing import Any, Protocol, cast
+from typing import Annotated, Any, Protocol, cast
 from unittest.mock import Mock
 
 import httpx
@@ -13,7 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
 from backend.util.exceptions import (
@@ -46,6 +47,18 @@ class ReviewLike(BaseModel):
 
     id: str
     name: str = "review"
+
+
+class _NotAPydanticType:
+    """Resolvable name that pydantic cannot build a schema for."""
+
+    def __init__(self, value: Any):
+        self.value = value
+
+
+def _returns_at_most_one_review() -> Annotated[list["ReviewLike"], Field(max_length=1)]:
+    """Forward reference under Annotated: the constraint is part of the contract."""
+    return [ReviewLike(id="0")]
 
 
 class _SupportsGetReturn(Protocol):
@@ -1009,6 +1022,7 @@ class TestForwardRefReturnAnnotation:
 
     @property
     def annotation(self):
+        """The unresolved ``list["ReviewLike"]`` as the client sees it."""
         return inspect.signature(ServiceTest.list_reviews).return_annotation
 
     def test_annotation_is_unresolvable_from_the_service_module(self):
@@ -1020,7 +1034,15 @@ class TestForwardRefReturnAnnotation:
         """
         assert _usable_adapter(self.annotation) is None
 
+    def test_resolvable_annotation_is_adapted_without_resolution(self):
+        """The ordinary case: nothing to resolve, so the annotation is used as-is."""
+        adapter = _build_return_adapter(ServiceTest.add, int, "add")
+
+        assert adapter is not None
+        assert adapter.validate_python("3") == 3
+
     def test_build_return_adapter_resolves_the_forward_ref(self):
+        """The declaring module's namespace is what makes the name resolvable."""
         adapter = _build_return_adapter(
             ServiceTest.list_reviews, self.annotation, "list_reviews"
         )
@@ -1028,6 +1050,7 @@ class TestForwardRefReturnAnnotation:
         assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
 
     def test_build_return_adapter_resolves_through_an_async_stub(self):
+        """endpoint_to_async wraps the endpoint, so resolution must unwrap it."""
         stub = ServiceTestClient.list_reviews_async
         adapter = _build_return_adapter(
             stub, inspect.signature(stub).return_annotation, "list_reviews"
@@ -1036,6 +1059,7 @@ class TestForwardRefReturnAnnotation:
         assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
 
     def test_get_return_deserializes_the_forward_ref_payload(self):
+        """_get_return with that adapter returns models, not the raw dicts."""
         adapter = _build_return_adapter(
             ServiceTest.list_reviews, self.annotation, "list_reviews"
         )
@@ -1046,14 +1070,42 @@ class TestForwardRefReturnAnnotation:
     def test_unresolvable_annotation_yields_no_adapter(self):
         """A name nothing can resolve degrades to unvalidated results, not an error."""
 
-        def never_defined() -> "NeverDefinedModel":  # type: ignore[name-defined] # noqa: F821
-            raise NotImplementedError
+        def never_defined() -> "NeverDefinedModel": ...  # type: ignore[name-defined] # noqa: F821
 
         annotation = inspect.signature(never_defined).return_annotation
         assert (
             _build_return_adapter(never_defined, list[annotation], "never_defined")
             is None
         )
+
+    def test_annotated_metadata_survives_the_hint_resolution(self):
+        """``get_type_hints`` drops Annotated metadata unless asked to keep it.
+
+        Losing it here would hand back an adapter with a *different* validation
+        contract — the max_length below would silently stop being enforced.
+        """
+        annotation = inspect.signature(_returns_at_most_one_review).return_annotation
+        adapter = _build_return_adapter(
+            _returns_at_most_one_review, annotation, "at_most_one_review"
+        )
+
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "0"}]) == [ReviewLike(id="0")]
+        with pytest.raises(ValidationError):
+            adapter.validate_python([{"id": "0"}, {"id": "1"}])
+
+    def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
+        """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""
+
+        def returns_unschemable() -> "_NotAPydanticType": ...
+
+        with caplog.at_level(logging.WARNING, logger="backend.util.service"):
+            adapter = _build_return_adapter(
+                returns_unschemable, _NotAPydanticType, "returns_unschemable"
+            )
+
+        assert adapter is None
+        assert "has no usable TypeAdapter" in caplog.text
 
 
 def _client_with_canned_response(payload: Any):
@@ -1075,16 +1127,19 @@ def _client_with_canned_response(payload: Any):
 
 
 def test_forward_ref_return_is_deserialized_over_the_rpc():
-    client = _client_with_canned_response([{"id": "0"}, {"id": "1", "name": "second"}])
+    """The sync client must hand back models, not the raw JSON list."""
+    served = ServiceTest.list_reviews(cast(Any, None), 2)
+    client = _client_with_canned_response([r.model_dump() for r in served])
 
     reviews = client.list_reviews(2)
 
-    assert reviews == [ReviewLike(id="0"), ReviewLike(id="1", name="second")]
+    assert reviews == [ReviewLike(id="0"), ReviewLike(id="1")]
     assert all(isinstance(review, ReviewLike) for review in reviews)
 
 
 @pytest.mark.asyncio
 async def test_forward_ref_return_is_deserialized_over_the_async_rpc():
+    """Same contract through the async stub, which wraps the endpoint."""
     client = _client_with_canned_response([{"id": "0"}])
     inner = cast(Any, client)
     # The async client is keyed by running event loop; reuse the mocked one.
