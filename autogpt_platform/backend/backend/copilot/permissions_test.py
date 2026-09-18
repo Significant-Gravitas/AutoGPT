@@ -747,9 +747,11 @@ class TestDreamPermissionsPreset:
             assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
 
     def test_effective_set_matches_whitelist_intersection(self):
-        # Sanity: effective set = whitelist ∩ known universe.  web_fact_check
-        # is intentionally absent from the universe until P0.5 lands, so the
-        # effective set today is the four memory tools.
+        # Sanity: effective set = whitelist ∩ known universe, plus the
+        # dispatcher the whitelist needs — all four memory tools are deferred
+        # (#14569), so without run_capability the dream pass could reach none
+        # of them.  web_fact_check is intentionally absent from the universe
+        # until P0.5 lands.
         effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
         assert effective == frozenset(
             {
@@ -757,6 +759,7 @@ class TestDreamPermissionsPreset:
                 "memory_store",
                 "memory_forget_search",
                 "memory_forget_confirm",
+                "run_capability",
             }
         )
 
