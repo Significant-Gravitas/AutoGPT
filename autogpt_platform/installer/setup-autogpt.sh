@@ -340,12 +340,14 @@ init_env() {
 
     # The generator is stdlib-only Python. Hosts without python3 run it in a
     # container instead, as the calling user so the .env files stay readable.
-    local generator="python3"
+    local -a generator=(python3)
     if ! command -v python3 &> /dev/null; then
-        generator="$DOCKER_CMD run --rm --user $(id -u):$(id -g) -v $PWD:/platform -w /platform python:3.13-alpine python3"
+        # $DOCKER_CMD may be "sudo docker", so it is split on purpose.
+        generator=($DOCKER_CMD run --rm --user "$(id -u):$(id -g)"
+            -v "$PWD:/platform" -w /platform python:3.13-alpine python3)
     fi
     for dir in . backend frontend; do
-        $generator single-container/runtime_config.py fill-env --path "$dir/.env" \
+        "${generator[@]}" single-container/runtime_config.py fill-env --path "$dir/.env" \
             || handle_error "Failed to generate secrets in $dir/.env"
     done
     print_color "GREEN" "✓ Secrets ready"

@@ -211,17 +211,27 @@ move them to the new key instead of losing them. Run everything from
    make init-env
    ```
 
-   Without `make`, run the installer script again, or call the generator
-   directly for each file:
+   Without `make`, call the generator directly, once for each of `.env`,
+   `backend/.env` and `frontend/.env`:
    `python3 single-container/runtime_config.py fill-env --path backend/.env`.
+   Do not re-run the installer script for this: it also starts the stack,
+   which is step 5.
 
-4. Re-encrypt what is stored. The first command is a dry run that only reports
-   what it would change; the second writes it:
+4. Re-encrypt what is stored. Build the new images and bring the database up
+   to date first; `migrate` starts the database on its own:
 
    ```bash
-   docker compose build rest_server
-   docker compose run --rm -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key
-   docker compose run --rm -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key --apply
+   docker compose build migrate rest_server
+   docker compose run --rm migrate
+   ```
+
+   Then run the command, first as a dry run that only reports what it would
+   change, then with `--apply` to write it. `--no-deps` keeps it from waiting
+   on the rest of the stack, which it does not need:
+
+   ```bash
+   docker compose run --rm --no-deps -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key
+   docker compose run --rm --no-deps -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key --apply
    ```
 
    It is safe to run more than once: values already under the new key are left
