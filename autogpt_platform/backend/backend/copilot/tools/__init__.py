@@ -43,7 +43,6 @@ from .expert_resources import (
     RequestCredentialGrantTool,
     RevokeExpertCredentialTool,
 )
-from .expert_routines import ListExpertRoutinesTool, SetExpertRoutineTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_capability import FindCapabilityTool
@@ -80,6 +79,7 @@ from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .resume_capability import ResumeCapabilityTool
+from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
 from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
@@ -221,8 +221,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_expert_workflows": ListExpertWorkflowsTool(),
     # Standing work: what the expert offers to do unattended, and the round
     # trip that turns one of those offers into a real cadence.
-    "list_expert_routines": ListExpertRoutinesTool(),
-    "set_expert_routine": SetExpertRoutineTool(),
+    "list_routines": ListRoutinesTool(),
+    "schedule_routine": ScheduleRoutineTool(),
     "list_expert_credentials": ListExpertCredentialsTool(),
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
@@ -290,9 +290,10 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "remove_expert_workflow": "expert_resources",
     "list_expert_workflows": "expert_resources",
     # Routines ride the same gate as workflow installs: an expert manages its
-    # own standing work, and personal AutoPilot manages any expert's.
-    "list_expert_routines": "expert_resources",
-    "set_expert_routine": "expert_resources",
+    # own standing work, and personal AutoPilot manages any expert's — and,
+    # with no expert named, the account's own.
+    "list_routines": "expert_resources",
+    "schedule_routine": "expert_resources",
     "list_expert_credentials": "expert_resources",
     "grant_expert_credential": "expert_admin",
     "revoke_expert_credential": "expert_admin",

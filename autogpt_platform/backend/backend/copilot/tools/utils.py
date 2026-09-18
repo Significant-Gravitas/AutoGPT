@@ -2,9 +2,11 @@
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.copilot.credential_selection import selected_credentials
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
@@ -14,6 +16,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
 )
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -264,11 +267,14 @@ async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
     expert_id: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
 
     This is the core matching logic shared by both graph and block credential matching.
+    With a ``session_id`` the match is a chat tool's: the credential the user
+    picked in that chat is used, and a choice between several is left to them.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -277,9 +283,12 @@ async def match_credentials_to_requirements(
         return matched, missing
 
     available_creds = await get_user_credentials(user_id, expert_id)
+    selected = await selected_credentials(session_id)
 
     for field_name, field_info in requirements.items():
-        matching_cred = find_matching_credential(available_creds, field_info)
+        matching_cred = find_matching_credential(
+            available_creds, field_info, selected, ask_when_ambiguous=bool(session_id)
+        )
 
         if matching_cred:
             try:
@@ -350,26 +359,51 @@ async def scope_credentials_to_expert(
 def find_matching_credential(
     available_creds: list[Credentials],
     field_info: CredentialsFieldInfo,
+    selected: Mapping[str, str] | None = None,
+    *,
+    ask_when_ambiguous: bool = False,
 ) -> Credentials | None:
     """Find a credential that matches the required provider, type, scopes, host,
-    and — for MCP OAuth credentials — the server URL."""
-    for cred in available_creds:
-        if cred.provider not in field_info.provider:
-            continue
-        if cred.type not in field_info.supported_types:
-            continue
-        if cred.type == "oauth2" and not _credential_has_required_scopes(
-            cred, field_info
-        ):
-            continue
-        if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
-            continue
-        if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
-            cred, field_info
-        ):
-            continue
-        return cred
-    return None
+    and — for MCP OAuth credentials — the server URL.
+
+    ``selected`` maps a provider to the credential the user picked for it; a
+    pick that fits always wins. ``ask_when_ambiguous`` is for a caller that can
+    ask: when several of the user's own credentials fit and none was picked, it
+    gets ``None``, which surfaces as a setup card where the user chooses. Taking
+    the first fit there would run on whichever account was stored first.
+    """
+    fits = [c for c in available_creds if _credential_fits(c, field_info)]
+    if selected:
+        for cred in fits:
+            if selected.get(_provider_slug(cred)) == cred.id:
+                return cred
+    if not ask_when_ambiguous:
+        return fits[0] if fits else None
+    own = [c for c in fits if not is_system_credential(c.id)]
+    if len(own) > 1:
+        return None
+    return own[0] if own else (fits[0] if fits else None)
+
+
+def _provider_slug(cred: Credentials) -> str:
+    # ProviderName is a str-Enum: str() would render "ProviderName.X".
+    return str(getattr(cred.provider, "value", cred.provider))
+
+
+def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
+    if cred.provider not in field_info.provider:
+        return False
+    if cred.type not in field_info.supported_types:
+        return False
+    if cred.type == "oauth2" and not _credential_has_required_scopes(cred, field_info):
+        return False
+    if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
+        return False
+    if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
+        cred, field_info
+    ):
+        return False
+    return True
 
 
 def create_credential_meta_from_match(
@@ -388,6 +422,7 @@ async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
     expert_id: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[str]]:
     """
     Match user's available credentials against graph's required credentials.
@@ -419,6 +454,7 @@ async def match_user_credentials_to_graph(
     available_creds = await scope_credentials_to_expert(
         user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
     )
+    selected = await selected_credentials(session_id)
 
     # For each required credential field, find a matching user credential
     # field_info.provider is a frozenset because aggregate_credentials_inputs()
@@ -430,7 +466,10 @@ async def match_user_credentials_to_graph(
         _,
     ) in aggregated_creds.items():
         matching_cred = find_matching_credential(
-            available_creds, credential_requirements
+            available_creds,
+            credential_requirements,
+            selected,
+            ask_when_ambiguous=bool(session_id),
         )
 
         if matching_cred:
@@ -606,6 +645,6 @@ _AUTH_HEADER_RE = re.compile(
 # Optional quotes around the key and value cover the JSON and dict shapes a
 # provider echoes back; without them the quote before the colon defeats the match.
 _SECRET_PARAM_RE = re.compile(
-    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token"
-    r"|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
+    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token"
+    r"|client[_-]?secret|token|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )

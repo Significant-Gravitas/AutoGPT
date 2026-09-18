@@ -21,6 +21,7 @@ import backend.api.features.store.model as store_model
 from backend.api.features.experts import (
     experts_db,
     raise_attachments,
+    routine_jobs,
     routines,
     scheduling,
     seed,
@@ -71,18 +72,95 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-transcription-scraper",
 }
 # Personas that deliberately ship no workflows, so the 2-4 preload bound below
-# stays a real check on everyone else. Remy is here because neither of her
-# lifecycle-email listings was ever published under the official marketplace
-# creator, and _resolve_roster_preloads fails the whole seed on a slug it
-# cannot resolve.
-PERSONAS_WITHOUT_WORKFLOWS = {"Alex", "Daniel", "James", "Remy", "Sofia"}
+# stays a real check on everyone else. Remy's workflow listings are unavailable;
+# the other names are skills-only by design.
+PERSONAS_WITHOUT_WORKFLOWS = {
+    "Alex",
+    "Daniel",
+    "Devon",
+    "Ellis",
+    "Harper",
+    "James",
+    "Jordan",
+    "Mina",
+    "Quinn",
+    "Remy",
+    "Riley",
+    "Sofia",
+    "Theo",
+    "Vera",
+}
+EXPECTED_SKILLS_ONLY_ROSTER = {
+    "Devon": [
+        "dependency-security-getting-started",
+        "dependency-inventory",
+        "outdated-dependency-review",
+        "vulnerability-triage",
+        "cve-stack-relevance",
+        "dependency-upgrade-plan",
+        "dependency-upgrade-pr",
+        "dependency-change-risk-review",
+    ],
+    "Riley": [
+        "customer-success-getting-started",
+        "customer-onboarding-plan",
+        "customer-health-score",
+        "churn-risk-review",
+        "renewal-readiness-review",
+        "renewal-touchpoint-draft",
+        "expansion-opportunity-brief",
+        "customer-success-plan",
+    ],
+    "Jordan": [
+        "deal-desk-getting-started",
+        "proposal-draft",
+        "statement-of-work-draft",
+        "pipeline-stage-aging-review",
+        "deal-risk-review",
+        "renewal-negotiation-brief",
+        "pricing-and-terms-approval-brief",
+        "proposal-quality-check",
+    ],
+}
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
 # edit to this test rather than a silent roster change.
 EXPECTED_ROSTER_SCHEDULES = {
-    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
+}
+EXPECTED_OPERATIONS_SKILLS = {
+    "Harper": [
+        "recruiting-getting-started",
+        "role-intake-and-job-description",
+        "hiring-rubric-design",
+        "resume-screening",
+        "interview-plan-and-scorecard",
+        "candidate-interview-debrief",
+        "candidate-rejection-email",
+        "candidate-offer-draft",
+    ],
+    "Vera": [
+        "procurement-getting-started",
+        "vendor-requirements-brief",
+        "vendor-quote-comparison",
+        "vendor-due-diligence",
+        "procurement-decision-memo",
+        "contract-renewal-tracker",
+        "vendor-performance-review",
+        "spend-anomaly-review",
+    ],
+    "Ellis": [
+        "contract-ops-getting-started",
+        "nda-playbook-review",
+        "msa-playbook-review",
+        "contract-clause-comparison",
+        "contract-key-term-extraction",
+        "contract-deviation-triage",
+        "contract-obligation-tracker",
+        "counsel-escalation-brief",
+    ],
 }
 
 
@@ -720,9 +798,11 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         tagline="Finds your leads and their decision-makers.",
+        job_title="Sales Development Rep",
     )
     assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert raised.expert.color == "sky-300"
+    assert raised.expert.job_title == "Sales Development Rep"
     assert raised.expert.tagline == "Finds your leads and their decision-makers."
 
     reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
@@ -730,6 +810,7 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
     assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert reloaded.color == "sky-300"
     assert reloaded.tagline == "Finds your leads and their decision-makers."
+    assert reloaded.job_title == "Sales Development Rep"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1592,7 +1673,15 @@ def test_expert_identity_projection_columns_exist_in_schema():
     model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
     assert model is not None, "Expert model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
-    assert {"id", "name", "avatarUrl", "color", "role", "isArchived"} <= fields
+    assert {
+        "id",
+        "name",
+        "avatarUrl",
+        "color",
+        "role",
+        "jobTitle",
+        "isArchived",
+    } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
 
@@ -3267,6 +3356,29 @@ def test_roster_bundled_skills_are_hub_slugs():
             assert _NAME_RE.match(slug), (entry["name"], slug)
 
 
+def test_operations_experts_bundle_their_eight_skills_in_work_order():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in EXPECTED_OPERATIONS_SKILLS.items():
+        assert roster[name]["bundled_skills"] == skills
+        assert roster[name]["preloads"] == []
+
+
+def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected_skills in EXPECTED_SKILLS_ONLY_ROSTER.items():
+        assert roster[name]["bundled_skills"] == expected_skills
+        assert roster[name]["preloads"] == []
+    assert {
+        name: (roster[name]["role"], roster[name]["categories"])
+        for name in EXPECTED_SKILLS_ONLY_ROSTER
+    } == {
+        "Devon": ("Dependency & Security Hygiene", ["development"]),
+        "Riley": ("Customer Success & Retention", ["support"]),
+        "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
+    }
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
     server: SpinTestServer, hub_listing, monkeypatch
@@ -3307,22 +3419,95 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     upsert.assert_not_awaited()
 
 
-def test_roster_day_one_is_marias_two_rows_and_hidden_for_the_rest():
-    """Only Maria promises day-one work, and only work she can do unaided.
-
-    A dated promise needs a cadence behind it, and the only two roster
-    cadences sit on a workflow whose required inputs make
-    ``create_workflow_schedule`` refuse the schedule at hire — so every
-    other persona's rows stay empty rather than promising a delivery the
-    hire flow cannot make."""
+def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
+    """Day-one copy may describe draft work, but not an unattended cadence."""
     day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
 
     assert [(item.title, item.timing) for item in day_one["Maria"]] == [
         ("A brief before the draft", "day 1"),
         ("Your money pages, audited", "day 1"),
     ]
+    assert [item.timing for item in day_one["Mina"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Theo"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Quinn"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [(item.title, item.timing) for item in day_one["Harper"]] == [
+        ("A hiring plan grounded in the role", "day 1"),
+        ("A fair scorecard before screening", "day 1"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Vera"]] == [
+        ("Your next vendor choice, compared", "day 1"),
+        ("Renewals and spend risks surfaced", "on request"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
+        ("Key terms in one clear record", "day 1"),
+        ("Playbook gaps ready for counsel", "on request"),
+    ]
     for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
         assert day_one[name] == [], name
+    assert [item.timing for item in day_one["Devon"]] == [
+        "after access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Riley"]] == [
+        "after data access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Jordan"]] == [
+        "after deal input",
+        "on request",
+    ]
+
+
+def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
+    expected = {
+        "Mina": [
+            "bookkeeping-getting-started",
+            "expense-categorization",
+            "invoice-drafting-and-issue",
+            "accounts-receivable-follow-up",
+            "statement-reconciliation",
+            "month-end-close-checklist",
+            "monthly-profit-and-loss-summary",
+            "bookkeeping-exception-escalation",
+        ],
+        "Theo": [
+            "investor-relations-getting-started",
+            "pitch-deck-review",
+            "fundraising-data-room-checklist",
+            "investor-targeting-and-research",
+            "fundraising-pipeline-review",
+            "cap-table-hygiene",
+            "monthly-investor-update",
+            "board-and-investor-metrics-brief",
+        ],
+        "Quinn": [
+            "kpi-analysis-getting-started",
+            "metric-definition-and-data-quality",
+            "weekly-kpi-digest",
+            "metric-anomaly-detection",
+            "metric-movement-analysis",
+            "cohort-and-retention-analysis",
+            "funnel-conversion-analysis",
+            "experiment-readout",
+        ],
+    }
+    by_name = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in expected.items():
+        assert by_name[name]["bundled_skills"] == skills
+        assert by_name[name]["preloads"] == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -5762,6 +5947,8 @@ async def test_hire_copies_routines_switched_off_with_no_schedule(
     assert installed[0].enabled is False
     assert installed[0].customized is False
     assert installed[0].grants_credentials is False
+    # The line the fire-time mute reads: somebody else wrote this prompt.
+    assert installed[0].source == "TEMPLATE"
     rows = await prisma.models.ExpertRoutine.prisma().find_many(
         where={"expertId": hired.expert.id}
     )
@@ -5797,7 +5984,9 @@ async def test_enabling_a_routine_resolves_it_and_creates_one_job_per_cron(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     installed = await experts_db.list_routines(test_user.id, hired.expert.id)
 
-    with patch.object(routines, "get_scheduler_client", return_value=_fake_scheduler()):
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
         enabled = await experts_db.enable_routine(
             test_user.id,
             hired.expert.id,
@@ -5809,9 +5998,15 @@ async def test_enabling_a_routine_resolves_it_and_creates_one_job_per_cron(
     assert enabled.customized is True
     assert enabled.prompt.startswith("Read the support queue")
     # H is resolved before anything reaches APScheduler, which has never heard
-    # of it, and the two fire times land on their own minutes.
+    # of it. Asserted against the resolver rather than "the two minutes
+    # differ": the minute is one byte of a digest modulo 60, so two fire times
+    # of one routine collide about once in sixty runs, and that assertion
+    # failed on its own with nothing changed.
     assert all(not c.startswith("H ") for c in enabled.crons)
-    assert len({c.split()[0] for c in enabled.crons}) == 2
+    assert enabled.crons == [
+        routine_jobs.spread_cron(cron, seed=f"{test_user.id}:queue-sweep:{index}")
+        for index, cron in enumerate(["H 9 * * 1-5", "H 13 * * 1-5"])
+    ]
     rows = await prisma.models.ExpertRoutine.prisma().find_many(
         where={"id": installed[0].id}
     )
@@ -5827,7 +6022,9 @@ async def test_a_roster_edit_never_rewrites_a_routine_that_is_running(
     template = await _template_with_routine()
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     installed = await experts_db.list_routines(test_user.id, hired.expert.id)
-    with patch.object(routines, "get_scheduler_client", return_value=_fake_scheduler()):
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
         await experts_db.enable_routine(
             test_user.id, hired.expert.id, installed[0].id, prompt="The owner's words."
         )
@@ -5905,6 +6102,9 @@ async def test_an_expert_can_record_a_routine_it_agreed_in_conversation(
     assert created.enabled is False
     assert created.customized is True
     assert created.session_mode == "FRESH"
+    # No third party in the prompt, so it is not muted like a template.
+    assert created.source == "OWNER"
+    assert created.grants_credentials is True
     assert [
         r.id for r in await experts_db.list_routines(test_user.id, hired.expert.id)
     ] == [created.id]
@@ -5921,7 +6121,9 @@ async def test_a_routine_belongs_to_its_owner_only(
     installed = await experts_db.list_routines(test_user.id, hired.expert.id)
 
     with (
-        patch.object(routines, "get_scheduler_client", return_value=_fake_scheduler()),
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
         pytest.raises(routines.RoutineNotFoundError),
     ):
         await experts_db.enable_routine(
@@ -5948,7 +6150,7 @@ async def test_archiving_stops_routines_and_re_hire_resumes_exactly_those(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     installed = await experts_db.list_routines(test_user.id, hired.expert.id)
     scheduler = _fake_scheduler()
-    with patch.object(routines, "get_scheduler_client", return_value=scheduler):
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
         running = await experts_db.enable_routine(
             test_user.id, hired.expert.id, installed[0].id, prompt="Running."
         )
@@ -5961,7 +6163,7 @@ async def test_archiving_stops_routines_and_re_hire_resumes_exactly_those(
     )
 
     with (
-        patch.object(routines, "get_scheduler_client", return_value=scheduler),
+        patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler),
         patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
     ):
         await experts_db.archive_expert(test_user.id, hired.expert.id)
@@ -5973,7 +6175,7 @@ async def test_archiving_stops_routines_and_re_hire_resumes_exactly_those(
     assert by_id[off.id].pausedByExpertArchive is False
 
     with (
-        patch.object(routines, "get_scheduler_client", return_value=scheduler),
+        patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler),
         patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
     ):
         await experts_db.hire_expert(test_user.id, template.id, None)
@@ -5986,3 +6188,310 @@ async def test_archiving_stops_routines_and_re_hire_resumes_exactly_those(
     assert revived[running.id].pausedByExpertArchive is False
     assert revived[running.id].enabledAt is not None
     assert revived[off.id].enabledAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_account_holds_routines_of_its_own(server: SpinTestServer, test_user):
+    """Otto is the platform's default assistant, not a row in ``Expert``, so
+    its standing work hangs off the owner. Without this the only way to defer
+    repeating work from an Otto chat was a follow-up pinned to whatever chat
+    the user happened to be in."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Weekly calendar read",
+        prompt="Read the week ahead and flag the conflicts.",
+        crons=["H 8 * * 1"],
+    )
+
+    assert created.expert_id is None
+    assert created.source == "OWNER"
+    assert [r.id for r in await experts_db.list_routines(test_user.id)] == [created.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_accounts_routines_and_an_experts_do_not_leak_into_each_other(
+    server: SpinTestServer, test_user
+):
+    """``expertId IS NULL`` is load-bearing in the account query: without it,
+    asking Otto for its routines would answer with every expert's as well."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    mine = await experts_db.create_routine(
+        test_user.id, None, title="Mine", prompt="Mine.", crons=["H 8 * * 1"]
+    )
+
+    account = await experts_db.list_routines(test_user.id)
+    expert = await experts_db.list_routines(test_user.id, hired.expert.id)
+    assert [r.id for r in account] == [mine.id]
+    assert [r.key for r in expert] == ["queue-sweep"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_routine_belongs_to_one_account_only(
+    server: SpinTestServer, test_user, other_user
+):
+    mine = await experts_db.create_routine(
+        test_user.id, None, title="Mine", prompt="Mine.", crons=["H 8 * * 1"]
+    )
+
+    assert await experts_db.list_routines(other_user.id) == []
+    with (
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
+        pytest.raises(routines.RoutineNotFoundError),
+    ):
+        await experts_db.enable_routine(
+            other_user.id, None, mine.id, prompt="Mine now."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_one_shot_gets_a_row_and_exactly_one_job(
+    server: SpinTestServer, test_user
+):
+    """ "Check the deploy at six" is a row like anything else, so it can be
+    listed, reworded and cancelled — and later counted."""
+    run_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check whether the deploy finished.",
+        run_at=run_at,
+    )
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        enabled = await experts_db.enable_routine(test_user.id, None, created.id)
+
+    assert enabled.crons == []
+    assert enabled.run_at is not None
+    assert enabled.enabled is True
+    assert len(scheduler.add_copilot_turn_schedule.await_args_list) == 1
+    call = scheduler.add_copilot_turn_schedule.await_args.kwargs
+    assert call["cron"] is None
+    assert call["run_at"] is not None
+    assert call["routine_id"] == created.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_spent_one_shot_stops_reading_as_scheduled(
+    server: SpinTestServer, test_user
+):
+    """APScheduler drops the job once it fires. The row outlives it on purpose,
+    so something has to say it has run — otherwise it goes on describing itself
+    as scheduled for a time that has passed."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check it.",
+        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.record_routine_fired(created.id)
+
+    after = await experts_db.list_routines(test_user.id)
+    assert after[0].enabled is False
+    assert after[0].run_at is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_firing_a_recurring_routine_does_not_spend_it(
+    server: SpinTestServer, test_user
+):
+    """A cadence's next run is the point of it; only a one-shot is spent."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Weekly", prompt="Weekly.", crons=["H 8 * * 1"]
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.record_routine_fired(created.id)
+
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_re_arming_a_one_shot_at_a_time_that_has_passed_is_refused(
+    server: SpinTestServer, test_user
+):
+    """Firing immediately and never firing are both plausible readings of a
+    past time, and neither is what the owner asked for."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check it.",
+        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+    with (
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
+        pytest.raises(ValueError),
+    ):
+        await experts_db.enable_routine(
+            test_user.id,
+            None,
+            created.id,
+            run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_runs_on_a_cadence_or_at_a_time_but_not_both(
+    server: SpinTestServer, test_user
+):
+    with pytest.raises(ValueError):
+        await experts_db.create_routine(
+            test_user.id,
+            None,
+            title="Both",
+            prompt="Both.",
+            crons=["H 8 * * 1"],
+            run_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    with pytest.raises(ValueError):
+        await experts_db.create_routine(
+            test_user.id, None, title="Neither", prompt="Neither."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_losing_its_last_job_switches_a_routine_off(
+    server: SpinTestServer, test_user
+):
+    """The fire path removes a job whose chat is gone. A row left saying it is
+    on with nothing behind it is the one state the owner cannot act on: the UI
+    offers to switch off something that is already not running."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Pinned somewhere deleted",
+        prompt="Read it.",
+        crons=["H 8 * * 1", "H 13 * * 1"],
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+    row = await prisma.models.ExpertRoutine.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert row is not None
+    first, second = row.scheduleIds
+
+    await experts_db.mark_routine_unscheduled(created.id, first)
+    # One fire time lost out of two is still a running routine.
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+    await experts_db.mark_routine_unscheduled(created.id, second)
+    after = await experts_db.list_routines(test_user.id)
+    assert after[0].enabled is False
+    assert (
+        await prisma.models.ExpertRoutine.prisma().find_unique(where={"id": created.id})
+    ).scheduleIds == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unknown_schedule_id_leaves_the_routine_alone(
+    server: SpinTestServer, test_user
+):
+    """The cleanup is keyed on a job the row actually holds, so a stale or
+    replayed call cannot switch off a routine that is running fine."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Fine", prompt="Fine.", crons=["H 8 * * 1"]
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.mark_routine_unscheduled(created.id, "some-other-job")
+
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_changing_a_running_routines_cadence_retires_the_old_jobs(
+    server: SpinTestServer, test_user
+):
+    """Editing in place is the point of the row — the routine keeps its thread
+    and its history. But the jobs behind it are replaced, and an old one left
+    armed would go on firing the cadence the owner just changed away from,
+    forever, with the row insisting it runs at the new time."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Morning", prompt="Read it.", crons=["H 8 * * 1"]
+    )
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+        first = (
+            await prisma.models.ExpertRoutine.prisma().find_unique(
+                where={"id": created.id}
+            )
+        ).scheduleIds
+        await experts_db.enable_routine(
+            test_user.id, None, created.id, crons=["H 17 * * 5"]
+        )
+
+    deleted = {c.args[0] for c in scheduler.delete_schedule.await_args_list}
+    assert set(first) <= deleted
+    after = await prisma.models.ExpertRoutine.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert after is not None
+    assert not set(after.scheduleIds) & set(first)
+    assert after.crons[0].endswith(" 17 * * 5")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_switched_off_can_be_switched_back_on(
+    server: SpinTestServer, test_user
+):
+    """The asks are answered once and the answers live in the row. Reading only
+    the current call meant a routine that was set up, run, and switched off
+    could never run again: its questions are still listed, and there is no way
+    to answer them a second time."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            installed[0].id,
+            prompt="Read the support queue.",
+        )
+        await experts_db.disable_routine(test_user.id, hired.expert.id, installed[0].id)
+        again = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, installed[0].id
+        )
+
+    assert again.enabled is True
+    # And it comes back as what the owner set up, not as the template's draft.
+    assert again.prompt == "Read the support queue."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_proposal_nobody_answered_still_refuses(
+    server: SpinTestServer, test_user
+):
+    """The other half: relaxing the check must not let an untouched template
+    routine schedule itself against guesses."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)

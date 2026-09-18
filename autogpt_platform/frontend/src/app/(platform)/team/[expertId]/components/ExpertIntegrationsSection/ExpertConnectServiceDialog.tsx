@@ -121,7 +121,7 @@ export function ExpertConnectServiceDialog({
                       onSelectMethod={setSelectedMethod}
                       apiKeyForm={apiKeyForm}
                       onApiKeySubmit={handleApiKeySubmit}
-                      onDeviceAuthSuccess={handleSuccess}
+                      onInlineConnectSuccess={handleSuccess}
                     />
                   </motion.div>
                 ) : (

@@ -65,15 +65,21 @@ from backend.api.features.experts.models import (
     decode_day_one,
     decode_voice_preferences,
 )
+from backend.api.features.experts.routine_jobs import (
+    mark_routine_unscheduled as mark_routine_unscheduled,
+)
+from backend.api.features.experts.routine_jobs import (
+    record_routine_fired as record_routine_fired,
+)
+from backend.api.features.experts.routine_jobs import (
+    record_routine_thread as record_routine_thread,
+)
 from backend.api.features.experts.routines import create_routine as create_routine
 from backend.api.features.experts.routines import disable_routine as disable_routine
 from backend.api.features.experts.routines import enable_routine as enable_routine
 from backend.api.features.experts.routines import get_routine as get_routine
 from backend.api.features.experts.routines import install_routines
 from backend.api.features.experts.routines import list_routines as list_routines
-from backend.api.features.experts.routines import (
-    record_routine_thread as record_routine_thread,
-)
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -462,7 +468,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     return await query_raw_with_schema(
         """
         SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
-               "isArchived" AS "is_archived"
+               "jobTitle" AS "job_title", "isArchived" AS "is_archived"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -1106,6 +1112,7 @@ async def create_raised_expert(
     role: str | None,
     voice_preferences: str | None,
     *,
+    job_title: str | None = None,
     avatar_url: str | None = None,
     color: str | None = None,
     tagline: str | None = None,
@@ -1127,6 +1134,7 @@ async def create_raised_expert(
         name,
         role,
         voice_preferences,
+        job_title=job_title,
         avatar_url=avatar_url,
         color=color,
         tagline=tagline,
@@ -1211,6 +1219,7 @@ async def _create_raised_expert_row(
     role: str | None,
     voice_preferences: str | None,
     *,
+    job_title: str | None = None,
     avatar_url: str | None,
     color: str | None,
     tagline: str | None = None,
@@ -1238,6 +1247,7 @@ async def _create_raised_expert_row(
                 "avatarUrl": avatar_url,
                 "color": color or "",
                 "role": role or "",
+                "jobTitle": job_title,
                 "tagline": tagline,
                 "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",

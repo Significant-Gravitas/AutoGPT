@@ -41,7 +41,11 @@ from backend.data.model import (
     NodeExecutionStats,
     OAuth2Credentials,
 )
-from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.rabbitmq import (
+    SyncRabbitMQ,
+    declare_broadcast_queue,
+    start_shared_queue_reaper,
+)
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
@@ -96,10 +100,11 @@ from .cluster_lock import ClusterLock
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
+    LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -1656,12 +1661,25 @@ class ExecutionManager(AppProcess):
             self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        # It is also declared before the reaper runs, because this exchange is
+        # auto-delete and losing its last binding would drop the exchange.
+        cancel_queue_name = declare_broadcast_queue(
+            cancel_channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, self.executor_id
+        )
+        start_shared_queue_reaper(
+            cancel_channel, LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME
+        )
         cancel_channel.basic_consume(
-            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
+        logger.info(
+            f"[{self.service_name}] ⏳ Starting cancel message consumer "
+            f"on {cancel_queue_name}..."
+        )
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_graph_runs:
             raise RuntimeError(

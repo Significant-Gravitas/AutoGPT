@@ -120,8 +120,8 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"ever acts when asked is half a colleague: when you notice something "
         f"in your own area that would be worth doing every week, or every "
         f"weekday morning, say so and offer to take it on. "
-        f"`list_expert_routines` shows any you already came with, and "
-        f"`set_expert_routine` both switches one on and sets up a new one you "
+        f"`list_routines` shows any you already came with, and "
+        f"`schedule_routine` both switches one on and sets up a new one you "
         f"and the user agreed on — you are not limited to the routines you "
         f"arrived with, and an expert that arrived with none can still build "
         f"its own. Offer only work inside your role as "
@@ -141,7 +141,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"question and option on that card must be about your own role as "
         f"{escape_prompt_xml_tags(expert.role)} and the workflows installed "
         f"on you: never about a teammate's area or work outside your role, "
-        f"whatever other context suggests. If <expert_routines> lists any "
+        f"whatever other context suggests. If <routines> lists any "
         f"standing work, spend one of those questions on which of it to take "
         f"on — it is the one moment the user is deciding how you will work, "
         f"and a routine offered later has already missed it. Once the card's "
@@ -234,7 +234,16 @@ async def build_expert_context(
                 delegation_enabled=delegation_enabled,
                 include_teammates=include_teammates,
             )
-        return await _team_context(user_id, delegation_enabled=delegation_enabled)
+        team = await _team_context(user_id, delegation_enabled=delegation_enabled)
+        if not delegation_enabled:
+            # ``expert_resources`` is hidden without the flag, and naming a
+            # tool the turn cannot execute is worse than saying nothing.
+            return team
+        return (
+            team
+            + render_account_standing_work_block()
+            + await _routines_block(user_id, None)
+        )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
         return ""
@@ -274,13 +283,35 @@ async def _expert_session_context(
         return ""
     return (
         render_expert_workflows_block(expert)
-        + await _expert_routines_block(user_id, expert_id)
-        + _expert_computer_block()
+        + await _routines_block(user_id, expert_id)
+        + render_expert_computer_block()
         + teammates
     )
 
 
-async def _expert_routines_block(user_id: str, expert_id: str) -> str:
+def render_account_standing_work_block() -> str:
+    """Tell Otto that standing work is a thing it owns, not only experts.
+
+    Without this the model reaches for ``schedule_followup``, because that is
+    the only scheduling primitive its prompt has ever named — and a weekly job
+    pinned to whatever chat the user happened to be in is what that produces.
+    It is right for a deferral and wrong for everything that repeats, and the
+    difference is invisible at the moment of choosing.
+    """
+    return (
+        "<standing_work>\n"
+        "Work that repeats, or that the user will want to find and change "
+        "later, belongs in a routine: `schedule_routine` leaves a named record "
+        "they can switch off, and gives recurring work its own thread so each "
+        "run remembers the last. `list_routines` shows what you hold. Offer "
+        "one when you notice work repeating, rather than waiting to be asked "
+        "twice, and never say a routine is running before the call that "
+        "schedules it has returned — an unkept cadence is silent.\n"
+        "</standing_work>\n\n"
+    )
+
+
+async def _routines_block(user_id: str, expert_id: str | None) -> str:
     """The standing work this expert offers, and what is actually running.
 
     Without this the model has no idea its own routines exist, so it never
@@ -296,25 +327,46 @@ async def _expert_routines_block(user_id: str, expert_id: str) -> str:
     if not routines:
         return ""
     lines = "\n".join(_routine_line(routine) for routine in routines)
+    # Only a proposal somebody else wrote needs resolving before it runs. Said
+    # about the user's own words it would be nonsense — and worse, it would
+    # send the model back to re-ask questions they have already answered.
+    proposal_rule = (
+        (
+            "The routines marked (proposal) are offers, not plans: their "
+            "wording is a draft written for everybody, so before switching one "
+            "on, answer its open questions with the user, rewrite it in their "
+            "terms, and show them the result. Routines without that mark are "
+            "already the user's own words — do not re-ask them. A routine "
+            "reaches none of their connected accounts unless they say it "
+            "should, so if the work needs one, ask for that specifically "
+            "rather than assuming it.\n"
+        )
+        if any(r.source == "TEMPLATE" for r in routines)
+        else ""
+    )
     return (
-        f"<expert_routines>\n"
-        f"Standing work you can do unattended. Each runs as a turn of yours on "
-        f"a schedule, in the user's timezone. Switch one on with "
-        f"`set_expert_routine` — never silently, always after the user has "
+        f"<routines>\n"
+        f"Standing work you can do unattended. Each runs as a turn of yours at "
+        f"its own time, in the user's timezone. Switch one on with "
+        f"`schedule_routine` — never silently, always after the user has "
         f"chosen it:\n"
         f"{lines}\n"
-        f"An OFF routine is an offer, not a plan: the wording above is a draft "
-        f"written for everybody, so before switching one on, answer its open "
-        f"questions with the user, rewrite it in their terms, and show them "
-        f"the result. A routine reaches none of their connected accounts "
-        f"unless they say it should, so if the work needs one, ask for that "
-        f"specifically rather than assuming it.\n"
-        f"</expert_routines>\n\n"
+        f"{proposal_rule}"
+        f"</routines>\n\n"
     )
 
 
 def _routine_line(routine: ExpertRoutineModel) -> str:
     title = escape_prompt_xml_tags(routine.title)
+    when = (
+        ", ".join(routine.crons)
+        if routine.crons
+        else (
+            f"once at {routine.run_at:%Y-%m-%d %H:%M} UTC"
+            if routine.run_at
+            else "no time set"
+        )
+    )
     if not routine.enabled:
         asks = (
             " — still needs answered: "
@@ -322,11 +374,16 @@ def _routine_line(routine: ExpertRoutineModel) -> str:
             if routine.asks
             else ""
         )
-        return f"- {title} (id: {routine.id}) — OFF, suggested {', '.join(routine.crons)}{asks}"
+        # Marked per row rather than described once for the list: an expert can
+        # hold a template's proposals and the owner's own routines at the same
+        # time, and one blanket rule about drafts sends the model back to
+        # re-ask questions the user already answered.
+        proposal = " (proposal)" if routine.source == "TEMPLATE" else ""
+        return f"- {title} (id: {routine.id}) — OFF{proposal}, suggested {when}{asks}"
     reach = (
         "may use connected accounts" if routine.grants_credentials else "platform-only"
     )
-    return f"- {title} (id: {routine.id}) — ON, {', '.join(routine.crons)}, {reach}"
+    return f"- {title} (id: {routine.id}) — ON, {when}, {reach}"
 
 
 def render_expert_workflows_block(expert: Expert) -> str:
@@ -360,7 +417,7 @@ def render_expert_workflows_block(expert: Expert) -> str:
     )
 
 
-def _expert_computer_block() -> str:
+def render_expert_computer_block() -> str:
     """Tell an expert about its own machine — only when E2B actually backs it.
 
     Lives in the first user message with the other expert blocks so the

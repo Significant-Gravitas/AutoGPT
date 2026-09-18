@@ -815,16 +815,19 @@ def _make_simple_block(
 
 
 def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
+    # ``prepare_block_execution`` imports these from ``block_meta`` inside the
+    # function, so the source module is the patch target.  They were read from
+    # ``tools.find_block`` until that module went; ``create=True`` meant the
+    # patch kept "working" against a name that was no longer there, and the
+    # exclusions under test silently stopped being exercised.
     return (
         patch(
-            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_IDS",
+            "backend.copilot.capabilities.block_meta.COPILOT_EXCLUDED_BLOCK_IDS",
             new=block_ids or set(),
-            create=True,
         ),
         patch(
-            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_TYPES",
+            "backend.copilot.capabilities.block_meta.COPILOT_EXCLUDED_BLOCK_TYPES",
             new=block_types or set(),
-            create=True,
         ),
     )
 
@@ -1222,7 +1225,7 @@ async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
     excl_ids, excl_types = _patch_excluded()
     captured: list[dict] = []
 
-    async def _capture_resolve(user_id, block, input_data, expert_id=None):
+    async def _capture_resolve(user_id, block, input_data, expert_id=None, **_):
         captured.append(dict(input_data))
         return {}, []
 

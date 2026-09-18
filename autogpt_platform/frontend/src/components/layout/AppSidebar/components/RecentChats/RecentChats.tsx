@@ -113,7 +113,11 @@ export function RecentChats() {
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
                   label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
-                  role={group.expertId ? expert?.role : "Head of AI"}
+                  role={
+                    group.expertId
+                      ? expert?.jobTitle || expert?.role
+                      : "Head of AI"
+                  }
                   avatarUrl={expert?.avatarUrl ?? null}
                   color={expert?.color ?? null}
                   newChatHref={getNewChatHref(group.expertId, activeExpertIds)}

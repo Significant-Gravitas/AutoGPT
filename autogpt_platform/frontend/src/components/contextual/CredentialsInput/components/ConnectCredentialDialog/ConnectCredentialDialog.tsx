@@ -9,6 +9,8 @@ import {
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { getConnectableCredentialTypes } from "@/hooks/useCredentials";
+import { getDiscriminatorValue } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
+import { getHostFromUrl } from "@/lib/utils/url";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 import { useState } from "react";
@@ -24,6 +26,9 @@ interface Props {
   schema: BlockIOCredentialsSubSchema;
   provider: string;
   displayName: string;
+  /** The requesting node's other inputs, which carry the URL a host-scoped
+   *  credential is for. */
+  siblingInputs?: Record<string, unknown>;
   /** Existing account to upgrade in place rather than signing in afresh. */
   credentialID?: string;
   /** Accounts to offer before the connect methods. With none, or once the
@@ -45,6 +50,7 @@ export function ConnectCredentialDialog({
   schema,
   provider,
   displayName,
+  siblingInputs,
   credentialID,
   existing,
   open,
@@ -75,7 +81,12 @@ export function ConnectCredentialDialog({
 
   const offered = existing?.credentials ?? [];
   const showExisting = offered.length > 0 && !addingNew;
-  const chosen = offered.find((c) => c.id === chosenId) ?? offered[0];
+  const isChoosing = existing?.purpose === "choose";
+  // Handing an expert one of several accounts defaults to the first; choosing
+  // which of your own accounts to run on starts with none picked.
+  const chosen =
+    offered.find((c) => c.id === chosenId) ??
+    (isChoosing ? undefined : offered[0]);
 
   function resetAll() {
     reset();
@@ -96,9 +107,9 @@ export function ConnectCredentialDialog({
     onClose();
   }
 
-  // Device auth completes inside ConnectMethodView, bypassing the hook, so
-  // this is the only place its reset can happen.
-  function handleDeviceAuthSuccess(credential?: CredentialsMetaResponse) {
+  // The self-submitting methods complete inside ConnectMethodView, bypassing
+  // the hook, so this is the only place their reset can happen.
+  function handleInlineConnectSuccess(credential?: CredentialsMetaResponse) {
     reset();
     handleConnected(credential);
   }
@@ -107,6 +118,13 @@ export function ConnectCredentialDialog({
     if (!existing || !chosen) return;
     if (await existing.onUse(chosen)) handleClose();
   }
+
+  // The block that wants the credential names the URL it will call, either
+  // as a sibling input or, for a saved graph, in the schema's discriminator.
+  const discriminatorUrl = getDiscriminatorValue(siblingInputs ?? {}, schema);
+  const hostScopedHost = discriminatorUrl
+    ? (getHostFromUrl(discriminatorUrl) ?? undefined)
+    : undefined;
 
   const connectable: ConnectableProvider = {
     id: provider,
@@ -129,13 +147,14 @@ export function ConnectCredentialDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-5 pb-2">
-          {showExisting && chosen ? (
+          {showExisting ? (
             <ExistingCredentialsView
               provider={provider}
               displayName={displayName}
               credentials={offered}
-              selectedId={chosen.id}
+              selectedId={chosen?.id ?? null}
               onSelect={setChosenId}
+              purpose={existing?.purpose}
             />
           ) : (
             <ConnectMethodView
@@ -144,7 +163,8 @@ export function ConnectCredentialDialog({
               onSelectMethod={setSelectedMethod}
               apiKeyForm={apiKeyForm}
               onApiKeySubmit={handleApiKeySubmit}
-              onDeviceAuthSuccess={handleDeviceAuthSuccess}
+              hostScopedHost={hostScopedHost}
+              onInlineConnectSuccess={handleInlineConnectSuccess}
             />
           )}
           {showExisting && existing?.error && (
@@ -170,9 +190,14 @@ export function ConnectCredentialDialog({
                   variant="primary"
                   size="small"
                   loading={existing?.isPending}
+                  disabled={!chosen}
                   onClick={handleUseExisting}
                 >
-                  {existing?.isPending ? "Granting…" : "Use existing"}
+                  {existing?.isPending
+                    ? "Granting…"
+                    : isChoosing
+                      ? "Use this account"
+                      : "Use existing"}
                 </Button>
               </>
             ) : (
