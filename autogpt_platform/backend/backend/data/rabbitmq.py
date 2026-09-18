@@ -339,6 +339,7 @@ class AsyncRabbitMQ(RabbitMQBase):
         message: str,
         exchange: Optional[Exchange] = None,
         persistent: bool = True,
+        expiration_seconds: Optional[float] = None,
     ) -> None:
         channel = await self._ensure_channel()
 
@@ -355,6 +356,9 @@ class AsyncRabbitMQ(RabbitMQBase):
                     if persistent
                     else aio_pika.DeliveryMode.NOT_PERSISTENT
                 ),
+                # Per-message TTL: the broker drops it from any queue it is
+                # still sitting in this long after publication.
+                expiration=expiration_seconds,
             ),
             routing_key=routing_key,
         )
@@ -366,16 +370,21 @@ class AsyncRabbitMQ(RabbitMQBase):
         message: str,
         exchange: Optional[Exchange] = None,
         persistent: bool = True,
+        expiration_seconds: Optional[float] = None,
     ) -> None:
         try:
-            await self._publish_once(routing_key, message, exchange, persistent)
+            await self._publish_once(
+                routing_key, message, exchange, persistent, expiration_seconds
+            )
         except aio_pika.exceptions.ChannelInvalidStateError:
             logger.warning(
                 "RabbitMQ channel invalid, forcing reconnect and retrying publish"
             )
             async with self._lock:
                 self._channel = None
-            await self._publish_once(routing_key, message, exchange, persistent)
+            await self._publish_once(
+                routing_key, message, exchange, persistent, expiration_seconds
+            )
 
     async def get_channel(self) -> aio_pika.abc.AbstractChannel:
         return await self._ensure_channel()

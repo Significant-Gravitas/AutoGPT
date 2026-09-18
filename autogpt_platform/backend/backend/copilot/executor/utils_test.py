@@ -8,16 +8,16 @@ import pytest
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
     COPILOT_CANCEL_EXCHANGE,
+    COPILOT_CANCEL_TTL_SECONDS,
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
     COPILOT_EXECUTION_ROUTING_KEY,
-    LEGACY_COPILOT_CANCEL_QUEUE_NAME,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
-    unbind_legacy_cancel_queue,
+    enqueue_cancel_task,
 )
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -170,25 +170,19 @@ class TestDeclarePodCancelQueue:
         assert len(names) == 3
 
 
-class TestUnbindLegacyCancelQueue:
-    def test_unbinds_on_a_scratch_channel(self):
-        channel = MagicMock()
-        scratch = channel.connection.channel.return_value
-        assert unbind_legacy_cancel_queue(channel) is True
-        scratch.queue_unbind.assert_called_once_with(
-            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME,
-            exchange=COPILOT_CANCEL_EXCHANGE.name,
-            routing_key="",
-        )
-        scratch.close.assert_called_once()
-        channel.queue_unbind.assert_not_called()
+class TestEnqueueCancelTask:
+    async def test_cancels_carry_a_ttl_so_an_undrained_queue_cannot_grow(self) -> None:
+        """Without it, a queue nobody consumes keeps every cancel forever."""
+        client = AsyncMock()
+        with patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=client),
+        ):
+            await enqueue_cancel_task("session-1")
 
-    def test_a_broker_error_is_swallowed_and_the_channel_closed(self):
-        channel = MagicMock()
-        scratch = channel.connection.channel.return_value
-        scratch.queue_unbind.side_effect = RuntimeError("NOT_FOUND")
-        assert unbind_legacy_cancel_queue(channel) is False
-        scratch.close.assert_called_once()
+        kwargs = client.publish_message.call_args.kwargs
+        assert kwargs["exchange"] is COPILOT_CANCEL_EXCHANGE
+        assert kwargs["expiration_seconds"] == COPILOT_CANCEL_TTL_SECONDS
 
 
 class TestCoPilotLogMetadata:

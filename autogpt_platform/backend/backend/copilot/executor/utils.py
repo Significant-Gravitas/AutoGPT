@@ -106,11 +106,21 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-# Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
-# pod, so RabbitMQ round-robined each cancel to a single arbitrary pod. Kept only
-# so a deploy can unbind it; nothing declares or consumes it any more.
+# Pre-2026-09 topology: one durable queue bound to the fanout and consumed by
+# every pod, so RabbitMQ round-robined each cancel to a single arbitrary pod.
+# Old-image pods keep draining it through a rollout; the reaper below deletes it
+# once none is left, so no operator step is needed on any install.
 LEGACY_COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
 COPILOT_CANCEL_QUEUE_PREFIX = "copilot_cancel.pod"
+
+# Per-message TTL, so a queue nobody drains holds at most a minute of cancels.
+# The API stops waiting for one after 5s, so a later delivery has nobody left to
+# help (``mark_session_completed`` in backend/api/features/chat/routes.py).
+COPILOT_CANCEL_TTL_SECONDS = 60
+
+# Only waits for the last old-image pod to drain, which is a rollout-scale
+# event; costs one passive declare per pod per interval.
+LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS = 5 * 60
 
 
 def get_session_lock_key(session_id: str) -> str:
@@ -200,28 +210,48 @@ def declare_pod_cancel_queue(channel: "BlockingChannel", executor_id: str) -> st
     return queue_name
 
 
-def unbind_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
-    """Detach the old fleet-wide cancel queue from the fanout, if still bound.
+def start_legacy_cancel_queue_reaper(channel: "BlockingChannel") -> None:
+    """Delete the retired fleet-wide cancel queue once no pod is draining it.
 
-    Nothing consumes it once every pod runs this code, so leaving it bound
-    would accumulate every cancel forever. Runs on its own channel because a
-    broker error (404 when the queue is already gone) closes the channel it
-    arrives on, and the caller's channel is about to carry the consumer.
+    Runs now and every few minutes after, on the consumer's own connection:
+    a pika ``BlockingConnection`` is not thread-safe, and ``call_later`` fires
+    from inside ``start_consuming``. An old-image pod that reconnects declares
+    that queue again, so the pass repeats for as long as this consumer lives.
+    """
+    reap_legacy_cancel_queue(channel)
+    try:
+        channel.connection.call_later(
+            LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS,
+            lambda: start_legacy_cancel_queue_reaper(channel),
+        )
+    except Exception as e:
+        logger.debug(f"Legacy cancel queue reaper not re-armed: {e}")
+
+
+def reap_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
+    """Delete the legacy cancel queue if it exists and nothing consumes it.
+
+    The consumer count is the rollout gate: while an old-image pod still drains
+    that queue, deleting it would take its cancels away. Runs on a scratch
+    channel because a 404 from the passive declare closes the channel it
+    arrives on, and the caller's is carrying the consumer.
     """
     try:
         scratch = channel.connection.channel()
     except Exception:
-        logger.warning("Could not open a channel to unbind the legacy cancel queue")
+        logger.warning("Could not open a channel to reap the legacy cancel queue")
         return False
     try:
-        scratch.queue_unbind(
-            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME,
-            exchange=COPILOT_CANCEL_EXCHANGE.name,
-            routing_key="",
-        )
+        queue = scratch.queue_declare(
+            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME, passive=True
+        ).method
+        if queue.consumer_count:
+            return False
+        scratch.queue_delete(queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME)
+        logger.info(f"Deleted retired queue {LEGACY_COPILOT_CANCEL_QUEUE_NAME}")
         return True
     except Exception as e:
-        logger.info(f"Legacy cancel queue already unbound or absent: {e}")
+        logger.debug(f"{LEGACY_COPILOT_CANCEL_QUEUE_NAME} not reaped: {e}")
         return False
     finally:
         if scratch.is_open:
@@ -749,4 +779,5 @@ async def enqueue_cancel_task(session_id: str) -> None:
         routing_key="",  # FANOUT ignores routing key
         message=event.model_dump_json(),
         exchange=COPILOT_CANCEL_EXCHANGE,
+        expiration_seconds=COPILOT_CANCEL_TTL_SECONDS,
     )

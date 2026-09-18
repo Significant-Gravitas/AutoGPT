@@ -11,11 +11,14 @@ from uuid import uuid4
 
 import pytest
 
+from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_EXCHANGE,
     CancelCoPilotEvent,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
     enqueue_cancel_task,
+    reap_legacy_cancel_queue,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.util.settings import Settings
@@ -74,6 +77,64 @@ async def test_a_cancel_reaches_every_pod_not_just_one() -> None:
         f"{seen.count(True)} of {len(pods)} pods received the cancel; "
         "a fanout bound to one shared queue delivers to exactly one consumer"
     )
+
+
+@rabbit_only
+async def test_the_retired_queue_is_reaped_only_once_nothing_drains_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retired fleet-wide queue goes away on its own, with no operator step.
+
+    Deleting it while an old-image pod is still draining it would take that
+    pod's cancels away, so the consumer count is the gate. Runs against a
+    scratch name: the reaper deletes whatever ``LEGACY_...`` points at.
+    """
+    legacy = f"copilot_cancel_queue_v2_test_{uuid4().hex[:8]}"
+    monkeypatch.setattr(utils, "LEGACY_COPILOT_CANCEL_QUEUE_NAME", legacy)
+
+    new_pod = SyncRabbitMQ(create_copilot_queue_config())
+    old_pod = SyncRabbitMQ(create_copilot_queue_config())
+    try:
+        new_pod.connect()
+        old_pod.connect()
+        declare_pod_cancel_queue(new_pod.get_channel(), "new-pod")
+
+        old_channel = old_pod.get_channel()
+        old_channel.queue_declare(
+            queue=legacy, durable=True, arguments={"x-queue-type": "quorum"}
+        )
+        # bound the way declare_infrastructure binds it: `routing_key or name`
+        old_channel.queue_bind(
+            queue=legacy, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=legacy
+        )
+        old_channel.basic_consume(
+            queue=legacy, on_message_callback=lambda *_: None, auto_ack=True
+        )
+        old_channel.connection.process_data_events(time_limit=1)
+
+        assert reap_legacy_cancel_queue(new_pod.get_channel()) is False
+        assert _queue_exists(new_pod, legacy), "reaped a queue an old pod still drains"
+
+        old_pod.disconnect()  # the last old-image pod finishes draining and goes
+
+        assert reap_legacy_cancel_queue(new_pod.get_channel()) is True
+        assert not _queue_exists(new_pod, legacy)
+    finally:
+        for pod in (old_pod, new_pod):
+            pod.disconnect()
+
+
+def _queue_exists(pod: SyncRabbitMQ, queue_name: str) -> bool:
+    """Ask the broker, on a scratch channel: a 404 closes the channel it hits."""
+    scratch = pod.get_channel().connection.channel()
+    try:
+        scratch.queue_declare(queue=queue_name, passive=True)
+        return True
+    except Exception:  # noqa: BLE001 - 404 is the answer we are after
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 def _saw_cancel(pod: SyncRabbitMQ, queue_name: str, session_id: str) -> bool:
