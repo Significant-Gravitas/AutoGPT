@@ -324,6 +324,28 @@ def test_fugu_ultra_v2_bills_at_authored_rates():
     assert fugu_entry.supports_reasoning is True
 
 
+def test_mercury_2_5_bills_at_authored_rates():
+    """Inception Mercury 2.5 (OpenRouter, Inception list price $0.04/$0.15
+    per 1M, $0.004/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    mercury = LLMModel("inception/mercury-2.5")
+    assert MODEL_COST[mercury] == 1
+    assert TOKEN_COST[mercury].model_dump() == {
+        "input": 6.0,
+        "output": 22.5,
+        "cache_read": 0.6,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[mercury].max_output_tokens == 65536
+    mercury_entry = next(m for m in CATALOG.models if m.slug == "inception/mercury-2.5")
+    assert mercury_entry.price_tier == 1
+    assert mercury_entry.context_window == 260000
+    assert mercury_entry.supports_tools is True
+    assert mercury_entry.supports_json_output is True
+    assert mercury_entry.supports_reasoning is True
+    assert mercury_entry.supports_parallel_tool_calls is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { Key, storage } from "@/services/storage/local-storage";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
 
@@ -143,6 +144,18 @@ describe("ContextPanelToggle", () => {
     expect(panelState().activeArtifact).toEqual(ARTIFACT);
     expect(panelState().isComputerOpen).toBe(false);
     expect(panelState().mode).toBe("artifact");
+  });
+
+  test("a panel the computer opened is stored as open once turned to the library", () => {
+    storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+    setPanel({ isOpen: false, activeTab: "artifacts" });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().isOpen).toBe(true);
+    expect(storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN)).toBe("true");
   });
 
   test("sidebar toggle turns the computer face to the library when nothing is under it", () => {

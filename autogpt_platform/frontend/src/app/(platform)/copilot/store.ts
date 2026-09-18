@@ -229,8 +229,12 @@ interface CopilotUIState {
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
-  /** Remember the chat's desktop stream and show it if nothing else is open. */
-  registerComputerStream: (ref: DesktopStreamRef) => void;
+  /** Remember the chat's desktop stream and show it if nothing else is open.
+   *  `show: false` only remembers it (mobile has no computer face to open). */
+  registerComputerStream: (
+    ref: DesktopStreamRef,
+    opts?: { show?: boolean },
+  ) => void;
   /** Open the side panel on its computer face. */
   openComputer: () => void;
   /** Leave the computer face for whatever was under it: the preview, the
@@ -445,12 +449,19 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         isComputerOpen: false,
       },
     })),
-  registerComputerStream: (ref) =>
+  registerComputerStream: (ref, opts) =>
     set((state) => {
-      const { activeArtifact, isComputerOpen, isOpen } = state.artifactPanel;
+      const { activeArtifact, isComputerOpen, isOpen, computer } =
+        state.artifactPanel;
       // A desktop the model just started is the thing to look at: show it
-      // unless an artifact preview is already holding the panel.
-      const showNow = activeArtifact == null || isComputerOpen;
+      // unless an artifact preview is already holding the panel. A desktop
+      // already registered is not news: its card remounts whenever the
+      // streaming chain collapses and re-expands its rows, and that must not
+      // reopen a computer the user has hidden.
+      const isNews = computer?.sandbox_id !== ref.sandbox_id;
+      const showNow =
+        opts?.show !== false &&
+        (isComputerOpen || (isNews && activeArtifact == null));
       if (showNow && !isComputerOpen) _computerOverClosedPanel = !isOpen;
       return {
         artifactPanel: {
@@ -496,15 +507,22 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       };
     }),
   setArtifactPanelMode: (mode) =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        mode,
-        // Switching to the artifact face closes the computer face, so a
-        // later registerComputerStream does not flip the panel back.
-        isComputerOpen: mode === "computer",
-      },
-    })),
+    set((state) => {
+      // openComputer persists nothing (a reload cannot restore the computer
+      // face), so a panel it opened is still stored as closed. Turned to its
+      // document face it is an ordinary open panel and must survive a reload.
+      if (isClient && mode === "artifact" && state.artifactPanel.isOpen)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          mode,
+          // Switching to the artifact face closes the computer face, so a
+          // later registerComputerStream does not flip the panel back.
+          isComputerOpen: mode === "computer",
+        },
+      };
+    }),
   goBackArtifact: () =>
     set((state) => {
       const { history } = state.artifactPanel;
