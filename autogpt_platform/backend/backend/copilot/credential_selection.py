@@ -35,9 +35,13 @@ async def remember_selection(session_id: str, selections: dict[str, str]) -> Non
     if not selections:
         return
     redis = await get_redis_async()
-    for provider, credential_id in selections.items():
-        await redis.hset(_key(session_id), provider, credential_id)
-    await redis.expire(_key(session_id), SELECTION_TTL)
+    # One transaction: a failure part way through must not leave half a pick,
+    # which later matching would apply as if it were the whole of it.
+    async with redis.pipeline(transaction=True) as pipe:
+        for provider, credential_id in selections.items():
+            pipe.hset(_key(session_id), provider, credential_id)
+        pipe.expire(_key(session_id), SELECTION_TTL)
+        await pipe.execute()
 
 
 async def selected_credentials(session_id: str | None) -> dict[str, str]:

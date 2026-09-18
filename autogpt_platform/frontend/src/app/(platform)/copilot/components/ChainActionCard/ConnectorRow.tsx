@@ -150,9 +150,11 @@ export function ConnectorRow({ row }: Props) {
     : filterSystemCredentials(
         allProviders?.[row.provider]?.savedCredentials ?? [],
       ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
-  const selectedStillFits =
-    Boolean(savedCredential) ||
-    pickable.some((credential) => credential.id === row.selected?.id);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
   const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
 
   async function pick(credential: Grantable): Promise<boolean> {

@@ -68,6 +68,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const sendingRef = useRef(false);
   const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
@@ -239,10 +240,19 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     void sendAfter(readyActions, message);
   }
 
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
   async function sendAfter(entries: ChainActionEntry[], message: string) {
-    await Promise.all(entries.map((entry) => entry.beforeSend?.()));
-    entries.forEach((entry) => entry.onSent?.());
-    sendReply(message);
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+      entries.forEach((entry) => entry.onSent?.());
+      sendReply(message);
+    } finally {
+      sendingRef.current = false;
+    }
   }
 
   return (

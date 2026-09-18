@@ -325,6 +325,15 @@ class TestRequiredScopes:
         assert token == "tok-newer"
         assert env["GH_TOKEN"] == "tok-newer"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_deleted_pick_yields_no_token_rather_than_another_account(self):
+        manager = self._manager([self.older, self.newer])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            token = await get_provider_token(
+                _USER, _PROVIDER, credential_id="deleted-id"
+            )
+        assert token is None
+
     def test_invalidation_drops_scoped_entries_too(self):
         scoped = (_USER, _PROVIDER, frozenset({"repo", "read:org"}))
         _token_cache[scoped] = "tok"

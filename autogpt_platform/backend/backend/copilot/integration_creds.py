@@ -217,8 +217,10 @@ async def get_provider_token(
         )
         return None
 
-    if picked := [c for c in creds_list if c.id == credential_id]:
-        creds_list = picked
+    if credential_id is not None:
+        # The user picked this one. If it is gone, that is "not connected",
+        # never a reason to hand the sandbox another account's token.
+        creds_list = [c for c in creds_list if c.id == credential_id]
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
     # Credentials covering the requested scopes come first, then ones with
