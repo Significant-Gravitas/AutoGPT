@@ -41,6 +41,12 @@ export default defineConfig({
               useInfiniteQueryParam: "page",
             },
           },
+          "getV2List marketplace skills": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
           "getV2List favorite library agents": {
             query: {
               useInfinite: true,

@@ -16,14 +16,17 @@ import {
 import { FindAgentsTool } from "../../../tools/FindAgents/FindAgents";
 import { FolderTool } from "../../../tools/FolderTool/FolderTool";
 import { FindBlocksTool } from "../../../tools/FindBlocks/FindBlocks";
+import { FindCapabilitiesTool } from "../../../tools/FindCapabilities/FindCapabilities";
 import { GenericTool } from "../../../tools/GenericTool/GenericTool";
 import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
+import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
+import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -232,8 +235,16 @@ export function MessagePartRenderer({
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
+    case "tool-expert_onboarding":
+      return <ExpertOnboardingCard key={key} part={part as ToolUIPart} />;
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
+    case "tool-find_capability":
+      return <FindCapabilitiesTool key={key} part={part as ToolUIPart} />;
+    case "tool-describe_capability":
+    case "tool-run_capability":
+    case "tool-resume_capability":
+      return <RunCapabilityTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":
     case "tool-find_library_agent":
       return <FindAgentsTool key={key} part={part as ToolUIPart} />;

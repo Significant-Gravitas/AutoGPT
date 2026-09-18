@@ -5,6 +5,8 @@ Service tokens ride the same JWKS trust as user tokens but with a distinct
 audience and subject; these tests pin the separation between the two planes.
 """
 
+import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -60,10 +62,10 @@ def create_es256_token(payload, private_key, kid: str = "test-key-1") -> str:
 
 @pytest.fixture
 def jwks_config(mocker: MockerFixture):
-    """Configure both the legacy shared secret and a JWKS endpoint."""
+    """Configure a JWKS endpoint serving a single ES256 signing key."""
     mocker.patch.dict(
         os.environ,
-        {"JWT_VERIFY_KEY": MOCK_JWT_SECRET, "JWT_JWKS_URL": MOCK_JWKS_URL},
+        {"JWT_JWKS_URL": MOCK_JWKS_URL},
         clear=True,
     )
     mocker.patch.object(config, "_settings", Settings())
@@ -121,6 +123,29 @@ def test_symmetric_service_token_is_rejected(jwks_config):
     response = _post(token)
     assert response.status_code == 401
     assert "symmetric" in response.json()["detail"]
+
+
+def _service_token_with_header(header: dict) -> str:
+    """Build a JWT with an arbitrary header; jwt.encode() always writes a
+    string `alg`, so malformed headers are assembled by hand. The signature is
+    garbage: these tokens must be rejected before verification."""
+    segments = [
+        json.dumps(header).encode(),
+        json.dumps(SERVICE_PAYLOAD).encode(),
+        b"not-a-signature",
+    ]
+    return ".".join(base64.urlsafe_b64encode(s).rstrip(b"=").decode() for s in segments)
+
+
+@pytest.mark.parametrize("alg", [None, 256], ids=["null-alg", "numeric-alg"])
+def test_non_string_algorithm_is_401_not_500(jwks_config, alg):
+    """A malformed `alg` header is an auth failure, not a server error.
+    TestClient re-raises server exceptions, so an AttributeError here would
+    fail the test rather than hide behind a 500."""
+    token = _service_token_with_header({"alg": alg, "kid": "test-key-1"})
+    response = _post(token)
+    assert response.status_code == 401
+    assert "signing algorithm" in response.json()["detail"]
 
 
 def test_expired_service_token_is_401(jwks_config):

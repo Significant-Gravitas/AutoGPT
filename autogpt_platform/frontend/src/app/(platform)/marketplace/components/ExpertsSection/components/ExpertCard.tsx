@@ -1,9 +1,7 @@
-import { Expert } from "@/app/api/__generated__/models/expert";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
@@ -15,7 +13,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  expert: Expert;
+  expert: ExpertTemplate;
   isHired: boolean;
 }
 
@@ -23,6 +21,7 @@ interface Props {
  *  shared and opened directly. */
 export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
+  const skills = expert.bundled_skills ?? [];
 
   return (
     <Link
@@ -36,52 +35,38 @@ export function ExpertCard({ expert, isHired }: Props) {
         )}
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
-        <div className="flex items-start justify-between gap-3">
-          <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
-            {expert.avatar_url ? (
-              <AvatarImage src={expert.avatar_url} alt={expert.name} />
-            ) : null}
-            <AvatarFallback>{expert.name}</AvatarFallback>
-          </Avatar>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
-              accent.pill,
-            )}
-          >
-            <Icon icon={accent.roleIcon} size={14} />
-            {expert.role}
-          </span>
-        </div>
+        <ExpertAvatar
+          name={expert.name}
+          avatarUrl={expert.avatar_url}
+          size={88}
+        />
 
         <div>
-          <div className="text-xl font-semibold tracking-[-0.01em] text-zinc-900">
-            {expert.name}
-          </div>
-          {expert.tagline ? (
-            <p className="mt-1.5 line-clamp-2 text-base leading-relaxed text-zinc-600">
-              {expert.tagline}
-            </p>
-          ) : null}
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+          />
+          <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
-        {expert.skills && expert.skills.length > 0 ? (
+        {skills.length > 0 ? (
           <div>
             <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
               Skills
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {expert.skills.slice(0, 3).map((skill) => (
+              {skills.slice(0, 3).map((skill) => (
                 <span
-                  key={skill}
+                  key={skill.id}
                   className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
                 >
-                  {skill}
+                  {skill.title}
                 </span>
               ))}
-              {expert.skills.length > 3 ? (
+              {skills.length > 3 ? (
                 <span className="px-1 py-1 text-xs font-medium text-zinc-400">
-                  +{expert.skills.length - 3}
+                  +{skills.length - 3}
                 </span>
               ) : null}
             </div>
@@ -89,18 +74,20 @@ export function ExpertCard({ expert, isHired }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-zinc-500">
-            <Icon icon={FlashIcon} size={18} className={accent.icon} />
-            {expert.workflows.length}{" "}
-            {expert.workflows.length === 1 ? "workflow" : "workflows"}
-          </span>
+          {expert.workflows.length > 0 ? (
+            <span className="flex items-center gap-2 text-base text-zinc-500">
+              <Icon icon={FlashIcon} size={18} className={accent.icon} />
+              {expert.workflows.length}{" "}
+              {expert.workflows.length === 1 ? "workflow" : "workflows"}
+            </span>
+          ) : null}
           {isHired ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
-              Hired
+              On your team
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               View
               <Icon
                 icon={ArrowRight02Icon}

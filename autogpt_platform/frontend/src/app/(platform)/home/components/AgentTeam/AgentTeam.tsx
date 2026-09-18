@@ -2,6 +2,7 @@ import { AiEraserIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { formatWeeklySpend } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
@@ -50,9 +51,16 @@ export function AgentTeam({ dashboard, className }: Props) {
       {team.total > 0 ? (
         <Link
           href="/team"
-          className="flex items-center justify-between border-t border-zinc-100 px-4 py-2 text-xs font-medium text-zinc-500 outline-none transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:bg-zinc-50"
+          className="group flex items-center justify-between border-t border-zinc-100 px-4 py-2 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
         >
-          View all {team.total} experts
+          <Text
+            variant="small-medium"
+            as="span"
+            tone="muted"
+            className="transition-colors group-hover:text-zinc-900"
+          >
+            View all {team.total} experts
+          </Text>
           <Icon icon={ArrowRight01Icon} size={14} aria-hidden="true" />
         </Link>
       ) : null}

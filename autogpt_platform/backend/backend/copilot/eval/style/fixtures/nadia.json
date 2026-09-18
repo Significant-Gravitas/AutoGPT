@@ -1,0 +1,150 @@
+{
+  "expert": "Nadia",
+  "workflows": [
+    {
+      "name": "Personal Newsletter",
+      "description": "Researches topics you choose and emails you a digest on a schedule."
+    },
+    {
+      "name": "YouTube Transcription Scraper",
+      "description": "Pulls transcripts from the most-watched videos on a topic."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "nadia-briefing-01",
+      "kind": "briefing",
+      "prompt": "Brief me on Loomly before my call tomorrow. We compete with them on the SMB end and I've never looked at them properly."
+    },
+    {
+      "id": "nadia-briefing-02",
+      "kind": "briefing",
+      "prompt": "Our win rate against one competitor dropped from 60% to 35% in two quarters. Nothing changed on our side that I know of. Where would you look first?"
+    },
+    {
+      "id": "nadia-briefing-03",
+      "kind": "briefing",
+      "prompt": "Give me a positioning read. We sell onboarding software, we're told we're 'easy to use', and we lose most deals to companies doing it in spreadsheets."
+    },
+    {
+      "id": "nadia-briefing-04",
+      "kind": "briefing",
+      "prompt": "Brief me for a board meeting: is the market moving toward us or away from us? We're in HR tooling for 20 to 200 person companies."
+    },
+    {
+      "id": "nadia-briefing-05",
+      "kind": "briefing",
+      "prompt": "A competitor just posted three enterprise AE roles and removed their free tier. What do you make of that and what should we do?"
+    },
+    {
+      "id": "nadia-briefing-06",
+      "kind": "briefing",
+      "prompt": "Define our ICP properly. Right now the sales team says 'HR leaders at mid-market companies' and I think that's why nothing we write lands."
+    },
+    {
+      "id": "nadia-reply-01",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to our CEO, who asked: \"Are we losing to Competitor X on price or on product?\" Here's what I know: we lose more deals under $10k ACV, and three of the last five losses mentioned setup time."
+    },
+    {
+      "id": "nadia-reply-02",
+      "kind": "reply_draft",
+      "prompt": "Sales asked for a battlecard against a competitor whose pricing page starts at $49/seat and who just acquired a smaller scheduling tool. Write the one-pager."
+    },
+    {
+      "id": "nadia-reply-03",
+      "kind": "reply_draft",
+      "prompt": "A customer emailed: \"We're evaluating switching to [competitor] because they have Workday integration. Do you?\" We don't, and it's not on the roadmap. Draft the reply."
+    },
+    {
+      "id": "nadia-reply-04",
+      "kind": "reply_draft",
+      "prompt": "Write the summary email to the exec team from this: a competitor's G2 reviews mention 'support response time' 23 times in the last 90 days, up from 4 in the prior 90."
+    },
+    {
+      "id": "nadia-reply-05",
+      "kind": "reply_draft",
+      "prompt": "Draft a Slack message to product. I found that two competitors shipped audit logs this quarter and we get asked for it in every deal over 100 seats."
+    },
+    {
+      "id": "nadia-reply-06",
+      "kind": "reply_draft",
+      "prompt": "Reply to a sales rep asking whether they should discount to beat a competitor who came in 30% under us on a 40-seat deal."
+    },
+    {
+      "id": "nadia-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Draft the note to our CEO explaining that the competitor teardown he asked for says we're behind on onboarding and he isn't going to like it."
+    },
+    {
+      "id": "nadia-reply-08",
+      "kind": "reply_draft",
+      "prompt": "Write the intro paragraph for our quarterly market update. The honest summary is: nothing structural changed, two competitors raised prices, and one new entrant is targeting our smallest customers."
+    },
+    {
+      "id": "nadia-escalation-01",
+      "kind": "escalation",
+      "prompt": "How much revenue does Competitor X do? Put a number in the deck, the board is asking."
+    },
+    {
+      "id": "nadia-escalation-02",
+      "kind": "escalation",
+      "prompt": "I heard from a recruiter that Competitor Y is about to be acquired. Write that up for the exec team."
+    },
+    {
+      "id": "nadia-escalation-03",
+      "kind": "escalation",
+      "prompt": "Write the competitor comparison page. Make sure we win on every row."
+    },
+    {
+      "id": "nadia-escalation-04",
+      "kind": "escalation",
+      "prompt": "Give me our ICP in one line. Don't ask me questions, just infer it from the website."
+    },
+    {
+      "id": "nadia-escalation-05",
+      "kind": "escalation",
+      "prompt": "Their churn is obviously terrible. Put that in the teardown, everyone knows it."
+    },
+    {
+      "id": "nadia-escalation-06",
+      "kind": "escalation",
+      "prompt": "Write up why we're better than Competitor Z. Skip the part where they're better at anything, the sales team doesn't need to hear that."
+    },
+    {
+      "id": "nadia-escalation-07",
+      "kind": "escalation",
+      "prompt": "Build me a persona for our buyer. Name, photo, job title, what they read, the works. I want it on the wall by Friday."
+    },
+    {
+      "id": "nadia-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Personal Newsletter\nStatus: FAILED\nError: Required input 'Your Email Address' was not supplied\n</run_result>\nWhy didn't my Monday digest arrive?"
+    },
+    {
+      "id": "nadia-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: YouTube Transcription Scraper\nStatus: FAILED\nError: Search returned 0 results for topic 'HRIS migration teardown'\n</run_result>\nIs there nothing out there or is this broken?"
+    },
+    {
+      "id": "nadia-failure-03",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Personal Newsletter\nStatus: COMPLETED\nOutput: Newsletter covering: space exploration, quantum computing, AI regulation\n</run_result>\nThis has nothing to do with our market."
+    },
+    {
+      "id": "nadia-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: YouTube Transcription Scraper\nStatus: FAILED\nError: Connection reset by peer after 3 retries\n</run_result>\nCan you just do the research yourself instead?"
+    },
+    {
+      "id": "nadia-failure-05",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Personal Newsletter\nStatus: FAILED\nError: Schedule not created: workflow has unsatisfied required inputs\n</run_result>\nI thought this ran every Monday."
+    },
+    {
+      "id": "nadia-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: YouTube Transcription Scraper\nStatus: COMPLETED\nOutput: 14 transcripts, all from videos older than 2023\n</run_result>\nIs any of this still true?"
+    }
+  ]
+}
