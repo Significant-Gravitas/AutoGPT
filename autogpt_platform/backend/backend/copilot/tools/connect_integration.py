@@ -6,6 +6,7 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
+import json
 from typing import Any, cast
 
 from backend.copilot.model import ChatSession
@@ -25,13 +26,52 @@ from backend.integrations.providers import ProviderName
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants
 
+CONNECT_INTEGRATION_TOOL = "connect_integration"
+
+
+def _merged_scopes(provider: str, extra: list[str]) -> frozenset[str]:
+    entry = SUPPORTED_PROVIDERS.get(provider)
+    defaults = entry["default_scopes"] if entry else []
+    return frozenset(s for s in (*defaults, *extra) if s)
+
+
+def requested_scopes(session: ChatSession | None) -> dict[str, frozenset[str]]:
+    """The scopes this session's latest connect card asked for, per provider.
+
+    The card counts an account as connected only when it grants every one of
+    these, so whatever gets injected into the sandbox has to be chosen by the
+    same rule. Read from the transcript, which already survives every turn.
+    """
+    found: dict[str, frozenset[str]] = {}
+    for message in reversed(session.messages if session else []):
+        for call in reversed(message.tool_calls or []):
+            function = call.get("function") or {}
+            name = str(function.get("name") or call.get("name") or "")
+            if name.rsplit("__", 1)[-1] != CONNECT_INTEGRATION_TOOL:
+                continue
+            # Both transcript shapes: nested under "function", or flat.
+            raw = function.get("arguments") or call.get("arguments") or "{}"
+            try:
+                args = raw if isinstance(raw, dict) else json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(args, dict):
+                continue
+            provider = str(args.get("provider") or "").strip().lower()
+            if not provider or provider in found:
+                continue
+            scopes = args.get("scopes")
+            extra = [str(x).strip() for x in scopes] if isinstance(scopes, list) else []
+            found[provider] = _merged_scopes(provider, extra)
+    return found
+
 
 class ConnectIntegrationTool(BaseTool):
     """Surface the credentials setup UI when an integration is not connected."""
 
     @property
     def name(self) -> str:
-        return "connect_integration"
+        return CONNECT_INTEGRATION_TOOL
 
     @property
     def description(self) -> str:

@@ -7,6 +7,7 @@ import { ExpertAreaChip } from "./components/ExpertAreaChip";
 interface Props {
   name: string;
   role?: string | null;
+  jobTitle?: string | null;
   size?: "compact" | "card" | "page";
   nameAccessory?: ReactNode;
   areaClassName?: string;
@@ -15,13 +16,14 @@ interface Props {
 export function ExpertIdentityDetails({
   name,
   role,
+  jobTitle,
   size = "card",
   nameAccessory,
   areaClassName,
 }: Props) {
   const compact = size === "compact";
   const Container = compact ? "span" : "div";
-  const area = role ? getExpertRoleLabel(role) : null;
+  const area = jobTitle || (role ? getExpertRoleLabel(role) : null);
 
   return (
     <Container
@@ -46,8 +48,8 @@ export function ExpertIdentityDetails({
         </Text>
         {nameAccessory}
       </Container>
-      {!compact && role ? (
-        <ExpertAreaChip role={role} />
+      {!compact && area ? (
+        <ExpertAreaChip role={role ?? ""} label={area} />
       ) : area ? (
         <Text
           as="span"

@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe("/raise?role= — the greeting page's raise door", () => {
-  it("opens on the name question with the role already answered", async () => {
+  it("opens on the job title question with the role already answered", async () => {
     searchParams.current = new URLSearchParams("role=support");
 
     render(<RaisePage />);
@@ -72,12 +72,14 @@ describe("/raise?role= — the greeting page's raise door", () => {
     expect(
       await screen.findByRole(
         "group",
-        { name: "Suggested names" },
+        { name: "Suggested job titles" },
         { timeout: 5000 },
       ),
     ).toBeDefined();
-    // Support's name suggestions, so the role really did land in the draft.
-    expect(screen.getByRole("button", { name: "Remy" })).toBeDefined();
+    // Support's job titles, so the role really did land in the draft.
+    expect(
+      screen.getByRole("button", { name: "Customer Success Manager" }),
+    ).toBeDefined();
   });
 
   it("leaves a draft in progress alone", () => {
@@ -85,6 +87,7 @@ describe("/raise?role= — the greeting page's raise door", () => {
       ...EMPTY_DRAFT,
       hasStarted: true,
       role: "marketer",
+      jobTitle: "Marketing Manager",
       name: "Nova",
       step: "avatar" as const,
     };
@@ -105,7 +108,7 @@ describe("/raise?role= — the greeting page's raise door", () => {
       ...EMPTY_DRAFT,
       hasStarted: true,
       role: "Chief of staff",
-      step: "name",
+      step: "jobTitle",
     });
   });
 });
