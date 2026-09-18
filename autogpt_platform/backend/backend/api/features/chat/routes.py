@@ -354,7 +354,7 @@ class CreateSessionRequest(BaseModel):
       hides tools that conflict with the panel's scope
       (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
       — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
-      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
+      (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.
 
     ``expert_id`` scopes the session to a hired expert. It must reference
     an expert owned by the caller that is neither a template nor archived,
@@ -749,7 +749,7 @@ async def create_session(
     Two modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
-      run_block and run_agent calls to use dry-run simulation.
+      run_capability and run_agent calls to use dry-run simulation.
     - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
       on ``(user_id, builder_graph_id)``. Returns the existing session for
       that graph or creates one locked to it.  Graph ownership is validated

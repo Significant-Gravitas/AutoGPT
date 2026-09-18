@@ -189,11 +189,6 @@ async def _details_for(block, flag_on: bool) -> BlockDetailsResponse:
             new_callable=AsyncMock,
             return_value=({}, []),
         ),
-        patch(
-            "backend.copilot.tools.run_block.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=flag_on,
-        ),
     ):
         response = await RunBlockTool()._execute(
             user_id=_TEST_USER_ID,
@@ -204,14 +199,6 @@ async def _details_for(block, flag_on: bool) -> BlockDetailsResponse:
         )
     assert isinstance(response, BlockDetailsResponse)
     return response
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_flag_off_leaves_the_schema_byte_identical():
-    block = make_annotated_block()
-    response = await _details_for(block, flag_on=False)
-    assert response.block.inputs == block.input_schema.jsonschema.return_value
-    assert response.block.outputs == block.output_schema.jsonschema.return_value
 
 
 @pytest.mark.asyncio(loop_scope="session")

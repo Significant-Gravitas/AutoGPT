@@ -82,13 +82,13 @@ async def test_display_bridge_preserves_domain_execution_ids():
             "graph_name",
         ),
         (
-            "run_block",
-            {"block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30", "input_data": {}},
+            "run_capability",
+            {"id": "block:db7d8f02-2f44-4c55-ab7a-eae0941f0c30", "input": {}},
             "FillTextTemplateBlock",
             "block_name",
         ),
         (
-            "continue_run_block",
+            "resume_capability",
             {"review_id": "review"},
             "FillTextTemplateBlock",
             "block_name",

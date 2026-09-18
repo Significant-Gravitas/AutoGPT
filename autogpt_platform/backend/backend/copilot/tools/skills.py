@@ -48,7 +48,6 @@ from backend.data.workspace_scope import (
     expert_skills_folder,
 )
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.mcp_guide import render_mcp_guide
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
@@ -153,8 +152,8 @@ _NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
-# Default skills — migrated from the legacy ``get_agent_building_guide`` /
-# ``get_mcp_guide`` tools so users get a uniform discovery surface.  These
+# Default skills — migrated from the legacy ``get_agent_building_guide``
+# tool so users get a uniform discovery surface.  These
 # are *read-only* — store_skill / delete_skill refuse to touch them.  Body
 # is loaded from disk lazily so adding more defaults is a drop-in.
 # ---------------------------------------------------------------------------
@@ -184,15 +183,6 @@ DEFAULT_SKILLS: tuple[_DefaultSkill, ...] = (
             "validate_agent_graph",
             "fix_agent_graph",
         ),
-    ),
-    _DefaultSkill(
-        name="mcp_tool_guide",
-        description=(
-            "MCP server URLs and auth setup — load before calling "
-            "run_mcp_tool when you need server URLs or auth details."
-        ),
-        body_path=_SDK_DIR / "mcp_tool_guide.md",
-        triggers=("run_mcp_tool",),
     ),
 )
 
@@ -374,7 +364,7 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     """Read a default skill's body from disk (cached at module level
     via :func:`functools.lru_cache` would re-read on test reloads, so
     we hit the disk each call — these files are small)."""
-    return render_mcp_guide(skill.body_path.read_text(encoding="utf-8"))
+    return skill.body_path.read_text(encoding="utf-8")
 
 
 def get_default_skill_with_body(name: str) -> ParsedSkill | None:

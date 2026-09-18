@@ -36,6 +36,13 @@ class MCPServerMetadata(BaseModel):
     oauth_scopes: list[str] | None = None
     oauth_write_scopes: list[str] = Field(default_factory=list)
     icon_id: str | None = Field(default=None, pattern=r"^[a-z0-9_-]+$")
+    provider: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9_]+$",
+        description="Block provider this server belongs to, when the platform "
+        "also ships blocks for it. Lets the UI file an MCP connection under the "
+        "same service as its API-key credential instead of a generic MCP group.",
+    )
 
     @field_validator("server_url", "documentation_url", "oauth_server_url")
     @classmethod

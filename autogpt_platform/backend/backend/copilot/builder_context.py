@@ -67,7 +67,7 @@ _BUILDER_TOOL_GUIDANCE = (
     "including populating an empty graph (version=1, no nodes) — "
     "`edit_agent` accepts the same node/link payload that `create_agent` "
     "would, so there is no reason to reach for `create_agent` here. "
-    "Typical sequence for a new request: call `find_block` to discover "
+    'Typical sequence for a new request: call `find_capability(context="graph")` to discover '
     "the block ids and input schemas you need, then call `edit_agent` "
     "once with the full set of nodes and links. "
     "Never ask the user to approve or allow a tool — there is no "

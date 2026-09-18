@@ -260,7 +260,7 @@ describe("Marketplace ExpertsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
-    expect(await screen.findByText("Hired")).toBeDefined();
+    expect(await screen.findByText("On your team")).toBeDefined();
   });
 
   test("emits the section view event once the shelf has rendered", async () => {
@@ -290,6 +290,6 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     await screen.findByText("Maria");
     expect(screen.getByText("View")).toBeDefined();
-    expect(screen.queryByText("Hired")).toBeNull();
+    expect(screen.queryByText("On your team")).toBeNull();
   });
 });

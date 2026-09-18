@@ -6,13 +6,13 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import cache
 from typing import Any
 
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
-from backend.blocks._base import AnyBlockSchema, BlockSchemaInput
+from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -220,33 +220,6 @@ async def _charge_block_credits(
         # BILLING_LEAK log above is the signal for reconciliation.
 
 
-def get_block_provider(block: AnyBlockSchema) -> str | None:
-    """Sole integration provider slug for a block, or None when the block
-    uses zero or multiple providers."""
-    try:
-        return _get_input_schema_provider(block.input_schema)
-    except Exception:
-        logger.debug(
-            "Unable to determine integration provider for block input schema %r",
-            block.input_schema,
-            exc_info=True,
-        )
-        return None
-
-
-@cache
-def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
-    infos = input_schema.get_credentials_fields_info()
-    providers = {
-        ProviderName(provider).value
-        for info in infos.values()
-        for provider in info.provider
-    }
-    if len(providers) != 1:
-        return None
-    return next(iter(providers))
-
-
 async def execute_block(
     *,
     block: AnyBlockSchema,
@@ -267,8 +240,8 @@ async def execute_block(
     ``expert_id`` is the session's expert; it attributes the run so
     ``workspace://`` inputs resolve inside that expert's file scope.
 
-    This is the shared execution path used by both ``run_block`` (after review
-    check) and ``continue_run_block`` (after approval).
+    This is the shared execution path used by both ``run_capability`` (after
+    review check) and ``resume_capability`` (after approval).
 
     Returns:
         BlockOutputResponse on success, ErrorResponse on failure.
@@ -540,7 +513,7 @@ async def execute_block(
                 # keep hitting the cap — candidates for prompt tuning or
                 # escalation to the async start+poll pattern.
                 logger.warning(
-                    "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+                    "copilot_tool_timeout tool=run_capability block=%s block_id=%s "
                     "input_keys=%s user=%s session=%s cap_s=%d",
                     block.name,
                     block_id,
@@ -791,7 +764,7 @@ async def prepare_block_for_execution(
     input schema generation, file-ref expansion, missing-credentials check, and
     unrecognized-field validation.
 
-    Does NOT check for missing required fields (tools differ: run_block shows a
+    Does NOT check for missing required fields (tools differ: run_capability shows a
     schema preview) and does NOT run the HITL review check (use check_hitl_review
     separately).
 
@@ -827,7 +800,7 @@ async def prepare_block_for_execution(
     ):
         if block.block_type == BlockType.MCP_TOOL:
             hint = (
-                " Use the `run_mcp_tool` tool instead — it handles "
+                " Use run_capability on the MCP server entry from find_capability instead — it handles "
                 "MCP server discovery, authentication, and execution."
             )
         elif block.block_type == BlockType.AGENT:
@@ -1019,7 +992,7 @@ async def check_hitl_review(
         return ReviewRequiredResponse(
             message=(
                 f"Block '{block.name}' requires human review. "
-                f"After the user approves, call continue_run_block with "
+                f"After the user approves, call resume_capability with "
                 f"review_id='{existing_review.node_exec_id}' to execute."
             ),
             session_id=session_id,
@@ -1060,7 +1033,7 @@ async def check_hitl_review(
         return ReviewRequiredResponse(
             message=(
                 f"Block '{block.name}' requires human review. "
-                f"After the user approves, call continue_run_block with "
+                f"After the user approves, call resume_capability with "
                 f"review_id='{synthetic_node_exec_id}' to execute."
             ),
             session_id=session_id,
@@ -1102,7 +1075,7 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            "call run_block again with the same input."
+            "call run_capability again with the same input."
         ),
         session_id=session.session_id,
         block_id=prep.block_id,
