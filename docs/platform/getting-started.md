@@ -211,9 +211,18 @@ move them to the new key instead of losing them. Run everything from
    make init-env
    ```
 
-   Without `make`, call the generator directly, once for each of `.env`,
-   `backend/.env` and `frontend/.env`:
-   `python3 single-container/runtime_config.py fill-env --path backend/.env`.
+   Without `make`, these are the same steps by hand. Copy a `.env.default`
+   only where no `.env` exists yet:
+
+   ```bash
+   cp -n .env.default .env
+   cp -n backend/.env.default backend/.env
+   cp -n frontend/.env.default frontend/.env
+   python3 single-container/runtime_config.py fill-env --path .env
+   python3 single-container/runtime_config.py fill-env --path backend/.env
+   python3 single-container/runtime_config.py fill-env --path frontend/.env
+   ```
+
    Do not re-run the installer script for this: it also starts the stack,
    which is step 5.
 
