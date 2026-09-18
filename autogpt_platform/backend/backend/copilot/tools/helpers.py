@@ -778,11 +778,10 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    # Lazy import: find_block imports from .base and .models (siblings), not
-    # from helpers — no actual circular dependency exists today.  Kept lazy as a
-    # precaution since find_block is the block-registry module and future changes
-    # could introduce a cycle.
-    from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
+    from backend.copilot.capabilities.block_meta import (
+        COPILOT_EXCLUDED_BLOCK_IDS,
+        COPILOT_EXCLUDED_BLOCK_TYPES,
+    )
 
     block = get_block(block_id)
     if not block:
