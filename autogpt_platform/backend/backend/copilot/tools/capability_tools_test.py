@@ -67,6 +67,14 @@ def test_eager_and_deferred_split_the_registry():
     assert len(get_available_tools(include_deferred=True)) > len(shown)
 
 
+def test_enter_building_mode_stays_eager_because_the_refusal_names_it():
+    """The building gate's refusal says to call ``enter_agent_building_mode``;
+    deferred, that instruction cannot be followed, because naming a deferred
+    tool directly is refused."""
+    assert "enter_agent_building_mode" in EAGER_CORE
+    assert "enter_agent_building_mode" not in DEFERRED_TOOL_NAMES
+
+
 def test_start_desktop_stays_eager_because_the_prompt_names_it():
     """``expert_context`` tells the model "Use start_desktop"; a deferred
     tool called by name is refused, so the instruction only works eager."""
