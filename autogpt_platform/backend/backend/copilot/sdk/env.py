@@ -185,6 +185,22 @@ def build_sdk_env(
     window = pinned_context_window(config, model, codex_route=codex_route)
     env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
+    # ...but that pin is clamped to the window the CLI *assumes* for the
+    # model, so on a route whose slug the CLI does not recognise (the Codex
+    # models) every value past that assumption is dropped in silence.
+    # ``CLAUDE_CODE_MAX_CONTEXT_TOKENS`` is the knob that moves the
+    # assumption — the CLI's own unknown-model notice points operators at it —
+    # and without it the line above is inert.  Measured against CLI 2.1.274:
+    # pins of 200K, 272K and 1M produce byte-identical compaction schedules
+    # until this is set, and 1M only takes effect once it is.
+    #
+    # Codex-only on purpose.  Everywhere else the CLI's model table is the
+    # better authority, and raising this would push its client-side length
+    # guard past what the provider actually accepts — trading a clean local
+    # refusal for a provider 400 mid-turn.
+    if codex_route:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(window)
+
     # The window above is clamped by the model's own window, which this
     # kill-switch holds at 200K; keeping it set past that point would swallow
     # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the

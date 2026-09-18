@@ -911,6 +911,36 @@ class TestCodexRouteContext:
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
         assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
 
+    def test_codex_route_lifts_the_model_window_assumption(self):
+        """The pin is clamped to the window the CLI assumes for an
+        unrecognised slug, so it only bites once MAX_CONTEXT_TOKENS moves
+        that assumption.  Measured on CLI 2.1.274: without this, pins of
+        200K/272K/1M produce identical compaction schedules."""
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="gpt-6-astra", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS") == "272000"
+        assert result["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == (
+            result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"]
+        )
+
+    def test_non_codex_routes_leave_the_model_table_alone(self):
+        """Off the Codex route the CLI knows the model, and raising its
+        ceiling would push the client-side length guard past what the
+        provider accepts — a provider 400 mid-turn instead of a clean
+        local refusal."""
+        with patch("backend.copilot.sdk.env.config", _make_config()):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                session_id="s1", user_id="u1", sdk_cwd="/tmp", model="claude-opus-4-8"
+            )
+
+        assert "CLAUDE_CODE_MAX_CONTEXT_TOKENS" not in result
+
 
 class TestDescribeSdkContext:
     def test_codex_route_summary(self):
