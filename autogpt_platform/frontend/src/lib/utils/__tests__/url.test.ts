@@ -22,7 +22,22 @@ describe("getHostFromUrl", () => {
 
   it("assumes http for a bare host", () => {
     expect(getHostFromUrl("api.example.com/v1")).toBe("api.example.com");
-    expect(getHostFromUrl("api.example.com:8443")).toBe("api.example.com");
+    expect(getHostFromUrl("api.example.com:8443")).toBe("api.example.com:8443");
+  });
+
+  it("keeps a non-default port", () => {
+    expect(getHostFromUrl("https://api.example.com:8443/v1")).toBe(
+      "api.example.com:8443",
+    );
+    expect(getHostFromUrl("http://localhost:8080/api")).toBe("localhost:8080");
+    expect(getHostFromUrl("HTTPS://api.example.com:8443/v1")).toBe(
+      "api.example.com:8443",
+    );
+  });
+
+  it("drops a port that is the scheme's default", () => {
+    expect(getHostFromUrl("https://x.com:443/")).toBe("x.com");
+    expect(getHostFromUrl("http://x.com:80/")).toBe("x.com");
   });
 
   it("returns null for a string it cannot parse", () => {

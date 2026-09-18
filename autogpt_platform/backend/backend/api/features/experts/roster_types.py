@@ -18,6 +18,20 @@ class PreloadSeed(TypedDict):
     cron: str | None
 
 
+class RoutineSeed(TypedDict):
+    # Stable slug; renaming one orphans the old row on existing hires.
+    key: str
+    title: str
+    # This proposal is rewritten with the owner's answers before scheduling.
+    prompt: str
+    # Five-field cron suggestions. H spreads the minute within an hour.
+    crons: list[str]
+    # Questions that must be answered before the routine can be enabled.
+    asks: list[str]
+    # THREAD keeps one durable chat; FRESH starts a new chat for each run.
+    session_mode: str
+
+
 class RosterEntry(TypedDict):
     name: str
     role: str
@@ -41,3 +55,5 @@ class RosterEntry(TypedDict):
     # Up to three rows for the profile's "sets up on day one"; empty hides it.
     day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
+    # Standing work proposals ship disabled and without credential grants.
+    routines: list[RoutineSeed]

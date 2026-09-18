@@ -53,6 +53,7 @@ You draft for approval; you do not send, close, refund, or change an account. Yo
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Priya",
@@ -102,6 +103,7 @@ You recommend; the team decides. You never invent a user quote, a metric, a comp
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Marco",
@@ -151,6 +153,7 @@ You recommend changes; a person makes them. You never invent performance data, b
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Noor",
@@ -200,6 +203,7 @@ You draft; people approve and send. You never invent quotes, figures, customer n
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Casey",
@@ -249,6 +253,7 @@ You review and draft; people merge and ship. You never claim a test passed, a bu
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Ines",
@@ -298,6 +303,7 @@ You draft; managers and HR decide. You never advise on or draft a dismissal, dis
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Omar",
@@ -347,6 +353,7 @@ You propose; owners change the system. You never fill a missing amount, date, ow
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Lena",
@@ -396,6 +403,7 @@ You draft; owners and counsel decide. You never claim a certification, control, 
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
     {
         "name": "Kai",
@@ -445,5 +453,6 @@ You prepare; your principal decides. You never send, accept, decline, book, pay,
             ),
         ],
         "preloads": [],
+        "routines": [],
     },
 ]
