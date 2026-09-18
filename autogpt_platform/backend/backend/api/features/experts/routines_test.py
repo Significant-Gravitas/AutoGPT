@@ -46,6 +46,18 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Sofia", "daily-hiring-brief"),
     ("Sofia", "weekly-pipeline-review"),
     ("Sofia", "urgent-thread-check"),
+    ("Max", "monday-team-pipeline-inspection"),
+    ("Max", "wednesday-forecast-and-deal-inspection"),
+    ("Max", "monthly-win-loss-review"),
+    ("Casey", "resolution-follow-up-pulse"),
+    ("Casey", "knowledge-and-staffing-pulse"),
+    ("Casey", "quality-and-voc-pulse"),
+    ("Priya", "alliance-sensing-brief"),
+    ("Priya", "delivery-risk-watch"),
+    ("Priya", "executive-council-countdown"),
+    ("Daniel", "monthly-board-pack-reminder"),
+    ("Sofia", "daily-candidate-batch"),
+    ("Sofia", "evening-interview-prep"),
 }
 
 VALID_SESSION_MODES = {"FRESH", "HERE", "THREAD"}

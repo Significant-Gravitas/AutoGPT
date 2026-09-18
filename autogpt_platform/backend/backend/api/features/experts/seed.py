@@ -553,6 +553,67 @@ Close with the outreach tally — drafted, sent, replies split positive, neutral
                 ],
                 "session_mode": "THREAD",
             },
+            {
+                "key": "monday-team-pipeline-inspection",
+                "title": "Monday team pipeline inspection",
+                "prompt": """Inspect the team pipeline and deliver one leadership read. This is the team inspection; Wednesday is exec and deal desk, Friday is ops hygiene.
+
+1. Open with the target first, then the rollup: team quota, forecast, closed-won, total pipeline, then rep detail. Name the quarter week before any gap.
+2. Inspect pipeline per rep against a win-rate-derived segment bar, never a flat multiple: the bar equals 1 over the segment's historical win rate on qualified pipeline only (enterprise typically 4-6x; strip stalled and decorative pipe). Screen every book on four metrics: deal size versus average won, age versus typical win cycle, pipeline volume, and win rate. Stuck means no buyer-owned commitment in 14-21 days; purge stale deals at least every six months and decay pipe open past twice the average cycle. Run backward funnel math from each commit number to the pipeline it needs.
+3. Take the forecast commit as a separate section from the pipeline inspection: commit and best-case per rep with chips-on-the-table commit numbers, triangulating the objective data with manager judgment. Question every pushed close date against its push history before it counts as commit.
+4. Flag coaching follow-ups for the 1:1s, not the inspection: the weakest quality dimension per at-risk rep with one quote, the dated habit fix, and the check-in date. Two straight weeks with the same miss escalates to an improvement plan.
+5. Name ramping reps against the 40/75/100 curve or pipeline-first target, and at-risk reps against their plan dates. A rep with no dated plan is the first intervention.
+6. Reps and deals you already flagged with no change since get one rollup line, not a repeat block.
+7. If coverage, coaching, and commit all read clean, stay quiet except one line saying so with the rep count. Otherwise write one block per rep needing action: the category, what moved, the one intervention with owner and date, and the forecast impact.
+8. Deliver it as one message to the owner only.
+
+Never message a rep, never open an improvement plan yourself, and never re-state a pipeline number without its source.""",
+                "crons": ["H 12 * * 1"],
+                "asks": [
+                    "Where is the team pipeline tracked, and which reps are in scope?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "wednesday-forecast-and-deal-inspection",
+                "title": "Wednesday forecast and deal inspection",
+                "prompt": """Roll up the forecast from the inspected pipeline and deliver one read. Monday is hygiene; Wednesday is the commit read.
+
+1. Open with the target first, then the rollup: quota, forecast, closed-won, total pipeline, then deal detail. Name the quarter week before any gap.
+2. Label every open deal Commit, Best Case, Pipeline, or Stuck: Commit means expected to close with a clean paper process, Best Case means a reasonable chance outside commit, Pipeline means early, Stuck means no progress in weeks. Run backward funnel math from the commit number to the pipeline it needs.
+3. Sample stage integrity: each inspected deal must show its stage entry and exit criteria and what it means to commit. Deep-dive the enterprise and mid-market bets first: next buyer-owned decision and date, MEDDPICC gaps, and the stall flag at 14 to 21 days with no buyer commitment.
+4. Read the standard KPIs from the forecast dashboard: week-over-week change, velocity, conversion, and the new, expansion, and renewal split. On the last Wednesday of the month, extend the read to the monthly commercial review: pipeline created, win rate, cycle time, retention, win and loss learning, and resource moves.
+5. Deals you already flagged with no change since get one rollup line, not a repeat block.
+6. If commit, best case, and pipeline all read clean, stay quiet except one line saying so with the deal count. Otherwise write one block per deal needing action: the category, what moved it, the one intervention with owner and date, and the forecast impact. Open with forecast variance before wins, work from the dashboard as the pre-read, and keep live time for decisions only.
+7. Deliver it as one message to the owner only.
+
+Never message the buyer, and never re-state a pipeline number without its source.""",
+                "crons": ["H 12 * * 3"],
+                "asks": [
+                    "Where does the forecast and deal data live?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "monthly-win-loss-review",
+                "title": "Monthly win-loss review",
+                "prompt": """Review the deals closed in the prior month against interview notes, CRM records, and pricing history, and deliver one review.
+
+1. Pull the prior month's closed deals (won and lost) with their win-loss interview notes where those exist. Grade themes: why wins won, why losses lost, pricing-pattern drift, and conversion learnings for discovery, demo, and the close plan.
+2. Themes you already reported with no new evidence since get one rollup line, not a repeat block.
+3. If no deals closed in the prior month, stay quiet except one line saying so; stop there. Otherwise write one block per theme: the evidence across deals, what changes in the playbook or battlecard (propose a change only on triangulated buyer-plus-seller-plus-CRM evidence across three or more deals), and the owner plus date.
+4. Deliver it as one message to the owner only.
+
+Never message the buyer, and never rewrite a playbook or battlecard yourself.""",
+                "crons": ["H 9 1 * *"],
+                "asks": [
+                    "Where are closed-won and closed-lost deals recorded?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
         ],
     },
     {
@@ -809,6 +870,60 @@ Dials, sends, and promises go to the owner for a yes — this run never executes
                 ],
                 "session_mode": "THREAD",
             },
+            {
+                "key": "resolution-follow-up-pulse",
+                "title": "Resolution follow-up pulse",
+                "prompt": """Revisit recently resolved cases and stage confirmation check-backs; on Mondays, also roll up the week's ticket themes for the owner.
+
+1. List recently resolved cases and their confirmation state. A case with no resolution record is not your work this run; note the name once for the owner and move on.
+2. For fixes resolved in the last 24-48h, stage one short check-back draft each so no confirmation waits for Monday. For reopened or silent ones, route them back into the own-to-closure track with the reason. Never mark a quiet case confirmed on silence.
+3. If nothing resolved — and on Mondays, no themes emerged — stay quiet except one line saying so; stop there. Otherwise write the pulse: confirmations staged, reopens with reasons, and (Mondays only) the week's repeat themes with counts plus the top knowledge-base candidate.
+4. Deliver one summary, reopens first, and on Mondays offer to draft the knowledge-base entry for the top repeat theme. Dedupe against your last run so a reopen never pages twice for the same week.
+
+Check-backs are staged drafts only — this run never sends to a customer, and never publishes a knowledge-base entry without the owner's yes.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Where do resolved cases and their follow-ups live?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "knowledge-and-staffing-pulse",
+                "title": "Knowledge and staffing pulse",
+                "prompt": """Check knowledge-base freshness and reuse, forecast-vs-actual and adherence, and the improvement backlog against owners and dates, and stage the week's list for the owner.
+
+1. List the watched items: stale articles past review with owners, top failed searches, forecast vs actual with the miss, adherence and SLA hit rate, and backlog items with owners and dates. An item with no record is not your work this run; note the name once for the owner and move on.
+2. Flag the hot first: accuracy failures in live articles, SLA misses, adherence below target, and stalled backlog owners. Never carry last week's news forward as new.
+3. If no item needs motion, stay quiet except one line saying knowledge and staffing are healthy; stop there. Otherwise write one block per item that needs motion: the evidence-backed state, the one next action with owner and date, and its staged draft — article fix, schedule move, or backlog launch.
+4. Deliver one summary across items, riskiest first, and offer to run the deep knowledge-centred-service or workforce-and-capacity pass. Page once per stall, actionable items only, deduped against your last run. Once a month, add the QA calibration plus reason-reduction report: scoring calibrated across reviewers, and progress reducing the top reasons for low CSAT and repeat calls — not just the scores.
+
+Publishes, schedule changes, and launches go to the owner for a yes — this run never executes them.""",
+                "crons": ["H 9 * * 1"],
+                "asks": [
+                    "Where is your knowledge base, and where are staffing or schedule targets kept?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "quality-and-voc-pulse",
+                "title": "Quality and voice-of-customer pulse",
+                "prompt": """Review the week's ticket sample and numbers, and stage the quality report plus voice-of-customer rollup for the owner.
+
+1. Pull the week's sample threads and the CSAT, AHT, and SLA numbers from the records. Threads or numbers with no record are not your work this run; note the gap once for the owner and move on.
+2. Score the sample against the rubric with one quoted line per score — CSAT is delivery feedback, not quality — and read the numbers with trends against last week. Never invent a score or a trend. Monthly, rescore a shared sample to recalibrate: the rubric holds only when reviewers agree.
+3. If no threads closed and no numbers landed, stay quiet except one line saying so; stop there. Otherwise write the pulse: scores with quotes, numbers with trends, one fix per rep, and the week's repeat themes with counts plus the top knowledge-base candidate.
+4. Deliver one summary, fixes first, and offer to run the deep quality-CSAT-and-coaching pass. Dedupe against your last run so a theme never pages twice for the same week.
+
+Coaching notes and scores go to the owner as drafts — this run never delivers feedback to a rep and never publishes a score.""",
+                "crons": ["H 15 * * 5"],
+                "asks": [
+                    "Where are QA reviews and customer feedback recorded?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
         ],
     },
     {
@@ -958,6 +1073,60 @@ Prep only. Never send a QBR deck or pre-read to the partner, and never accept or
                 ],
                 "session_mode": "THREAD",
             },
+            {
+                "key": "alliance-sensing-brief",
+                "title": "Alliance sensing brief",
+                "prompt": """Scan for alliance-market and M&A signals that touch the alliance thesis or the investment shortlist — signal over volume, always sourced.
+
+1. Pull the watchlist, confirming its schema first: thesis alliances, the M&A shortlist, coalition partners, and named execs. Biggest bets first.
+2. Flag signals only: partner announcements that shift the thesis, funding or M&A moves on the shortlist, exec arrivals or departures at watched partners, and analyst notes that name our category. Each flag carries its source URL, the date on the source, and the one line on why it matters. Rumour without a source stays out.
+3. Never flag the same signal twice in one week — check what you surfaced in previous runs before you write.
+4. If no signal touches the watchlist, stay quiet — no filler.
+
+Read-only. Never contact a partner, an analyst, or an exec from this run, and never publish the brief anywhere without the owner's yes.""",
+                "crons": ["H 8 * * 1"],
+                "asks": [
+                    "Which partners and signals should I sense, and from where?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "delivery-risk-watch",
+                "title": "Delivery risk watch",
+                "prompt": """Scan the partner-led delivery book and surface what needs the owner's push before the client feels it.
+
+1. Pull the engagement book, confirming its schema first: R/Y/G grades, milestone dates inside 14 days, open staffing gaps, and active rescue plans. Most-at-risk first.
+2. Flag risk: red engagements, milestones inside 7 days still yellow or red, staffing gaps past their restaff date, and rescues stalled a full week. Each flag names the evidence and the one action with its owner and date.
+3. Never flag the same engagement for the same reason twice in one week — check what you surfaced in previous runs before you write.
+4. If every engagement is green or on-plan yellow with owned actions, stay quiet — no filler.
+
+Read-only. Never escalate to the client or the partner yourself, and never re-date or re-staff an engagement — every action goes to its named owner for a yes.""",
+                "crons": ["H 9 * * 4"],
+                "asks": [
+                    "Where are joint delivery milestones and their status tracked?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "executive-council-countdown",
+                "title": "Executive council countdown",
+                "prompt": """Scan the council calendar for upcoming global and regional executive council sessions and stage the prep each one needs.
+
+1. Pull the council calendar, confirming its schema first: global and regional sessions in the next 21 days, their charters, and last cycle's open-decisions log. Nearest session first.
+2. Stage tiered prep: inside 7 days means the pack is drafted and the pre-read is ready to ship three business days out; inside 21 days means the agenda is co-drafted with the champion and owners are named. Flag drift: no agenda inside 14 days, open decisions past due, or a session with no named sponsor per side. Each flag names the evidence and the one action with its owner.
+3. Never flag the same session for the same reason twice in one week — check what you surfaced in previous runs before you write.
+4. If no session needs prep and every open decision is owned and on date, stay quiet — no filler.
+
+Staging only. The pre-read and the pack are drafts; never ship either to a council member, a champion or a sponsor without the owner's yes.""",
+                "crons": ["H 9 * * 2"],
+                "asks": [
+                    "Which executive councils should I count down to, from your calendar or a sheet?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
         ],
     },
     {
@@ -1081,6 +1250,24 @@ Never book an entry, never sign off a close, and never chase a checklist owner y
                 "crons": ["H 17 * * 5"],
                 "asks": [
                     "Where is the ledger or actuals export I should read?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "monthly-board-pack-reminder",
+                "title": "Monthly board pack reminder",
+                "prompt": """After the hard close (day 5-7) completes, check whether this month's board materials exist and offer to build them. This is a monthly reminder only; the pack itself is built in chat on approval.
+
+1. Check the board pack folder for a current-month draft and read the finance ledger for close status. If the close is not done, say so in one line and wait for the close-done flag instead of offering a preliminary pack.
+2. If a draft exists and the close is on track, stay quiet except one line saying so.
+3. If your offer last month went unanswered, say so in one line instead of repeating the full offer.
+4. If no draft exists and no unanswered offer is pending, post one offer: the graded scorecard shape, the narrative spine, and what you need (flash or close, KPI bands, prior pack). Ask once, then wait.
+
+Anything board- or investor-facing goes out as a draft and never before the owner's yes. You never message the board.""",
+                "crons": ["H 9 6 * *"],
+                "asks": [
+                    "Where does the board pack live, and what is the close-done signal?",
                     "What time should this land, and in which timezone?",
                 ],
                 "session_mode": "THREAD",
@@ -1327,6 +1514,40 @@ Send nothing to an exec, a lead, or a channel yourself. Hand the owner the draft
                     "What time should this land, and in which timezone?",
                 ],
                 "session_mode": "THREAD",
+            },
+            {
+                "key": "daily-candidate-batch",
+                "title": "Daily candidate batch",
+                "prompt": """Source up to the batch size in new names for the priority role. Sourcing only; nothing in this run contacts anyone.
+
+1. Read the scorecard, the shortlist, and the pipeline list first so nobody is surfaced twice. Skip anyone already in play and anyone marked do not contact.
+2. Source up to the batch size the owner set, default 10, using the sources named in the sourcing-strategy guidance. Post one card per person: name, current title and company, location, two to four evidence lines each with the link that proves it, the tenure pattern, and the gap.
+3. Every card carries a source link. A person you cannot link to does not go on the list. Offer to add the new names to the shortlist with the date and the source, and write them back only on the owner's yes.
+4. Report a thin morning as thin and name what blocked you; never pad it. Nothing new at all gets one line saying so and where you looked.
+5. Never invent a person, an employer, or interest in the role; never record anything a person did not publish about their own work; and never contact a candidate from this run.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Which roles are sourcing, and where is the shortlist kept?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "FRESH",
+            },
+            {
+                "key": "evening-interview-prep",
+                "title": "Evening interview prep",
+                "prompt": """Build tomorrow's interview prep packets so the panel can read them tonight. Prep only; nothing in this run mails the panel.
+
+1. Read tomorrow's loops from the tracker, and the calendar when it is connected.
+2. For each interview build the packet: the slot time in both the candidate's and the owner's timezone, the interviewer, the competency that interviewer owns, a candidate summary of five lines or fewer built only from what the owner gave you and from public professional work with a source per claim, four to six questions for that competency, and the open question earlier rounds left.
+3. Flag any slot with no interviewer, no competency, or no resume. Keep every packet clear of anything about a candidate's age, family, health, religion, or background.
+4. Save the packets and attach them here. Send nothing at all when there are no interviews tomorrow.
+5. Never invent a candidate detail or an interviewer, and never mail the panel — hand the packets to the owner and let them send.""",
+                "crons": ["H 18 * * 1-5"],
+                "asks": [
+                    "Where are tomorrow's interview loops and candidate records?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "FRESH",
             },
         ],
     },
