@@ -8,7 +8,6 @@ import pytest
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
     COPILOT_CANCEL_EXCHANGE,
-    COPILOT_CANCEL_TTL_SECONDS,
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
     COPILOT_EXECUTION_ROUTING_KEY,
@@ -17,7 +16,6 @@ from backend.copilot.executor.utils import (
     CoPilotLogMetadata,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
-    enqueue_cancel_task,
 )
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -168,21 +166,6 @@ class TestDeclarePodCancelQueue:
             for executor_id in ("executor-1", "executor-2", "executor-1")
         }
         assert len(names) == 3
-
-
-class TestEnqueueCancelTask:
-    async def test_cancels_carry_a_ttl_so_an_undrained_queue_cannot_grow(self) -> None:
-        """Without it, a queue nobody consumes keeps every cancel forever."""
-        client = AsyncMock()
-        with patch(
-            "backend.util.clients.get_async_copilot_queue",
-            new=AsyncMock(return_value=client),
-        ):
-            await enqueue_cancel_task("session-1")
-
-        kwargs = client.publish_message.call_args.kwargs
-        assert kwargs["exchange"] is COPILOT_CANCEL_EXCHANGE
-        assert kwargs["expiration_seconds"] == COPILOT_CANCEL_TTL_SECONDS
 
 
 class TestCoPilotLogMetadata:

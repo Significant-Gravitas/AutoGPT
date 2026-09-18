@@ -113,11 +113,6 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
 LEGACY_COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
 COPILOT_CANCEL_QUEUE_PREFIX = "copilot_cancel.pod"
 
-# Per-message TTL, so a queue nobody drains holds at most a minute of cancels.
-# The API stops waiting for one after 5s, so a later delivery has nobody left to
-# help (``mark_session_completed`` in backend/api/features/chat/routes.py).
-COPILOT_CANCEL_TTL_SECONDS = 60
-
 # Only waits for the last old-image pod to drain, which is a rollout-scale
 # event; costs one passive declare per pod per interval.
 LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS = 5 * 60
@@ -247,6 +242,8 @@ def reap_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
         ).method
         if queue.consumer_count:
             return False
+        # Check-then-act, because RabbitMQ refuses `if_unused` on a quorum queue:
+        # a pod that re-consumes in the gap re-declares it when it reconnects.
         scratch.queue_delete(queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME)
         logger.info(f"Deleted retired queue {LEGACY_COPILOT_CANCEL_QUEUE_NAME}")
         return True
@@ -779,5 +776,4 @@ async def enqueue_cancel_task(session_id: str) -> None:
         routing_key="",  # FANOUT ignores routing key
         message=event.model_dump_json(),
         exchange=COPILOT_CANCEL_EXCHANGE,
-        expiration_seconds=COPILOT_CANCEL_TTL_SECONDS,
     )

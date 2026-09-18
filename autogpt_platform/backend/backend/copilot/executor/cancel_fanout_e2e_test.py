@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from contextlib import suppress
 from uuid import uuid4
 
 import pytest
@@ -117,9 +118,21 @@ async def test_the_retired_queue_is_reaped_only_once_nothing_drains_it(
 
         old_pod.disconnect()  # the last old-image pod finishes draining and goes
 
-        assert reap_legacy_cancel_queue(new_pod.get_channel()) is True
+        # the broker drops the consumer count asynchronously, and this reads it
+        # over a different connection, so poll rather than assert on one pass
+        reaped = False
+        for _ in range(50):
+            reaped = reap_legacy_cancel_queue(new_pod.get_channel())
+            if reaped:
+                break
+            await asyncio.sleep(0.1)
+
+        assert reaped, "the retired queue outlived its last consumer"
         assert not _queue_exists(new_pod, legacy)
     finally:
+        if new_pod.is_ready:  # a failed run must not leave it bound to the fanout
+            with suppress(Exception):
+                new_pod.get_channel().queue_delete(queue=legacy)
         for pod in (old_pod, new_pod):
             pod.disconnect()
 
