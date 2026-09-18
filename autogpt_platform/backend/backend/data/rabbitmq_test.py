@@ -83,10 +83,11 @@ def test_copilot_execution_queue_is_quorum_with_consumer_timeout() -> None:
     assert timeout_ms >= 60 * 60 * 1000  # at least 1 hour
 
 
-def test_copilot_cancel_queue_is_quorum() -> None:
+def test_copilot_config_declares_no_cancel_queue() -> None:
+    """Copilot cancels fan out to a per-pod exclusive queue the consumer
+    declares itself; a queue here would be shared by the whole fleet again."""
     cfg = create_copilot_queue_config()
-    cancel = next(q for q in cfg.queues if q.name.endswith("cancel_queue_v2"))
-    assert cancel.arguments == {"x-queue-type": "quorum"}
+    assert [q.name for q in cfg.queues] == [COPILOT_EXECUTION_QUEUE_NAME]
 
 
 # ---------- AsyncRabbitMQ.publish_message: mock-driven behaviour ----------
