@@ -19,6 +19,7 @@ type SoulDetail = {
 type Props = {
   name: string;
   role: string | null;
+  jobTitle?: string | null;
   avatarUrl: string | null;
   color: string | null;
   about: string | null;
@@ -31,13 +32,14 @@ type Props = {
 export function SoulPreviewPanel({
   name,
   role,
+  jobTitle,
   avatarUrl,
   color,
   about,
   voiceLabel,
   kit,
 }: Props) {
-  const roleLabel = roleLabelFor(role);
+  const roleLabel = jobTitle || roleLabelFor(role);
   const details = [
     { label: "About", value: about },
     { label: "Voice", value: voiceLabel },

@@ -103,6 +103,9 @@ class AssignPodRequest(BaseModel):
 class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
+    # What the expert is called on the team ("Marketing Manager"); the pill
+    # shows it in place of the role.
+    job_title: str | None = Field(default=None, max_length=100)
     avatar_url: str | None = Field(
         default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
     )
@@ -134,7 +137,7 @@ class CreateRaisedExpertRequest(BaseModel):
     def check_avatar_url(cls, value: str | None) -> str | None:
         return validate_avatar_url(value)
 
-    @field_validator("color", "about")
+    @field_validator("job_title", "color", "about")
     @classmethod
     def strip_optional_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -221,6 +224,7 @@ async def create_raised_expert(
             request.name,
             request.role,
             request.voice_preferences,
+            job_title=request.job_title,
             avatar_url=request.avatar_url,
             color=request.color,
             about=request.about,

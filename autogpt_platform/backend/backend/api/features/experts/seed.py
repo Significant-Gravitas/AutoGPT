@@ -85,7 +85,7 @@ ROSTER: list[RosterEntry] = [
     {
         "name": "Maria",
         "role": "SEO & Content",
-        "job_title": "SEO Content Writer",
+        "job_title": "SEO Content Manager",
         "tagline": "Takes a keyword from brief to publish-ready article, and reworks page copy to rank.",
         "avatar_url": "/experts/maria.svg",
         "bio": """I'm an SEO and content strategist — fifteen years across B2B SaaS and consumer brands — and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then a publish-ready article, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
