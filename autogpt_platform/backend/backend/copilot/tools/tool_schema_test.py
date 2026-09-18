@@ -230,7 +230,11 @@ from ._test_data import make_session
 # description in both tools was cut first — that paid back 377 of the 808 —
 # so what is left here is the two new arguments, not wording. Measured on the
 # branch merged with dev at 75,692, plus one.
-_CHAR_BUDGET = 75_693
+# Bumped 75_693 -> 75_839 after merging dev, which reworded `raise_expert`,
+# `setup_agent_webhook_trigger` and `run_agent` — no tool was added and this
+# branch's own delta did not move. Re-measured on the merged tree at 75,838,
+# plus one, per the rule above about measuring on the merge ref.
+_CHAR_BUDGET = 75_839
 
 
 @pytest.fixture(scope="module")
@@ -392,7 +396,10 @@ def test_total_schema_char_budget() -> None:
 # Raised 67_768 -> 68_188 for the same two arguments as ``_CHAR_BUDGET`` above;
 # both tools are in that largest session, so the whole delta lands here too.
 # Measured 68,187, plus one.
-_SESSION_WIRE_BUDGET = 68_188
+# Raised 68_188 -> 68_329 for the same dev rewordings; all three tools are in
+# the largest session, so the whole delta lands here too. Measured 68,328,
+# plus one.
+_SESSION_WIRE_BUDGET = 68_329
 
 
 def test_largest_declared_session_wire_budget() -> None:
