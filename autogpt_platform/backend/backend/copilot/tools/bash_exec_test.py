@@ -54,7 +54,7 @@ class TestBashExecE2BTokenInjection:
                 user_id=_USER,
             )
 
-        mock_get_env.assert_awaited_once_with(_USER)
+        mock_get_env.assert_awaited_once_with(_USER, None)
         call_kwargs = sandbox.commands.run.call_args[1]
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"

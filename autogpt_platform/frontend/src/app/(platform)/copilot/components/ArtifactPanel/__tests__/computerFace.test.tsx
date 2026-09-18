@@ -97,6 +97,34 @@ describe("copilot store: computer face", () => {
     expect(panel.mode).toBe("artifact");
   });
 
+  it("a card that remounts does not reopen a computer the user hid", () => {
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    useCopilotUIStore.getState().closeComputer();
+    // The streaming chain unmounts and remounts the desktop row.
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.isOpen).toBe(false);
+    // A different box is news again.
+    useCopilotUIStore
+      .getState()
+      .registerComputerStream({ ...STREAM, sandbox_id: "sbx-2" });
+    expect(useCopilotUIStore.getState().artifactPanel.isComputerOpen).toBe(
+      true,
+    );
+  });
+
+  it("remembers a desktop without opening anything when asked not to show it", () => {
+    useCopilotUIStore
+      .getState()
+      .registerComputerStream(STREAM, { show: false });
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.computer?.sandbox_id).toBe("sbx-1");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.isOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+  });
+
   it("closing the panel and entering a new chat both drop the computer face", () => {
     useCopilotUIStore.getState().registerComputerStream(STREAM);
     useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
