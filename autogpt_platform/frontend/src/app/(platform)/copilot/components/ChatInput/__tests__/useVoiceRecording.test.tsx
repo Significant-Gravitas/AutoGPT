@@ -67,8 +67,11 @@ async function renderRecording() {
   return result;
 }
 
+/** Shared so a test can assert the transcript reached the composer. */
+const setValue = vi.fn();
+
 function renderVoice(value = "") {
-  return renderHook(() => useVoiceRecording({ setValue: vi.fn(), value }));
+  return renderHook(() => useVoiceRecording({ setValue, value }));
 }
 
 beforeEach(() => {
@@ -295,6 +298,48 @@ describe("useVoiceRecording transcription failures", () => {
     expect(result.current.hasFailedRecording).toBe(false);
     act(() => result.current.downloadFailedRecording());
     expect(downloaded).toHaveLength(0);
+  });
+
+  it("stays dismissed when the retry it was dismissed during then fails", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    let failRetry!: (error: Error) => void;
+    fetchMock.mockReturnValue(new Promise((_, reject) => (failRetry = reject)));
+    await act(async () => result.current.retryTranscription());
+    act(() => result.current.dismissTranscriptionError());
+    expect(result.current.transcriptionError).toBeNull();
+
+    await act(async () => {
+      failRetry(new Error("Transcription failed"));
+    });
+
+    // The row the user waved away does not come back a second later.
+    expect(result.current.transcriptionError).toBeNull();
+    expect(result.current.hasFailedRecording).toBe(false);
+    expect(result.current.isTranscribing).toBe(false);
+  });
+
+  it("still delivers a transcript that lands after a dismissal", async () => {
+    // Dismiss means "stop showing me this", not "throw away what I said".
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    let finishRetry!: (value: unknown) => void;
+    fetchMock.mockReturnValue(
+      new Promise((resolve) => (finishRetry = resolve)),
+    );
+    await act(async () => result.current.retryTranscription());
+    act(() => result.current.dismissTranscriptionError());
+
+    await act(async () => {
+      finishRetry({ ok: true, json: async () => ({ text: "what I said" }) });
+    });
+
+    expect(setValue).toHaveBeenCalled();
+    expect(result.current.transcriptionError).toBeNull();
   });
 
   function failTranscription(error: string) {

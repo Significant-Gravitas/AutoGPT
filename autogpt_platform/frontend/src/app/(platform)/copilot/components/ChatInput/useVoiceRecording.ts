@@ -38,6 +38,9 @@ export function useVoiceRecording({
   // Up to two minutes of speech. Dropping it on a transient 500 is the whole
   // bug — the user cannot get those two minutes back.
   const [failedRecording, setFailedRecording] = useState<Blob | null>(null);
+  // Bumped when the user dismisses. An attempt they have already waved away
+  // must not put the row back on screen when it finally fails.
+  const attemptRef = useRef(0);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -98,6 +101,7 @@ export function useVoiceRecording({
 
   const transcribeAudio = useCallback(
     async (audioBlob: Blob) => {
+      const attempt = attemptRef.current;
       setIsTranscribing(true);
       setError(null);
       // The previous failure stays on screen through a retry: clearing it here
@@ -128,13 +132,18 @@ export function useVoiceRecording({
         setTranscriptionError(null);
         setFailedRecording(null);
       } catch (err) {
+        console.error("Transcription error:", err);
+        // Dismissed while this was in flight: the user is done with this
+        // recording, so the failure has nobody to tell. The success path is
+        // deliberately not gated the same way — if the words do arrive, the
+        // user gets what they dictated rather than losing it twice.
+        if (attempt !== attemptRef.current) return;
         const message =
           err instanceof Error && err.message
             ? err.message
             : "Transcription failed";
         setTranscriptionError(message);
         setFailedRecording(audioBlob);
-        console.error("Transcription error:", err);
       } finally {
         setIsTranscribing(false);
       }
@@ -153,6 +162,7 @@ export function useVoiceRecording({
   }
 
   function dismissTranscriptionError() {
+    attemptRef.current += 1;
     setTranscriptionError(null);
     setFailedRecording(null);
   }
