@@ -118,6 +118,10 @@ def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
         f"Authorization: Basic {_SECRET}",
         f"Authorization: Token {_SECRET}",
         f'{{"authorization": "Bearer {_SECRET}"}}',
+        # An OAuth token endpoint's error can quote these back.
+        f"client_secret={_SECRET}",
+        f'{{"client_secret": "{_SECRET}"}}',
+        f'{{"id_token": "{_SECRET}"}}',
     ],
 )
 def test_sanitize_provider_message_leaves_no_secret(raw: str):
