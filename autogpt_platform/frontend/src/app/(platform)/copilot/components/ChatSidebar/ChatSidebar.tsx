@@ -463,7 +463,11 @@ export function ChatSidebar() {
                       <ExpertSessionGroup
                         key={groupKey}
                         groupKey={groupKey}
-                        role={group.expertId ? expert?.role : "Head of AI"}
+                        role={
+                          group.expertId
+                            ? expert?.jobTitle || expert?.role
+                            : "Head of AI"
+                        }
                         label={
                           group.expertId ? (expert?.name ?? "Expert") : "Otto"
                         }

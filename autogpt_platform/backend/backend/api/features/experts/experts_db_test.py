@@ -794,9 +794,11 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         tagline="Finds your leads and their decision-makers.",
+        job_title="Sales Development Rep",
     )
     assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert raised.expert.color == "sky-300"
+    assert raised.expert.job_title == "Sales Development Rep"
     assert raised.expert.tagline == "Finds your leads and their decision-makers."
 
     reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
@@ -804,6 +806,7 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
     assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert reloaded.color == "sky-300"
     assert reloaded.tagline == "Finds your leads and their decision-makers."
+    assert reloaded.job_title == "Sales Development Rep"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1666,7 +1669,15 @@ def test_expert_identity_projection_columns_exist_in_schema():
     model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
     assert model is not None, "Expert model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
-    assert {"id", "name", "avatarUrl", "color", "role", "isArchived"} <= fields
+    assert {
+        "id",
+        "name",
+        "avatarUrl",
+        "color",
+        "role",
+        "jobTitle",
+        "isArchived",
+    } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
 

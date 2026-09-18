@@ -596,6 +596,7 @@ class ExpertChangePreview(BaseModel):
     kind: ExpertChangeKind
     name: str
     role: str = ""
+    job_title: str = ""
     tagline: str = ""
     about: str = ""
     boundaries: str = ""
