@@ -465,3 +465,53 @@ async def test_autopilot_pinning_its_own_routine_still_defaults_to_this_chat(exp
     assert experts.enable_routine.await_args.kwargs["pinned_session_id"] == (
         session.session_id
     )
+
+
+async def test_autopilot_can_manage_an_experts_thread_routine_without_a_session(
+    experts,
+):
+    """The regression the PINNED scope check introduced. THREAD has no chat to
+    name, so requiring one refused the ordinary case outright: personal
+    AutoPilot switching on an expert's routine, which is most of the flow."""
+    result = await ScheduleRoutineTool()._execute(
+        "user-1",
+        _session(None),
+        expert_id="expert-a",
+        routine_id="routine-1",
+        enabled=True,
+        prompt="Read the queue.",
+    )
+    assert isinstance(result, RoutineResponse)
+    experts.enable_routine.assert_awaited_once()
+    assert experts.enable_routine.await_args.kwargs["pinned_session_id"] is None
+
+
+async def test_autopilot_can_create_an_experts_fresh_routine_without_a_session(
+    experts,
+):
+    await ScheduleRoutineTool()._execute(
+        "user-1",
+        _session(None),
+        expert_id="expert-a",
+        enabled=False,
+        title="Morning triage",
+        prompt="Read overnight tickets.",
+        crons=["H 8 * * 1-5"],
+        session_mode="FRESH",
+    )
+    experts.create_routine.assert_awaited_once()
+    assert experts.create_routine.await_args.kwargs["session_id"] is None
+
+
+async def test_omitting_the_mode_does_not_re_pin_a_routine_to_this_chat(experts):
+    """An omitted `session_mode` means "leave it as it is". Answering with the
+    caller's chat would move an already-pinned routine into whatever
+    conversation happened to reword it."""
+    await ScheduleRoutineTool()._execute(
+        "user-1",
+        _session("expert-a"),
+        routine_id="routine-1",
+        enabled=True,
+        prompt="Reworded, nothing else.",
+    )
+    assert experts.enable_routine.await_args.kwargs["pinned_session_id"] is None
