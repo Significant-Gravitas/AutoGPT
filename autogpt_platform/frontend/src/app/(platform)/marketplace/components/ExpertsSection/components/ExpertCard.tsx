@@ -42,7 +42,11 @@ export function ExpertCard({ expert, isHired }: Props) {
         />
 
         <div>
-          <ExpertIdentityDetails name={expert.name} role={expert.role} />
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+          />
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 

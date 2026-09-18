@@ -130,6 +130,7 @@ export function ExpertTeamCard({
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
+            jobTitle={expert.job_title}
             nameAccessory={
               <IntegrationIcons
                 expertName={expert.name}

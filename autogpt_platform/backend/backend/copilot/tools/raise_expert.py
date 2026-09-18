@@ -71,6 +71,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    job_title: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
     tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
@@ -99,12 +100,16 @@ class RaiseExpertTool(BaseTool):
                 "name": {
                     "type": "string",
                     "description": (
-                        "Personal first name, not a job title (use role for that)."
+                        "Personal first name, not a job title (use job_title for that)."
                     ),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short title for what they own.",
+                    "description": "Short name for the area they own, e.g. 'SEO & Content'.",
+                },
+                "job_title": {
+                    "type": "string",
+                    "description": "What they would be called on a team, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
@@ -166,6 +171,7 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        job_title: str = "",
         tagline: str = "",
         color: str = "",
         avatar_glasses: str = "",
@@ -215,6 +221,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                job_title=" ".join(job_title.split()),
                 tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
@@ -266,6 +273,7 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
             avatar_url=build_avatar_url(

@@ -380,6 +380,7 @@ async def _apply_raise(
             preview.name,
             preview.role or None,
             preview.voice_preferences or None,
+            job_title=preview.job_title or None,
             avatar_url=preview.avatar_url,
             color=preview.color or None,
             tagline=preview.tagline or None,
