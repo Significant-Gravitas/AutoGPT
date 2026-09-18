@@ -100,6 +100,19 @@ async def test_a_remembered_password_is_dropped_once_the_proxy_is_gone():
 
 
 @pytest.mark.asyncio
+async def test_stopping_the_stream_kills_only_the_vnc_stack_and_as_root():
+    session, run = _session(listening=True)
+
+    await session.stop_stream()
+
+    ((command, user),) = _commands(run)
+    assert "pkill -x x11vnc" in command and "pkill -f '[n]ovnc_proxy'" in command
+    # The display keeps running: a later open serves the same screen again.
+    assert "Xvfb" not in command and "xfce" not in command
+    assert user == VNC_USER
+
+
+@pytest.mark.asyncio
 async def test_a_failed_x11vnc_says_why_in_its_own_words():
     """Its stderr goes to a file in the box, so the bare exception is empty."""
     run = AsyncMock()
