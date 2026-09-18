@@ -2090,3 +2090,87 @@ class TestRoutineTurnPermissions:
             permissions = _routine_turn_permissions(routine)
             assert permissions.tools
             assert permissions.tools_exclude is True
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_routine_behind_the_turn():
+    """The retried job has to still be a routine's.
+
+    Without ``routine_id`` the replacement resolves no routine, so
+    ``_execute_copilot_turn`` passes ``permissions=None`` and the turn runs
+    with whatever the session allows. An ungranted routine that merely lost a
+    race to the concurrency cap would come back holding everything the mute
+    exists to withhold — and it would never be marked as having fired.
+    """
+    args = _args(cap_retry_count=0, routine_id="routine-1")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+
+    assert (
+        mock_client.add_copilot_turn_schedule.call_args.kwargs["routine_id"]
+        == "routine-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_switched_off_routine_does_not_fire_and_its_job_is_removed():
+    """Deleting a routine's jobs is best effort, so "off" has to mean
+    something at fire time too. Otherwise a job the scheduler refused to
+    delete keeps running work its owner stopped, forever."""
+    args = _args(routine_id="routine-1")
+    off = ExpertRoutine(
+        id="routine-1",
+        title="Stopped",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=False,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=off)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_not_awaited()
+    self_delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_switched_on_routine_still_fires():
+    """The guard above must not be the thing that stops every routine."""
+    args = _args(routine_id="routine-1")
+    on = ExpertRoutine(
+        id="routine-1",
+        title="Running",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=True,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=on)
+    db.record_routine_fired = AsyncMock()
+    session = MagicMock(
+        session_id="session-1",
+        expert_id=None,
+        metadata=MagicMock(llm_auth_provider=None, llm_credential_id=None),
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_awaited_once()
+    self_delete.assert_not_awaited()

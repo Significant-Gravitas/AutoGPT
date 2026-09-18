@@ -1180,7 +1180,8 @@ class TestRoutinesBlock:
             [self._routine(source="TEMPLATE", enabled=False, asks=["Which calendar?"])]
         )
 
-        assert "an offer, not a plan" in result
+        assert "(proposal)" in result
+        assert "are offers, not plans" in result
         assert "Which calendar?" in result
 
     @pytest.mark.asyncio
@@ -1191,7 +1192,8 @@ class TestRoutinesBlock:
         result = await self._otto_context([self._routine(source="OWNER")])
 
         assert "<routines>" in result
-        assert "an offer, not a plan" not in result
+        assert "(proposal)" not in result
+        assert "are offers, not plans" not in result
 
     @pytest.mark.asyncio
     async def test_a_one_shot_says_when_it_runs(self):
@@ -1208,3 +1210,26 @@ class TestRoutinesBlock:
         )
 
         assert "2026-09-20 14:30" in result
+
+    @pytest.mark.asyncio
+    async def test_a_mixed_list_marks_only_the_proposals(self):
+        """An expert holds a template's offers and the owner's own routines at
+        once. One blanket rule about drafts would send the model back to re-ask
+        questions the user already answered."""
+        result = await self._otto_context(
+            [
+                self._routine(
+                    id="r-template",
+                    title="Shipped with me",
+                    source="TEMPLATE",
+                    enabled=False,
+                ),
+                self._routine(
+                    id="r-owner", title="Mine", source="OWNER", enabled=False
+                ),
+            ]
+        )
+
+        lines = [ln for ln in result.splitlines() if ln.startswith("- ")]
+        marked = {ln.split(" (id: ")[0][2:]: "(proposal)" in ln for ln in lines}
+        assert marked == {"Shipped with me": True, "Mine": False}

@@ -362,7 +362,7 @@ async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
     if args.routine_id is None:
         return None
     try:
-        return await experts_db().get_routine(args.routine_id)
+        routine = await experts_db().get_routine(args.routine_id)
     except Exception:
         logger.warning(
             "Could not load routine %s for scheduled turn %s; "
@@ -372,6 +372,7 @@ async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
             exc_info=True,
         )
         return None
+    return routine
 
 
 def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
@@ -394,6 +395,20 @@ async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
     routine = await _routine_for_turn(args)
+    if routine is not None and not routine.enabled:
+        # Deleting a routine's jobs is best effort — the scheduler can refuse,
+        # and a spent one-shot's row outlives its job either way. So "off" has
+        # to mean something at fire time too, or a job that survived being
+        # switched off keeps running work its owner stopped. This is the
+        # fire-time lookup ``delete_routine_schedules`` defers to.
+        logger.info(
+            "Copilot turn schedule %s skipped — routine %s is switched off; "
+            "removing the schedule that outlived it",
+            args.schedule_id,
+            routine.id[:12],
+        )
+        await _self_delete_copilot_turn_schedule(args)
+        return
     # A THREAD routine keeps one durable conversation: null until its first
     # fire mints it, reused by every fire after. Resolving it here means the
     # second fire takes the existing-session branch below and inherits that
@@ -697,6 +712,12 @@ async def _reschedule_one_shot(
             # turn into a plain session, escaping the expert's thread/budget
             # and its isolated memory scope.
             expert_id=args.expert_id,
+            # And for the routine behind it. Dropping this was the worst of
+            # the three: the retried turn resolves no routine, so it runs
+            # with the session's own permissions instead of the routine's —
+            # an ungranted routine that merely lost a race to the concurrency
+            # cap would come back with everything the mute exists to withhold.
+            routine_id=args.routine_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "

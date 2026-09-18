@@ -66,14 +66,22 @@ async def resume_routines_after_revive(user_id: str, expert_id: str) -> None:
         where={"expertId": expert_id, "pausedByExpertArchive": True}
     )
     for row in rows:
+        resumed_all = True
         for schedule_id in row.scheduleIds:
             try:
                 await scheduler.resume_schedule(schedule_id, user_id=user_id)
             except Exception as e:
+                resumed_all = False
                 logger.warning(
                     f"Failed to resume routine schedule #{schedule_id} while "
                     f"reviving expert #{expert_id}: {type(e).__name__}: {e}"
                 )
+        if not resumed_all:
+            # The marker is the only record that archiving is what stopped
+            # these. Clearing it after a failed resume strands the schedule
+            # paused with nothing left to say it should not be — and the next
+            # re-hire, which is the natural retry, would skip the row.
+            continue
         await prisma.models.ExpertRoutine.prisma().update(
             where={"id": row.id}, data={"pausedByExpertArchive": False}
         )
@@ -144,9 +152,16 @@ def spread_cron(cron: str, *, seed: str) -> str:
     Plain cron cannot express "some minute in this hour": ``*`` means all sixty.
     So a roster cron says ``H 9 * * 1`` — borrowing Jenkins's ``H`` — and this
     picks the minute from who the owner is and which routine it is. The same
-    routine for the same person lands on the same minute every week; two
-    people's morning sweeps land on different minutes; two routines on one
-    account never collide with each other.
+    routine for the same person lands on the same minute every week, and two
+    accounts' morning sweeps almost never share one.
+
+    It spreads; it does not guarantee. A digest byte modulo 60 collides about
+    once in sixty for any given pair, so two of one owner's routines can still
+    land together — this turns a certainty into a small chance, which for five
+    personas that all literally say "9am" is the whole of the win. Making it a
+    guarantee needs allocation against what the owner already has, and the
+    firing that loses a collision needs queueing rather than dropping; both are
+    worth doing and neither is this function.
 
     Only ``H`` is resolved. A cron that names a minute means that minute, from a
     roster author who wrote 07:40 on purpose as much as from an owner who asked

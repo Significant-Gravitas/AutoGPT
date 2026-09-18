@@ -26,7 +26,13 @@ CREATE TABLE "ExpertRoutine" (
     "grantsCredentials" BOOLEAN NOT NULL DEFAULT false,
     "pausedByExpertArchive" BOOLEAN NOT NULL DEFAULT false,
 
-    CONSTRAINT "ExpertRoutine_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ExpertRoutine_pkey" PRIMARY KEY ("id"),
+    -- Exactly one owner. Prisma cannot express this, so both columns are
+    -- nullable in the schema and every reader has to trust the invariant;
+    -- stated here it is the database's job. A row with both owners would be
+    -- reachable from two scopes at once, and a row with neither would be
+    -- reachable from none while still firing.
+    CONSTRAINT "ExpertRoutine_one_owner" CHECK (("expertId" IS NULL) <> ("userId" IS NULL))
 );
 
 -- CreateIndex

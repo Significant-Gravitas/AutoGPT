@@ -332,12 +332,14 @@ async def _routines_block(user_id: str, expert_id: str | None) -> str:
     # send the model back to re-ask questions they have already answered.
     proposal_rule = (
         (
-            "An OFF routine here is an offer, not a plan: its wording is a "
-            "draft written for everybody, so before switching one on, answer "
-            "its open questions with the user, rewrite it in their terms, and "
-            "show them the result. A routine reaches none of their connected "
-            "accounts unless they say it should, so if the work needs one, ask "
-            "for that specifically rather than assuming it.\n"
+            "The routines marked (proposal) are offers, not plans: their "
+            "wording is a draft written for everybody, so before switching one "
+            "on, answer its open questions with the user, rewrite it in their "
+            "terms, and show them the result. Routines without that mark are "
+            "already the user's own words — do not re-ask them. A routine "
+            "reaches none of their connected accounts unless they say it "
+            "should, so if the work needs one, ask for that specifically "
+            "rather than assuming it.\n"
         )
         if any(r.source == "TEMPLATE" for r in routines)
         else ""
@@ -372,7 +374,12 @@ def _routine_line(routine: ExpertRoutineModel) -> str:
             if routine.asks
             else ""
         )
-        return f"- {title} (id: {routine.id}) — OFF, suggested {when}{asks}"
+        # Marked per row rather than described once for the list: an expert can
+        # hold a template's proposals and the owner's own routines at the same
+        # time, and one blanket rule about drafts sends the model back to
+        # re-ask questions the user already answered.
+        proposal = " (proposal)" if routine.source == "TEMPLATE" else ""
+        return f"- {title} (id: {routine.id}) — OFF{proposal}, suggested {when}{asks}"
     reach = (
         "may use connected accounts" if routine.grants_credentials else "platform-only"
     )

@@ -261,7 +261,7 @@ class ScheduleRoutineTool(BaseTool):
         owner = await resolve_routine_owner(user_id, session, expert_id)
         if isinstance(owner, ErrorResponse):
             return owner
-        pinned = await self._pinned_session(user_id, session, kwargs)
+        pinned = await self._pinned_session(user_id, session, owner, kwargs)
         if isinstance(pinned, ErrorResponse):
             return pinned
         try:
@@ -294,26 +294,49 @@ class ScheduleRoutineTool(BaseTool):
         )
 
     async def _pinned_session(
-        self, user_id: str, session: ChatSession, kwargs: dict[str, Any]
+        self,
+        user_id: str,
+        session: ChatSession,
+        owner: RoutineOwner,
+        kwargs: dict[str, Any],
     ) -> str | None | ErrorResponse:
         """The chat a PINNED routine fires into, validated before it is stored.
 
         Same rule ``schedule_followup`` applies to its ``session_id``: the
-        target must be the caller's and in the caller's expert scope, so a
+        target must be the caller's and in the routine owner's scope, so a
         routine cannot be aimed at another persona's memory. The fire path
         re-checks both on every run, because a chat can be deleted or a scope
         can change long after this.
+
+        Scoped to ``owner``, not to the calling session: personal AutoPilot
+        managing an expert's routine is in no expert scope itself, so
+        defaulting to "this chat" would pin the owner's Otto chat onto an
+        expert's routine — which the fire path then refuses on every run,
+        deleting the schedule and leaving a routine that says it is on.
         """
         requested: str | None = kwargs.get("session_id")
         current = session.session_id if session else None
-        if not requested or requested == current:
+        if not requested and session.expert_id == owner.expert_id:
             return current
+        if not requested:
+            return ErrorResponse(
+                message=(
+                    "PINNED needs `session_id`: this chat belongs to a "
+                    "different scope than the routine's owner, so a routine "
+                    "pinned to it would never run. Name one of that owner's "
+                    "chats, or use THREAD."
+                ),
+                error="session_required",
+                session_id=current,
+            )
+        if requested == current and session.expert_id == owner.expert_id:
+            return requested
         target = await get_chat_session(requested, user_id)
-        if target is None or target.expert_id != session.expert_id:
+        if target is None or target.expert_id != owner.expert_id:
             return ErrorResponse(
                 message=(
                     f"Session {requested} not found, not owned by the calling "
-                    "user, or outside the current memory scope."
+                    "user, or outside the routine owner's memory scope."
                 ),
                 error="session_not_found",
                 session_id=current,

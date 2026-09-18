@@ -407,3 +407,61 @@ async def test_the_confirmation_of_a_one_shot_names_its_time(experts):
     )
     assert isinstance(result, RoutineResponse)
     assert "2026-09-20 14:30" in result.message
+
+
+async def test_autopilot_pinning_an_experts_routine_must_name_that_experts_chat(
+    experts,
+):
+    """Personal AutoPilot is in no expert scope, so "this chat" is the wrong
+    default when it manages an expert's routine: the chat it would pin belongs
+    to Otto, and the fire path refuses it on every run — deleting the schedule
+    and leaving a routine that says it is on with nothing behind it."""
+    result = await ScheduleRoutineTool()._execute(
+        "user-1",
+        _session(None),
+        expert_id="expert-a",
+        routine_id="routine-1",
+        enabled=True,
+        prompt="Read the queue.",
+        session_mode="PINNED",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "session_required"
+    experts.enable_routine.assert_not_awaited()
+
+
+async def test_autopilot_may_pin_an_experts_routine_to_that_experts_chat(experts):
+    with patch(
+        f"{_PATH}.get_chat_session",
+        AsyncMock(return_value=MagicMock(expert_id="expert-a")),
+    ):
+        await ScheduleRoutineTool()._execute(
+            "user-1",
+            _session(None),
+            expert_id="expert-a",
+            routine_id="routine-1",
+            enabled=True,
+            prompt="Read the queue.",
+            session_mode="PINNED",
+            session_id="an-expert-a-chat",
+        )
+    assert experts.enable_routine.await_args.kwargs["pinned_session_id"] == (
+        "an-expert-a-chat"
+    )
+
+
+async def test_autopilot_pinning_its_own_routine_still_defaults_to_this_chat(experts):
+    """The account's own standing work is in the account's own scope, so the
+    default is right there and only there."""
+    session = _session(None)
+    await ScheduleRoutineTool()._execute(
+        "user-1",
+        session,
+        routine_id="routine-1",
+        enabled=True,
+        prompt="Read the queue.",
+        session_mode="PINNED",
+    )
+    assert experts.enable_routine.await_args.kwargs["pinned_session_id"] == (
+        session.session_id
+    )

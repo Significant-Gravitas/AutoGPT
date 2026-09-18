@@ -5983,9 +5983,15 @@ async def test_enabling_a_routine_resolves_it_and_creates_one_job_per_cron(
     assert enabled.customized is True
     assert enabled.prompt.startswith("Read the support queue")
     # H is resolved before anything reaches APScheduler, which has never heard
-    # of it, and the two fire times land on their own minutes.
+    # of it. Asserted against the resolver rather than "the two minutes
+    # differ": the minute is one byte of a digest modulo 60, so two fire times
+    # of one routine collide about once in sixty runs, and that assertion
+    # failed on its own with nothing changed.
     assert all(not c.startswith("H ") for c in enabled.crons)
-    assert len({c.split()[0] for c in enabled.crons}) == 2
+    assert enabled.crons == [
+        routine_jobs.spread_cron(cron, seed=f"{test_user.id}:queue-sweep:{index}")
+        for index, cron in enumerate(["H 9 * * 1-5", "H 13 * * 1-5"])
+    ]
     rows = await prisma.models.ExpertRoutine.prisma().find_many(
         where={"id": installed[0].id}
     )
@@ -6430,3 +6436,47 @@ async def test_changing_a_running_routines_cadence_retires_the_old_jobs(
     assert after is not None
     assert not set(after.scheduleIds) & set(first)
     assert after.crons[0].endswith(" 17 * * 5")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_switched_off_can_be_switched_back_on(
+    server: SpinTestServer, test_user
+):
+    """The asks are answered once and the answers live in the row. Reading only
+    the current call meant a routine that was set up, run, and switched off
+    could never run again: its questions are still listed, and there is no way
+    to answer them a second time."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            installed[0].id,
+            prompt="Read the support queue.",
+        )
+        await experts_db.disable_routine(test_user.id, hired.expert.id, installed[0].id)
+        again = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, installed[0].id
+        )
+
+    assert again.enabled is True
+    # And it comes back as what the owner set up, not as the template's draft.
+    assert again.prompt == "Read the support queue."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_proposal_nobody_answered_still_refuses(
+    server: SpinTestServer, test_user
+):
+    """The other half: relaxing the check must not let an untouched template
+    routine schedule itself against guesses."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)

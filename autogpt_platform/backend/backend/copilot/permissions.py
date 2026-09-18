@@ -230,6 +230,13 @@ UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
         MCP_GATE,
         "run_agent",
         "post_to_chat_platform",
+        # ``bash_exec`` is the one that looks harmless and is not. On E2B the
+        # sandbox is handed ``get_integration_env_vars(user_id)`` — the
+        # owner's live GH_TOKEN and friends — keyed on the user alone, with no
+        # reference to this filter or to the grant. A shell plus internet
+        # access plus the owner's tokens in ``env`` is the whole mute undone by
+        # one ``echo $GH_TOKEN``, so an ungranted routine does not get a shell.
+        "bash_exec",
     }
 )
 

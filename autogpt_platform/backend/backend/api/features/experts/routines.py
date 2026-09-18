@@ -44,6 +44,7 @@ from backend.api.features.experts.routine_jobs import (
     spread_cron,
 )
 from backend.data.user import get_user_by_id
+from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -177,7 +178,12 @@ async def enable_routine(
     row = await _owned_routine(user_id, expert_id, routine_id)
     resolved_prompt = prompt or row.prompt
     customized = prompt is not None or crons is not None or run_at is not None
-    if row.asks and not customized:
+    # ``customizedAt``, not just this call: the asks are answered once, and the
+    # answers live in the row from then on. Reading only the current call meant
+    # a routine that was set up, run, and switched off could never be switched
+    # back on — its questions are still listed, and the owner has no way to
+    # answer them a second time.
+    if row.asks and not customized and row.customizedAt is None:
         raise RoutineUnansweredAsksError(
             f"'{row.title}' needs answers before it can run: " + "; ".join(row.asks)
         )
@@ -225,6 +231,11 @@ async def enable_routine(
         if mode == prisma.enums.ExpertRoutineSession.PINNED
         else None
     )
+    if mode == prisma.enums.ExpertRoutineSession.PINNED and not pinned:
+        # The scheduler reads a null session as "fire into a fresh chat", so
+        # without this the row would say PINNED and behave like FRESH. The tool
+        # always supplies one; this closes the RPC path, which does not.
+        raise ValueError("A PINNED routine needs the chat it should fire into.")
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -255,10 +266,18 @@ async def enable_routine(
         data["grantsCredentials"] = grants_credentials
     if customized:
         data["customizedAt"] = now
-    updated = await prisma.models.ExpertRoutine.prisma().update(
-        where={"id": row.id}, data=data
-    )
+    try:
+        updated = await prisma.models.ExpertRoutine.prisma().update(
+            where={"id": row.id}, data=data
+        )
+    except Exception:
+        # The jobs exist and nothing records them, so they would fire forever
+        # with no row able to name or remove them. Undo them and leave the
+        # caller in the state they started in.
+        await _drop_schedules(user_id, schedule_ids)
+        raise
     if updated is None:
+        await _drop_schedules(user_id, schedule_ids)
         raise RoutineNotFoundError(routine_id)
     # Switching on a routine that was already on is how a cadence gets changed,
     # and its old jobs are still armed. Cleared last, and only once the row
@@ -362,6 +381,19 @@ async def disable_routine(
     if updated is None:
         raise RoutineNotFoundError(routine_id)
     return to_model(updated)
+
+
+async def _drop_schedules(user_id: str, schedule_ids: list[str]) -> None:
+    """Remove jobs that were created for a row write that never landed."""
+    scheduler = get_scheduler_client()
+    for schedule_id in schedule_ids:
+        try:
+            await scheduler.delete_schedule(schedule_id, user_id=user_id)
+        except Exception as e:
+            logger.warning(
+                f"Leaked routine schedule #{schedule_id} after a failed "
+                f"enable write: {type(e).__name__}: {e}"
+            )
 
 
 def _owner_where(

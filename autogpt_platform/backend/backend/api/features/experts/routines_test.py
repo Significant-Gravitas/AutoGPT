@@ -175,6 +175,16 @@ def test_an_ungranted_routine_cannot_reach_a_connected_account():
     assert CAPABILITY_GATE_NAMES <= ungranted
 
 
+def test_an_ungranted_routine_does_not_get_a_shell():
+    """The denial that looks like overreach and is not. ``bash_exec`` hands the
+    E2B sandbox the owner's live integration tokens, keyed on the user alone —
+    it never consults this filter or the grant. A shell holding those, with
+    full internet access, is every other denial here undone by one echo."""
+    assert "bash_exec" in routine_disabled_tools(granted=False)
+    # Granted, it is exactly what the owner agreed to, so it comes back.
+    assert "bash_exec" not in routine_disabled_tools(granted=True)
+
+
 def test_roster_routines_ask_before_they_run():
     """Every seeded routine is a proposal written for everybody, so each one has
     to name what it needs from this owner. A routine with no asks would schedule
