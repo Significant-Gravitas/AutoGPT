@@ -47,6 +47,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.request import HTTPClientError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
@@ -386,10 +387,12 @@ async def execute_block(
                         cred_meta.id,
                         lock=False,
                     )
-                except Exception as e:
-                    # Usually a refresh the provider refused (revoked grant,
-                    # expired refresh token). The user can only fix that by
+                except HTTPClientError as e:
+                    # The provider refused the refresh (revoked grant, expired
+                    # refresh token). The user can only fix that by
                     # reconnecting, so hand them the card rather than an error.
+                    # Anything else (store, config, handler setup) is not
+                    # theirs to fix and takes the usual error path below.
                     await _release_credential_leases(credential_leases)
                     return _build_credential_rejected_card(
                         block=block,

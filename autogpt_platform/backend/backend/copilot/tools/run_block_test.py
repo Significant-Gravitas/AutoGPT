@@ -1463,6 +1463,20 @@ class TestExecuteBlockCredentialRejection:
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_failure_that_is_not_the_providers_is_not_a_reconnect_card(self):
+        # A store or config error is not fixed by reconnecting, so it must not
+        # be dressed up as one.
+        from .models import ErrorResponse
+
+        response = await self._run(
+            RuntimeError("the block must not run"),
+            load_error=RuntimeError("credential store unavailable"),
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "Failed to execute block" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_provider_401_returns_a_card_naming_the_credential(self):
         from backend.util.exceptions import BlockUnknownError
         from backend.util.request import HTTPClientError
