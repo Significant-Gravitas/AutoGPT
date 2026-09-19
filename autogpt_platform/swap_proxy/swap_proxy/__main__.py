@@ -8,17 +8,13 @@ from mitmproxy.options import Options
 from mitmproxy.tools.dump import DumpMaster
 from redis.asyncio.cluster import ClusterNode, RedisCluster
 
-from swap_proxy.addon import SwapProxyAddon
+from swap_proxy.addon import MAX_BODY_BYTES, SwapProxyAddon
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import OwnerDirectory
 from swap_proxy.settings import Settings
 from swap_proxy.source import BackendCredentialSource
 
 logger = logging.getLogger(__name__)
-
-# Bodies over this are streamed through, neither swapped nor scrubbed: a
-# proxy carrying every box's downloads cannot hold them in memory.
-STREAM_BODIES_OVER = "5m"
 
 
 def build_master(
@@ -41,7 +37,10 @@ def build_master(
     master.addons.add(addon)
     master.options.update(
         proxyauth="per-box",
-        stream_large_bodies=STREAM_BODIES_OVER,
+        # A proxy carrying every box's downloads cannot hold them in memory.
+        # The addon decides what that means for a body that needed a swap or a
+        # scrub; see "Bodies and streaming" in ``addon.py``.
+        stream_large_bodies=str(MAX_BODY_BYTES),
         # Upstream first, so that by the time a request is read the name its
         # certificate was verified for is known.
         connection_strategy="eager",

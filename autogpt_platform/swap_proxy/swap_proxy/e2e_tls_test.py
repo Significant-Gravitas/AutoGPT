@@ -159,8 +159,8 @@ async def test_a_bound_host_is_opened_and_the_token_swapped(tls_stack):
         proxy.port, BOX_A, upstream.port, BOUND, http_get(headers=BEARER), mitm_ca
     )
     assert issuer == "mitmproxy"
-    assert upstream.seen[0]["headers"]["Authorization"] == f"Bearer {TOKEN_A}"
-    assert body_of(raw)["headers"]["Authorization"] == "Bearer hsurr:github"
+    assert upstream.seen[0]["headers"]["authorization"] == f"Bearer {TOKEN_A}"
+    assert body_of(raw)["headers"]["authorization"] == "Bearer hsurr:github"
 
 
 async def test_an_unbound_host_is_never_opened(tls_stack):
@@ -171,7 +171,7 @@ async def test_an_unbound_host_is_never_opened(tls_stack):
         proxy.port, BOX_A, upstream.port, UNBOUND, request, upstream_ca
     )
     assert issuer == "test upstream CA"
-    assert body_of(raw)["headers"]["Authorization"] == "Bearer hsurr:github"
+    assert body_of(raw)["headers"]["authorization"] == "Bearer hsurr:github"
 
 
 async def test_a_host_header_the_certificate_was_not_verified_for_gets_nothing(
@@ -181,7 +181,7 @@ async def test_a_host_header_the_certificate_was_not_verified_for_gets_nothing(
     proxy, upstream, _, mitm_ca = tls_stack
     request = http_get(headers=BEARER, host=ALSO_BOUND)
     await tls_request(proxy.port, BOX_A, upstream.port, BOUND, request, mitm_ca)
-    assert upstream.seen[0]["headers"]["Authorization"] == "Bearer hsurr:github"
+    assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
 
 
 async def test_an_upstream_whose_certificate_does_not_verify_gets_nothing(tls_stack):
@@ -213,6 +213,6 @@ async def test_plain_http_proves_nothing_so_nothing_is_swapped(tmp_path, caplog)
     finally:
         await proxy.stop()
         await upstream.stop()
-    assert upstream.seen[0]["headers"]["Authorization"] == "Bearer hsurr:github"
+    assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
     assert source.asked == []
     assert '"reason": "unverified-destination"' in caplog.text

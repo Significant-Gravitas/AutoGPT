@@ -61,7 +61,6 @@ ENCODED_PLACEHOLDER_RE = re.compile(
 )
 NEVER_SWAP_HEADERS = frozenset({"referer", "origin"})
 MIN_SCRUB_LEN = 8
-MAX_SCRUB_BYTES = 5 * 1024 * 1024
 _SCRUBBABLE_TYPES = (
     "text/",
     "application/json",
@@ -160,24 +159,28 @@ def basic_decoded(value: str) -> Optional[str]:
         return None
 
 
-def placeholder_names(request: Any) -> set[str]:
+def placeholder_names(
+    request: Any, *, head: bool = True, body: bool = True
+) -> set[str]:
     """Every credential name a request mentions, wherever a swap would look.
 
     Run before the swap so that only those credentials are fetched.  It looks
     inside Basic auth, the percent-encoded form and the path too: the same
-    places the swap does, so nothing it would swap goes unfetched.
+    places the swap does, so nothing it would swap goes unfetched.  *head* is
+    the request line and the headers, *body* the content.
     """
     chunks: list[str] = []
-    for key in request.headers.keys():
-        for value in request.headers.get_all(key):
-            chunks.append(value)
-            if key.lower() == "authorization":
-                decoded = basic_decoded(value)
-                if decoded:
-                    chunks.append(decoded)
-    chunks.append(request.path)
-    chunks.append(urllib.parse.unquote(request.path))
-    if request.content:
+    if head:
+        for key in request.headers.keys():
+            for value in request.headers.get_all(key):
+                chunks.append(value)
+                if key.lower() == "authorization":
+                    decoded = basic_decoded(value)
+                    if decoded:
+                        chunks.append(decoded)
+        chunks.append(request.path)
+        chunks.append(urllib.parse.unquote(request.path))
+    if body and request.content:
         chunks.append(request.content.decode("utf-8", "ignore"))
     blob = "\n".join(chunks)
     names = {m.group(1) for m in PLACEHOLDER_RE.finditer(blob)}
@@ -328,6 +331,11 @@ class RequestSwap:
 
     def request(self, request: Any) -> None:
         """Swap everywhere a request can carry a placeholder."""
+        self.head(request)
+        self.body(request)
+
+    def head(self, request: Any) -> None:
+        """Headers, query and path: everything that leaves before the body."""
         self.headers(request)
         query = list(request.query.items(multi=True))
         new_query = [(k, self.text(v)) for k, v in query]
@@ -346,6 +354,8 @@ class RequestSwap:
             if new_query:
                 new_path += "?" + urllib.parse.urlencode(new_query)
             request.path = new_path
+
+    def body(self, request: Any) -> None:
         if not request.content:
             return
         try:
