@@ -75,16 +75,20 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 # stays a real check on everyone else. Remy's workflow listings are unavailable;
 # the other names are skills-only by design.
 PERSONAS_WITHOUT_WORKFLOWS = {
-    "Remy",
-    "Mina",
-    "Theo",
-    "Quinn",
-    "Harper",
-    "Vera",
-    "Ellis",
+    "Alex",
+    "Daniel",
     "Devon",
-    "Riley",
+    "Ellis",
+    "Harper",
+    "James",
     "Jordan",
+    "Mina",
+    "Quinn",
+    "Remy",
+    "Riley",
+    "Sofia",
+    "Theo",
+    "Vera",
 }
 EXPECTED_SKILLS_ONLY_ROSTER = {
     "Devon": [
@@ -123,8 +127,8 @@ EXPECTED_SKILLS_ONLY_ROSTER = {
 # may carry one; pinning the whole set here makes adding a cron a deliberate
 # edit to this test rather than a silent roster change.
 EXPECTED_ROSTER_SCHEDULES = {
-    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
 }
 EXPECTED_OPERATIONS_SKILLS = {
     "Harper": [
