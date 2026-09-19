@@ -49,7 +49,6 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
-from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
@@ -85,6 +84,15 @@ PERSONAS_WITHOUT_WORKFLOWS = {
     "Devon",
     "Riley",
     "Jordan",
+    "Sasha",
+    "Priya",
+    "Marco",
+    "Noor",
+    "Casey",
+    "Ines",
+    "Omar",
+    "Lena",
+    "Kai",
 }
 EXPECTED_SKILLS_ONLY_ROSTER = {
     "Devon": [
@@ -157,6 +165,143 @@ EXPECTED_OPERATIONS_SKILLS = {
         "contract-obligation-tracker",
         "counsel-escalation-brief",
     ],
+}
+EXPECTED_WAVE_THREE = {
+    "Sasha": {
+        "role": "Support & Help Desk",
+        "categories": ["support"],
+        "skills": [
+            "support-getting-started",
+            "ticket-triage",
+            "support-reply-draft",
+            "support-macro-library",
+            "help-article-from-tickets",
+            "bug-report-handoff",
+            "refund-and-exception-brief",
+            "weekly-ticket-themes",
+        ],
+        "timings": ["after queue access", "on request"],
+    },
+    "Priya": {
+        "role": "Product Management",
+        "categories": ["research", "operations"],
+        "skills": [
+            "product-getting-started",
+            "feedback-synthesis",
+            "feature-request-triage",
+            "user-interview-guide",
+            "opportunity-brief",
+            "product-requirements-draft",
+            "roadmap-prioritisation",
+            "release-notes-draft",
+        ],
+        "timings": ["after feedback input", "on request"],
+    },
+    "Marco": {
+        "role": "Paid Ads & Performance",
+        "categories": ["marketing"],
+        "skills": [
+            "paid-ads-getting-started",
+            "campaign-structure-plan",
+            "ad-copy-variants",
+            "landing-page-message-match",
+            "wasted-spend-audit",
+            "budget-pacing-review",
+            "creative-test-readout",
+            "paid-performance-report",
+        ],
+        "timings": ["after account export", "on request"],
+    },
+    "Noor": {
+        "role": "PR & Communications",
+        "categories": ["marketing", "content"],
+        "skills": [
+            "communications-getting-started",
+            "news-angle-and-key-messages",
+            "press-release-draft",
+            "media-list-research",
+            "media-pitch-email",
+            "launch-communications-plan",
+            "holding-statement-draft",
+            "spokesperson-briefing",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Casey": {
+        "role": "Code Review & QA",
+        "categories": ["development"],
+        "skills": [
+            "code-quality-getting-started",
+            "pull-request-review",
+            "test-plan-draft",
+            "bug-reproduction-report",
+            "flaky-test-triage",
+            "regression-risk-review",
+            "release-readiness-checklist",
+            "incident-postmortem-draft",
+        ],
+        "timings": ["after access", "on request"],
+    },
+    "Ines": {
+        "role": "People Ops & HR (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "people-ops-getting-started",
+            "new-hire-onboarding-plan",
+            "handbook-policy-draft",
+            "one-to-one-agenda",
+            "performance-review-prep",
+            "engagement-survey-readout",
+            "offboarding-checklist",
+            "hr-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Omar": {
+        "role": "RevOps & CRM Hygiene",
+        "categories": ["sales", "operations"],
+        "skills": [
+            "revops-getting-started",
+            "crm-field-audit",
+            "crm-duplicate-review",
+            "pipeline-stage-definitions",
+            "lead-routing-rules",
+            "sales-forecast-rollup",
+            "lost-deal-analysis",
+            "crm-hygiene-report",
+        ],
+        "timings": ["after CRM export", "on request"],
+    },
+    "Lena": {
+        "role": "Privacy & Compliance (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "compliance-ops-getting-started",
+            "security-questionnaire-answers",
+            "personal-data-map",
+            "subprocessor-register",
+            "dpa-checklist-review",
+            "policy-gap-review",
+            "data-subject-request-draft",
+            "compliance-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Kai": {
+        "role": "Executive Assistant",
+        "categories": ["support", "operations"],
+        "skills": [
+            "executive-assistant-getting-started",
+            "inbox-triage",
+            "reply-draft-in-your-voice",
+            "meeting-prep-brief",
+            "meeting-follow-up-draft",
+            "calendar-conflict-review",
+            "travel-plan",
+            "weekly-priorities-review",
+        ],
+        "timings": ["after inbox access", "on request"],
+    },
 }
 
 
@@ -476,7 +621,6 @@ async def _load_roster_store_assets() -> dict[str, str]:
 
 async def _hire_roster_and_assert_preloads(
     roster: dict[str, seed.RosterEntry],
-    hire_user: User,
     templates: dict[str, prisma.models.Expert],
     expected: dict[str, str],
 ) -> dict[str, HireResult]:
@@ -485,8 +629,11 @@ async def _hire_roster_and_assert_preloads(
         return_value=SimpleNamespace(id="sched-1")
     )
     results: dict[str, HireResult] = {}
+    hire_user = await _create_seed_user()
     with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
-        for persona, entry in roster.items():
+        for index, (persona, entry) in enumerate(roster.items()):
+            if index and index % experts_db.ACTIVE_EXPERT_LIMIT == 0:
+                hire_user = await _create_seed_user()
             result = await experts_db.hire_expert(
                 hire_user.id, templates[entry["name"]].id, None
             )
@@ -3375,6 +3522,44 @@ def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
     }
 
 
+def test_wave_three_experts_are_skills_only_with_ordered_packs():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected in EXPECTED_WAVE_THREE.items():
+        entry = roster[name]
+        assert entry["role"] == expected["role"]
+        assert entry["categories"] == expected["categories"]
+        assert entry["bundled_skills"] == expected["skills"]
+        assert entry["preloads"] == []
+        assert entry["routines"] == []
+        assert [item.timing for item in entry["day_one"]] == expected["timings"]
+        assert len(entry["voice_samples"]) == 2
+
+
+def test_wave_three_covers_exactly_the_nine_new_experts():
+    assert set(EXPECTED_WAVE_THREE) == {
+        "Sasha",
+        "Priya",
+        "Marco",
+        "Noor",
+        "Casey",
+        "Ines",
+        "Omar",
+        "Lena",
+        "Kai",
+    }
+    assert len(seed.ROSTER) == 24
+    names = [entry["name"] for entry in seed.ROSTER]
+    assert len(names) == len(set(names))
+
+
+def test_every_wave_three_skill_is_a_registered_starter():
+    registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
+    for expected in EXPECTED_WAVE_THREE.values():
+        assert set(expected["skills"]) <= registered
+    slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
+    assert len(slugs) == len(set(slugs)) == 72
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
     server: SpinTestServer, hub_listing, monkeypatch
@@ -3553,11 +3738,10 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
             w.store_listing_version_id for w in templates[entry["name"]].workflows
         } == expected_versions
 
-    # A fresh user per run: a reused fixture user would make hire_expert
-    # short-circuit to a previous run's copy and skip _install_preloads.
-    hire_user = await _create_seed_user()
+    # Fresh users keep every hire below the active-expert cap. Reusing fixture
+    # users would also make hire_expert return old copies and skip preloads.
     results = await _hire_roster_and_assert_preloads(
-        fixture_roster, hire_user, templates, expected
+        fixture_roster, templates, expected
     )
 
     frankie_crons = [
