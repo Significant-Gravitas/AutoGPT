@@ -72,6 +72,54 @@ def _truncate_list_middle(lst: list[Any], str_lim: int, list_lim: int) -> list[A
 
 
 # ---------------------------------------------------------------------------
+#  Dict helpers
+# ---------------------------------------------------------------------------
+
+
+def _truncate_dict_middle(
+    dct: dict[Any, Any], str_lim: int, dict_lim: int
+) -> dict[Any, Any]:
+    """Return *dct* truncated to *dict_lim* entries, removing from the middle.
+
+    Mirrors :func:`_truncate_list_middle`. Without an entry bound a dict cannot
+    be shrunk at all, so a wide dict stays over the requested size limit no
+    matter how far the string and list limits are lowered.
+    """
+
+    if len(dct) <= dict_lim:
+        return {k: _truncate_value(v, str_lim, dict_lim) for k, v in dct.items()}
+
+    items = list(dct.items())
+
+    if dict_lim < 3:
+        kept = {k: _truncate_value(v, str_lim, dict_lim) for k, v in items[:dict_lim]}
+        kept[f"… (omitted {len(dct) - dict_lim} keys)…"] = ""
+        return kept
+
+    head_len = dict_lim // 2
+    tail_len = dict_lim - head_len
+
+    kept = {k: _truncate_value(v, str_lim, dict_lim) for k, v in items[:head_len]}
+    kept[f"… (omitted {len(dct) - head_len - tail_len} keys)…"] = ""
+    kept |= {k: _truncate_value(v, str_lim, dict_lim) for k, v in items[-tail_len:]}
+    return kept
+
+
+def _drop_last_entry(container: Any) -> Any | None:
+    """Return *container* without its last entry, or ``None`` if it has none."""
+
+    if isinstance(container, dict) and container:
+        kept = dict(container)
+        kept.pop(next(reversed(kept)))
+        return kept
+
+    if isinstance(container, list) and container:
+        return container[:-1]
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 #  Recursive truncation
 # ---------------------------------------------------------------------------
 
@@ -86,7 +134,7 @@ def _truncate_value(value: Any, str_limit: int, list_limit: int) -> Any:
         return _truncate_list_middle(value, str_limit, list_limit)
 
     if isinstance(value, dict):
-        return {k: _truncate_value(v, str_limit, list_limit) for k, v in value.items()}
+        return _truncate_dict_middle(value, str_limit, list_limit)
 
     return value
 
@@ -147,8 +195,27 @@ def truncate(value: Any, size_limit: int) -> Any:
         else:
             l_hi = l_mid - 1  # decrease list_limit
 
-    # If nothing fits, fall back to the most aggressive truncation
+    # If nothing fits, fall back to the most aggressive truncation. The search
+    # starts at STR_MIN, so walk the remaining string budget down to 0 first: a
+    # one-character value can still make a container fit where STR_MIN cannot,
+    # and keeping the key is preferable to dropping the entry.
+    if best is None:
+        for str_limit in range(STR_MIN - 1, -1, -1):
+            candidate = _truncate_value(value, str_limit, LIST_MIN)
+            if measure(candidate) <= size_limit:
+                best = candidate
+                break
+
     if best is None:
         best = _truncate_value(value, STR_MIN, LIST_MIN)
+
+    # The fallback above still keeps every top‑level entry, so a value whose
+    # outermost keys or brackets alone exceed size_limit can come back over
+    # budget. Drop entries until it fits so the documented bound holds.
+    while measure(best) > size_limit:
+        smaller = _drop_last_entry(best)
+        if smaller is None:
+            break
+        best = smaller
 
     return best
