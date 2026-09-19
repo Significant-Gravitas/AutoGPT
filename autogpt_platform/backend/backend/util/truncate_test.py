@@ -81,3 +81,11 @@ def test_truncate_containers_respect_short_size_limits(size_limit: int):
 def test_truncate_shortest_container_representation_is_empty():
     """``{}`` is two characters, so sizes below that cannot be met."""
     assert truncate({"a": "b" * 100}, 0) == {}
+
+
+def test_truncate_exhausts_the_string_budget_before_dropping_entries():
+    """A key survives when shrinking its value is enough to fit."""
+    result = truncate({"a": "b" * 100}, 10)
+
+    assert list(result) == ["a"]
+    assert len(str(result)) <= 10

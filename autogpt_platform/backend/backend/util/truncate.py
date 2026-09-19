@@ -195,7 +195,17 @@ def truncate(value: Any, size_limit: int) -> Any:
         else:
             l_hi = l_mid - 1  # decrease list_limit
 
-    # If nothing fits, fall back to the most aggressive truncation
+    # If nothing fits, fall back to the most aggressive truncation. The search
+    # starts at STR_MIN, so walk the remaining string budget down to 0 first: a
+    # one-character value can still make a container fit where STR_MIN cannot,
+    # and keeping the key is preferable to dropping the entry.
+    if best is None:
+        for str_limit in range(STR_MIN - 1, -1, -1):
+            candidate = _truncate_value(value, str_limit, LIST_MIN)
+            if measure(candidate) <= size_limit:
+                best = candidate
+                break
+
     if best is None:
         best = _truncate_value(value, STR_MIN, LIST_MIN)
 
