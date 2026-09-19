@@ -399,6 +399,28 @@ describe("edgeStore", () => {
         false,
       );
     });
+
+    it("returns true when a nested child of the source handle is connected", () => {
+      useEdgeStore.setState({
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "node-a",
+            sourceHandle: "response_#_has_new_reviews",
+          }),
+        ],
+      });
+
+      expect(
+        useEdgeStore.getState().isOutputConnected("node-a", "response"),
+      ).toBe(true);
+      expect(
+        useEdgeStore.getState().isOutputConnected("node-a", "response_#_has_new_reviews"),
+      ).toBe(true);
+      expect(
+        useEdgeStore.getState().isOutputConnected("node-a", "response_#_other"),
+      ).toBe(false);
+    });
   });
 
   describe("getBackendLinks", () => {
