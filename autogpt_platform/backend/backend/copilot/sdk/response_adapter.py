@@ -24,6 +24,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -357,6 +358,11 @@ class SDKResponseAdapter:
                     # instead of "mcp__copilot__find_block".
                     tool_name = block.name.strip().removeprefix(MCP_TOOL_PREFIX)
                     tool_input = strip_display_token(block.input)
+                    # A dispatch of a platform tool IS a call to that tool, so
+                    # the row this persists and the key the result is popped
+                    # under name it — the same resolve the MCP handler runs.
+                    if dispatch := resolve_tool_dispatch(tool_name, tool_input):
+                        tool_name, tool_input = dispatch.name, dispatch.args
 
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)

@@ -43,6 +43,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # and a deferred tool named directly is refused. Eager, the screen
         # goes on in one call instead of a find/run round trip every turn.
         "start_desktop",
+        # The refusal the building gate prints tells the model to call
+        # ``enter_agent_building_mode``, which a deferred tool named directly
+        # refuses — the same bind ``start_desktop`` was in.
+        "enter_agent_building_mode",
         # ``kickoff_turn_disabled_tools`` narrows a hire's first turn to this
         # one tool. Deferred, that gate leaves the turn with no tools at all:
         # the card it exists to open is unreachable, and so is the
