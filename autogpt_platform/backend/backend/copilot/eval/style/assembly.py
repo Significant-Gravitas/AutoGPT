@@ -148,7 +148,7 @@ def chat_system_prompt(expert: Expert | None) -> str:
     suffix = render_expert_identity_suffix(expert) if expert else ""
     return (
         CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True)
+        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
         + (get_delegation_supplement() if DELEGATION_ENABLED else "")
         + get_expert_oversight_supplement(
             experts_enabled=DELEGATION_ENABLED,
