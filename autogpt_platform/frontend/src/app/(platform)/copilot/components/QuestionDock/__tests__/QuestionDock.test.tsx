@@ -81,6 +81,38 @@ describe("QuestionDock", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("keeps a multi-select answer as a list and sends the picks as bullets", async () => {
+    const user = userEvent.setup();
+    const onSend = renderDock([
+      questionMessage([
+        {
+          question: "What areas should they own?",
+          keyword: "areas",
+          options: ["Research", "Outreach", "Reporting"],
+          allow_multiple: true,
+        },
+      ]),
+    ]);
+
+    expect(
+      screen.getByRole("group", { name: "What areas should they own?" }),
+    ).toBeDefined();
+    await user.click(screen.getByRole("checkbox", { name: "Research" }));
+    await user.click(screen.getByRole("checkbox", { name: "Reporting" }));
+    expect(
+      screen
+        .getByRole("checkbox", { name: "Outreach" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+
+    await user.click(screen.getByRole("button", { name: "Answer" }));
+
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSend).toHaveBeenCalledWith(
+      "**Here are my answers:**\n\n> What areas should they own?\n\n- Research\n- Reporting\n\nPlease proceed.",
+    );
+  });
+
   it("hides after skipping", async () => {
     const user = userEvent.setup();
     const onSend = renderDock([

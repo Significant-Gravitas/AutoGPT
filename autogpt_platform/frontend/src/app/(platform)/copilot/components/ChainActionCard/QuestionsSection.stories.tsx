@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { domAnimation, LazyMotion } from "framer-motion";
 import { useState } from "react";
-import type {
-  ClarifyingQuestion,
-  QuestionAnswer,
+import {
+  type ClarifyingQuestion,
+  isAnswered,
+  type QuestionAnswer,
 } from "../../tools/clarifying-questions";
 import { QuestionsSection } from "./QuestionsSection";
 
@@ -14,10 +15,13 @@ interface CardProps {
 
 /** The section as the chain renders it: inside the action card's chrome and the
  *  tool chain's LazyMotion, with the answer state the chain normally owns so
- *  picks actually stick. */
+ *  picks actually stick and readiness derived from it the way the card does. */
 function QuestionsCard({ questions, answers: initial = {} }: CardProps) {
   const [answers, setAnswers] =
     useState<Record<string, QuestionAnswer>>(initial);
+  const isReady =
+    questions.length > 0 &&
+    questions.every((q) => isAnswered(answers[q.keyword]));
   return (
     <LazyMotion features={domAnimation} strict>
       <div className="w-[34rem] overflow-hidden rounded-3xl border border-zinc-100 bg-white">
@@ -32,7 +36,7 @@ function QuestionsCard({ questions, answers: initial = {} }: CardProps) {
               onSkip: () => undefined,
             },
           ]}
-          isReady
+          isReady={isReady}
           onProceed={() => undefined}
         />
       </div>
