@@ -69,13 +69,14 @@ logger = logging.getLogger(__name__)
 # Limits — keep the per-turn <available_skills> index small enough that it
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
-# (~50 tok), so 50 entries ≈ 2.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 22k tokens under the same
+# (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
+# trigger to the per-field caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
-MAX_USER_SKILLS = 50
+MAX_SKILLS_PER_EXPERT = 150
+MAX_USER_SKILLS = MAX_SKILLS_PER_EXPERT  # Backwards-compatible alias
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 # Loaded only on activation, so it costs nothing per turn; 50k clears
@@ -349,7 +350,7 @@ async def resolve_skill_owner(
 # Redis lock key for serialising store_skill writes per user. A per-user
 # distributed lock turns the otherwise-racy "count existing skills, then
 # write a new one" into an atomic critical section so two concurrent
-# ``store_skill`` calls cannot both pass the MAX_USER_SKILLS check.
+# ``store_skill`` calls cannot both pass the MAX_SKILLS_PER_EXPERT check.
 # Held only for the duration of the count + write; skill reads stay
 # lock-free.
 _SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
@@ -520,7 +521,7 @@ class BuiltInSkillError(Exception):
 
 
 class SkillLimitError(Exception):
-    """Raised by :func:`store_user_skill` when the per-user cap is reached."""
+    """Raised by :func:`store_user_skill` when the per-expert cap is reached."""
 
 
 async def delete_user_skill(
@@ -635,7 +636,7 @@ async def store_user_skill(
     ``None``) and becomes that owner's skill. Shared by the ``store_skill``
     copilot tool and the REST ``POST /skills`` upload endpoint so both honour
     the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
-    failure, :class:`SkillLimitError` when the per-user cap is reached, and
+    failure, :class:`SkillLimitError` when the per-expert cap is reached, and
     propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
     workspace write error) to the caller.
 
@@ -700,7 +701,7 @@ async def store_user_skill(
         validate_package(SkillPackage(skill_md=rendered, files=files))
 
     # Serialise the count-then-write critical section per-user so two
-    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
+    # concurrent writers cannot both pass the MAX_SKILLS_PER_EXPERT check.
     # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
     # ~1s before falling back to the strict-cap unlocked path below — without
     # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
@@ -739,7 +740,7 @@ async def store_user_skill(
         # the copy would need, so it would stall on itself for every name.
         existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
         existing_slugs = {s.name for s in existing}
-        at_cap = len(existing_slugs) >= MAX_USER_SKILLS
+        at_cap = len(existing_slugs) >= MAX_SKILLS_PER_EXPERT
         is_new = name not in existing_slugs
         if at_cap and (is_new or not lock_held):
             if not lock_held:
@@ -751,7 +752,7 @@ async def store_user_skill(
                     is_new,
                 )
             raise SkillLimitError(
-                f"Skill limit reached ({MAX_USER_SKILLS}). "
+                f"Skill limit reached ({MAX_SKILLS_PER_EXPERT}). "
                 "Delete an unused skill first."
             )
 
@@ -2149,7 +2150,7 @@ class ListSkillsTool(BaseTool):
 # the query but depth cannot, so a page of newest-first rows can be entirely
 # nested SKILL.md files and yield no roots at all; the bound is the most a
 # compliant folder can hold, every allowed skill carrying a full package.
-_MAX_ROOT_SCAN = MAX_USER_SKILLS * (MAX_PACKAGE_FILES + 1)
+_MAX_ROOT_SCAN = MAX_SKILLS_PER_EXPERT * (MAX_PACKAGE_FILES + 1)
 
 
 async def _list_skill_roots(
@@ -2162,10 +2163,10 @@ async def _list_skill_roots(
     the page and hide older skills, which is the defect this listing exists
     to avoid.
     """
-    page = MAX_USER_SKILLS * 4  # over-fetch in case of strays
+    page = MAX_SKILLS_PER_EXPERT * 4  # over-fetch in case of strays
     roots: list[tuple[Any, str]] = []
     offset = 0
-    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_USER_SKILLS:
+    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_SKILLS_PER_EXPERT:
         rows = await manager.list_files(
             path=f"{folder}/",
             limit=page,
