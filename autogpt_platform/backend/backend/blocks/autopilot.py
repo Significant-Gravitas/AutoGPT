@@ -175,6 +175,9 @@ class AutoPilotBlock(Block):
             discriminator_mapping={
                 AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
             },
+            credential_free_discriminator_values={
+                AutoPilotTransport.PLATFORM.value,
+            },
             json_schema_extra={
                 "secret": True,
                 "advanced": False,
