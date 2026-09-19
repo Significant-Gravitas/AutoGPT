@@ -77,7 +77,7 @@ class HubSpotCompanyBlock(Block):
                 search_url, headers=headers, json=search_data
             )
             search_result = search_response.json()
-            yield "search_company", search_result.get("results", [{}])[0]
+            yield "company", search_result.get("results", [{}])[0]
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
