@@ -20,6 +20,9 @@ FROM python:3.13-slim
 RUN useradd --system --create-home --home-dir /var/lib/swap-proxy swap-proxy
 COPY --from=builder /app /app
 
+# The signing CA is not in the image and is not generated: mount the provisioned
+# one (mitmproxy-ca.pem, plus mitmproxy-dhparam.pem if the mount is read-only)
+# at SWAP_PROXY_CONFDIR.  Without it the service refuses to start.  See README.
 USER swap-proxy
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

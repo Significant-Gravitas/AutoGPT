@@ -30,11 +30,14 @@ class Settings:
             "SWAP_PROXY_BACKEND_URL", "http://localhost:8005"
         )
     )
-    # Where mitmproxy keeps the CA it signs with; the boxes' image trusts its
-    # certificate.  The key must exist nowhere else.
+    # Where the CA the proxy signs with is mounted (``mitmproxy-ca.pem``: key
+    # and certificate).  The boxes' image trusts its certificate, so it is one
+    # CA for every replica and every restart: provisioned, never generated.
     confdir: str = field(
         default_factory=lambda: os.getenv("SWAP_PROXY_CONFDIR", "~/.mitmproxy")
     )
+    # Local runs only: let mitmproxy make up a CA when none is there.
+    generate_ca: bool = field(default_factory=lambda: _flag("SWAP_PROXY_GENERATE_CA"))
     # Private hosts or CIDRs boxes may reach anyway.  Empty: default deny.
     egress_allow: list[str] = field(
         default_factory=lambda: _list("SWAP_PROXY_EGRESS_ALLOW")

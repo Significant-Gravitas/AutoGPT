@@ -48,6 +48,45 @@ def build_master(
     return master
 
 
+CA_FILE = "mitmproxy-ca.pem"
+DHPARAM_FILE = "mitmproxy-dhparam.pem"
+
+
+class MissingCA(RuntimeError):
+    pass
+
+
+def require_ca(confdir: str, generate: bool) -> None:
+    """Refuse to start without the provisioned CA.
+
+    mitmproxy generates one when the directory has none.  The boxes trust one
+    certificate, so a CA made up by a restarted or second replica breaks TLS
+    to every bound host inside every box, and reads there as a certificate
+    bug, not as missing provisioning.  Better not to come up at all.
+    """
+    directory = os.path.expanduser(confdir)
+    path = os.path.join(directory, CA_FILE)
+    if os.path.isfile(path):
+        dhparam = os.path.join(directory, DHPARAM_FILE)
+        if not os.path.isfile(dhparam) and not os.access(directory, os.W_OK):
+            # mitmproxy writes this file next to the CA when it is missing.
+            raise MissingCA(
+                f"{directory} is read-only and has no {DHPARAM_FILE}. Mount it "
+                f"beside {CA_FILE} (it is not a secret: fixed public parameters "
+                "mitmproxy writes out with every CA), or make the directory writable."
+            )
+        return
+    if generate:
+        logger.warning("No CA at %s: generating one. Local use only.", path)
+        return
+    raise MissingCA(
+        f"No signing CA at {path}. Mount the provisioned CA (private key and "
+        f"certificate in one PEM file named {CA_FILE}) into SWAP_PROXY_CONFDIR; "
+        "every replica must get the same one. For a local run, set "
+        "SWAP_PROXY_GENERATE_CA=true."
+    )
+
+
 def connect_redis(settings: Settings) -> RedisCluster:
     def remap(address: tuple[str, int]) -> tuple[str, int]:
         # As the backend does: pin every shard to the seed host unless the
@@ -67,6 +106,7 @@ def connect_redis(settings: Settings) -> RedisCluster:
 
 async def run() -> None:
     settings = Settings()
+    require_ca(settings.confdir, settings.generate_ca)
     redis = connect_redis(settings)
     await redis.ping()
     source = BackendCredentialSource(settings.backend_url)
