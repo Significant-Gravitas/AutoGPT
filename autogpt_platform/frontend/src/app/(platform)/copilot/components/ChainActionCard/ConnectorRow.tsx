@@ -372,24 +372,31 @@ function newlyConnectedCredential(
   return account ? { grantable, account } : null;
 }
 
-/** The user's own OAuth accounts for the row's provider: the ones a fresh
- *  sign-in can widen. API keys have nothing to re-authorise, and managed and
- *  system credentials are refused by the backend. */
+/** The user's own OAuth accounts for a provider: the ones a fresh sign-in can
+ *  widen. API keys have nothing to re-authorise, and managed and system
+ *  credentials are refused by the backend. The one-click upgrade and the
+ *  account picker must agree on this set, or a provider counted one way and
+ *  offered the other leaves the user with no path that upgrades in place. */
+function updatableCredentials(
+  provider: string,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  return filterSystemCredentials(
+    allProviders?.[provider]?.savedCredentials ?? [],
+  ).filter(
+    (credential) => credential.type === "oauth2" && !credential.is_managed,
+  );
+}
+
 function updatableAccounts(
   row: Row,
   allProviders: CredentialsProvidersContextType | null,
 ): Grantable[] {
-  return filterSystemCredentials(
-    allProviders?.[row.provider]?.savedCredentials ?? [],
-  )
-    .filter(
-      (credential) => credential.type === "oauth2" && !credential.is_managed,
-    )
-    .map((credential) => ({
-      id: credential.id,
-      title: credential.title ?? credential.username ?? row.displayName,
-      type: credential.type,
-    }));
+  return updatableCredentials(row.provider, allProviders).map((credential) => ({
+    id: credential.id,
+    title: credential.title ?? credential.username ?? row.displayName,
+    type: credential.type,
+  }));
 }
 
 /** The account a re-auth should upgrade in place. Signing in without it can
@@ -402,10 +409,6 @@ function upgradableCredentialID(
   provider: string,
   allProviders: CredentialsProvidersContextType | null,
 ) {
-  const oauthCredentials = filterSystemCredentials(
-    allProviders?.[provider]?.savedCredentials ?? [],
-  ).filter(
-    (credential) => credential.type === "oauth2" && !credential.is_managed,
-  );
+  const oauthCredentials = updatableCredentials(provider, allProviders);
   return oauthCredentials.length === 1 ? oauthCredentials[0].id : undefined;
 }
