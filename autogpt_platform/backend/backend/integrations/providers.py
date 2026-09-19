@@ -60,6 +60,7 @@ class ProviderName(str, Enum):
     TYPESAFE = "typesafe"
     UNREAL_SPEECH = "unreal_speech"
     V0 = "v0"
+    WAVESPEED = "wavespeed"
     WEBSHARE_PROXY = "webshare_proxy"
     ZEROBOUNCE = "zerobounce"
 
