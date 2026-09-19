@@ -1225,7 +1225,7 @@ async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
     excl_ids, excl_types = _patch_excluded()
     captured: list[dict] = []
 
-    async def _capture_resolve(user_id, block, input_data, expert_id=None):
+    async def _capture_resolve(user_id, block, input_data, expert_id=None, **_):
         captured.append(dict(input_data))
         return {}, []
 
@@ -1800,6 +1800,47 @@ class TestRequireLibraryCheck:
         )
         result = require_library_check(session, "create_agent")
         assert isinstance(result, ErrorResponse)
+
+    async def test_sdk_dispatch_satisfies_the_gate(self):
+        """The SDK engine is the one that runs this gate in production, and it
+        reaches ``find_library_agent`` through the MCP adapter rather than the
+        baseline executor — so a real call there has to register or the gate
+        refuses create_agent forever. Every other test here fabricates the
+        announcement, which is why the hole stayed green.
+
+        The tool is a real ``BaseTool``: the announce lives in
+        ``BaseTool.execute``, after its gates, so a mock standing in for the
+        tool would skip the very line under test."""
+        from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+        from backend.copilot.tools.base import BaseTool
+        from backend.copilot.tools.models import ErrorResponse
+
+        class _FindLibraryAgent(BaseTool):
+            @property
+            def name(self) -> str:
+                return "find_library_agent"
+
+            @property
+            def description(self) -> str:
+                return "stub"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+
+        await _execute_tool_sync(
+            _FindLibraryAgent(),
+            "user-lib-check",
+            session,
+            {"for_creation": True, "goal_summary": "summarise emails"},
+        )
+
+        assert require_library_check(session, "create_agent") is None
 
     def test_inflight_name_only_does_not_satisfy(self):
         session = make_session("user-lib-check", guide_read=False, library_check=False)

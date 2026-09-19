@@ -85,7 +85,7 @@ class DelegateToExpertTool(BaseTool):
             f"work. Waits up to wait_for_result sec (max "
             f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
             "status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property

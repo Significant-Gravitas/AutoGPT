@@ -1,4 +1,4 @@
-"""Tests for the engine-switch continuation dispatch in the copilot manager.
+"""Tests for the copilot manager: the engine-switch dispatch and the cancel consumer.
 
 The dispatch is the handoff between a finished baseline turn and the
 server-initiated SDK continuation turn — the highest-risk link in the
@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
+from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
 
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,
@@ -258,3 +259,23 @@ def test_cleanup_closes_codex_pool_between_consumers_and_workers():
         executor.cleanup()
 
     assert lifecycle == ["consumer_stop", "codex_pool_close", "worker_cleanup"]
+
+
+def test_cancel_consumer_consumes_the_queue_it_just_declared():
+    """Pins the consumer to the per-pod queue the declare helper returned.
+
+    Re-pinning ``basic_consume`` to a fixed name restores the original defect —
+    one shared queue, so the broker hands each cancel to one arbitrary pod —
+    and no other test in the suite would notice.
+    """
+    executor = CoPilotExecutor()
+    channel = MagicMock()
+    executor._cancel_client = MagicMock(is_ready=True)
+    executor._cancel_client.get_channel.return_value = channel
+    channel.start_consuming.side_effect = lambda: executor.stop_consuming.set()
+
+    CoPilotExecutor._consume_cancel.__wrapped__(executor)
+
+    declared = channel.queue_declare.call_args.kwargs["queue"]
+    assert declared.startswith(COPILOT_CANCEL_QUEUE_PREFIX)
+    assert channel.basic_consume.call_args.kwargs["queue"] == declared

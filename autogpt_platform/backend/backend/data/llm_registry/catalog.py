@@ -75,6 +75,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
             CatalogCreator(name="sakana", display_name="Sakana AI"),
+            CatalogCreator(name="unbiased", display_name="Unbiased"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
             CatalogCreator(name="z.ai", display_name="Z.ai"),
@@ -1599,6 +1600,23 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=6.0,
                     output_credits_per_1m=22.5,
                     cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            # ----- Unbiased -----
+            CatalogModel(
+                slug="unbiased/pareto",
+                display_name="Pareto",
+                provider="open_router",
+                creator="unbiased",
+                context_window=262144,
+                max_output_tokens=131072,
+                price_tier=2,
+                supports_tools=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=375.0,
+                    output_credits_per_1m=1125.0,
+                    cache_read_credits_per_1m=37.5,
                 ),
             ),
             # ----- v0 by Vercel -----
