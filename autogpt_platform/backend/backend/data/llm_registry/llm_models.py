@@ -252,6 +252,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
+    # Inception Labs models
+    INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Unbiased models
+    UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"

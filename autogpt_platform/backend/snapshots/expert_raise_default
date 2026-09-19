@@ -12,6 +12,7 @@
     "identity": "I'm Otto, raised by you. I learn how you work and grow with you.",
     "is_archived": false,
     "is_template": false,
+    "job_title": null,
     "last_run_at": null,
     "last_run_status": null,
     "name": "Otto",
