@@ -160,9 +160,14 @@ export function ConnectorRow({ row }: Props) {
   // widen. Signing in without naming one requests only this card's scopes,
   // which the backend cannot merge into an account that holds others, so it
   // stored yet another credential beside them. The user names the account
-  // instead; with exactly one, `upgradableCredentialID` already does.
+  // instead; with exactly one, `upgradableCredentialID` already does. Only
+  // where the row takes an OAuth credential at all: a card asking for an API
+  // key runs no sign-in to aim, so naming an account there picks one the key
+  // form then ignores.
   const updatable =
-    expertGrant || pickable.length > 0
+    expertGrant ||
+    pickable.length > 0 ||
+    !(row.schema.credentials_types ?? []).includes("oauth2")
       ? []
       : updatableAccounts(row, allProviders);
 

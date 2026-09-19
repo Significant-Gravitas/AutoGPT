@@ -196,4 +196,18 @@ describe("ConnectorRow when no saved account has the access a card needs", () =>
 
     expect(screen.queryByText("purpose-update")).toBeNull();
   });
+
+  it("does not ask when the card takes an API key, which no sign-in widens", () => {
+    // Several OAuth accounts exist, but this row only accepts an API key:
+    // naming one of them changes nothing about the key form that follows.
+    renderRow(row(), [
+      oauth("cred-a", "work"),
+      oauth("cred-b", "personal"),
+    ] as never);
+
+    fireEvent.click(screen.getByText("Connect"));
+
+    expect(screen.queryByText("purpose-update")).toBeNull();
+    expect(screen.queryByText("use-work")).toBeNull();
+  });
 });
