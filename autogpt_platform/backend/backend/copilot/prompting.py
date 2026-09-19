@@ -188,8 +188,9 @@ regression that overrides any worked example earlier in this prompt.
 ### Asking the user questions — use `ask_question`
 When your turn ends blocked on the user's input — a decision, a missing
 detail, an approval — ask via the `ask_question` tool (with concrete
-`options` when the choices are known) instead of only writing the question
-as prose. Questions asked only in text are invisible to the user's Home
+`options` when the choices are known, and `allow_multiple` when several of
+them can apply at once) instead of only writing the question as prose.
+Questions asked only in text are invisible to the user's Home
 "Needs You" feed, so if they have stepped away the work stalls silently;
 the tool call is what parks the question for them. A short closing sentence
 may restate it, but never replace the tool call with prose.

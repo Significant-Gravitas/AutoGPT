@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildClarificationAnswersMessage,
   extractClarifyingQuestions,
+  formatAnswer,
+  isAnswered,
   normalizeClarifyingQuestions,
+  toAnswerList,
 } from "../clarifying-questions";
 
 describe("normalizeClarifyingQuestions", () => {
@@ -81,6 +84,78 @@ describe("normalizeClarifyingQuestions", () => {
 });
 
 describe("extractClarifyingQuestions", () => {
+  it("carries the multi-select flag through from the output", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [
+          {
+            question: "Which areas?",
+            keyword: "areas",
+            options: ["Research", "Outreach"],
+            allow_multiple: true,
+          },
+        ],
+      },
+    });
+    expect(result[0].allow_multiple).toBe(true);
+  });
+
+  it("recovers the multi-select flag from the input the model sent", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which areas?",
+            keyword: "areas",
+            options: ["Research", "Outreach"],
+            allow_multiple: true,
+          },
+        ],
+      },
+      output: {
+        questions: [
+          {
+            question: "Which areas?",
+            keyword: "areas",
+            example: "Research, Outreach",
+          },
+        ],
+      },
+    });
+    expect(result[0].allow_multiple).toBe(true);
+    expect(result[0].options).toEqual(["Research", "Outreach"]);
+  });
+
+  it("leaves a question single-select when nothing asked for more", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+    });
+    expect(result[0].allow_multiple).toBeUndefined();
+  });
+
+  it("drops the multi-select flag from a question with no options", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [
+          {
+            question: "Anything else?",
+            keyword: "notes",
+            allow_multiple: true,
+          },
+        ],
+      },
+    });
+    expect(result[0].allow_multiple).toBeUndefined();
+  });
+
   it("reads options straight from the output when present", () => {
     const result = extractClarifyingQuestions({
       output: {
@@ -196,6 +271,32 @@ describe("extractClarifyingQuestions", () => {
   });
 });
 
+describe("multi-select answers", () => {
+  it("reads one answer and many through the same list", () => {
+    expect(toAnswerList("  Europe  ")).toEqual(["Europe"]);
+    expect(toAnswerList(["Research", "  ", " Outreach "])).toEqual([
+      "Research",
+      "Outreach",
+    ]);
+  });
+
+  it("treats a blank answer of either shape as unanswered", () => {
+    expect(isAnswered(undefined)).toBe(false);
+    expect(isAnswered("   ")).toBe(false);
+    expect(isAnswered([])).toBe(false);
+    expect(isAnswered([" "])).toBe(false);
+    expect(isAnswered(["Research"])).toBe(true);
+  });
+
+  it("bullets several picks and leaves one inline", () => {
+    expect(formatAnswer(["Research", "Outreach"])).toBe(
+      "- Research\n- Outreach",
+    );
+    expect(formatAnswer(["Research"])).toBe("Research");
+    expect(formatAnswer("Europe")).toBe("Europe");
+  });
+});
+
 describe("buildClarificationAnswersMessage", () => {
   it("formats answers with create mode", () => {
     const result = buildClarificationAnswersMessage(
@@ -215,6 +316,15 @@ describe("buildClarificationAnswersMessage", () => {
       "edit",
     );
     expect(result).toContain("Please proceed with editing the agent.");
+  });
+
+  it("lists a multi-select answer under its question", () => {
+    const result = buildClarificationAnswersMessage(
+      { areas: ["Research", "Outreach"] },
+      [{ question: "Which areas?", keyword: "areas" }],
+      "create",
+    );
+    expect(result).toContain("> Which areas?\n\n- Research\n- Outreach");
   });
 
   it("uses empty string for missing answers", () => {
