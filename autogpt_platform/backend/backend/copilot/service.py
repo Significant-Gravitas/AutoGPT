@@ -381,9 +381,6 @@ _EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECAS
 _EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
     r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
 )
-_EXPERT_COMPUTER_ANYWHERE_RE = re.compile(
-    r"<expert_computer>.*</expert_computer>\s*", re.DOTALL
-)
 _EXPERT_COMPUTER_LONE_TAG_RE = re.compile(r"</?expert_computer>", re.IGNORECASE)
 _EXPERT_COMPUTER_PREFIX_RE = re.compile(
     r"^<expert_computer>.*?</expert_computer>\n\n", re.DOTALL
@@ -431,6 +428,19 @@ def strip_user_context_prefix(content: str) -> str:
     return _USER_CONTEXT_PREFIX_RE.sub("", content)
 
 
+def _strip_expert_computer_block(text: str) -> str:
+    """Drop everything from the first ``<expert_computer>`` to the last closing tag.
+
+    Same result as a greedy ``<expert_computer>.*</expert_computer>\\s*``
+    substitution, which is quadratic on a message of repeated opening tags.
+    """
+    start = text.find("<expert_computer>")
+    end = text.rfind("</expert_computer>")
+    if start == -1 or end < start:
+        return text
+    return text[:start] + text[end + len("</expert_computer>") :].lstrip()
+
+
 def strip_server_injected_tags(text: str) -> str:
     """Strip all server-only XML context tags + blocks from ``text``.
 
@@ -474,7 +484,7 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _EXPERT_COMPUTER_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_expert_computer_block(without_expert)
     without_expert = _EXPERT_COMPUTER_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
