@@ -2,6 +2,7 @@
 cannot reach over a hand-written HTTP/1 client (websockets, HTTP/2 framing)
 and the body buffer on its own."""
 
+import gzip
 import json
 import logging
 
@@ -10,7 +11,13 @@ from mitmproxy import http
 from mitmproxy.test import tflow
 from wsproto.frame_protocol import Opcode
 
-from swap_proxy.addon import MAX_BODY_BYTES, BufferedBody, SwapProxyAddon, known_size
+from swap_proxy.addon import (
+    MAX_BODY_BYTES,
+    MAX_DECODED_BYTES,
+    BufferedBody,
+    SwapProxyAddon,
+    known_size,
+)
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
 from swap_proxy.swap import Credential
@@ -265,3 +272,167 @@ async def test_a_box_that_does_not_swap_has_no_response_refused():
     flow.response.headers["content-length"] = str(MAX_BODY_BYTES * 4)
     await addon.responseheaders(flow)
     assert flow.response.stream is False and flow.error is None
+
+
+# ------------------------------------------------------------ what a body decodes to
+#
+# MAX_BODY_BYTES counts bytes on the wire.  A few kilobytes of gzip can stand
+# for far more, decoded on the event loop every box shares.
+
+BOMB = gzip.compress(
+    b'{"echo": "%s", "pad": "' % TOKEN.encode() + bytes(2 * MAX_DECODED_BYTES)
+)
+
+
+@pytest.fixture
+def no_unbounded_decode(monkeypatch):
+    """mitmproxy's own decode has no bound: a bomb must never reach it."""
+
+    def decode(*args, **kwargs):
+        raise AssertionError("decoded without a bound")
+
+    monkeypatch.setattr("mitmproxy.http.encoding.decode", decode)
+
+
+def test_the_bomb_is_small_on_the_wire():
+    assert len(BOMB) < MAX_BODY_BYTES // 50
+
+
+def bombed_response(chunked: bool) -> http.HTTPFlow:
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    flow.live = True
+    flow.response.headers["content-type"] = "application/json"
+    flow.response.headers["content-encoding"] = "gzip"
+    if chunked:
+        del flow.response.headers["content-length"]
+        flow.response.headers["transfer-encoding"] = "chunked"
+    else:
+        flow.response.raw_content = BOMB
+        flow.response.headers["content-length"] = str(len(BOMB))
+    return flow
+
+
+async def test_a_response_with_a_length_that_decodes_past_the_cap_is_refused(
+    caplog, no_unbounded_decode
+):
+    flow = bombed_response(chunked=False)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        assert flow.response.stream is False  # small on the wire: held whole
+        await addon.response(flow)
+    assert flow.error is not None and not flow.killable
+    assert audit(caplog) == [("refused-response", "decoded-too-large")]
+
+
+async def test_a_held_response_that_decodes_past_the_cap_is_refused(
+    caplog, no_unbounded_decode
+):
+    flow = bombed_response(chunked=True)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        stream = flow.response.stream
+        assert isinstance(stream, BufferedBody)
+        assert [*stream(BOMB[:100]), *stream(BOMB[100:]), *stream(b"")] == []
+    assert flow.error is not None and not flow.killable
+    assert audit(caplog) == [("refused-response", "decoded-too-large")]
+
+
+@pytest.mark.parametrize("encoding", ["compress", "gzip, br"])
+async def test_a_response_in_an_encoding_that_cannot_be_bounded_is_refused(
+    caplog, encoding
+):
+    flow = bombed_response(chunked=False)
+    assert flow.response is not None
+    flow.response.headers["content-encoding"] = encoding
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
+
+
+async def test_a_box_with_nothing_to_scrub_gets_its_bomb_untouched(
+    caplog, no_unbounded_decode
+):
+    """No value of this owner's can be in it, so it is not the proxy's to read."""
+    flow = bombed_response(chunked=False)
+    assert flow.response is not None
+    addon = addon_for(flow, swaps=False)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert flow.error is None and flow.response.raw_content == BOMB
+    assert audit(caplog) == []
+
+
+def bombed_request(chunked: bool) -> http.HTTPFlow:
+    flow = tflow.tflow()
+    flow.request.method = "POST"
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.headers["content-encoding"] = "gzip"
+    if chunked:
+        flow.request.headers.pop("content-length", None)
+        flow.request.headers["transfer-encoding"] = "chunked"
+        flow.request.raw_content = None
+    else:
+        flow.request.raw_content = BOMB
+        flow.request.headers["content-length"] = str(len(BOMB))
+    return flow
+
+
+async def test_a_request_body_that_decodes_past_the_cap_goes_out_as_it_is(
+    caplog, no_unbounded_decode
+):
+    flow = bombed_request(chunked=False)
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    assert flow.error is None and flow.request.raw_content == BOMB
+    # The head is still swapped; no swap is claimed for the body.
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert audit(caplog) == [
+        ("body-not-swapped", "decoded-too-large"),
+        ("swapped", "hsurr:github"),
+    ]
+
+
+async def test_a_held_request_body_that_decodes_past_the_cap_goes_out_as_it_is(
+    caplog, no_unbounded_decode
+):
+    flow = bombed_request(chunked=True)
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        stream = flow.request.stream
+        assert isinstance(stream, BufferedBody)
+        sent = [*stream(BOMB[:100]), *stream(BOMB[100:]), *stream(b"")]
+    assert b"".join(sent) == BOMB
+    assert audit(caplog) == [
+        ("swapped", "hsurr:github"),
+        ("body-not-swapped", "decoded-too-large"),
+    ]
+
+
+async def test_a_gzipped_request_body_within_the_cap_is_swapped_inside_its_encoding(
+    caplog, no_unbounded_decode
+):
+    flow = tflow.tflow()
+    addon = addon_for(flow)
+    flow.request.method = "POST"
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.headers["content-encoding"] = "gzip"
+    flow.request.raw_content = gzip.compress(b'{"token": "hsurr:github"}')
+    flow.request.headers["content-length"] = str(len(flow.request.raw_content))
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    sent = gzip.decompress(flow.request.raw_content or b"")
+    assert json.loads(sent) == {"token": TOKEN}
+    assert flow.request.headers["content-length"] == str(len(flow.request.raw_content))
+    assert audit(caplog) == [("swapped", "hsurr:github")]

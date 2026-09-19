@@ -36,6 +36,11 @@ first, for any body not known to fit:
   fails at the provider and nothing leaks.
 - Binary bodies stream untouched in both directions; they are neither swapped
   nor scrubbed at any size.
+- A held body with a ``Content-Encoding`` is decoded within
+  ``MAX_DECODED_BYTES`` (``decode.py``), never through mitmproxy's unbounded
+  ``.content``.  Past that, or in an encoding that cannot be decoded within a
+  bound, a response is refused like one too large to scrub, and a request
+  body goes out as it is, audited as not swapped.
 
 The audit records a swap only for bytes that have not left yet.
 
@@ -64,6 +69,7 @@ from mitmproxy.net.http.http1.read import expected_http_body_size
 from mitmproxy.proxy import server_hooks
 from mitmproxy.proxy.layers import modes
 
+from swap_proxy.decode import DecodedTooLarge, Undecodable, bounded_decode
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
 from swap_proxy.source import CredentialSource, SourceUnavailable
@@ -86,6 +92,14 @@ audit_logger = logging.getLogger("swap_proxy.audit")
 # bounds what one connection can make the proxy hold, and the synchronous swap
 # and scrub work one message can put on the shared event loop.
 MAX_BODY_BYTES = 5 * 1024 * 1024
+# What a held body may decode to.  ``MAX_BODY_BYTES`` counts bytes on the wire,
+# and a compressed body stands for more: ordinary JSON or HTML shrinks to a
+# fifth or less, a bomb to a thousandth.  Four times the wire limit lets most
+# honest compressed bodies through and keeps one message's memory, and its
+# decode-swap-scrub-encode time on the shared event loop, within a small
+# multiple of what an unencoded body costs.  Enforced while decoding
+# (``decode.py``), never by measuring a body that was already decoded.
+MAX_DECODED_BYTES = 4 * MAX_BODY_BYTES
 
 _HEAD_SWAPPED = "swap_proxy_head_swapped"
 
@@ -159,6 +173,33 @@ class _Lookup:
             )
             for name in sorted(names - self.credentials.keys())
         ]
+
+
+_NOT_READABLE = {
+    DecodedTooLarge: "decoded-too-large",
+    Undecodable: "undecodable-encoding",
+}
+
+
+def plain_copy(message: http.Message) -> http.Message:
+    """*message* with its content encoding undone, within ``MAX_DECODED_BYTES``:
+    itself if it has none, else a copy.  mitmproxy's own ``.content`` and
+    ``.text`` decode without a bound, so an encoded body is only ever read
+    through this.  Raises ``DecodedTooLarge`` or ``Undecodable``."""
+    encoding = message.headers.get("content-encoding", "")
+    if encoding.strip().lower() in ("", "none", "identity"):
+        return message
+    decoded = bounded_decode(message.raw_content or b"", encoding, MAX_DECODED_BYTES)
+    plain = message.copy()
+    del plain.headers["content-encoding"]
+    plain.raw_content = decoded
+    return plain
+
+
+def put_back(message: http.Message, plain: http.Message) -> None:
+    """Re-encode what was changed in a ``plain_copy`` into the message."""
+    if plain is not message:
+        message.content = plain.raw_content
 
 
 def known_size(
@@ -280,10 +321,19 @@ class SwapProxyAddon:
         def swap_body(body: bytes) -> bytes:
             whole = request.copy()
             whole.raw_content = body
+            try:
+                plain = plain_copy(whole)
+            except (DecodedTooLarge, Undecodable) as e:
+                too_large(_NOT_READABLE[type(e)])
+                return body
+            before = plain.raw_content
             swap = RequestSwap(lookup.credentials, host, method, path)
-            swap.body(whole)
-            named = placeholder_names(whole, head=False)
+            swap.body(plain)
+            named = placeholder_names(plain, head=False)
             self._audit_events(owner, host, lookup.refusals(named) + swap.events)
+            if plain.raw_content == before:
+                return body
+            put_back(whole, plain)
             return whole.raw_content or b""
 
         def too_large(reason: str) -> bool:
@@ -304,15 +354,31 @@ class SwapProxyAddon:
             # could be swapped; a swap now would reach no wire, only the audit.
             return
         head = not flow.metadata.get(_HEAD_SWAPPED)
-        names = placeholder_names(request, head=head)
+        host = request.pretty_host
+        names = placeholder_names(request, head=head, body=False)
+        plain: Optional[http.Message] = None
+        try:
+            plain = plain_copy(request)
+            names |= placeholder_names(plain, head=False)
+        except (DecodedTooLarge, Undecodable) as e:
+            # Without decoding it nobody can say whether it names a credential.
+            # It goes out as it is, which is the safe direction, and the audit
+            # says so whenever this owner has anything that could have gone in.
+            if (await self._lookup(flow, owner, host, None)).credentials:
+                self._audit(
+                    owner, host, "body-not-swapped", reason=_NOT_READABLE[type(e)]
+                )
         if not names:
             return
-        host = request.pretty_host
         lookup = await self._lookup(flow, owner, host, names)
         swap = RequestSwap(lookup.credentials, host, request.method, request.path)
         if head:
             swap.head(request)
-        swap.body(request)
+        if plain is not None:
+            before = plain.raw_content
+            swap.body(plain)
+            if plain.raw_content != before:
+                put_back(request, plain)
         self._audit_events(owner, host, lookup.refusals(names) + swap.events)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
@@ -376,8 +442,12 @@ class SwapProxyAddon:
         def scrub_body(body: bytes) -> bytes:
             whole = response.copy()
             whole.raw_content = body
-            if self._scrub(whole, credentials):
-                self._audit(owner, host, "scrubbed")
+            try:
+                if self._scrub(whole, credentials):
+                    self._audit(owner, host, "scrubbed")
+            except (DecodedTooLarge, Undecodable) as e:
+                refuse(_NOT_READABLE[type(e)])
+                return b""
             return whole.raw_content or b""
 
         response.stream = BufferedBody(
@@ -394,8 +464,16 @@ class SwapProxyAddon:
         if not is_scrubbable(response.headers.get("content-type", "")):
             return
         credentials = await self._scrub_credentials(flow, owner)
-        if self._scrub(response, credentials):
-            self._audit(owner, flow.request.pretty_host, "scrubbed")
+        host = flow.request.pretty_host
+        try:
+            if self._scrub(response, credentials):
+                self._audit(owner, host, "scrubbed")
+        except (DecodedTooLarge, Undecodable) as e:
+            # A body that cannot be read cannot be vouched for: the box could
+            # decode what the proxy would not.  Not passed on.
+            self._audit(owner, host, "refused-response", reason=_NOT_READABLE[type(e)])
+            if flow.killable:
+                flow.kill()
 
     # ------------------------------------------------------------ helpers
 
@@ -417,11 +495,13 @@ class SwapProxyAddon:
 
     @staticmethod
     def _scrub(message: Union[http.Response, http.Request], credentials) -> bool:
-        """Scrub a whole text body in place; ``True`` if a value was in it."""
+        """Scrub a whole text body in place; ``True`` if a value was in it.
+        Raises ``DecodedTooLarge`` or ``Undecodable`` for a body it cannot read."""
         if not credentials or not message.raw_content:
             return False
+        plain = plain_copy(message)
         try:
-            text = message.get_text(strict=True)
+            text = plain.get_text(strict=True)
         except ValueError:
             return False
         if text is None:
@@ -429,7 +509,8 @@ class SwapProxyAddon:
         scrubbed = scrub_text(text, credentials)
         if scrubbed == text:
             return False
-        message.text = scrubbed
+        plain.text = scrubbed
+        put_back(message, plain)
         return True
 
     async def _lookup(

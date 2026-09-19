@@ -47,6 +47,25 @@ so the size must never decide whether a credential is protected:
 | text response body | scrubbed | **refused**: the flow is killed; audited `refused-response` |
 | binary body, either way | streamed, untouched | streamed, untouched |
 
+The 5 MiB counts bytes on the wire, and a compressed body stands for more, so a
+held body with a `Content-Encoding` has a second limit on what it may decode to:
+20 MiB (`MAX_DECODED_BYTES`, four times the wire limit). The limit is enforced
+while decoding (`decode.py` asks each decoder for at most that much), never by
+decoding the whole body and measuring it, so a few kilobytes of gzip standing
+for gigabytes cost the proxy no more than 20 MiB and are then turned away:
+
+| a held text body that… | request | response |
+| --- | --- | --- |
+| decodes to more than 20 MiB | sent as it is; audited `body-not-swapped` / `decoded-too-large` | **refused**; audited `refused-response` / `decoded-too-large` |
+| is in an encoding that cannot be decoded within a bound (anything but `gzip`, `deflate`, `br`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
+
+A request body the proxy will not decode may or may not name a credential;
+nobody can say without decoding it. It goes out untouched, which is the safe
+direction, and the head of the request is still swapped. A response the proxy
+cannot read is one the box could still decode, so it is not passed on. Both
+only apply to a box that gets swaps and a user with a credential for the host:
+for anyone else there is nothing to swap or scrub and the body is not read.
+
 So a `git push` with a large pack authenticates (its body is binary and
 streams), a large text upload fails at the provider the same loud way an
 unbound placeholder does, and a text response too large to scrub never reaches
@@ -130,9 +149,9 @@ Python 3.13), one body at the 5 MiB limit, median of several runs:
 That is how long every other connection on the replica waits while one such
 message is handled; a box can cause it at will, one message at a time. These
 are single-machine numbers, not a capacity figure: how many boxes a replica
-carries has not been measured, and server CPUs will differ. The limit counts
-bytes on the wire, so a compressed body decodes to more than 5 MiB and costs
-more than the table says.
+carries has not been measured, and server CPUs will differ. The table is for
+5 MiB of decoded text. A compressed body may decode to up to 20 MiB, so the
+worst single message costs about four times the gzip rows.
 
 ## Tests
 
@@ -164,8 +183,12 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   any size). What counts as text is the content type the sender declares.
 - A text response over 5 MiB from a bound host is refused, not delivered, for a
   box that gets swaps. A text request body over 5 MiB is not swapped.
-- The 5 MiB limit counts bytes on the wire. A compressed body is decoded whole
-  to be swapped or scrubbed, and nothing caps what it decodes to.
+- A compressed text response from a bound host that decodes to more than
+  20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
+  several at once), is refused for a box that gets swaps; a request body like
+  that is not swapped.
+- The decoded-size limit covers HTTP bodies. Websocket messages are
+  decompressed by mitmproxy before the addon sees them, with no limit of ours.
 - A text response with no declared length is held until it is complete, so an
   event stream from a bound host does not arrive incrementally.
 - Websocket messages are swapped and scrubbed one message at a time; a value
