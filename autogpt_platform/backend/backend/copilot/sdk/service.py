@@ -4881,6 +4881,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # get_agent_building_guide skip redundant guide round-trips when the
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
+        # Turn-scoped, as the baseline's turn-end clear makes it: without
+        # this the buffer the adapter fills would carry a previous turn's
+        # calls into a gate that asks about *this* turn.
+        session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
