@@ -322,7 +322,7 @@ async def clear_pending_question(session: "ChatSessionInfo") -> None:
     injected one; fixing that would require plumbing a new signal through
     the queue/executor layer.
     """
-    if session.metadata.pending_question is None:
+    if getattr(session.metadata, "pending_question", None) is None:
         return
     session.metadata.pending_question = None
     try:

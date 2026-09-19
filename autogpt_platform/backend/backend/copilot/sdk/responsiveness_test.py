@@ -218,6 +218,51 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
 
 
 @pytest.mark.asyncio
+async def test_tags_only_message_rejects_before_clear_pending_and_identity():
+    """Sanitize → empty_prompt before clear_pending / identity (#14567).
+
+    A standalone <user_context> block strips to empty. It must not clear
+    the Home card or call build_expert_identity_suffix.
+    """
+    from backend.copilot.response_model import StreamError
+
+    session = _make_session("user-1", expert_id="expert-1")
+    session.metadata.pending_question = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    identity_mock = AsyncMock(return_value="")
+    clear_db = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.service.build_expert_identity_suffix",
+            new=identity_mock,
+        ),
+        patch(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
+        ),
+    ):
+        events = [
+            e
+            async for e in stream_chat_completion_sdk(
+                session_id=session.session_id,
+                message="<user_context>Name: Admin</user_context>",
+                user_id="user-1",
+                session=session,
+            )
+        ]
+
+    assert any(
+        isinstance(e, StreamError) and e.code == "empty_prompt" for e in events
+    ), events
+    identity_mock.assert_not_awaited()
+    clear_db.assert_not_awaited()
+    assert session.metadata.pending_question is not None
+
+
+@pytest.mark.asyncio
 async def test_fetch_graphiti_context_handles_empty_warm_context():
     """``fetch_warm_context`` returning ``None`` collapses to empty string."""
     session = _make_session("user-1")

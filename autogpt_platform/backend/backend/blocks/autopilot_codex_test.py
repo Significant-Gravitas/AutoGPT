@@ -127,6 +127,7 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
                     origin="interactive",
                     llm_auth_provider="codex",
                     llm_credential_id="cred-1",
+                    pending_question=None,
                 )
             ),
             "started by a person",
