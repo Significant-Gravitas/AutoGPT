@@ -11,6 +11,7 @@ from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
     _fetch_user_context_data,
+    _force_all_flags_enabled,
     evaluate_feature_flag,
     feature_flag,
     get_client,
@@ -176,6 +177,56 @@ class TestEnvFlagOverride:
     def test_case_insensitive_value(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("FORCE_FLAG_CHAT", "TRUE")
         assert _env_flag_override(Flag.CHAT) is True
+
+
+class TestForceAllFlags:
+    def _clear(self, monkeypatch: pytest.MonkeyPatch):
+        for name in (
+            "FORCE_ALL_FLAGS",
+            "NEXT_PUBLIC_FORCE_ALL_FLAGS",
+            "FORCE_FLAG_CHAT",
+            "NEXT_PUBLIC_FORCE_FLAG_CHAT",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+    def test_off_by_default(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        assert _force_all_flags_enabled() is False
+        assert _env_flag_override(Flag.CHAT) is None
+
+    def test_forces_boolean_flag_on(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        assert _force_all_flags_enabled() is True
+        assert _env_flag_override(Flag.CHAT) is True
+
+    def test_next_public_master_switch(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", "1")
+        assert _env_flag_override(Flag.CHAT) is True
+
+    def test_skips_non_boolean_flags(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        assert _env_flag_override(Flag.STRIPE_PRODUCT_ID_TOPUP) is None
+        assert _env_flag_override(Flag.COPILOT_MODEL_ROUTING) is None
+
+    def test_per_flag_false_wins_over_force_all(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
+        assert _env_flag_override(Flag.CHAT) is False
+
+    def test_accepts_raw_string_key(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        assert _env_flag_override(Flag.CHAT.value) is True
+
+    def test_falsey_value_does_not_force(self, monkeypatch: pytest.MonkeyPatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "false")
+        assert _force_all_flags_enabled() is False
+        assert _env_flag_override(Flag.CHAT) is None
 
 
 class TestUserContext:

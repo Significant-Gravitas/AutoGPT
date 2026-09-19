@@ -435,7 +435,34 @@ async def _evaluate_flag_value(
         return default, False
 
 
-def _env_flag_override(flag_key: Flag) -> bool | None:
+_TRUTHY = ("1", "true", "yes", "on")
+
+# Non-boolean flags can't be forced to a bare ``True`` — their callers expect a
+# string / JSON value — so the master switch below skips them (mirrors the
+# frontend's ``ARRAY_TYPED_FLAGS``).
+_NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
+    {Flag.STRIPE_PRODUCT_ID_TOPUP.value, Flag.COPILOT_MODEL_ROUTING.value}
+)
+
+
+def _force_all_flags_enabled() -> bool:
+    """Master local-dev switch to turn every boolean flag on at once.
+
+    Set ``FORCE_ALL_FLAGS=true`` (or the ``NEXT_PUBLIC_FORCE_ALL_FLAGS`` the
+    frontend reads, so one shared var flips both sides) to force every boolean
+    flag on without listing them. A per-flag ``FORCE_FLAG_<NAME>`` still wins,
+    so a single flag can be excluded with ``=false`` while the rest stay on.
+    Defaults off. Intended for local dev, where LaunchDarkly is unconfigured
+    and every flag is otherwise off.
+    """
+    for name in ("FORCE_ALL_FLAGS", "NEXT_PUBLIC_FORCE_ALL_FLAGS"):
+        raw = os.environ.get(name)
+        if raw is not None and raw.strip().lower() in _TRUTHY:
+            return True
+    return False
+
+
+def _env_flag_override(flag_key: Flag | str) -> bool | None:
     """Return a local override for ``flag_key`` from the environment.
 
     Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
@@ -448,14 +475,24 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     frontend (the frontend requires the ``NEXT_PUBLIC_`` prefix to
     expose the value to the browser bundle).
 
+    When no per-flag override is set, the ``FORCE_ALL_FLAGS`` master switch
+    (see :func:`_force_all_flags_enabled`) forces every boolean flag on;
+    non-boolean flags are left to LaunchDarkly.
+
     Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
     ``Flag.CHAT_MODE_OPTION`` on regardless of LaunchDarkly.
+
+    Accepts a raw flag key string as well as a :class:`Flag`, so the
+    ``feature_flag`` decorator (which holds a raw key) shares this path.
     """
-    suffix = flag_key.value.upper().replace("-", "_")
+    key_value = flag_key.value if isinstance(flag_key, Flag) else flag_key
+    suffix = key_value.upper().replace("-", "_")
     for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
         raw = os.environ.get(prefix + suffix)
         if raw is not None:
-            return raw.strip().lower() in ("1", "true", "yes", "on")
+            return raw.strip().lower() in _TRUTHY
+    if _force_all_flags_enabled() and key_value not in _NON_BOOLEAN_FLAG_VALUES:
+        return True
     return None
 
 
@@ -537,7 +574,14 @@ def feature_flag(
                 if not user_id:
                     raise ValueError("user_id is required")
 
-                if not get_client().is_initialized():
+                # A local env override (per-flag FORCE_FLAG_*, or the
+                # FORCE_ALL_FLAGS master switch) wins over LaunchDarkly and
+                # applies even when the client is uninitialised — the normal
+                # local-dev state, where the decorator would otherwise 404.
+                override = _env_flag_override(flag_key)
+                if override is not None:
+                    is_enabled = override
+                elif not get_client().is_initialized():
                     logger.warning(
                         "LaunchDarkly not initialized, "
                         f"using default {flag_key}={repr(default)}"
@@ -607,6 +651,16 @@ def create_feature_flag_dependency(
         """
         # For routes that don't require authentication, use anonymous context
         check_user_id = user_id or "anonymous"
+
+        # A local env override (per-flag FORCE_FLAG_*, or the FORCE_ALL_FLAGS
+        # master switch) wins over LaunchDarkly and applies even when the client
+        # is unconfigured — the normal local-dev state, where this dependency
+        # would otherwise 404.
+        override = _env_flag_override(flag_key)
+        if override is not None:
+            if not override:
+                raise HTTPException(status_code=404, detail="Feature not available")
+            return
 
         if not is_configured():
             logger.debug(
