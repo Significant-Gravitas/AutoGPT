@@ -1,6 +1,9 @@
 import z from "zod";
 import { validateYouTubeUrl } from "@/lib/utils";
 
+// Mirrors SUB_HEADING_MAX_LENGTH in backend/api/features/store/model.py.
+export const SUB_HEADING_MAX = 100;
+
 // Create conditional schema that changes based on whether it's a marketplace update
 export const publishAgentSchemaFactory = (
   isMarketplaceUpdate: boolean = false,
@@ -24,18 +27,14 @@ export const publishAgentSchemaFactory = (
           .string()
           .min(1, "Title is required")
           .max(100, "Title must be less than 100 characters"),
-    subheader: isMarketplaceUpdate
-      ? z
-          .string()
-          .optional()
-          .refine(
-            (val) => !val || val.length <= 200,
-            "Subheader must be less than 200 characters",
-          )
-      : z
-          .string()
-          .min(1, "Subheader is required")
-          .max(200, "Subheader must be less than 200 characters"),
+    subheader: z
+      .string()
+      .trim()
+      .min(1, "Tagline is required")
+      .max(
+        SUB_HEADING_MAX,
+        `Tagline must be ${SUB_HEADING_MAX} characters or less`,
+      ),
     slug: isMarketplaceUpdate
       ? z
           .string()

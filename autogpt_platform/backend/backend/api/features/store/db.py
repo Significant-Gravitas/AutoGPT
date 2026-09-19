@@ -837,12 +837,12 @@ async def create_store_submission(
     graph_version: int,
     slug: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
@@ -860,7 +860,7 @@ async def create_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -1040,11 +1040,11 @@ async def edit_store_submission(
     user_id: str,
     store_listing_version_id: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
@@ -1061,7 +1061,7 @@ async def edit_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
