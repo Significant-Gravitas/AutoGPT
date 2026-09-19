@@ -730,11 +730,14 @@ async def resolve_block_credentials(
     block: AnyBlockSchema,
     input_data: dict[str, Any] | None = None,
     expert_id: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """Resolve credentials for a block by matching user's available credentials.
 
     Handles discriminated credentials (e.g. provider selection based on model).
     ``expert_id`` narrows the pool to that expert's granted credentials.
+    ``session_id`` is the chat the block runs in: its picked credentials win,
+    and a choice between several is handed back to the user.
 
     Returns:
         (matched_credentials, missing_credentials)
@@ -745,7 +748,9 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
-    return await match_credentials_to_requirements(user_id, requirements, expert_id)
+    return await match_credentials_to_requirements(
+        user_id, requirements, expert_id, session_id
+    )
 
 
 @dataclass
@@ -855,7 +860,7 @@ async def prepare_block_for_execution(
             input_data.pop(field_name)
 
     matched_credentials, missing_credentials = await resolve_block_credentials(
-        user_id, block, input_data, session.expert_id
+        user_id, block, input_data, session.expert_id, session_id=session_id
     )
 
     try:
@@ -1347,7 +1352,7 @@ def require_guide_read(session: ChatSession, tool_name: str):
         )
     return ErrorResponse(
         message=(
-            f"Call tool:enter_agent_building_mode first, then retry tool:{tool_name}. "
+            f"Call enter_agent_building_mode first, then retry tool:{tool_name}. "
             "It loads the agent-building guide into your system prompt where "
             "it survives context compaction. (tool:get_agent_building_guide or "
             'tool:read_skill with name="agent_building_guide" also satisfy this gate.) '

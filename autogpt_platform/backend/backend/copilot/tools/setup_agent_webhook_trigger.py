@@ -359,7 +359,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         Returns ``(agent_credentials, None)`` when ready to proceed, or
         ``({}, SetupRequirementsResponse)`` when the user must act first.
         """
-        matched, _ = await match_user_credentials_to_graph(user_id, graph, expert_id)
+        matched, _ = await match_user_credentials_to_graph(
+            user_id, graph, expert_id, session_id=session_id
+        )
         trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
 
         effective = dict(matched)

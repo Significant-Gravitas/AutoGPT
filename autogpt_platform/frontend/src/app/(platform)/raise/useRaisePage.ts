@@ -69,6 +69,10 @@ export function useRaisePage() {
     update({ jobTitle: trimmed, step: "name" });
   }
 
+  function skipJobTitle() {
+    update({ jobTitle: "", step: "name" });
+  }
+
   function submitName(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -183,6 +187,7 @@ export function useRaisePage() {
     revealStep: (beat: BeatKey) => progress.revealStep(beat),
     pickRole,
     submitJobTitle,
+    skipJobTitle,
     submitName,
     pickAvatar,
     submitAbout,

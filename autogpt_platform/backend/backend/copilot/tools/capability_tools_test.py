@@ -71,6 +71,14 @@ def test_eager_and_deferred_split_the_registry():
     assert len(get_available_tools(include_deferred=True)) > len(shown)
 
 
+def test_enter_building_mode_stays_eager_because_the_refusal_names_it():
+    """The building gate's refusal says to call ``enter_agent_building_mode``;
+    deferred, that instruction cannot be followed, because naming a deferred
+    tool directly is refused."""
+    assert "enter_agent_building_mode" in EAGER_CORE
+    assert "enter_agent_building_mode" not in DEFERRED_TOOL_NAMES
+
+
 def test_start_desktop_stays_eager_because_the_prompt_names_it():
     """``expert_context`` tells the model "Use start_desktop"; a deferred
     tool called by name is refused, so the instruction only works eager."""
@@ -344,17 +352,25 @@ def _stub_tool(name: str) -> MagicMock:
     return tool
 
 
-async def test_run_tool_dispatches_to_the_deferred_tool():
+async def test_run_tool_describes_without_running():
+    """Running a platform tool never reaches the dispatcher — the engines
+    resolve the dispatch into a call to the tool itself (see
+    ``capabilities/dispatch_test.py``). What is left here is the description
+    ``validate_only`` asks for, which must not run anything."""
     stub = _stub_tool("list_schedules")
     with patch(
         "backend.copilot.tools.run_capability.configured_tool", return_value=stub
     ):
         result = await RunCapabilityTool()._execute(
-            USER, make_session(USER), id="tool:list_schedules", input={"x": "1"}
+            USER,
+            make_session(USER),
+            id="tool:list_schedules",
+            input={"x": "1"},
+            validate_only=True,
         )
-    assert result.message == "ran"
-    stub._execute.assert_awaited_once()
-    assert stub._execute.await_args.kwargs == {"x": "1"}
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert result.parameters == stub.parameters
+    stub._execute.assert_not_awaited()
 
 
 async def test_run_tool_respects_turn_hidden_tools():
@@ -365,7 +381,7 @@ async def test_run_tool_respects_turn_hidden_tools():
         "backend.copilot.tools.run_capability.configured_tool", return_value=stub
     ):
         result = await RunCapabilityTool()._execute(
-            USER, session, id="tool:list_schedules", input={}
+            USER, session, id="tool:list_schedules", input={}, validate_only=True
         )
     assert isinstance(result, ErrorResponse) and result.error == "tool_disabled"
     stub._execute.assert_not_awaited()
@@ -654,3 +670,22 @@ async def test_resume_mcp_review_waits_for_approval():
             USER, session, review_id=review_id
         )
     assert isinstance(result, ErrorResponse) and "not been approved" in result.message
+
+
+async def test_validating_a_dispatch_never_satisfies_a_gate():
+    """``validate_only`` describes the call without running it, so nothing
+    about it may look like the tool having run."""
+    session = make_session(USER)
+    stub = _stub_tool("enter_agent_building_mode")
+    with patch(
+        "backend.copilot.tools.run_capability.configured_tool", return_value=stub
+    ):
+        await RunCapabilityTool()._execute(
+            USER,
+            session,
+            id="tool:enter_agent_building_mode",
+            input={},
+            validate_only=True,
+        )
+    assert session.has_tool_been_called("enter_agent_building_mode") is False
+    stub._execute.assert_not_awaited()

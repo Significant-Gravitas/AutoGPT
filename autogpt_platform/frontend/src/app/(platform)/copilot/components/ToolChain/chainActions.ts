@@ -16,6 +16,13 @@ export interface ChainActionEntry {
   id: string;
   ready: boolean;
   buildMessage: () => string | null;
+  /** The message only confirms that credentials are in place. Several cards
+   *  in one chain often ask for the same account, and the model needs to be
+   *  told once. */
+  credentialsOnly?: boolean;
+  /** Awaited before the chain's reply goes out. The reply is what makes the
+   *  tool run again, so anything it must find in place is settled here. */
+  beforeSend?: () => Promise<void>;
   onSent?: () => void;
   /** This card's reply must be reviewed before it is sent, so the chain owes
    *  it a Proceed even when it asks for nothing but credentials. */
@@ -46,3 +53,21 @@ export interface ChainActions {
 }
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
+
+/** The chain's single reply. Every card contributes its line, except that
+ *  cards which only confirm credentials share one confirmation: two cards
+ *  asking for the same account used to say so twice in one message. */
+export function buildChainReply(entries: ChainActionEntry[]): string {
+  let confirmed = false;
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const line = entry.buildMessage();
+    if (!line) continue;
+    if (entry.credentialsOnly) {
+      if (confirmed) continue;
+      confirmed = true;
+    }
+    lines.push(line);
+  }
+  return lines.join("\n\n");
+}
