@@ -57,6 +57,8 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.env import describe_sdk_context
+from backend.copilot.sdk.langfuse_events import emit_turn_usage_event
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
@@ -192,6 +194,7 @@ from ..transcript import (
     next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
+    read_compacted_entries_detailed,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
@@ -359,21 +362,25 @@ async def _open_sdk_compaction_row(
 
 async def _measure_sdk_compaction(
     ctx: "_StreamContext", state: "_RetryState"
-) -> tuple[bool, list[dict] | None, CompactionStats | None]:
+) -> tuple[bool, list[dict] | None, CompactionStats | None, str | None]:
     """Read what the CLI kept after compacting and size the row's payoff.
 
     Runs before the row closes so the settled output carries the numbers.
-    Returns ``(measured, compacted, stats)``: ``measured`` is False when no
-    cycle was pending, and the compacted entries are handed back so the
-    caller can sync the transcript builder without a second read.
+    Returns ``(measured, compacted, stats, after_source)``: ``measured``
+    is False when no cycle was pending, and the compacted entries are
+    handed back so the caller can sync the transcript builder without a
+    second read. ``after_source`` names how the post-compaction read
+    resolved so a missing after-count stays diagnosable downstream.
     """
     # Let a PreCompact hook that raced this message land before we look —
     # ``emit_end_if_ready`` yields for the same reason.
     await asyncio.sleep(0)
     path = ctx.compaction.pending_transcript_path
     if path is None:
-        return False, None, None
-    compacted = await asyncio.to_thread(read_compacted_entries, path)
+        return False, None, None, None
+    compacted, after_source = await asyncio.to_thread(
+        read_compacted_entries_detailed, path
+    )
     stats = await asyncio.to_thread(
         sdk_compaction_stats,
         state.transcript_builder.entries_as_dicts(),
@@ -381,7 +388,7 @@ async def _measure_sdk_compaction(
         model=_compression_model(),
         start=ctx.compaction.start_stats,
     )
-    return True, compacted, stats
+    return True, compacted, stats, after_source
 
 
 async def _consume_sdk_until_done(
@@ -704,8 +711,12 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
-        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
+        measured, compacted, end_stats, after_source = await _measure_sdk_compaction(
+            ctx, state
+        )
+        compact_result = await ctx.compaction.emit_end_if_ready(
+            ctx.session, end_stats, after_source=after_source
+        )
         if compact_result.events:
             # Compaction events end with StreamFinishStep, which maps to
             # Vercel AI SDK's "finish-step" — that clears activeTextParts.
@@ -1441,7 +1452,7 @@ _SEED_TARGET_TOKENS: int = 30_000
 _COMPACTION_HEADROOM_TOKENS: int = 20_000
 
 
-def _compaction_target_tokens(model: str) -> int:
+def _compaction_target_tokens(model: str, *, codex_route: bool = False) -> int:
     """Compaction target consistent with the CLI's autocompact threshold.
 
     Mirrors the bundled CLI's formula for autocompact:
@@ -1450,19 +1461,20 @@ def _compaction_target_tokens(model: str) -> int:
     a follow-up assistant message doesn't immediately re-trigger.
     Floors at 10K to preserve at least some history budget.
 
-    Deliberately a *different* window from the one the CLI subprocess is
-    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
-    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
-    this path feeds our own estimate-based compressor, which needs that
-    margin.  The 20K headroom absorbs the max-output reserve the CLI also
-    subtracts and this formula does not.
+    Window and pct come from the SAME resolvers that pin the subprocess
+    (``sdk/context_window.py``), never from the catalog: a target derived
+    from a different window than the pin is a second threshold authority
+    and will either fire early forever or land over the pin. There is no
+    unknown-model fallback — the pin resolvers always return a concrete
+    window, including for unlisted SKUs.
     """
-    from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
+    from backend.copilot.sdk.context_window import (
+        autocompact_pct,
+        pinned_context_window,
+    )
 
-    window = get_context_window(model)
-    if window is None:
-        return DEFAULT_TOKEN_THRESHOLD
-    pct = config.claude_agent_autocompact_pct_override
+    window = pinned_context_window(config, model, codex_route=codex_route)
+    pct = autocompact_pct(config, model, codex_route=codex_route)
     cli_buffer = 13_000  # the CLI's own summary buffer
     if pct > 0 and not _is_moonshot_model(model):
         cli_threshold = min(window * pct // 100, window - cli_buffer)
@@ -1479,6 +1491,7 @@ async def _reduce_context(
     log_prefix: str,
     attempt: int = 1,
     runtime_model: str | None = None,
+    codex_route: bool = False,
 ) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
@@ -1513,7 +1526,9 @@ async def _reduce_context(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
-            target_tokens=_compaction_target_tokens(target_model),
+            target_tokens=_compaction_target_tokens(
+                target_model, codex_route=codex_route
+            ),
         )
         if (
             compacted
@@ -5051,6 +5066,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
         )
+        # What this turn's subprocess was pinned to (window/trigger/flags —
+        # never secrets). Without this the pin is unobservable anywhere:
+        # Langfuse sees tokens, never the env vars that shaped them.
+        context_summary = describe_sdk_context(
+            route="codex" if codex_gateway else config.transport.name,
+            model=sdk_model,
+            sdk_env=sdk_env,
+        )
+        logger.info(f"{log_prefix} SDK context: {context_summary}")
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -5578,6 +5602,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                     attempt=attempt,
                     runtime_model=sdk_model,
+                    codex_route=is_codex_transport,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume
@@ -6154,6 +6179,37 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 extra_metadata={"billing_mode": "user_subscription"},
                 execution_path="codex_claude_sdk",
             )
+            # The reconcile event below covers OpenRouter turns only; Codex
+            # turns would otherwise leave no usage on their Langfuse trace.
+            # Re-derived (not reused from above): on early exits the gateway
+            # was never built and that local is unbound.
+            gateway_usage = (
+                _codex_gateway_usage(codex_gateway)
+                if codex_gateway is not None
+                else None
+            )
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                codex_input_tokens=(
+                    gateway_usage.input_tokens if gateway_usage else None
+                ),
+                codex_cached_input_tokens=(
+                    gateway_usage.cached_input_tokens if gateway_usage else None
+                ),
+                codex_boundary_peak_estimate=(
+                    codex_gateway.peak_boundary_estimate
+                    if codex_gateway is not None
+                    else None
+                ),
+                log_prefix=log_prefix,
+            )
         elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
@@ -6225,6 +6281,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # OpenRouter when ``openrouter_active``, Anthropic
                 # otherwise.
                 provider=("open_router" if config.openrouter_active else "anthropic"),
+            )
+            # Sync path only — when the reconcile fires it emits the
+            # authoritative usage event itself (with the real OpenRouter
+            # bill), so emitting here too would double-report the turn.
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+                cost_usd=turn_cost_usd,
+                model=effective_model,
+                provider=("open_router" if config.openrouter_active else "anthropic"),
+                log_prefix=log_prefix,
             )
 
         # --- Persist session messages ---

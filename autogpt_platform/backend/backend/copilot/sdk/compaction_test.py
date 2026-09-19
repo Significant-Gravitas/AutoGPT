@@ -2,6 +2,7 @@
 CompactionTracker state machine."""
 
 import json as stdlib_json
+from unittest.mock import patch
 
 import pytest
 
@@ -827,3 +828,49 @@ class TestSdkCompactionStats:
 
     def test_empty_transcript_has_no_counts(self):
         assert transcript_stats([], model="gpt-4o") == CompactionStats()
+
+
+# ---------------------------------------------------------------------------
+# Langfuse compaction events
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionLangfuseEvents:
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    def test_pre_query_end_emits_event(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        stats = CompactionStats(tokens_before=128_000, tokens_after=31_000)
+        tracker.emit_pre_query_end(session, stats)
+        mock_emit.assert_called_once()
+        kwargs = mock_emit.call_args.kwargs
+        assert kwargs["path"] == "pre_query"
+        assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "compress_result"
+
+    @pytest.mark.asyncio
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    async def test_sdk_internal_end_emits_event(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact()
+        tracker.emit_start_if_ready()
+        stats = CompactionStats(tokens_before=128_000, tokens_after=31_000)
+        result = await tracker.emit_end_if_ready(
+            session, stats, after_source="no_summary_line"
+        )
+        assert result.just_ended is True
+        mock_emit.assert_called_once()
+        kwargs = mock_emit.call_args.kwargs
+        assert kwargs["path"] == "sdk_internal"
+        assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "no_summary_line"
+
+    @pytest.mark.asyncio
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    async def test_no_emit_when_nothing_ends(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is False
+        mock_emit.assert_not_called()

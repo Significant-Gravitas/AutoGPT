@@ -19,6 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.copilot.sdk.langfuse_events import emit_compaction_event
 from backend.util.prompt import estimate_token_count_str
 
 from ..constants import (
@@ -471,6 +472,12 @@ class CompactionTracker:
         if stats is None or not stats.dropped:
             self._completed_sources.append("pre_query")
         _persist(session, tc_id, output)
+        emit_compaction_event(
+            path="pre_query",
+            stats=stats,
+            after_source="compress_result",
+            log_prefix="[SDK]",
+        )
         events.append(_progress("rebuilding", stats))
         return events
 
@@ -556,7 +563,11 @@ class CompactionTracker:
         return []
 
     async def emit_end_if_ready(
-        self, session: ChatSession, stats: "CompactionStats | None" = None
+        self,
+        session: ChatSession,
+        stats: "CompactionStats | None" = None,
+        *,
+        after_source: str | None = None,
     ) -> CompactionResult:
         """If compaction is in progress, emit end events and persist.
 
@@ -566,7 +577,10 @@ class CompactionTracker:
 
         *stats* is the measured before/after (see
         :func:`sdk_compaction_stats`); it lands in the persisted output and
-        rides the ``rebuilding`` phase.
+        rides the ``rebuilding`` phase. *after_source* names how the
+        post-compaction read resolved (see
+        :func:`transcript.read_compacted_entries_detailed`) and rides the
+        Langfuse event so a missing after-count stays diagnosable.
         """
         # Yield so pending hook tasks can set compact_start
         await asyncio.sleep(0)
@@ -597,6 +611,12 @@ class CompactionTracker:
         self._active_transcript_path = ""
         self._completed_sources.append("sdk_internal")
         _persist(session, persist_id, output)
+        emit_compaction_event(
+            path="sdk_internal",
+            stats=stats,
+            after_source=after_source,
+            log_prefix="[SDK]",
+        )
         done_events.append(_progress("rebuilding", stats))
         return CompactionResult(
             events=done_events, just_ended=True, transcript_path=transcript_path

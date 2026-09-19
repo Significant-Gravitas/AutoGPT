@@ -1314,10 +1314,15 @@ class TestCompactionTargetTokens:
         self, model, window, pct, expected
     ) -> None:
         with (
-            patch("backend.util.prompt.get_context_window", return_value=window),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=window,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=pct,
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = pct
             assert _compaction_target_tokens(model) == expected
 
     def test_moonshot_uses_cli_default_threshold(self) -> None:
@@ -1325,27 +1330,63 @@ class TestCompactionTargetTokens:
         # entirely), so our target should mirror the CLI's ~93% default
         # regardless of the configured pct value.
         with (
-            patch("backend.util.prompt.get_context_window", return_value=262_144),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=262_144,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=50,  # ignored for moonshot
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = 50  # ignored
             # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
             assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
 
-    def test_unknown_model_falls_back_to_default_threshold(self) -> None:
-        from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD
+    def test_unknown_model_uses_pin_not_flat_fallback(self) -> None:
+        # Regression: unknown models used to fall back to a flat 120K that
+        # had no relationship to the applied pin. Now the pin resolvers
+        # (which never return None) drive the target.
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=200_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=50,
+            ),
+        ):
+            assert _compaction_target_tokens("unknown/model") == 80_000
 
-        with patch("backend.util.prompt.get_context_window", return_value=None):
-            assert _compaction_target_tokens("unknown/model") == DEFAULT_TOKEN_THRESHOLD
+    def test_codex_route_reaches_both_resolvers(self) -> None:
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=272_000,
+            ) as mock_pin,
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=90,
+            ) as mock_pct,
+        ):
+            # min(272000*90//100, 272000-13000) - 20000 = 224800
+            assert _compaction_target_tokens("gpt-6-astra", codex_route=True) == 224_800
+        assert mock_pin.call_args.kwargs["codex_route"] is True
+        assert mock_pct.call_args.kwargs["codex_route"] is True
 
     def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
         # PCT=1 on a 50K window → CLI threshold = 500 → target would be
         # negative without the floor.
         with (
-            patch("backend.util.prompt.get_context_window", return_value=50_000),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=50_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=1,
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = 1
             assert _compaction_target_tokens("anthropic/foo") == 10_000
 
     def test_resolve_env_model_prefers_moonshot_fallback(self) -> None:
@@ -1401,7 +1442,7 @@ class TestCompactionTargetTokens:
             ),
             patch(
                 "backend.copilot.sdk.service._compaction_target_tokens",
-                side_effect=lambda m: 12345 if "kimi" in m else 99999,
+                side_effect=lambda m, **kwargs: 12345 if "kimi" in m else 99999,
             ),
         ):
             await _reduce_context(
@@ -1415,6 +1456,35 @@ class TestCompactionTargetTokens:
 
         # Target derived from the RUNTIME model, not the compactor model.
         assert captured["target_tokens"] == 12345
+
+    @pytest.mark.asyncio
+    async def test_reduce_context_forwards_codex_route(self) -> None:
+        """The retry target must resolve against the applied pin, so the
+        Codex route has to reach the target function."""
+        from backend.copilot.sdk.service import _reduce_context
+
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        with (
+            patch(
+                "backend.copilot.sdk.service.compact_transcript",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.sdk.service._compaction_target_tokens",
+                return_value=11,
+            ) as mock_target,
+        ):
+            await _reduce_context(
+                transcript,
+                False,
+                "sess",
+                "/tmp",
+                "[t]",
+                runtime_model="gpt-6-astra",
+                codex_route=True,
+            )
+        assert mock_target.call_args.kwargs["codex_route"] is True
 
 
 # ---------------------------------------------------------------------------
