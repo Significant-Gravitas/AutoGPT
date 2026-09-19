@@ -135,9 +135,13 @@ describe("BackendAPI WebSocket failure logging", () => {
 
     readyState = FakeWebSocket.CONNECTING;
     onopen: (() => void) | null = null;
-    onclose: ((event: any) => void) | null = null;
-    onerror: ((event: any) => void) | null = null;
-    onmessage: ((event: any) => void) | null = null;
+    onclose:
+      | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
+      | null = null;
+    onerror:
+      | ((event: Pick<Event, "type"> & { target?: unknown }) => void)
+      | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
     state = "connecting";
     close = vi.fn();
     send = vi.fn();

@@ -99,6 +99,19 @@ describe("describeErrorEvent", () => {
     expect(JSON.stringify(extra)).not.toContain("secret");
   });
 
+  it("labels a readyState it does not recognise", () => {
+    const { summary, extra } = describeErrorEvent(
+      {
+        type: "error",
+        target: { readyState: 7, url: "wss://ws.example.com/ws" },
+      },
+      "wss://ws.example.com/ws",
+    );
+
+    expect(summary).toContain("readyState unknown");
+    expect(extra.ws_ready_state).toBe(7);
+  });
+
   it("falls back to the configured URL when the event has no target", () => {
     const { summary, extra } = describeErrorEvent(
       { type: "", target: null },
