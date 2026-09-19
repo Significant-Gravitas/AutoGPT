@@ -76,7 +76,7 @@
     "@tanstack/react-query": "5.90.6",
     "@tanstack/react-table": "8.21.3",
     "@types/jaro-winkler": "0.2.4",
-    "@vercel/analytics": "1.5.0",
+    "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
     "ai": "6.0.134",
