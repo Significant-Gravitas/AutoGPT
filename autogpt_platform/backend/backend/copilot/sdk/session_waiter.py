@@ -32,7 +32,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
-from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.copilot.tree import SpawnRequest, TreeRefusal, TurnEnvelope
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -144,6 +144,7 @@ async def run_copilot_turn_via_queue(
     tool_name: str,
     spawn: SpawnRequest | None = None,
     allow_queue: bool = True,
+    spawner_envelope: "TurnEnvelope | None" = None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
@@ -251,6 +252,7 @@ async def run_copilot_turn_via_queue(
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
             spawn=spawn,
+            spawner_envelope=spawner_envelope,
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
