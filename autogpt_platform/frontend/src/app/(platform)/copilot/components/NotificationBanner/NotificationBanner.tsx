@@ -12,13 +12,14 @@ import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
 const BellRing = createIconComponent(BellRingIcon);
 
 export function NotificationBanner() {
-  const { setNotificationsEnabled, isNotificationsEnabled } =
-    useCopilotUIStore();
+  const isNotificationsEnabled = useCopilotUIStore(
+    (state) => state.isNotificationsEnabled,
+  );
 
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
   );
-  const [permission, setPermission] = useState(() =>
+  const [permission] = useState(() =>
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
@@ -41,18 +42,12 @@ export function NotificationBanner() {
     return null;
   }
 
-  function handleEnable() {
-    Notification.requestPermission().then((result) => {
-      setPermission(result);
-      if (result === "granted") {
-        setNotificationsEnabled(true);
-        handleDismiss();
-      }
-    });
+  function persistDismissed() {
+    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
   }
 
   function handleDismiss() {
-    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    persistDismissed();
     setDismissed(true);
   }
 
@@ -60,11 +55,19 @@ export function NotificationBanner() {
     <Alert variant="warning" icon={BellRing} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          Enable browser notifications to know when your experts finish working,
-          even when you switch tabs.
+          Notifications are off. Turn them on in Settings to know when your
+          experts finish working, even when you switch tabs.
         </AlertDescription>
-        <Button variant="primary" size="small" onClick={handleEnable}>
-          Enable
+        <Button
+          as="NextLink"
+          variant="primary"
+          size="small"
+          href="/settings/account"
+          // Only persist — setting state here would unmount the banner, and
+          // this link with it, before Next gets to navigate.
+          onClick={persistDismissed}
+        >
+          Open settings
         </Button>
         <Button
           variant="ghost"

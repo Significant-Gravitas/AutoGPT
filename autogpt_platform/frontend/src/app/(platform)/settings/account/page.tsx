@@ -6,6 +6,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
+import { BrowserNotificationsCard } from "./components/BrowserNotificationsCard/BrowserNotificationsCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
@@ -76,6 +77,8 @@ export default function SettingsPreferencesPage() {
           index={2}
         />
       ) : null}
+
+      <BrowserNotificationsCard index={3} />
 
       <SaveBar
         visible={dirty}
