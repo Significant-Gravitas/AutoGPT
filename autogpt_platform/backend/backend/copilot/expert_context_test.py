@@ -1090,8 +1090,8 @@ class TestExpertComputerBlock:
         """The system prompt drops the plain chat's note for every expert
         session, so a failed lookup must not cost the expert its block."""
         from backend.copilot.expert_context import (
-            render_expert_computer_block,
             build_expert_context,
+            render_expert_computer_block,
         )
         from backend.copilot.prompting import get_sdk_supplement
 
