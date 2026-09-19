@@ -100,8 +100,15 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
 /** Context panel tab: "files" is the inline workspace-files card, "artifacts"
- *  the docked artifacts library. */
-export type ContextPanelTab = "files" | "artifacts";
+ *  the docked artifacts library, "team" the docked delegation roster. */
+export type ContextPanelTab = "files" | "artifacts" | "team";
+
+/** Tabs that dock the context panel beside the chat (the files tab renders
+ *  as an inline card instead). */
+export const DOCKED_CONTEXT_TABS: ReadonlySet<ContextPanelTab> = new Set([
+  "artifacts",
+  "team",
+]);
 
 const isClient = typeof window !== "undefined";
 
@@ -115,7 +122,7 @@ function getPersistedTab(): ContextPanelTab {
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
   // Anything else (including a "progress" tab persisted by the retired
   // sidebar) falls back to the files card.
-  return saved === "artifacts" ? saved : "files";
+  return saved === "artifacts" || saved === "team" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -226,6 +233,8 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  /** Opens the panel on `tab`, leaving it open if it already shows. */
+  openContextPanelTab: (tab: ContextPanelTab) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
@@ -597,6 +606,24 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           // next sidebar click reopens the tab rather than an older artifact.
           lastArtifact: nextOpen ? state.artifactPanel.lastArtifact : null,
           // The tab takes the panel from the computer face.
+          mode: "artifact",
+          isComputerOpen: false,
+        },
+      };
+    }),
+  openContextPanelTab: (tab) =>
+    set((state) => {
+      if (isClient) {
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+        storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
+      }
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: true,
+          activeTab: tab,
+          activeArtifact: null,
+          history: [],
           mode: "artifact",
           isComputerOpen: false,
         },

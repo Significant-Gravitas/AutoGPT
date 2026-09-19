@@ -23,6 +23,7 @@ import { CARD, StatusPill } from "./ResultCards";
 import { asObject, str } from "./resultHelpers";
 import { RowIcon } from "./RowIcon";
 import { SwapText } from "./SwapText";
+import { OpenTeamPanelLink } from "./OpenTeamPanelLink";
 import { getCatalogLabel } from "./toolCatalog";
 
 interface Props {
@@ -281,7 +282,7 @@ export function SubSessionPendingCard({
   const expert = expertId ? expertsById.get(expertId) : undefined;
 
   return (
-    <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
+    <div className={cn(CARD, "flex w-full flex-col rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar
           name={expert?.name ?? "Expert"}
@@ -321,6 +322,7 @@ export function SubSessionPendingCard({
       {!minimal && liveSessionId && (
         <SubSessionLive subSessionId={liveSessionId} active />
       )}
+      {minimal && <OpenTeamPanelLink />}
     </div>
   );
 }
@@ -389,7 +391,7 @@ export function useSubSessionEffectiveStatus(
   return isSessionLive(session) ? status : "completed";
 }
 
-function isSessionLive(session: SessionDetailResponse): boolean {
+export function isSessionLive(session: SessionDetailResponse): boolean {
   if (session.active_stream) return true;
   const status = session.chat_status?.toLowerCase();
   return status === "running" || status === "queued";
