@@ -65,9 +65,9 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the <skills_update> drift-notice sentence.
+# Last re-pinned for naming deferred tools by their `tool:<name>` capability id.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "a7877c867b2f688996ac0ddab71b2dfd7c9ff110ee2dcf5fa9092fee61268d71"
+    "1b84b359d4bf0526c3cc70665a41b241d2c652d2ca9f10a097902a5f9b1d82a3"
 )
 
 
@@ -709,8 +709,8 @@ class TestBuildExpertContextPlainSession:
         assert "<team_context>" in result
         assert "</team_context>" in result
         assert "Head of AI" in result
-        assert "hire_expert(template_id=...)" in result
-        assert "raise_expert(...)" in result
+        assert "`tool:hire_expert` (`template_id`)" in result
+        assert "`tool:raise_expert`" in result
         assert "Propose one hire at a time." in result
         assert (
             "- Maria — Marketing Lead (template_id: tpl-1); "
@@ -1144,8 +1144,8 @@ class TestRoutinesBlock:
         result = await self._otto_context([])
 
         assert "<standing_work>" in result
-        assert "schedule_routine" in result
-        assert "list_routines" in result
+        assert "`tool:schedule_routine`" in result
+        assert "`tool:list_routines`" in result
 
     @pytest.mark.asyncio
     async def test_the_flag_that_hides_the_tools_hides_the_instruction(self):
