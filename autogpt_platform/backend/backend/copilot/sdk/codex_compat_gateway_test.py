@@ -12,9 +12,9 @@ from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     _Conversation,
     _DuplicateToolResultError,
-    _ToolCallRecord,
     _safe_tool_name,
     _serialize_messages,
+    _ToolCallRecord,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -29,12 +29,21 @@ from backend.integrations.credential_lease import CredentialLease
 
 
 class _FakeAgentSession:
-    def __init__(self, *, use_tool: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        use_tool: bool = False,
+        release: asyncio.Event | None = None,
+    ) -> None:
         self.use_tool = use_tool
         self.requests: list[CodexInvocationRequest] = []
         self.tools: list[list[CodexDynamicToolSpec]] = []
         self.tool_result: CodexDynamicToolResult | None = None
         self.cancelled = asyncio.Event()
+        # Holds the turn open after the tool result lands, so a test can
+        # keep the original continuation genuinely in flight.
+        self.release = release
+        self.tool_completed = asyncio.Event()
 
     async def invoke(
         self,
@@ -56,6 +65,9 @@ class _FakeAgentSession:
                         arguments={"query": "status"},
                     )
                 )
+                self.tool_completed.set()
+                if self.release is not None:
+                    await self.release.wait()
             if event_handler is not None:
                 await event_handler(
                     CodexStreamEvent(
@@ -691,13 +703,28 @@ async def test_raw_codex_call_id_collisions_are_isolated_by_gateway_ids() -> Non
 
 @pytest.mark.asyncio
 async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() -> None:
-    agent_session = _FakeAgentSession(use_tool=True)
+    release = asyncio.Event()
+    agent_session = _FakeAgentSession(use_tool=True, release=release)
     transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
     ) as gateway:
+        # ``asyncio.gather`` alone would not pin the duplicate to the
+        # in-flight window: this fires the moment the gateway recognises the
+        # resend as an awaiting continuation, just before it parks on the
+        # claim.
+        awaiting_reached = asyncio.Event()
+        respond = gateway._respond
+
+        async def _tracked_respond(request, continuation, payload):
+            if continuation.awaiting is not None:
+                awaiting_reached.set()
+            return await respond(request, continuation, payload)
+
+        gateway._respond = _tracked_respond  # type: ignore[method-assign]
+
         async with ClientSession() as client:
             first = await client.post(
                 f"{gateway.base_url}/v1/messages",
@@ -707,24 +734,36 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
             gateway_call_id = _tool_use_id(await first.json())
             continuation = _tool_result_request(gateway_call_id, "one result")
 
-            responses = await asyncio.gather(
+            original = asyncio.create_task(
                 client.post(
                     f"{gateway.base_url}/v1/messages",
                     headers=_headers(gateway),
                     json=continuation,
-                ),
-                client.post(
-                    f"{gateway.base_url}/v1/messages",
-                    headers=_headers(gateway),
-                    json=continuation,
-                ),
+                )
             )
+            # The turn now hangs past the tool result, exactly as a turn that
+            # outlives the CLI's client-side timeout does.
+            await asyncio.wait_for(agent_session.tool_completed.wait(), timeout=5)
+
+            duplicate = asyncio.create_task(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                )
+            )
+            await asyncio.wait_for(awaiting_reached.wait(), timeout=5)
+            assert not original.done()
+            assert not duplicate.done()
+
+            release.set()
+            responses = await asyncio.gather(original, duplicate)
             payloads = await asyncio.gather(
                 *(response.json() for response in responses)
             )
 
-    # The retry arrives while the original is still in flight: it waits for
-    # that response rather than killing the turn with a 409.
+    # The retry arrived while the original was still in flight -- it parked
+    # on the claim rather than killing the turn with a 409.
     assert [response.status for response in responses] == [200, 200]
     assert payloads[0]["content"] == payloads[1]["content"]
     assert payloads[0]["stop_reason"] == payloads[1]["stop_reason"]

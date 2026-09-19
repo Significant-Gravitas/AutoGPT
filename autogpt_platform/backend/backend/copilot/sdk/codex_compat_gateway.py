@@ -139,6 +139,9 @@ class _ToolCallRecord(_GatewayState):
 
 class _Continuation(_GatewayState):
     conversation: _Conversation
+    # The claim this request owns. A later continuation replaces
+    # ``conversation.claim``, so a response must never reach back for it.
+    claim: _ClaimReplay | None = None
     awaiting: _ClaimReplay | None = None
 
 
@@ -398,7 +401,7 @@ class CodexAnthropicGateway:
             claim = None
         else:
             conversation = continuation.conversation
-            claim = conversation.claim
+            claim = continuation.claim
 
         input_tokens = _estimate_input_tokens(payload)
         try:
@@ -406,9 +409,14 @@ class CodexAnthropicGateway:
                 return await self._streaming_response(
                     request,
                     conversation,
+                    claim,
                     input_tokens,
                 )
-            return await self._nonstreaming_response(conversation, input_tokens)
+            return await self._nonstreaming_response(
+                conversation,
+                claim,
+                input_tokens,
+            )
         finally:
             if claim is not None:
                 claim.ready.set()
@@ -465,14 +473,15 @@ class CodexAnthropicGateway:
 
         # One slot per conversation: a fresh claim drops the events the
         # previous one kept, so nothing accumulates across a long turn.
-        conversation.claim = _ClaimReplay(fingerprint=fingerprint)
+        claim = _ClaimReplay(fingerprint=fingerprint)
+        conversation.claim = claim
         for record, result in claimable:
             record.result = result
             record.claim_fingerprint = fingerprint
         for record, result in claimable:
             if not record.future.done():
                 record.future.set_result(result)
-        return _Continuation(conversation=conversation)
+        return _Continuation(conversation=conversation, claim=claim)
 
     def _start_conversation(self, payload: dict[str, object]) -> _Conversation:
         agent_session = self._agent_session
@@ -589,12 +598,14 @@ class CodexAnthropicGateway:
         self,
         request: web.Request,
         conversation: _Conversation,
+        claim: _ClaimReplay | None,
         input_tokens: int,
     ) -> web.StreamResponse:
         async with conversation.response_lock:
             return await self._streaming_response_locked(
                 request,
                 conversation,
+                claim,
                 input_tokens,
             )
 
@@ -602,9 +613,10 @@ class CodexAnthropicGateway:
         self,
         request: web.Request,
         conversation: _Conversation,
+        claim: _ClaimReplay | None,
         input_tokens: int,
     ) -> web.StreamResponse:
-        first = await _next_event(conversation)
+        first = await _next_event(conversation, claim)
         if isinstance(first, _Failed):
             return self._failure_response(first)
 
@@ -638,15 +650,16 @@ class CodexAnthropicGateway:
                     },
                 },
             )
-            await self._write_boundary(response, conversation, first)
+            await self._write_boundary(response, conversation, claim, first)
             await response.write_eof()
         except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
             # The turn is about to be cancelled, so the events recorded for
             # this claim no longer describe a conversation a resend can be
-            # answered from.
-            if conversation.claim is not None:
-                conversation.claim.replayable = False
-            if conversation.task is not None:
+            # answered from. A newer continuation may already own the
+            # conversation, and its turn is none of this response's business.
+            if claim is not None:
+                claim.replayable = False
+            if conversation.claim is claim and conversation.task is not None:
                 conversation.task.cancel()
             raise
         return response
@@ -655,6 +668,7 @@ class CodexAnthropicGateway:
         self,
         response: web.StreamResponse,
         conversation: _Conversation,
+        claim: _ClaimReplay | None,
         first: _ConversationEvent,
     ) -> None:
         index = 0
@@ -760,22 +774,25 @@ class CodexAnthropicGateway:
                     },
                 )
                 return
-            event = await _next_event(conversation)
+            event = await _next_event(conversation, claim)
 
     async def _nonstreaming_response(
         self,
         conversation: _Conversation,
+        claim: _ClaimReplay | None,
         input_tokens: int,
     ) -> web.Response:
         async with conversation.response_lock:
             return await self._nonstreaming_response_locked(
                 conversation,
+                claim,
                 input_tokens,
             )
 
     async def _nonstreaming_response_locked(
         self,
         conversation: _Conversation,
+        claim: _ClaimReplay | None,
         input_tokens: int,
     ) -> web.Response:
         content: list[dict[str, object]] = []
@@ -783,7 +800,7 @@ class CodexAnthropicGateway:
         output_tokens = 0
         stop_reason = "end_turn"
         while True:
-            event = await _next_event(conversation)
+            event = await _next_event(conversation, claim)
             if isinstance(event, _TextDelta):
                 text_parts.append(event.text)
                 continue
@@ -1040,9 +1057,11 @@ def _safe_exception_message(
     return message
 
 
-async def _next_event(conversation: _Conversation) -> _ConversationEvent:
+async def _next_event(
+    conversation: _Conversation,
+    claim: _ClaimReplay | None,
+) -> _ConversationEvent:
     event = await conversation.queue.get()
-    claim = conversation.claim
     if claim is not None:
         claim.events.append(event)
         # Every event but a text delta ends the response, so the recording
