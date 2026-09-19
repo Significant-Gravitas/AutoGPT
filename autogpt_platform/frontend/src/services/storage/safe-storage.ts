@@ -49,11 +49,12 @@ export function createSafeStorage<K extends string>(area: Area) {
     const store = nativeStorage(area);
     if (!store) return memoryFor(area)?.get(key) ?? null;
     try {
-      // Memory is an overlay, not a cache: it only ever holds keys whose
-      // write to the real storage failed, so the real value wins when there
-      // is one. This keeps "a set reads back within the tab" true whichever
-      // way storage let us down.
-      return store.getItem(key) ?? memoryFor(area)?.get(key) ?? null;
+      // Memory is an overlay, not a cache: it only holds keys whose write to
+      // the real storage failed, and a successful write clears its entry. So
+      // an overlay hit is always newer than what the store has, and it wins —
+      // which is what keeps "a set reads back within the tab" true even when
+      // the key already had a value the failed write was meant to replace.
+      return memoryFor(area)?.get(key) ?? store.getItem(key) ?? null;
     } catch {
       return memoryFor(area)?.get(key) ?? null;
     }
@@ -67,6 +68,9 @@ export function createSafeStorage<K extends string>(area: Area) {
     }
     try {
       store.setItem(key, value);
+      // The store is now authoritative for this key again; drop any overlay
+      // entry left by an earlier failed write so it cannot mask this value.
+      memoryFor(area)?.delete(key);
     } catch (error) {
       // The storage object is live, so this is something unexpected
       // (QuotaExceededError and friends) rather than a browser that simply

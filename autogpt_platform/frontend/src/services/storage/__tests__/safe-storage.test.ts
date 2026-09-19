@@ -164,6 +164,47 @@ describe("createSafeStorage", () => {
       expect(storage.get("a")).toBeNull();
     });
 
+    it("reads back a failed overwrite of a key that already had a value", () => {
+      const storage = createSafeStorage<TestKey>("local");
+      storage.set("a", "persisted");
+
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw new Error("QuotaExceededError");
+        });
+      try {
+        storage.set("a", "replacement");
+        // The old native value must not win over the write that just failed.
+        expect(storage.get("a")).toBe("replacement");
+      } finally {
+        setItem.mockRestore();
+      }
+
+      storage.clean("a");
+      expect(storage.get("a")).toBeNull();
+    });
+
+    it("stops the overlay masking the store once a write succeeds again", () => {
+      const storage = createSafeStorage<TestKey>("local");
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw new Error("QuotaExceededError");
+        });
+      try {
+        storage.set("a", "only-in-memory");
+      } finally {
+        setItem.mockRestore();
+      }
+      expect(storage.get("a")).toBe("only-in-memory");
+
+      storage.set("a", "persisted");
+
+      expect(storage.get("a")).toBe("persisted");
+      expect(window.localStorage.getItem("a")).toBe("persisted");
+    });
+
     it("reports unexpected removal failures", () => {
       const error = new Error("SecurityError");
       const storage = createSafeStorage<TestKey>("local");
