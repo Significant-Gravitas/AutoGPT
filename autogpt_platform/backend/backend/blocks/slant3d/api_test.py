@@ -9,6 +9,7 @@ from backend.blocks.slant3d.order import (
     Slant3DEstimateOrderBlock,
 )
 from backend.data.execution import ExecutionContext
+from backend.util.file import TEMP_DIR
 
 CUSTOMER = {
     "name": "John Doe",
@@ -179,8 +180,10 @@ async def test_platform_selection_is_unambiguous(platforms, expected):
                 await block._resolve_platform_id("", "key")
 
 
-async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_path):
-    source = tmp_path / "model.stl"
+async def test_upload_confirms_exact_placeholder_without_forwarding_api_key():
+    exec_dir = TEMP_DIR / "exec_file" / "run-1"
+    exec_dir.mkdir(parents=True, exist_ok=True)
+    source = exec_dir / "model.stl"
     source.write_bytes(b"STL bytes")
     uploaded = []
 
@@ -209,7 +212,7 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_
         ),
     ) as api, patch("backend.blocks.slant3d.base.Requests") as requests, patch(
         "backend.blocks.slant3d.base.store_media_file",
-        AsyncMock(return_value=str(source)),
+        AsyncMock(return_value=source.name),
     ) as media:
         requests.return_value.put = AsyncMock(side_effect=put)
         assert (
@@ -240,8 +243,10 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_
     assert api.await_args_list[1].kwargs["json"]["filePlaceholder"] is placeholder
 
 
-async def test_failed_upload_is_not_confirmed(tmp_path):
-    source = tmp_path / "model.stl"
+async def test_failed_upload_is_not_confirmed():
+    exec_dir = TEMP_DIR / "exec_file" / "run-1"
+    exec_dir.mkdir(parents=True, exist_ok=True)
+    source = exec_dir / "model.stl"
     source.write_bytes(b"STL bytes")
     block = Slant3DFilamentBlock()
     with patch.object(
@@ -257,7 +262,7 @@ async def test_failed_upload_is_not_confirmed(tmp_path):
         ),
     ) as api, patch("backend.blocks.slant3d.base.Requests") as requests, patch(
         "backend.blocks.slant3d.base.store_media_file",
-        AsyncMock(return_value=str(source)),
+        AsyncMock(return_value=source.name),
     ) as media:
         requests.return_value.put = AsyncMock(side_effect=RuntimeError("Upload failed"))
         with pytest.raises(RuntimeError, match="Upload failed"):
