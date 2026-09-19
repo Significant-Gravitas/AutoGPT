@@ -621,6 +621,11 @@ class AutoPilotBlock(Block):
             # to close a hole they never opened — the staffing guard is where
             # an unknown origin fails closed instead.
             if existing_session.metadata.origin == "interactive":
+                # Resume cannot answer this interactive session's Home card
+                # via this path; clear so it does not stick forever (#14118).
+                from backend.copilot.model import clear_pending_question
+
+                await clear_pending_question(existing_session)
                 yield "session_id", sid
                 yield "error", (
                     "That AutoPilot session was started by a person, not by an "
