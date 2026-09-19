@@ -374,7 +374,7 @@ def test_ling_3_0_flash_vl_bills_at_authored_rates():
     assert TOKEN_COST[ling].model_dump() == {
         "input": 9.0,
         "output": 27.0,
-        "cache_read": 0.0,
+        "cache_read": 1.8,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[ling].max_output_tokens == 32768
