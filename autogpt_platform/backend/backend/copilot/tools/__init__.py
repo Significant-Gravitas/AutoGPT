@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -463,9 +464,9 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
-    ``DEFERRED_TOOL_NAMES`` are refused outright: they are reached by id
-    through ``run_capability``, which applies the permission and envelope
-    gates this function does not.
+    ``DEFERRED_TOOL_NAMES`` are refused when the model names one directly:
+    they are reached by id through ``run_capability``, whose dispatch this
+    function resolves back into a call to the tool itself.
 
     ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
     default on purpose: they are an enforcement boundary, so a new call site
@@ -503,6 +504,12 @@ async def execute_tool(
             ).model_dump_json(),
             success=False,
         )
+
+    # A dispatch of a platform tool IS a call to that tool, so it runs the rest
+    # of this path under its own name: the refusal above still answers the model
+    # that named a deferred tool directly, because it ran before the resolve.
+    if dispatch := resolve_tool_dispatch(tool_name, parameters):
+        tool, tool_name, parameters = dispatch
 
     # Track tool call in PostHog
     logger.info(
