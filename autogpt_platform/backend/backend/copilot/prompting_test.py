@@ -200,10 +200,18 @@ class TestSchedulingGuidance:
     told not to promise monitoring it never scheduled.
     """
 
-    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+    def test_supplement_names_schedule_followup_by_capability_id(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "### Scheduling future work — use `tool:schedule_followup`" in result
-        assert "ONLY way to schedule a future copilot turn" in result
+        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+
+    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
+        # Routines ride the flag-gated ``expert_resources`` group, so this
+        # ungated supplement points at the block that appears alongside them
+        # rather than at a tool the session may not be able to call.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "set up a routine for it rather than a" in result
+        assert "schedule_routine" not in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not
