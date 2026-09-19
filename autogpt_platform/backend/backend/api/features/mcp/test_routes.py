@@ -14,7 +14,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 
-from backend.api.features.mcp.routes import router
+from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
 from backend.util.request import HTTPClientError, HTTPServerError
@@ -123,9 +123,11 @@ class TestDiscoverTools:
             authorization="Bearer my-secret-token",
         )
 
+    @pytest.mark.parametrize("use_saved_credentials", [None, True, False])
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_discover_tools_auto_uses_stored_credential(self, client):
-        """When no explicit token is given, stored MCP credentials are used."""
+    async def test_discover_tools_respects_saved_credential_preference(
+        self, client, use_saved_credentials
+    ):
         stored_cred = OAuth2Credentials(
             provider="mcp",
             title="MCP: example.com",
@@ -143,7 +145,7 @@ class TestDiscoverTools:
                 "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
                 new_callable=AsyncMock,
                 return_value=stored_cred,
-            ),
+            ) as lookup,
         ):
             instance = MockClient.return_value
             instance.close = AsyncMock()
@@ -152,16 +154,24 @@ class TestDiscoverTools:
             )
             instance.list_tools = AsyncMock(return_value=[])
 
-            response = await client.post(
-                "/discover-tools",
-                json={"server_url": "https://mcp.example.com/mcp"},
-            )
+            payload = {"server_url": "https://mcp.example.com/mcp"}
+            if use_saved_credentials is not None:
+                payload["use_saved_credentials"] = use_saved_credentials
+            response = await client.post("/discover-tools", json=payload)
 
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            authorization="Bearer stored-token-123",
+            authorization=(
+                None if use_saved_credentials is False else "Bearer stored-token-123"
+            ),
         )
+        if use_saved_credentials is False:
+            lookup.assert_not_awaited()
+        else:
+            lookup.assert_awaited_once_with(
+                "test-user-id", "https://mcp.example.com/mcp"
+            )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):
@@ -328,7 +338,11 @@ class TestOAuthLogin:
             )
 
         assert response.status_code == 400
-        assert "does not advertise OAuth" in response.json()["detail"]
+        detail = response.json()["detail"]
+        # The connect panel offers the manual-token form off this code, so it
+        # has to survive any rewording of the message beside it.
+        assert detail["code"] == NO_OAUTH_CODE
+        assert "does not advertise OAuth" in detail["message"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_fallback_to_public_client(self, client):

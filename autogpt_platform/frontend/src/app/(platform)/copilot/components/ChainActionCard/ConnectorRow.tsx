@@ -123,7 +123,7 @@ export function ConnectorRow({ row }: Props) {
     // scopes the later card asked for. `null` is the provider context's
     // "still loading" sentinel, where every lookup misses — clearing then
     // would drop a good selection on every mount.
-    if (allProviders && row.selected && !savedCredential) {
+    if (allProviders && row.selected && !selectedStillFits) {
       row.select(undefined);
       return;
     }
@@ -142,6 +142,31 @@ export function ConnectorRow({ row }: Props) {
     awaitingGrant,
     expertGrant?.expertId,
   ]);
+
+  // Several saved accounts can satisfy one row. Nothing picks between them for
+  // the user: the row offers them, and the backend runs on exactly that one.
+  const pickable = expertGrant
+    ? []
+    : filterSystemCredentials(
+        allProviders?.[row.provider]?.savedCredentials ?? [],
+      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
+  const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
+
+  async function pick(credential: Grantable): Promise<boolean> {
+    row.select({
+      id: credential.id,
+      provider: row.provider,
+      type: credential.type as CredentialsMetaInput["type"],
+      title: credential.title,
+    });
+    row.onConnected();
+    return true;
+  }
 
   const grantableOptions = [
     ...(connected ? [connected] : []),
@@ -212,7 +237,11 @@ export function ConnectorRow({ row }: Props) {
           }
           onClick={openDialog}
         >
-          {grantableOptions.length > 0 ? "Grant access" : "Connect"}
+          {grantableOptions.length > 0
+            ? "Grant access"
+            : hasChoice
+              ? "Choose account"
+              : "Connect"}
         </Button>
       )}
 
@@ -229,7 +258,15 @@ export function ConnectorRow({ row }: Props) {
                 isPending: isGranting,
                 error: grantError,
               }
-            : undefined
+            : hasChoice
+              ? {
+                  credentials: pickable,
+                  onUse: pick,
+                  isPending: false,
+                  error: null,
+                  purpose: "choose",
+                }
+              : undefined
         }
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
