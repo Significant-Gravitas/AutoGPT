@@ -1,6 +1,6 @@
 """The addon's hooks against mitmproxy's own test flows: what the e2e suites
-cannot reach over a hand-written HTTP/1 client (HTTP/2 framing) and the body
-buffer on its own."""
+cannot reach over a hand-written HTTP/1 client (websockets, HTTP/2 framing)
+and the body buffer on its own."""
 
 import json
 import logging
@@ -8,6 +8,7 @@ import logging
 import pytest
 from mitmproxy import http
 from mitmproxy.test import tflow
+from wsproto.frame_protocol import Opcode
 
 from swap_proxy.addon import MAX_BODY_BYTES, BufferedBody, SwapProxyAddon, known_size
 from swap_proxy.egress import EgressGuard
@@ -45,6 +46,64 @@ def audit(caplog) -> list[tuple]:
         (line["event"], line.get("placeholder") or line.get("reason"))
         for line in (json.loads(r.message) for r in caplog.records)
     ]
+
+
+# ------------------------------------------------------------ websockets
+
+
+def websocket_flow(text: str, from_client: bool) -> http.HTTPFlow:
+    flow = tflow.twebsocketflow()
+    assert flow.websocket is not None
+    message = flow.websocket.messages[-1]
+    message.from_client, message.content = from_client, text.encode()
+    return flow
+
+
+def last_message(flow: http.HTTPFlow) -> str:
+    assert flow.websocket is not None
+    return flow.websocket.messages[-1].content.decode()
+
+
+async def test_a_placeholder_in_a_frame_from_the_box_is_swapped(caplog):
+    flow = websocket_flow('{"auth": "hsurr:github"}', from_client=True)
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.websocket_message(flow)
+    assert last_message(flow) == '{"auth": "%s"}' % TOKEN
+    assert audit(caplog) == [("swapped", "hsurr:github")]
+
+
+async def test_a_token_echoed_in_a_frame_from_the_server_is_scrubbed(caplog):
+    flow = websocket_flow('{"ack": "%s"}' % TOKEN, from_client=False)
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.websocket_message(flow)
+    assert last_message(flow) == '{"ack": "hsurr:github"}'
+    assert audit(caplog) == [("scrubbed", None)]
+    assert TOKEN not in caplog.text
+
+
+async def test_a_placeholder_in_a_frame_from_the_server_is_not_swapped():
+    """The swap is for what the box sends out, never for what comes back."""
+    flow = websocket_flow("hsurr:github", from_client=False)
+    await addon_for(flow).websocket_message(flow)
+    assert last_message(flow) == "hsurr:github"
+
+
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_frames_of_a_box_that_does_not_swap_are_left_alone(from_client):
+    text = "hsurr:github" if from_client else TOKEN
+    flow = websocket_flow(text, from_client)
+    await addon_for(flow, swaps=False).websocket_message(flow)
+    assert last_message(flow) == text
+
+
+async def test_a_binary_frame_is_left_alone():
+    flow = websocket_flow(TOKEN, from_client=False)
+    assert flow.websocket is not None
+    flow.websocket.messages[-1].type = Opcode.BINARY
+    await addon_for(flow).websocket_message(flow)
+    assert last_message(flow) == TOKEN
 
 
 # ------------------------------------------------------------ the body buffer

@@ -13,7 +13,8 @@ One connection's life:
    everything; serving many users, we decrypt only what we must.
 4. ``request``: placeholders are swapped for the owner's values (``swap.py``),
    fetched from the backend for this user and this host (``source.py``).
-5. ``response``: known values are scrubbed back into placeholders.
+5. ``response``: known values are scrubbed back into placeholders.  Websocket
+   messages get the same two steps, one per direction.
 
 Bodies and streaming.  mitmproxy streams a body larger than ``MAX_BODY_BYTES``
 instead of holding it, and a streamed message's head is on the wire before
@@ -319,13 +320,21 @@ class SwapProxyAddon:
         if owner is None or flow.websocket is None or not flow.websocket.messages:
             return
         message = flow.websocket.messages[-1]
-        if message.is_text is False or not message.from_client:
+        if message.is_text is False:
             return
         try:
             text = message.content.decode("utf-8")
         except UnicodeDecodeError:
             return
         host = flow.request.pretty_host
+        if not message.from_client:
+            # What the server says back is scrubbed like a response body.
+            credentials = await self._scrub_credentials(flow, owner)
+            scrubbed = scrub_text(text, credentials)
+            if scrubbed != text:
+                message.content = scrubbed.encode("utf-8")
+                self._audit(owner, host, "scrubbed")
+            return
         names = {m.group(1) for m in PLACEHOLDER_RE.finditer(text)}
         if not names:
             return
