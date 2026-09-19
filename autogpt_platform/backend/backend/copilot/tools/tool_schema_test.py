@@ -523,10 +523,12 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         f"{MCP_TOOL_PREFIX}memory_forget_confirm",
     }
 
-    # Memory tools are deferred: never in the schema list, reached through
-    # run_capability instead.  Disabling the group must not resurrect them.
+    # ``memory_search`` is eager — the memory supplement orders a search by
+    # name — and the other three are deferred, reached through
+    # run_capability.  Disabling the group must hide all four either way.
+    deferred_mcp_names = memory_mcp_names - {f"{MCP_TOOL_PREFIX}memory_search"}
     default = set(get_copilot_tool_names())
-    assert not memory_mcp_names & default
+    assert not deferred_mcp_names & default
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
     assert not (
@@ -593,7 +595,7 @@ async def test_a_deferred_tool_named_directly_is_refused() -> None:
     from backend.copilot.tools import DEFERRED_TOOL_NAMES, execute_tool, get_tool
     from backend.copilot.tools.models import ErrorResponse
 
-    name = "memory_search"
+    name = "memory_store"
     assert name in DEFERRED_TOOL_NAMES, "test relies on this tool being deferred"
     tool = get_tool(name)
     assert tool is not None

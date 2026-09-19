@@ -753,7 +753,7 @@ def get_graphiti_supplement() -> str:
 You have access to persistent temporal memory tools scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
-**You MUST call `run_capability(id="tool:memory_search", input={...})` before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
+**You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
 
 ### When to STORE (`tool:memory_store`):
 - User shares personal info, preferences, business context
@@ -763,7 +763,7 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 - Operational rules (e.g. "invoices go out on the 1st", "CC Sarah on client stuff")
 - When you learn something new about the user
 
-### When to RECALL (`tool:memory_search`):
+### When to RECALL (memory_search):
 - **BEFORE answering any factual or context-dependent question — ALWAYS**
 - When the user references something from a past conversation
 - When building an agent that should use past preferences

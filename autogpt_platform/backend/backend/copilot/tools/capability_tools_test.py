@@ -79,6 +79,15 @@ def test_enter_building_mode_stays_eager_because_the_refusal_names_it():
     assert "enter_agent_building_mode" not in DEFERRED_TOOL_NAMES
 
 
+def test_memory_search_stays_eager_because_the_prompt_demands_it():
+    """The memory supplement orders a search before answering from a past
+    conversation; deferred, the model reported having no such tool and
+    answered from injected context, because naming a deferred tool is
+    refused."""
+    assert "memory_search" in EAGER_CORE
+    assert "memory_search" not in DEFERRED_TOOL_NAMES
+
+
 def test_start_desktop_stays_eager_because_the_prompt_names_it():
     """``expert_context`` tells the model "Use start_desktop"; a deferred
     tool called by name is refused, so the instruction only works eager."""
@@ -225,6 +234,52 @@ def test_model_facing_text_names_deferred_tools_by_capability_id():
     assert not offenders, (
         "A deferred tool is refused when called by name. Write `tool:<name>` "
         "(its run_capability id) instead of the bare name in:\n" + "\n".join(offenders)
+    )
+
+
+# The mirror of the rule above: an eager tool is IN the model's tool list, so a
+# ``tool:`` id sends it through ``run_capability`` for nothing. Nothing else
+# catches this — the scan above only knows the names that are deferred today,
+# so a promotion into ``EAGER_CORE`` leaves the old ids behind silently.
+_EAGER_ID = re.compile(
+    r"tool:(" + "|".join(sorted(EAGER_CORE, key=len, reverse=True)) + r")\b"
+)
+
+
+def _eager_ids_in_module(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    unread = _unread_literals(tree)
+    return [
+        f"{path.name}:{node.lineno}: tool:{match.group(1)}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in unread
+        for match in _EAGER_ID.finditer(node.value)
+    ]
+
+
+def test_model_facing_text_names_eager_tools_by_their_bare_name():
+    offenders = [
+        mention
+        for path in _MODEL_FACING_MODULES
+        for mention in _eager_ids_in_module(path)
+    ]
+    guide = _COPILOT_DIR / "sdk" / "agent_generation_guide.md"
+    offenders += [
+        f"{guide.name}: tool:{match.group(1)}"
+        for match in _EAGER_ID.finditer(guide.read_text(encoding="utf-8"))
+    ]
+    for name, tool in TOOL_REGISTRY.items():
+        offenders += [
+            f"{name} schema: tool:{match.group(1)}"
+            for match in _EAGER_ID.finditer(
+                f"{tool.description} {json.dumps(tool.parameters)}"
+            )
+        ]
+    assert not offenders, (
+        "An eager tool is in the model's tool list and is called by name. Drop "
+        "the `tool:` prefix in:\n" + "\n".join(offenders)
     )
 
 
