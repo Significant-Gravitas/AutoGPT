@@ -59,6 +59,9 @@ export function ConnectCredentialDialog({
 }: Props) {
   const [addingNew, setAddingNew] = useState(false);
   const [chosenId, setChosenId] = useState<string | null>(null);
+  // The account the user chose to sign in to again. It becomes the upgrade
+  // target, so the sign-in widens that account rather than adding another.
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const {
     selectedMethod,
     setSelectedMethod,
@@ -76,12 +79,13 @@ export function ConnectCredentialDialog({
     // Add new asks for a second account, not a re-auth: keeping the upgrade
     // target would sign the user back into the very account they are trying
     // to add another alongside.
-    credentialID: addingNew ? undefined : credentialID,
+    credentialID: addingNew ? undefined : (updatingId ?? credentialID),
   });
 
   const offered = existing?.credentials ?? [];
-  const showExisting = offered.length > 0 && !addingNew;
-  const isChoosing = existing?.purpose === "choose";
+  const showExisting = offered.length > 0 && !addingNew && !updatingId;
+  const isUpdating = existing?.purpose === "update";
+  const isChoosing = existing?.purpose === "choose" || isUpdating;
   // Handing an expert one of several accounts defaults to the first; choosing
   // which of your own accounts to run on starts with none picked.
   const chosen =
@@ -92,6 +96,7 @@ export function ConnectCredentialDialog({
     reset();
     setAddingNew(false);
     setChosenId(null);
+    setUpdatingId(null);
   }
 
   function handleClose() {
@@ -103,6 +108,7 @@ export function ConnectCredentialDialog({
   function handleConnected(credential?: CredentialsMetaResponse) {
     setAddingNew(false);
     setChosenId(null);
+    setUpdatingId(null);
     onConnected?.(credential);
     onClose();
   }
@@ -116,6 +122,11 @@ export function ConnectCredentialDialog({
 
   async function handleUseExisting() {
     if (!existing || !chosen) return;
+    if (isUpdating) {
+      // Nothing is usable yet: move on to the sign-in, aimed at this account.
+      setUpdatingId(chosen.id);
+      return;
+    }
     if (await existing.onUse(chosen)) handleClose();
   }
 
@@ -195,9 +206,11 @@ export function ConnectCredentialDialog({
                 >
                   {existing?.isPending
                     ? "Granting…"
-                    : isChoosing
-                      ? "Use this account"
-                      : "Use existing"}
+                    : isUpdating
+                      ? "Update this account"
+                      : isChoosing
+                        ? "Use this account"
+                        : "Use existing"}
                 </Button>
               </>
             ) : (
