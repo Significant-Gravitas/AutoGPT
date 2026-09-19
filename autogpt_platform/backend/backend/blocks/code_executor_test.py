@@ -19,6 +19,7 @@ from backend.blocks.code_executor import (
     TEST_CREDENTIALS_INPUT,
     ExecuteCodeBlock,
     ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
@@ -332,6 +333,24 @@ class TestConnectToExistingSandbox:
                 pass
         assert execute.await_args.kwargs["execution_context"] is context
         assert execute.await_args.kwargs["sandbox_id"] == "sb-mine"
+
+    async def test_instantiate_block_hands_the_caller_to_the_box_it_creates(self):
+        """The box is created for this user: without the context its egress
+        credential would name nobody, and the proxy could swap nothing in."""
+        block = InstantiateCodeSandboxBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                InstantiateCodeSandboxBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT, setup_code="print(1)"
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
 
     async def test_without_a_user_no_existing_sandbox_can_be_used(self):
         block = ExecuteCodeBlock()

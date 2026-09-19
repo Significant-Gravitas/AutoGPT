@@ -10,9 +10,11 @@ from backend.blocks.desktop._api import (
     DesktopSession,
     _create_sandbox_with_volumes,
 )
+from backend.util.e2b_network import EgressOwner
 
 _M = "backend.blocks.desktop._api"
 _META = {"service": "autogpt-platform", "autogpt_mounts": "attached"}
+_OWNER = EgressOwner(kind="session", id="sess-1", user_id="user-1")
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +32,7 @@ async def test_mounted_create_is_retried_once_before_falling_back():
     ):
         cls.create = AsyncMock(side_effect=[RuntimeError("502"), box])
         sandbox, info = await _create_sandbox_with_volumes(
-            {WORKSPACE_PATH: "vol-user"}, "k", 900, metadata=_META
+            {WORKSPACE_PATH: "vol-user"}, "k", 900, metadata=_META, owner=_OWNER
         )
     assert sandbox is box and info.volume_mounted and info.warning is None
     assert cls.create.await_count == 2
@@ -48,7 +50,7 @@ async def test_fallback_after_every_mounted_attempt_says_so_in_the_stamp():
             side_effect=[RuntimeError("no volumes"), RuntimeError("no volumes"), box]
         )
         sandbox, info = await _create_sandbox_with_volumes(
-            {WORKSPACE_PATH: "vol-user"}, "k", 900, metadata=_META
+            {WORKSPACE_PATH: "vol-user"}, "k", 900, metadata=_META, owner=_OWNER
         )
     assert sandbox is box and not info.volume_mounted and info.warning
     fallback = cls.create.await_args_list[-1].kwargs
@@ -70,12 +72,12 @@ async def test_a_create_that_hangs_is_cut_off():
     ):
         cls.create = AsyncMock(side_effect=never)
         with pytest.raises(asyncio.TimeoutError):
-            await _create_sandbox_with_volumes(None, "k", 900)
+            await _create_sandbox_with_volumes(None, "k", 900, owner=_OWNER)
 
 
 @pytest.mark.asyncio
 async def test_connect_rearms_the_running_time_limit():
     with patch(f"{_M}.AsyncSandbox") as cls:
         cls.connect = AsyncMock(return_value=MagicMock())
-        await DesktopSession.connect("sb-1", "k", timeout_seconds=900)
+        await DesktopSession.connect("sb-1", "k", timeout_seconds=900, owner=_OWNER)
     cls.connect.assert_awaited_once_with("sb-1", api_key="k", timeout=900)
