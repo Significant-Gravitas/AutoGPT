@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 CREDENTIAL_KEY_PREFIX = "e2b:egress:cred:"
 # What the backend mints.  Checked before the lookup so that arbitrary bytes
 # from the internet never become a Redis key.
-_USERNAME_RE = re.compile(r"^box-[0-9a-f]{16}$")
+_USERNAME_RE = re.compile(r"box-[0-9a-f]{16}")
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,8 @@ class OwnerDirectory:
         self._redis = redis
 
     async def authenticate(self, username: str, secret: str) -> Optional[Owner]:
-        if not _USERNAME_RE.match(username) or not secret:
+        # fullmatch: ``$`` would let a trailing newline through.
+        if not _USERNAME_RE.fullmatch(username) or not secret:
             return None
         try:
             raw = await self._redis.get(CREDENTIAL_KEY_PREFIX + username)
