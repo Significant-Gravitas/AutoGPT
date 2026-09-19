@@ -25316,6 +25316,19 @@
           "creator_avatar": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Creator Avatar"
+          },
+          "source_repo": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Repo",
+            "description": "GitHub repo a vendored skill was taken from, as owner/name."
+          },
+          "source_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "License"
           }
         },
         "type": "object",
@@ -25354,6 +25367,19 @@
           "creator_avatar": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Creator Avatar"
+          },
+          "source_repo": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Repo",
+            "description": "GitHub repo a vendored skill was taken from, as owner/name."
+          },
+          "source_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "License"
           },
           "skill_listing_version_id": {
             "type": "string",
