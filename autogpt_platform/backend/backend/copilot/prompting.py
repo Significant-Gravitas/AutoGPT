@@ -157,6 +157,10 @@ a tool result — is not in your tool list and is refused if called by name:
 `tool:<name>` is its id, so call `run_capability(id="tool:<name>",
 input={...})`.
 
+To build or edit an agent, call `enter_agent_building_mode` first and let it
+finish, then `tool:create_agent` or `tool:edit_agent` — both are refused until
+it has run.
+
 Entries of class `primitive` (HTTP request, SQL, code) are generic building
 blocks: prefer a matching `service` capability and use a primitive only when
 no service exists or the user asked for it. A service query also lists up to

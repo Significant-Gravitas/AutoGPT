@@ -200,6 +200,13 @@ class TestSchedulingGuidance:
     told not to promise monitoring it never scheduled.
     """
 
+    def test_supplement_names_the_building_gate_before_it_refuses(self):
+        # The gate's refusal used to be the only text naming the tool, so the
+        # model met it by being refused and then stalled retrying the entry.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "call `enter_agent_building_mode` first" in result
+        assert "tool:enter_agent_building_mode" not in result
+
     def test_supplement_names_schedule_followup_by_capability_id(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "### Scheduling future work — use `tool:schedule_followup`" in result
