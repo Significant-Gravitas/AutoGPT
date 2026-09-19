@@ -98,7 +98,14 @@ def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
     """
     try:
-        full_path = TEMP_DIR / "exec_file" / graph_exec_id / path
+        base_dir = (TEMP_DIR / "exec_file" / graph_exec_id).resolve()
+        full_path = (base_dir / path).resolve()
+        try:
+            full_path.relative_to(base_dir)
+        except ValueError:
+            raise ValueError(
+                f"Invalid file path: {path!r} escapes execution directory"
+            ) from None
         return str(full_path)
     except OSError as e:
         if "File name too long" in str(e):
