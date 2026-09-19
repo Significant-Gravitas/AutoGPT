@@ -24,6 +24,7 @@ export const useCronSchedulerDialog = ({
   const queryClient = useQueryClient();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
+  const [scheduleNameError, setScheduleNameError] = useState<string>("");
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
@@ -61,10 +62,29 @@ export const useCronSchedulerDialog = ({
   useEffect(() => {
     if (open) {
       setCronExpression(defaultCronExpression);
+      setScheduleName("");
+      setScheduleNameError("");
     }
   }, [open, defaultCronExpression]);
 
+  const handleScheduleNameChange = (name: string) => {
+    setScheduleName(name);
+    if (name.trim() !== "") {
+      setScheduleNameError("");
+    }
+  };
+
   const handleCreateSchedule = async () => {
+    if (!scheduleName || scheduleName.trim() === "") {
+      setScheduleNameError("Schedule name is required");
+      toast({
+        variant: "destructive",
+        title: "Invalid schedule",
+        description: "Please enter a schedule name",
+      });
+      return;
+    }
+
     if (!cronExpression || cronExpression.trim() === "") {
       toast({
         variant: "destructive",
@@ -93,8 +113,9 @@ export const useCronSchedulerDialog = ({
     userTimezone,
     timezoneDisplay,
     handleCreateSchedule,
-    setScheduleName,
+    setScheduleName: handleScheduleNameChange,
     scheduleName,
+    scheduleNameError,
     isCreatingSchedule,
   };
 };

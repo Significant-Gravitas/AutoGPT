@@ -31,6 +31,7 @@ export function CronSchedulerDialog({
     handleCreateSchedule,
     scheduleName,
     setScheduleName,
+    scheduleNameError,
     isCreatingSchedule,
   } = useCronSchedulerDialog({
     open,
@@ -55,6 +56,7 @@ export function CronSchedulerDialog({
             className="max-w-80"
             value={scheduleName}
             onChange={(e) => setScheduleName(e.target.value)}
+            error={scheduleNameError}
           />
 
           <CronScheduler
