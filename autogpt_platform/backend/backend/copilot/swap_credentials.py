@@ -33,6 +33,13 @@ class SwapCredential(BaseModel):
 
 
 def _host_is_bound(host: str, allowed_hosts: list[str]) -> bool:
+    """The same rule as ``host_in_list`` in ``swap_proxy/swap_proxy/swap.py``.
+
+    Written twice because the two packages cannot import each other (their
+    dependencies conflict), and the two must never disagree: that is what
+    "enforced on both sides" rests on.  ``swap_credentials_test.py`` and the
+    proxy's ``swap_test.py`` hold both to one table of hosts.
+    """
     h = host.lower().split(":")[0]
     return any(
         h == entry or (entry.startswith(".") and h.endswith(entry))

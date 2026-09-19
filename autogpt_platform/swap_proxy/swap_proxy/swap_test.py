@@ -11,6 +11,7 @@ from mitmproxy import http
 from swap_proxy.swap import (
     Credential,
     RequestSwap,
+    host_in_list,
     normalize_path,
     path_allowed,
     placeholder_names,
@@ -327,3 +328,34 @@ class TestScrub:
 def test_a_credential_never_prints_its_values():
     assert TOKEN not in repr(GITHUB) and TOKEN not in str(GITHUB)
     assert "correct horse" not in f"{ACME!r}"
+
+
+# Mirrored in backend/backend/copilot/swap_credentials_test.py; keep the two
+# identical.  The backend checks the binding with its own ``_host_is_bound``
+# (the packages cannot import each other), and that suite also loads this
+# package's ``host_in_list`` by path to assert the two agree.
+HOST_BINDING_TABLE = [
+    # (host, bound entries, may the credential go there?)
+    ("api.github.com", ["api.github.com"], True),
+    ("API.GitHub.com", ["api.github.com"], True),
+    ("api.github.com", ["API.GITHUB.COM"], True),
+    ("api.github.com:443", ["api.github.com"], True),
+    ("github.com", ["api.github.com"], False),
+    ("api.github.com.evil.test", ["api.github.com"], False),
+    ("evilapi.github.com", ["api.github.com"], False),
+    ("notgithub.com", ["github.com"], False),
+    ("sub.github.com", ["github.com"], False),  # exact names do not cover subdomains
+    ("raw.githubusercontent.com", [".githubusercontent.com"], True),
+    ("a.b.githubusercontent.com", [".githubusercontent.com"], True),
+    ("githubusercontent.com", [".githubusercontent.com"], False),
+    ("evilgithubusercontent.com", [".githubusercontent.com"], False),
+    ("githubusercontent.com.evil.test", [".githubusercontent.com"], False),
+    ("api.github.com", [], False),
+    ("", ["api.github.com"], False),
+    ("api.github.com", ["github.com", "api.github.com"], True),
+]
+
+
+@pytest.mark.parametrize("host, entries, bound", HOST_BINDING_TABLE)
+def test_host_binding_is_the_table_the_backend_is_held_to(host, entries, bound):
+    assert host_in_list(host, entries) is bound
