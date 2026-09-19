@@ -36,6 +36,13 @@ TOTP codes only as whole tokens.  Images and binary bodies are a stated
 residual, not a solved one.
 
 Nothing here ever logs or returns a value: events carry names and reasons.
+
+Not reachable in this deployment yet: ``allowed_methods``, ``allowed_paths``,
+``cookie``, ``no_scrub`` and TOTP entries.  The only producer of a
+``Credential`` (``source.py``) fills in a name, its values and its hosts, so
+the method and path limits, the Cookie rule and the TOTP path keep their
+defaults.  They are ported and tested as they were and start to matter when
+bindings become per-user (SECRT-2616, SECRT-2618).
 """
 
 import base64
@@ -284,21 +291,8 @@ class RequestSwap:
         new_pairs = [(k, self.text(v)) for k, v in pairs]
         if new_pairs != pairs:
             return urllib.parse.urlencode(new_pairs)
-        return self._urlencoded(text)
-
-    def _urlencoded(self, text: str) -> str:
-        """Fallback for a form body with no parseable fields."""
-
-        def repl(m: re.Match[str]) -> str:
-            name, entry = m.group(1), m.group(2) or DEFAULT_ENTRY
-            value = self.resolve(name, entry)
-            if value is None:
-                return m.group(0)
-            suffix = f":{entry}" if m.group(2) else ""
-            self.events.append(SwapEvent("swapped", f"hsurr:{name}{suffix}"))
-            return urllib.parse.quote(value, safe="")
-
-        return ENCODED_PLACEHOLDER_RE.sub(repl, text)
+        # Field names are never swapped, in either spelling.
+        return text
 
     def basic_auth(self, value: str) -> str:
         decoded = basic_decoded(value)
@@ -339,7 +333,8 @@ class RequestSwap:
         self.headers(request)
         query = list(request.query.items(multi=True))
         new_query = [(k, self.text(v)) for k, v in query]
-        raw_path, _, _ = request.path.partition("?")
+        raw_path, mark, query_string = request.path.partition("?")
+        raw_query = mark + query_string
         new_segments, path_changed = [], False
         for segment in raw_path.split("/"):
             decoded = urllib.parse.unquote(segment)
@@ -351,8 +346,12 @@ class RequestSwap:
                 new_segments.append(segment)
         if path_changed or new_query != query:
             new_path = "/".join(new_segments) if path_changed else raw_path
-            if new_query:
+            if new_query != query:
                 new_path += "?" + urllib.parse.urlencode(new_query)
+            else:
+                # Untouched, so byte-identical: re-encoding it would change a
+                # query that carries its own escaping, a signed URL's for one.
+                new_path += raw_query
             request.path = new_path
 
     def body(self, request: Any) -> None:

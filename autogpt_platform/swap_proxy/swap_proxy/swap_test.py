@@ -144,6 +144,17 @@ class TestBodies:
             ("next", "1"),
         ]
 
+    @pytest.mark.parametrize("name", ["hsurr:github", "hsurr%3Agithub"])
+    def test_form_field_names_are_never_swapped_in_either_spelling(self, name):
+        body = f"{name}=1".encode()
+        r = make_request(
+            content=body,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        s = swap(r, GITHUB)
+        assert r.content == body and s.events == []
+
     def test_plain_text(self):
         r = make_request(content=b"key=hsurr:github", method="POST")
         swap(r, GITHUB)
@@ -171,6 +182,19 @@ class TestUrl:
         r = make_request(path="/a%25b/%2F~:@/hsurr:github")
         swap(r, Credential("github", {"access_token": "tok"}, (HOST,)))
         assert r.path == "/a%25b/%2F~:@/tok"
+
+    def test_a_query_no_value_of_which_changed_stays_byte_identical(self):
+        """A path swap must not re-encode a query that carries its own
+        escaping: ``%20`` would become ``+`` and a signed URL would break."""
+        query = "?sig=a%20b%2Fc&exp=1~2&flag&empty="
+        r = make_request(path="/hooks/hsurr:github/fire" + query)
+        swap(r, Credential("github", {"access_token": "tok"}, (HOST,)))
+        assert r.path == "/hooks/tok/fire" + query
+
+    def test_a_query_with_a_swapped_value_is_rebuilt(self):
+        r = make_request(path="/hsurr:github?t=hsurr:github&keep=a%20b")
+        swap(r, Credential("github", {"access_token": "t/k"}, (HOST,)))
+        assert r.path == "/t%2Fk?t=t%2Fk&keep=a+b"
 
 
 class TestEntriesAndTotp:
