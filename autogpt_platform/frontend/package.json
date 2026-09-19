@@ -161,7 +161,7 @@
     "@types/eslint": "8.56.12",
     "@types/lodash": "4.17.20",
     "@types/negotiator": "0.6.4",
-    "@types/node": "24.10.0",
+    "@types/node": "26.5.1",
     "@types/pg": "8.20.0",
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",
