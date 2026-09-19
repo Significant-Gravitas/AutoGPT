@@ -1,3 +1,29 @@
+from backend.data.credit_history.markers import reader_markers
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _marker_predicates() -> tuple[str, str, str]:
+    markers = reader_markers()
+    adjustment = " OR ".join(
+        f"metadata->'input' ? {_sql_literal(marker.reconciliation_delta_input_key)}"
+        for marker in markers
+    )
+    execution_fee = " OR ".join(
+        "("
+        f"metadata->'input'->>{_sql_literal(marker.execution_fee_input_key)} = "
+        f"{_sql_literal(marker.execution_fee_input_value)})"
+        for marker in markers
+    )
+    daily_reset = " OR ".join(
+        f"COALESCE(metadata->>'reason', '') = {_sql_literal(marker.daily_reset_reason)}"
+        for marker in markers
+    )
+    return adjustment, execution_fee, daily_reset
+
+
 _HISTORY_QUERY = """
 WITH wallet AS (
     SELECT "transactionKey", "createdAt", amount, type::text AS transaction_type,
@@ -13,8 +39,8 @@ WITH wallet AS (
              THEN 'execution:' || (metadata->>'graph_exec_id')
              ELSE 'transaction:' || "transactionKey" END AS group_id,
         CASE WHEN transaction_type != 'USAGE' THEN 'transaction'
-             WHEN metadata->'input' ? 'reconciled_delta' THEN 'adjustment'
-             WHEN metadata->'input'->>'charge' = 'Execution Cost' THEN 'execution_fee'
+             WHEN (__ADJUSTMENT_MARKERS__) THEN 'adjustment'
+             WHEN (__EXECUTION_FEE_MARKERS__) THEN 'execution_fee'
              ELSE 'usage' END AS charge_type
     FROM wallet
 ), heads AS (
@@ -49,7 +75,7 @@ WITH wallet AS (
             AS usage_node_count,
         BOOL_OR(NULLIF(metadata->>'block_id', '') IS NOT NULL
                 OR NULLIF(metadata->>'block', '') IS NOT NULL) AS usage_has_block,
-        BOOL_OR(COALESCE(metadata->>'reason', '') = 'CoPilot daily rate limit reset')
+        BOOL_OR(__DAILY_RESET_MARKERS__)
             AS usage_is_daily_reset,
         COALESCE(SUM(amount) FILTER (WHERE charge_type = 'usage'), 0)::bigint
             AS usage_charge_amount,
@@ -89,4 +115,11 @@ def credit_history_query(*, organization: bool) -> str:
         if organization
         else ('"CreditTransaction"', '"userId"')
     )
-    return _HISTORY_QUERY.replace("__LEDGER__", ledger).replace("__OWNER__", owner)
+    adjustment, execution_fee, daily_reset = _marker_predicates()
+    return (
+        _HISTORY_QUERY.replace("__LEDGER__", ledger)
+        .replace("__OWNER__", owner)
+        .replace("__ADJUSTMENT_MARKERS__", adjustment)
+        .replace("__EXECUTION_FEE_MARKERS__", execution_fee)
+        .replace("__DAILY_RESET_MARKERS__", daily_reset)
+    )
