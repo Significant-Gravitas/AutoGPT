@@ -73,7 +73,9 @@ class TestTheGatewayNamesItsFailures:
         response = MagicMock()
         response.write = AsyncMock()
 
-        await gw._write_boundary(response, conversation, _TextDelta(text="partial"))
+        await gw._write_boundary(
+            response, conversation, None, _TextDelta(text="partial")
+        )
 
         assert gw.last_failure is not None
         assert gw.last_failure.kind is ProviderFailureKind.INVALID_CREDENTIAL
