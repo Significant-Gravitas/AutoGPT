@@ -224,6 +224,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+    INCLUSIONAI_LING_3_0_FLASH_VL = "inclusionai/ling-3.0-flash-vl"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
