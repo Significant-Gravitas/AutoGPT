@@ -28,7 +28,8 @@ IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 # RFC 1918, loopback, link-local (cloud metadata lives there), CGNAT and other
 # carrier space, 0.0.0.0/8, IETF assignments, benchmarking and reserved space,
-# multicast, and ULA / link-local / multicast v6.
+# multicast, and ULA / link-local / multicast v6.  ``64:ff9b:1::/48`` is NAT64's
+# local-use prefix (RFC 8215): whatever it translates to is inside some network.
 PRIVATE_NETS: tuple[IPNetwork, ...] = tuple(
     ipaddress.ip_network(c)
     for c in (
@@ -44,11 +45,17 @@ PRIVATE_NETS: tuple[IPNetwork, ...] = tuple(
         "224.0.0.0/4",
         "240.0.0.0/4",
         "::1/128",
+        "64:ff9b:1::/48",
         "fc00::/7",
         "fe80::/10",
         "ff00::/8",
     )
 )
+# A v6 address in one of these reaches the v4 address in its low 32 bits
+# (NAT64, RFC 6052) or in bits 16-48 (6to4, ``IPv6Address.sixtofour``), wherever
+# a translator or relay exists.  A DNS64 resolver synthesises the former for
+# any v4-only name, the metadata server's included.
+_NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
 _DNS_TTL = 60
 _DNS_CACHE_MAX = 4096
 
@@ -73,7 +80,21 @@ def normalize_ip(ip: str) -> Optional[IPAddress]:
     return mapped if mapped is not None else addr
 
 
+def embedded_ipv4(addr: IPAddress) -> Optional[ipaddress.IPv4Address]:
+    """The v4 address a NAT64 or 6to4 address stands for, if it is one."""
+    if not isinstance(addr, ipaddress.IPv6Address):
+        return None
+    if addr in _NAT64:
+        return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
+    return addr.sixtofour
+
+
 def is_private(addr: IPAddress) -> bool:
+    """The address itself, and the v4 address it carries if it carries one: the
+    v6 form is what gets dialled, the v4 one is where the bytes end up."""
+    inner = embedded_ipv4(addr)
+    if inner is not None and is_private(inner):
+        return True
     return addr.is_unspecified or any(addr in net for net in PRIVATE_NETS)
 
 
@@ -98,7 +119,7 @@ class EgressGuard:
 
     def __init__(self, allow: Optional[list[str]] = None):
         self.allow_hosts, self.allow_nets = parse_allow(allow or [])
-        self._dns: dict[str, tuple[float, Optional[list[str]]]] = {}
+        self._dns: dict[str, tuple[float, list[str]]] = {}
 
     async def check(self, host: str) -> Verdict:
         ips = await self._resolve(host)
@@ -127,19 +148,22 @@ class EgressGuard:
         cached = self._dns.get(host)
         if cached and cached[0] > now:
             return cached[1]
-        ips: Optional[list[str]]
         try:
             infos = await asyncio.get_running_loop().getaddrinfo(
                 host, None, type=socket.SOCK_STREAM
             )
         except (socket.gaierror, UnicodeError, OSError):
-            ips = None
-        else:
-            # IPv4 first: pinning one address gives up the dialler's fallback
-            # from an unroutable AAAA to the A record, and the networks this
-            # runs in are more often v4-only than v6-only.
-            ordered = sorted(infos, key=lambda info: info[0] != socket.AF_INET)
-            ips = list(dict.fromkeys(str(info[4][0]) for info in ordered))
+            # Refused, and not remembered: a resolver blip must not keep a
+            # host out of reach for a whole TTL after it has recovered.
+            self._dns.pop(host, None)
+            return None
+        # IPv4 first: pinning one address gives up the dialler's fallback from
+        # an unroutable AAAA to the A record, and the networks this runs in
+        # are more often v4-only than v6-only.
+        ordered = sorted(infos, key=lambda info: info[0] != socket.AF_INET)
+        ips = list(dict.fromkeys(str(info[4][0]) for info in ordered))
+        if not ips:
+            return None
         if len(self._dns) >= _DNS_CACHE_MAX:
             self._dns.clear()  # only a latency optimisation
         self._dns[host] = (now + _DNS_TTL, ips)
