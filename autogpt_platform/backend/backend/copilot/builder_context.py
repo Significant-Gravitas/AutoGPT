@@ -149,7 +149,9 @@ def _format_links(
     return f"<links>\n{body}\n</links>"
 
 
-async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
+async def build_builder_system_prompt_suffix(
+    session: ChatSession, *, force: bool = False
+) -> str:
     """Return the cacheable system-prompt suffix for a building session.
 
     Two cases include the full agent-building guide in the system prompt so
@@ -164,11 +166,15 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
       is needed and the suffix stays byte-identical across the rest of the
       session (one prompt-cache re-write when the mode first activates).
 
+    *force* skips that history check for the caller that already knows the
+    answer — the SDK building-mode restart, which runs only because the enter
+    tool set the flag in *this* turn, before its row is in ``messages``.
+
     Holds only static content so the bytes are identical across turns AND
     across sessions — live graph id/name/version ride on the per-turn prefix.
     """
     is_builder = bool(session.metadata.builder_graph_id)
-    if not is_builder and not session_entered_building_mode(session):
+    if not force and not is_builder and not session_entered_building_mode(session):
         return ""
 
     try:

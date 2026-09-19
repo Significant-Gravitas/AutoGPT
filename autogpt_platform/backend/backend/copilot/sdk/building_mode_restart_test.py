@@ -28,22 +28,48 @@ def _adapter(*, unresolved: bool) -> MagicMock:
     return adapter
 
 
+def _retry_state(*, restart_failed: bool = False) -> MagicMock:
+    state = MagicMock()
+    state.building_mode_restart_failed = restart_failed
+    return state
+
+
 def test_fires_at_clean_boundary():
     assert (
-        _ready_for_building_mode_restart(_session(), _adapter(unresolved=False)) is True
+        _ready_for_building_mode_restart(
+            _session(), _adapter(unresolved=False), _retry_state()
+        )
+        is True
     )
 
 
 def test_must_not_fire_mid_tool_call():
     assert (
-        _ready_for_building_mode_restart(_session(), _adapter(unresolved=True)) is False
+        _ready_for_building_mode_restart(
+            _session(), _adapter(unresolved=True), _retry_state()
+        )
+        is False
     )
 
 
 def test_noop_without_request():
     assert (
         _ready_for_building_mode_restart(
-            _session(requested=False), _adapter(unresolved=False)
+            _session(requested=False), _adapter(unresolved=False), _retry_state()
+        )
+        is False
+    )
+
+
+def test_noop_once_a_restart_failed_this_turn():
+    """The failure path leaves ``building_mode_requested`` set for the next
+    turn, so without the turn-scoped flag the restart would re-fire at every
+    message boundary for the rest of this one."""
+    assert (
+        _ready_for_building_mode_restart(
+            _session(),
+            _adapter(unresolved=False),
+            _retry_state(restart_failed=True),
         )
         is False
     )
@@ -52,7 +78,7 @@ def test_noop_without_request():
 def test_noop_once_guide_already_loaded():
     assert (
         _ready_for_building_mode_restart(
-            _session(guide_loaded=True), _adapter(unresolved=False)
+            _session(guide_loaded=True), _adapter(unresolved=False), _retry_state()
         )
         is False
     )
@@ -65,6 +91,7 @@ class TestApplyBuildingModeRestart:
     def _state(self, *, prior_emitted: bool, thinking_reprompted: bool):
         state = MagicMock()
         state.thinking_only_reprompted = thinking_reprompted
+        state.building_mode_restart_failed = False
         state.adapter = MagicMock()
         state.adapter.emitted_real_content_to_wire = prior_emitted
         return state
@@ -140,13 +167,69 @@ class TestApplyBuildingModeRestart:
         assert marker in text
 
     @pytest.mark.asyncio
-    async def test_empty_suffix_degrades_without_prompt_upgrade(self, mocker):
-        session, state, _, _ = await self._run(mocker, suffix="")
+    async def test_empty_suffix_relaunches_without_the_confirmation(self, mocker):
+        """An empty suffix means the guide is genuinely absent, so the model
+        must not be told it is present — that sentence costs it the rest of
+        the turn chasing a gate that cannot clear."""
+        session, state, _, continuation = await self._run(mocker, suffix="")
 
-        assert session.building_mode_requested is False
+        assert state.query_message != continuation
+        assert "could not be loaded" in state.query_message
         assert session.guide_in_system_prompt is False
-        # The restart still proceeds — resume wiring is unconditional.
+        # Left set so the next turn retries; the turn-scoped flag is what
+        # stops the restart re-firing in this one.
+        assert session.building_mode_requested is True
+        assert state.building_mode_restart_failed is True
+        # The relaunch itself still proceeds — resume wiring is unconditional.
         assert state.use_resume is True
+
+    @pytest.mark.asyncio
+    async def test_guide_applied_although_history_lacks_the_enter_call(self, mocker):
+        """Production shape: the restart runs microseconds after the enter
+        tool ran, before its row is in ``messages``. Deriving "is this session
+        building?" from history there answers False and strands the turn with
+        no guide — this is the case dev logged 16 times in six hours.
+
+        The real suffix builder runs here on purpose: patching it would prove
+        only the wiring, never that the predicate underneath it answers.
+        """
+        from backend.copilot.sdk.service import (
+            _BUILDING_MODE_CONTINUATION,
+            _apply_building_mode_restart,
+        )
+
+        session = _session(requested=True, guide_loaded=False)
+        assert session.messages == []
+        assert session.has_tool_been_called("enter_agent_building_mode") is False
+        state = self._state(prior_emitted=False, thinking_reprompted=False)
+        mocker.patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        )
+
+        await _apply_building_mode_restart(
+            session=session,
+            state=state,
+            sdk_options=MagicMock(),
+            base_system_prompt="BASE",
+            delegation_supplement="",
+            oversight_supplement="",
+            team_building_supplement="",
+            graphiti_supplement="",
+            use_e2b=False,
+            session_id="sess-1",
+            message_id="msg-1",
+            log_prefix="[test]",
+        )
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert "<building_guide>" in text
+        assert "# Guide body" in text
+        assert session.guide_in_system_prompt is True
+        assert session.building_mode_requested is False
+        assert state.building_mode_restart_failed is False
+        assert state.query_message == _BUILDING_MODE_CONTINUATION
 
     @pytest.mark.asyncio
     async def test_adapter_carry_over(self, mocker):
