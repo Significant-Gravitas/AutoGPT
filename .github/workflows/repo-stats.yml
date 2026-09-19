@@ -13,8 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: run-ghrs
-        # Use latest release.
-        uses: jgehrcke/github-repo-stats@HEAD
+        # Pinned to a commit: `@HEAD` re-resolved on every run, and is not a
+        # form the github-actions Dependabot config can track or update.
+        uses: jgehrcke/github-repo-stats@ff48771cbb4324c3b77490bbfc26d6a5f3831cdb # default branch as of 2026-07-10
         with:
           ghtoken: ${{ secrets.ghrs_github_api_token }}
 
