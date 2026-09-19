@@ -2,6 +2,11 @@
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useContext, useEffect, useRef, useState } from "react";
+import {
+  isAnswered,
+  toAnswerText,
+  type QuestionAnswer,
+} from "../../tools/clarifying-questions";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionsContext } from "../ToolChain/chainActions";
 import {
@@ -21,13 +26,13 @@ interface FormProps {
 export function QuestionsForm({ dockId, questions }: FormProps) {
   const actions = useContext(CopilotChatActionsContext);
   const chainActions = useContext(ChainActionsContext);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const dismissed = dockId === dismissedId;
-  const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
+  const allAnswered = questions.every((q) => isAnswered(answers[q.keyword]));
 
   // Inside a tool chain the Answer button is replaced by the chain's single
   // Proceed step — register readiness + message instead.
@@ -68,7 +73,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
     if (chainActions) return;
     if (!actions) return;
     if (!allAnswered) {
-      const unanswered = questions.find((q) => !answers[q.keyword]?.trim());
+      const unanswered = questions.find((q) => !isAnswered(answers[q.keyword]));
       if (unanswered) inputRefs.current[unanswered.keyword]?.focus();
       return;
     }
@@ -100,7 +105,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
               }}
               type="text"
               required
-              value={answers[q.keyword] ?? ""}
+              value={toAnswerText(answers[q.keyword])}
               onChange={(e) =>
                 setAnswers((prev) => ({
                   ...prev,
