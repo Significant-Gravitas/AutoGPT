@@ -939,7 +939,7 @@ async def _consume_sdk_until_done(
 
         # --- Building-mode switch (enter_agent_building_mode) ---
         # Restart the attempt with the guide in the system prompt.
-        if _ready_for_building_mode_restart(ctx.session, state.adapter, state):
+        if _ready_for_building_mode_restart(ctx.session, state.adapter):
             logger.info(
                 f"{ctx.log_prefix} Building mode requested — interrupting "
                 f"for prompt upgrade"
@@ -1363,11 +1363,6 @@ class _RetryState:
     # not reset the per-turn cap to zero — otherwise multiple retries
     # could each fire their own re-prompt round.
     thinking_only_reprompted: bool = False
-    # Set when a building-mode restart could not load the guide.  Turn-scoped
-    # (survives the fresh adapter a restart builds) so the restart cannot
-    # re-fire on a ``building_mode_requested`` the failure path deliberately
-    # leaves set for the next turn.
-    building_mode_restart_failed: bool = False
     # OpenRouter generation IDs collected across all attempts of this turn.
     # Populated from ``AssistantMessage.message_id`` when routed via
     # OpenRouter (``gen-...`` prefix).  Consumed by the finally block to
@@ -1733,27 +1728,23 @@ async def _apply_building_mode_restart(
     Not an error, not a rollback — everything produced so far stands, so the
     fresh adapter only carries over the transient-retry flags. Detection
     cannot re-fire: guide_in_system_prompt flips True on success,
-    building_mode_restart_failed on the one failure path.
+    building_mode_requested flips False either way.
     """
+    session.building_mode_requested = False
     # ``force``: the enter tool set the flag in this very turn, so re-deriving
     # "is this session building?" from persisted history asks a question the
     # caller already answered — and answers it wrong, because the tool call is
     # not in ``messages`` yet.
     building_suffix = await build_builder_system_prompt_suffix(session, force=True)
+    session.guide_in_system_prompt = bool(building_suffix)
     if not building_suffix:
-        # Only a guide-load failure reaches here now. Relaunch without the
-        # confirmation: telling the model the guide is loaded when it is not
-        # costs it the rest of the turn chasing a gate that cannot clear.
+        # Only a guide-load failure reaches here now.
         logger.error(
             "%s Building-mode restart: guide suffix empty — relaunching "
             "without the guide (session_id=%s)",
             log_prefix,
             session.session_id,
         )
-        state.building_mode_restart_failed = True
-    else:
-        session.building_mode_requested = False
-        session.guide_in_system_prompt = True
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -1790,9 +1781,9 @@ async def _apply_building_mode_restart(
     state.use_resume = True
     state.resume_file = session_id
     state.query_message = (
-        _BUILDING_MODE_UNAVAILABLE_CONTINUATION
-        if state.building_mode_restart_failed
-        else _BUILDING_MODE_CONTINUATION
+        _BUILDING_MODE_CONTINUATION
+        if building_suffix
+        else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
     )
     # Fresh adapter, same carry-over rules as a transient retry.
     # NOTE: the transcript builder is NOT restored — its partial
@@ -1808,7 +1799,7 @@ async def _apply_building_mode_restart(
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
         state.adapter.prior_attempt_emitted_visible_content = True
-    if state.building_mode_restart_failed:
+    if not building_suffix:
         return StreamStatus(message="Continuing without the agent guide…")
     return StreamStatus(message="Entering building mode — loading the agent guide…")
 
@@ -1816,22 +1807,17 @@ async def _apply_building_mode_restart(
 def _ready_for_building_mode_restart(
     session: "ChatSession",
     adapter: "SDKResponseAdapter",
-    state: "_RetryState",
 ) -> bool:
     """True when the attempt may restart for the building-mode prompt upgrade.
 
     Requires a clean message boundary — no unresolved tool calls — so the
     CLI session file is orphan-free and cleanly resumable; firing mid-tool-
     call would strand ``tool_use`` blocks without results. No-op once the
-    guide is already in the system prompt (restart already happened), and
-    once a restart has failed this turn — that path leaves
-    ``building_mode_requested`` set for the next turn, so without the flag it
-    would re-fire at every message boundary for the rest of this one.
+    guide is already in the system prompt (restart already happened).
     """
     return (
         session.building_mode_requested
         and not session.guide_in_system_prompt
-        and not state.building_mode_restart_failed
         and not adapter.has_unresolved_tool_calls
     )
 
@@ -5740,7 +5726,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # stream, session history, CLI session file), so no
                 # interrupted.capture / snapshot restore here. Detection
                 # cannot re-fire: guide_in_system_prompt flips True on
-                # success, building_mode_restart_failed on the failure path.
+                # success, building_mode_requested flips False either way.
                 expert_identity_validated = False
                 restart_status = await _apply_building_mode_restart(
                     session=session,
