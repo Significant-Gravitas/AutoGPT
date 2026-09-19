@@ -113,6 +113,47 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
 
 
 @pytest.mark.asyncio
+async def test_tags_only_message_rejects_before_clear_pending_and_identity() -> None:
+    """Sanitize → empty_prompt before clear_pending / identity (#14567)."""
+    from backend.copilot.response_model import StreamError
+
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.metadata.pending_question = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    identity_mock = AsyncMock(return_value="")
+    clear_db = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=identity_mock,
+        ),
+        patch(
+            "backend.copilot.model.chat_db",
+            MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
+        ),
+    ):
+        events = [
+            e
+            async for e in stream_chat_completion_baseline(
+                session_id=session.session_id,
+                message="<user_context>Name: Admin</user_context>",
+                user_id="user-1",
+                session=session,
+            )
+        ]
+
+    assert any(
+        isinstance(e, StreamError) and e.code == "empty_prompt" for e in events
+    ), events
+    identity_mock.assert_not_awaited()
+    clear_db.assert_not_awaited()
+    assert session.metadata.pending_question is not None
+
+
+@pytest.mark.asyncio
 async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
     session = ChatSession.new(
         "user-1",
