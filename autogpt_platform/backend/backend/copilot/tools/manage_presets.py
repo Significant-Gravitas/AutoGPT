@@ -12,7 +12,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import (
+    NODE_INPUT_MASK_PREFIX,
+    LibraryAgentPreset,
+)
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
@@ -264,10 +267,10 @@ class UpdatePresetTool(BaseTool):
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
-            "resume it (is_active=false/true), or reconfigure its inputs. For a "
-            "webhook trigger, 'inputs' is the trigger block's config (e.g. repo, "
-            "events) and changing it re-registers the webhook with the preset's "
-            "existing credentials. Find preset_id via list_presets."
+            "resume it (is_active=false/true), or change its inputs. 'inputs' are "
+            "the agent's graph inputs; a webhook trigger's config is "
+            "'trigger_config', and changing that re-registers the webhook. Find "
+            "preset_id via list_presets."
         )
 
     @property
@@ -295,10 +298,16 @@ class UpdatePresetTool(BaseTool):
                 "inputs": {
                     "type": "object",
                     "description": (
-                        "Inputs to change, merged over the preset's current "
-                        "inputs. For a webhook trigger these are the trigger "
-                        "block's config (e.g. repo, events); changing them "
-                        "re-registers the webhook."
+                        "Graph inputs to change, merged over the current ones. "
+                        "Not the trigger config."
+                    ),
+                    "additionalProperties": True,
+                },
+                "trigger_config": {
+                    "type": "object",
+                    "description": (
+                        "Trigger config fields to change (e.g. repo, events), "
+                        "merged over the current config."
                     ),
                     "additionalProperties": True,
                 },
@@ -339,10 +348,28 @@ class UpdatePresetTool(BaseTool):
         merged_inputs = None
         credentials = None
         new_inputs = kwargs.get("inputs")
-        if new_inputs:
-            # Reconfigure: merge over current inputs and reuse the stored
-            # credentials so the webhook can be re-registered.
-            merged_inputs = {**current.inputs, **new_inputs}
+        new_trigger_config = kwargs.get("trigger_config")
+        if new_inputs or new_trigger_config:
+            # A triggered preset nests its trigger config under a per-node mask
+            # key, beside the graph's own inputs. Merging graph inputs into that
+            # mask pollutes the config and leaves the graph input unchanged.
+            mask_key = next(
+                (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
+                None,
+            )
+            if new_trigger_config and not mask_key:
+                return ErrorResponse(
+                    message="This preset has no webhook trigger to configure.",
+                    error="preset_update_failed",
+                    session_id=session_id,
+                )
+            merged_inputs = {**current.inputs, **(new_inputs or {})}
+            if mask_key:
+                merged_inputs[mask_key] = {
+                    **(current.inputs.get(mask_key) or {}),
+                    **(new_trigger_config or {}),
+                }
+            # Reuse the stored credentials so the webhook can be re-registered.
             credentials = current.credentials
 
         try:
