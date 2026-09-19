@@ -104,7 +104,9 @@ def get_exec_file_path(graph_exec_id: str, path: str) -> str:
 
         # The execution id must name exactly one directory inside the exec_file sandbox.
         if exec_dir.parent != base_dir or not full_path.is_relative_to(exec_dir):
-            raise ValueError(f"Invalid file path: {path!r} escapes execution directory")
+            raise ValueError(
+                f"Invalid file path: {path!r} escapes execution directory"
+            ) from None
 
         return str(full_path)
     except OSError as e:
