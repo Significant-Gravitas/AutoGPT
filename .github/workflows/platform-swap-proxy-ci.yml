@@ -16,6 +16,10 @@ on:
       - ".github/scripts/validate_junit.py"
       - "autogpt_platform/swap_proxy/**"
   merge_group:
+  # On-demand run for a branch whose base is not master/dev (a stacked PR), where the
+  # pull_request trigger above never fires:
+  #   gh workflow run platform-swap-proxy-ci.yml --ref <branch>
+  workflow_dispatch:
 
 concurrency:
   group: ${{ format('swap-proxy-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

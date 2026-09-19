@@ -22,15 +22,36 @@ users at once.
    agree. (`swap_proxy/egress.py`)
 3. **Open it or not?** Only hosts some credential is bound to are intercepted.
    Everything else is passed through as opaque bytes, never decrypted.
-4. **Swap.** Placeholders in headers (including inside HTTP Basic), query, path
-   and text bodies become the owner's values. The backend is asked for them per
-   user and per host, and refuses hosts a credential is not bound to.
-   (`swap_proxy/swap.py`, `swap_proxy/source.py`)
-5. **Scrub.** A value echoed back in a text response is turned back into its
-   placeholder before the box sees it.
+4. **Swap.** Placeholders in headers (including inside HTTP Basic), query, path,
+   text bodies and websocket messages become the owner's values. The backend is
+   asked for them per user and per host, and refuses hosts a credential is not
+   bound to. (`swap_proxy/swap.py`, `swap_proxy/source.py`)
+5. **Scrub.** A value echoed back in a text response, or in a websocket message
+   from the server, is turned back into its placeholder before the box sees it.
 
-Every swap and every refusal is one JSON line on the `swap_proxy.audit` logger,
-with names and reasons, never values.
+Every swap, scrub and refusal is one JSON line on the `swap_proxy.audit` logger,
+with names and reasons, never values. A swap is recorded only for bytes that had
+not left yet.
+
+### Large bodies
+
+The proxy holds at most 5 MiB of one body in memory (`MAX_BODY_BYTES` in
+`addon.py`, the only size in the service); mitmproxy streams anything larger.
+A box chooses how much it sends and, by what it asks for, how much comes back,
+so the size must never decide whether a credential is protected:
+
+| | up to 5 MiB | over 5 MiB, or growing past it |
+| --- | --- | --- |
+| request head (headers, path, query) | swapped | swapped, before anything is sent |
+| text request body | swapped | sent as it is, placeholders literal; audited `body-not-swapped` |
+| text response body | scrubbed | **refused**: the flow is killed; audited `refused-response` |
+| binary body, either way | streamed, untouched | streamed, untouched |
+
+So a `git push` with a large pack authenticates (its body is binary and
+streams), a large text upload fails at the provider the same loud way an
+unbound placeholder does, and a text response too large to scrub never reaches
+the box. A body with no declared length (chunked, HTTP/2) is held until it ends
+or passes the limit, so a value split across chunks is still caught.
 
 A value is only ever swapped into an https request whose upstream certificate
 mitmproxy verified for the very host the request names. If the backend cannot
@@ -57,16 +78,61 @@ poetry run swap-proxy
 | --- | --- | --- |
 | `SWAP_PROXY_LISTEN_HOST` / `SWAP_PROXY_LISTEN_PORT` | `0.0.0.0` / `1080` | SOCKS5 listener |
 | `SWAP_PROXY_BACKEND_URL` | `http://localhost:8005` | the backend's internal `DatabaseManager` service |
-| `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | where the signing CA lives; created on first start |
+| `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
+| `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend |
 
-The boxes must trust the certificate in `SWAP_PROXY_CONFDIR`
-(`mitmproxy-ca-cert.pem`). Its key must exist nowhere but here: whoever holds
-it can read the traffic of every bound host.
+### The signing CA
 
-The backend only sends boxes here once `E2B_EGRESS_PROXY_ADDRESS` is set. E2B
-fails closed, so set it only when this proxy is reachable at that address.
+The boxes' image trusts one CA certificate, and the proxy signs the certificate
+of every bound host with that CA's key. So:
+
+- **One CA for every replica and every restart.** A replica that signed with a
+  CA of its own would break TLS to every bound host inside every box, and it
+  would read there as a certificate bug, not as missing provisioning.
+- **Provisioned, never generated.** Create the key pair once, keep it in your
+  secret store, and mount it into `SWAP_PROXY_CONFDIR` as `mitmproxy-ca.pem`
+  (private key and certificate in one PEM file). If the mount is read-only, put
+  `mitmproxy-dhparam.pem` beside it: it is not a secret (fixed public
+  parameters mitmproxy writes out with every CA), but mitmproxy tries to create
+  it when it is missing. The service **refuses to start** without the CA rather
+  than let mitmproxy make one up. `SWAP_PROXY_GENERATE_CA=true` lifts that for
+  a local run; `mitmproxy-ca-cert.pem` in the directory is then the certificate
+  to trust.
+- **The key lives in the secret store and in the running proxy, nowhere else.**
+  Whoever holds it can read the traffic of every bound host. It is not in the
+  image, the repository or a box.
+- **Rotation is a coordinated change**: boxes must trust the new certificate
+  before the proxy starts signing with the new key.
+
+### Turning it on
+
+The backend only sends boxes here once `E2B_EGRESS_PROXY_ADDRESS` is set, and
+E2B fails closed. Setting that address and provisioning the CA are **one release
+step**: the proxy reachable at that address, the CA mounted into every replica,
+and its certificate in the image the boxes run. Any one of them missing shows up
+as every box losing either its egress or its TLS to bound hosts.
+
+### What one message costs the event loop
+
+The swap and the scrub run synchronously on mitmproxy's event loop, which every
+connection of a replica shares. Measured on a developer laptop (Apple silicon,
+Python 3.13), one body at the 5 MiB limit, median of several runs:
+
+| work | time |
+| --- | --- |
+| swap a JSON request body | 23 ms |
+| scrub a JSON or plain-text response | 2-3 ms |
+| scan a gzip response with nothing to scrub (decode included) | 8 ms |
+| scrub a gzip response that did echo a value (decode, scrub, re-encode) | 53 ms |
+
+That is how long every other connection on the replica waits while one such
+message is handled; a box can cause it at will, one message at a time. These
+are single-machine numbers, not a capacity figure: how many boxes a replica
+carries has not been measured, and server CPUs will differ. The limit counts
+bytes on the wire, so a compressed body decodes to more than 5 MiB and costs
+more than the table says.
 
 ## Tests
 
@@ -78,12 +144,37 @@ poetry run pytest
 hand-written SOCKS5 client in front and a local server behind; they are where
 the tenant boundary is tested (wrong, stale and borrowed credentials). The
 rest are unit tests, `swap_test.py` being the port of spark-vm's conformance
-suite.
+suite. `addon_test.py` drives the hooks with mitmproxy's own test flows for what
+a hand-written HTTP/1 client cannot reach (websockets, HTTP/2 framing).
+
+CI is `.github/workflows/platform-swap-proxy-ci.yml`. Its `pull_request`
+trigger only fires for a base of `master`/`dev`/`release-*`; for a stacked PR
+run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 ## Not here yet
 
 - Per-user bindings and more providers: the binding table is
   `SUPPORTED_PROVIDERS[...]["swap_hosts"]` in the backend, GitHub only.
 - Time-limited grants and the approval step that spark-vm has.
-- Images and binary response bodies are not scrubbed.
 - E2B tunnels TCP only: DNS and QUIC leave a box without passing through here.
+
+## Known limits
+
+- Images and binary bodies are neither swapped (above 5 MiB) nor scrubbed (at
+  any size). What counts as text is the content type the sender declares.
+- A text response over 5 MiB from a bound host is refused, not delivered, for a
+  box that gets swaps. A text request body over 5 MiB is not swapped.
+- The 5 MiB limit counts bytes on the wire. A compressed body is decoded whole
+  to be swapped or scrubbed, and nothing caps what it decodes to.
+- A text response with no declared length is held until it is complete, so an
+  event stream from a bound host does not arrive incrementally.
+- Websocket messages are swapped and scrubbed one message at a time; a value
+  split across two messages is not recognised.
+- If the backend cannot be asked when a response arrives, that response is not
+  scrubbed. Nothing is swapped while the backend is down either, beyond the
+  15 s a fetched value stays cached.
+- A connection stays authenticated while it stays open, also after its box's
+  credential is rotated.
+- NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
+  by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
+  not recognised.
