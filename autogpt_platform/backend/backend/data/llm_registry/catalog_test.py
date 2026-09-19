@@ -400,7 +400,7 @@ def test_gemma_4_31b_it_bills_at_authored_rates():
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
-    assert MODEL_METADATA[gemma].max_output_tokens == 131072
+    assert MODEL_METADATA[gemma].max_output_tokens == 16384
     gemma_entry = next(m for m in CATALOG.models if m.slug == "google/gemma-4-31b-it")
     assert gemma_entry.price_tier == 1
     assert gemma_entry.context_window == 262144

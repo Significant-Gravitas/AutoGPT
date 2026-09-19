@@ -624,7 +624,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="open_router",
                 creator="google",
                 context_window=262144,
-                max_output_tokens=131072,
+                max_output_tokens=16384,
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
