@@ -10,6 +10,9 @@ from aiohttp import ClientSession
 
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
+    _Conversation,
+    _DuplicateToolResultError,
+    _ToolCallRecord,
     _safe_tool_name,
     _serialize_messages,
 )
@@ -720,20 +723,189 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
                 *(response.json() for response in responses)
             )
 
-    assert sorted(response.status for response in responses) == [200, 409]
-    duplicate_payload = next(
-        payload
-        for response, payload in zip(responses, payloads, strict=True)
-        if response.status == 409
-    )
-    assert duplicate_payload["error"]["message"] == (
-        "This tool-result request was already accepted"
-    )
+    # The retry arrives while the original is still in flight: it waits for
+    # that response rather than killing the turn with a 409.
+    assert [response.status for response in responses] == [200, 200]
+    assert payloads[0]["content"] == payloads[1]["content"]
+    assert payloads[0]["stop_reason"] == payloads[1]["stop_reason"]
     assert len(agent_session.requests) == 1
     assert agent_session.tool_result == CodexDynamicToolResult(
         content="one result",
         success=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_resent_tool_result_replays_the_nonstreaming_response() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_payload = await accepted.json()
+            resent = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            resent_payload = await resent.json()
+
+    assert accepted.status == 200
+    assert resent.status == 200
+    assert resent_payload["content"] == accepted_payload["content"]
+    assert resent_payload["content"] == [{"type": "text", "text": "done"}]
+    assert resent_payload["stop_reason"] == accepted_payload["stop_reason"]
+    assert resent_payload["usage"]["output_tokens"] == (
+        accepted_payload["usage"]["output_tokens"]
+    )
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_resent_tool_result_replays_a_wellformed_stream() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            first_events = _events(await first.text())
+            tool_start = next(
+                event
+                for event in first_events
+                if event["type"] == "content_block_start"
+                and event["content_block"]["type"] == "tool_use"
+            )
+            gateway_call_id = tool_start["content_block"]["id"]
+            assert isinstance(gateway_call_id, str)
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_events = _events(await accepted.text())
+            resent = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            resent_events = _events(await resent.text())
+
+    assert accepted.status == 200
+    assert resent.status == 200
+    assert [event["type"] for event in resent_events] == [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+    ]
+    assert [event["type"] for event in resent_events] == [
+        event["type"] for event in accepted_events
+    ]
+    assert resent_events[2]["delta"] == {"type": "text_delta", "text": "done"}
+    assert resent_events[-2]["delta"] == {
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+    }
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_conflicting_tool_result_for_the_same_call_is_still_rejected() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(gateway_call_id, "one result"),
+            )
+            assert accepted.status == 200
+            await accepted.read()
+
+            conflicting = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(gateway_call_id, "a different result"),
+            )
+            conflicting_payload = await conflicting.json()
+
+    assert conflicting.status == 409
+    assert conflicting_payload["error"]["message"].startswith(
+        "Conflicting result for tool_use_id"
+    )
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_closed_model_call_without_a_matching_claim_is_still_rejected() -> None:
+    transport = _FakeTransport(_FakeAgentSession())
+    gateway = CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    )
+    conversation = _Conversation(id="conversation-1")
+    gateway._conversations[conversation.id] = conversation
+    gateway._tool_calls["toolu_codex_closed"] = _ToolCallRecord(
+        gateway_call_id="toolu_codex_closed",
+        raw_call_id="raw-1",
+        conversation=conversation,
+        future=asyncio.get_running_loop().create_future(),
+        closed=True,
+    )
+
+    with pytest.raises(_DuplicateToolResultError) as raised:
+        gateway._continue_conversation(
+            _tool_result_request("toolu_codex_closed", "late result")
+        )
+
+    assert str(raised.value) == (
+        "This tool-result request refers to a closed model call"
+    )
+    assert conversation.claim is None
 
 
 @pytest.mark.asyncio

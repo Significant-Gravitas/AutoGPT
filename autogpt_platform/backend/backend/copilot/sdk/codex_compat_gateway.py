@@ -101,6 +101,22 @@ class _Failed(_GatewayState):
 _ConversationEvent = _TextDelta | _ToolUse | _Completed | _Failed
 
 
+class _ClaimReplay(_GatewayState):
+    """The events one tool-result request turned into, kept for a resend.
+
+    A huge turn can outlast the CLI's client-side timeout; ``api_retry``
+    then sends the byte-identical request again. The first pass already
+    claimed every matching record, so the second has nothing left to claim
+    and used to 409 -- killing a turn whose response the client never saw.
+    Holding the events lets the resend be answered with the same response.
+    """
+
+    fingerprint: str
+    events: list[_ConversationEvent] = Field(default_factory=list)
+    ready: asyncio.Event = Field(default_factory=asyncio.Event)
+    replayable: bool = False
+
+
 class _Conversation(_GatewayState):
     id: str
     queue: asyncio.Queue[_ConversationEvent] = Field(default_factory=asyncio.Queue)
@@ -108,6 +124,7 @@ class _Conversation(_GatewayState):
     response_lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
     task: asyncio.Task[None] | None = None
     result: CodexInvocationResult | None = None
+    claim: _ClaimReplay | None = None
 
 
 class _ToolCallRecord(_GatewayState):
@@ -120,8 +137,14 @@ class _ToolCallRecord(_GatewayState):
     closed: bool = False
 
 
+class _Continuation(_GatewayState):
+    conversation: _Conversation
+    awaiting: _ClaimReplay | None = None
+
+
 _Conversation.model_rebuild()
 _ToolCallRecord.model_rebuild()
+_Continuation.model_rebuild()
 
 
 class _DuplicateToolResultError(ValueError):
@@ -256,6 +279,11 @@ class CodexAnthropicGateway:
                     record.future.cancel()
             self._tool_calls.clear()
             for conversation in self._conversations.values():
+                claim, conversation.claim = conversation.claim, None
+                if claim is not None:
+                    claim.replayable = False
+                    claim.events.clear()
+                    claim.ready.set()
                 conversation.queue.put_nowait(
                     _Failed(error=RuntimeError("Codex Anthropic gateway is closing"))
                 )
@@ -327,9 +355,11 @@ class CodexAnthropicGateway:
             )
 
         try:
-            conversation = self._continue_conversation(payload)
-            if conversation is None:
-                conversation = self._start_conversation(payload)
+            continuation = self._continue_conversation(payload)
+            if continuation is None:
+                continuation = _Continuation(
+                    conversation=self._start_conversation(payload)
+                )
         except _DuplicateToolResultError as exc:
             return _anthropic_error(
                 409,
@@ -343,19 +373,50 @@ class CodexAnthropicGateway:
                 str(exc),
             )
 
+        return await self._respond(request, continuation, payload)
+
+    async def _respond(
+        self,
+        request: web.Request,
+        continuation: _Continuation,
+        payload: dict[str, object],
+    ) -> web.StreamResponse:
+        awaiting = continuation.awaiting
+        if awaiting is not None:
+            # The request that claimed this fingerprint may still be in
+            # flight -- the CLI times the call out long before the model
+            # stops. Wait for it rather than 409, then answer the resend
+            # with what it produced.
+            await awaiting.ready.wait()
+            if not awaiting.replayable:
+                return _anthropic_error(
+                    409,
+                    "invalid_request_error",
+                    "This tool-result request was already accepted",
+                )
+            conversation = _replay_conversation(continuation.conversation, awaiting)
+            claim = None
+        else:
+            conversation = continuation.conversation
+            claim = conversation.claim
+
         input_tokens = _estimate_input_tokens(payload)
-        if payload.get("stream") is True:
-            return await self._streaming_response(
-                request,
-                conversation,
-                input_tokens,
-            )
-        return await self._nonstreaming_response(conversation, input_tokens)
+        try:
+            if payload.get("stream") is True:
+                return await self._streaming_response(
+                    request,
+                    conversation,
+                    input_tokens,
+                )
+            return await self._nonstreaming_response(conversation, input_tokens)
+        finally:
+            if claim is not None:
+                claim.ready.set()
 
     def _continue_conversation(
         self,
         payload: dict[str, object],
-    ) -> _Conversation | None:
+    ) -> _Continuation | None:
         tool_results = _extract_tool_results(payload.get("messages"))
         known = [
             (self._tool_calls[call_id], result)
@@ -378,7 +439,15 @@ class CodexAnthropicGateway:
         ]
         fingerprint = _tool_result_request_fingerprint(payload)
         if not claimable:
-            if any(record.claim_fingerprint == fingerprint for record, _ in known):
+            for record, _ in known:
+                if record.claim_fingerprint != fingerprint:
+                    continue
+                claim = record.conversation.claim
+                if claim is not None and claim.fingerprint == fingerprint:
+                    return _Continuation(
+                        conversation=record.conversation,
+                        awaiting=claim,
+                    )
                 raise _DuplicateToolResultError(
                     "This tool-result request was already accepted"
                 )
@@ -394,13 +463,16 @@ class CodexAnthropicGateway:
         if any(record.conversation is not conversation for record, _ in claimable):
             raise ValueError("Tool results span multiple model conversations")
 
+        # One slot per conversation: a fresh claim drops the events the
+        # previous one kept, so nothing accumulates across a long turn.
+        conversation.claim = _ClaimReplay(fingerprint=fingerprint)
         for record, result in claimable:
             record.result = result
             record.claim_fingerprint = fingerprint
         for record, result in claimable:
             if not record.future.done():
                 record.future.set_result(result)
-        return conversation
+        return _Continuation(conversation=conversation)
 
     def _start_conversation(self, payload: dict[str, object]) -> _Conversation:
         agent_session = self._agent_session
@@ -532,7 +604,7 @@ class CodexAnthropicGateway:
         conversation: _Conversation,
         input_tokens: int,
     ) -> web.StreamResponse:
-        first = await conversation.queue.get()
+        first = await _next_event(conversation)
         if isinstance(first, _Failed):
             return self._failure_response(first)
 
@@ -569,6 +641,11 @@ class CodexAnthropicGateway:
             await self._write_boundary(response, conversation, first)
             await response.write_eof()
         except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
+            # The turn is about to be cancelled, so the events recorded for
+            # this claim no longer describe a conversation a resend can be
+            # answered from.
+            if conversation.claim is not None:
+                conversation.claim.replayable = False
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
@@ -683,7 +760,7 @@ class CodexAnthropicGateway:
                     },
                 )
                 return
-            event = await conversation.queue.get()
+            event = await _next_event(conversation)
 
     async def _nonstreaming_response(
         self,
@@ -706,7 +783,7 @@ class CodexAnthropicGateway:
         output_tokens = 0
         stop_reason = "end_turn"
         while True:
-            event = await conversation.queue.get()
+            event = await _next_event(conversation)
             if isinstance(event, _TextDelta):
                 text_parts.append(event.text)
                 continue
@@ -961,6 +1038,30 @@ def _safe_exception_message(
     if len(message) > _MAX_LOGGED_ERROR_MESSAGE_CHARS:
         return message[: _MAX_LOGGED_ERROR_MESSAGE_CHARS - 3] + "..."
     return message
+
+
+async def _next_event(conversation: _Conversation) -> _ConversationEvent:
+    event = await conversation.queue.get()
+    claim = conversation.claim
+    if claim is not None:
+        claim.events.append(event)
+        # Every event but a text delta ends the response, so the recording
+        # is complete the moment one arrives.
+        if not isinstance(event, _TextDelta):
+            claim.replayable = True
+    return event
+
+
+def _replay_conversation(
+    conversation: _Conversation,
+    claim: _ClaimReplay,
+) -> _Conversation:
+    # No ``task``: a resend is not the request that owns the turn, so a
+    # disconnect while it replays must not cancel the live conversation.
+    replayed = _Conversation(id=conversation.id)
+    for event in claim.events:
+        replayed.queue.put_nowait(event)
+    return replayed
 
 
 async def _write_sse(response: web.StreamResponse, event: dict[str, object]) -> None:
