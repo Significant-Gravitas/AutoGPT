@@ -346,6 +346,25 @@ def test_mercury_2_5_bills_at_authored_rates():
     assert mercury_entry.supports_parallel_tool_calls is True
 
 
+def test_pareto_bills_at_authored_rates():
+    """Unbiased Pareto (OpenRouter, list price $2.50/$7.50 per 1M, $0.25/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    pareto = LLMModel("unbiased/pareto")
+    assert MODEL_COST[pareto] == 1
+    assert TOKEN_COST[pareto].model_dump() == {
+        "input": 375.0,
+        "output": 1125.0,
+        "cache_read": 37.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[pareto].max_output_tokens == 131072
+    pareto_entry = next(m for m in CATALOG.models if m.slug == "unbiased/pareto")
+    assert pareto_entry.price_tier == 2
+    assert pareto_entry.context_window == 262144
+    assert pareto_entry.supports_tools is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

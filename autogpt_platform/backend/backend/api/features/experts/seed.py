@@ -19,6 +19,7 @@ import logging
 from collections.abc import Mapping
 from typing import TypedDict
 
+import prisma.enums
 import prisma.models
 import prisma.types
 
@@ -56,6 +57,42 @@ class PreloadSeed(TypedDict):
     cron: str | None
 
 
+class RoutineSeed(TypedDict):
+    # Stable slug; the key `_sync_routines` matches a template row on, and the
+    # name a hire's row keeps for the life of the expert. Renaming one orphans
+    # the old row on every existing hire, so treat it as permanent.
+    key: str
+    title: str
+    # The proposal, in the expert's own voice: what this routine would do each
+    # time it runs. Not what runs — switching the routine on rewrites this with
+    # the owner's answers before anything is scheduled.
+    prompt: str
+    # Suggested fire times, 5-field and resolved in the owner's timezone.
+    # Several because one routine can legitimately have more than one (a
+    # callback sweep at 08:30 and again at 13:00 is one thing the owner turned
+    # on).
+    #
+    # A minute of `H` means "some minute inside this hour" — plain cron has no
+    # way to say that, so this borrows Jenkins's spelling, and `spread_cron`
+    # picks the real minute per owner and routine at install. Use it whenever
+    # the hour is what matters, which for a standing job it almost always is:
+    # five personas that all literally say `0 9` arrive on one account as a
+    # 09:00 pile-up against the cap on concurrent turns, and the runs that lose
+    # are dropped rather than retried. Write a real minute only when that exact
+    # minute is the point.
+    crons: list[str]
+    # What the expert must ask before this can run — which repo, which inbox,
+    # what hour. Straight from the source package's installer block. A routine
+    # with unanswered asks cannot be switched on, which is what stops a seeded
+    # proposal from firing against guesses.
+    asks: list[str]
+    # Where each turn lands. THREAD (the default) gives the routine one durable
+    # thread of its own, which is also its memory when `graphiti-memory` is
+    # off; FRESH starts a new chat every time and suits work that re-reads its
+    # own source anyway.
+    session_mode: str
+
+
 class RosterEntry(TypedDict):
     name: str
     role: str
@@ -79,13 +116,19 @@ class RosterEntry(TypedDict):
     # Up to three rows for the profile's "sets up on day one"; empty hides it.
     day_one: list[ExpertDayOneItem]
     preloads: list[PreloadSeed]
+    # Standing work this persona offers. Every one arrives switched OFF and
+    # unable to reach a single connected service (see
+    # ``ExpertRoutine.grantsCredentials``) — a roster entry is read by whoever
+    # reviews the PR, not by the owner whose account it will run on, so the
+    # proposal is all a template is allowed to ship.
+    routines: list[RoutineSeed]
 
 
 ROSTER: list[RosterEntry] = [
     {
         "name": "Maria",
         "role": "SEO & Content",
-        "job_title": "SEO Content Writer",
+        "job_title": "SEO Content Manager",
         "tagline": "Takes a keyword from brief to publish-ready article, and reworks page copy to rank.",
         "avatar_url": "/experts/maria.svg",
         "bio": """I'm an SEO and content strategist — fifteen years across B2B SaaS and consumer brands — and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then a publish-ready article, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
@@ -129,6 +172,23 @@ You are direct about trade-offs. If a page is already ranking you look for the s
             {"slug": "ai-webpage-copy-improver", "cron": None},
             {"slug": "ai-youtube-to-blog-converter", "cron": None},
         ],
+        "routines": [
+            {
+                "key": "content-pipeline-check",
+                "title": "What ships this week, and what is stuck",
+                "prompt": """Read the editorial calendar and your last check, then report in this order: what ships in the next seven days with the owner on each line, what is late and by how far, what is stuck waiting on one person or one missing proof point, and what has no owner or no ship date.
+
+Never flag the same stuck row two runs running unless it got worse. If nothing ships this week, nothing is late, and nothing has changed since your last run, say so in one line and stop — no filler. Speak up when something newly slips even if nothing else moved.
+
+One line per item, no preamble. Never invent an approval, a draft, or a date.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Where is your editorial calendar?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Jules",
@@ -163,6 +223,24 @@ You space posts out and change the angle each time — a result, a mistake, a qu
             {
                 "slug": "ai-shortform-video-generator-create-viral-ready-content",
                 "cron": None,
+            },
+        ],
+        "routines": [
+            {
+                "key": "repurposing-queue-check",
+                "title": "What landed this week that is worth cutting up",
+                "prompt": """Look over the work that shipped since your last run — posts, talks, calls, launches, anything the team published — and pick out what is worth repurposing. For each one, name the three to six ideas inside it that could stand on their own, ranked by how much someone would disagree with them, and say which platform each idea belongs on and why.
+
+Leave the source untouched when nothing in it survives on its own, and say so. If nothing new landed and nothing has changed since your last run, say the week was quiet in one line and stop.
+
+Nothing goes out from here: these are drafts waiting for a yes.""",
+                "crons": ["H 9 * * 1-5"],
+                "asks": [
+                    "Where should I look for what shipped — a calendar, a folder, a feed?",
+                    "Which platforms are actually in play for you?",
+                    "What time should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
             },
         ],
     },
@@ -207,6 +285,25 @@ You mark every claim as observed or inferred, and you name what you inferred it 
             {"slug": "personalized-morning-coffee-newsletter", "cron": "0 8 * * 1"},
             {"slug": "youtube-transcription-scraper", "cron": None},
         ],
+        "routines": [
+            {
+                "key": "competitor-brief",
+                "title": "What competitors shipped, said, or changed",
+                "prompt": """Work the tiered watch list: Tier 1 direct competitors get a deep read, Tier 2 adjacent a skim, Tier 3 aspirational a monthly look. Fetch each one's public pages, blog, and pricing, and log every URL you fetched — including the ones that failed.
+
+Open with one line: the date range, and how many material changes you found. Then one block per competitor, every line ending in its source URL and date. A competitor with nothing material gets no block.
+
+Close each block with two to four lines on what it means here: a launch gets a positioning read, a pricing move a packaging read, a content push a calendar read. Say it is unclear when it is unclear.
+
+Never brief the same change twice. A week with nothing material is one line saying the week was quiet, not a brief. No change without a link, and never pad it to look busy.""",
+                "crons": ["H 8 * * 5"],
+                "asks": [
+                    "Who is on the watch list, and which tier is each one?",
+                    "What day and hour should the brief land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Remy",
@@ -248,6 +345,26 @@ You treat deliverability as a list problem before a technical one. You will ask 
         # workflow first, then dropping her from PERSONAS_WITHOUT_WORKFLOWS in
         # the roster contract test.
         "preloads": [],
+        "routines": [
+            {
+                "key": "lifecycle-performance-read",
+                "title": "How last week's lifecycle email actually did",
+                "prompt": """Fix the period: the last seven full days against the seven before. Pull the numbers from the source the user trusts, plus the send calendar and your previous read.
+
+Report what sent, what it did — opens, clicks, replies, unsubscribes, and whatever conversion the user actually cares about — and what moved against the week before. Every number carries its source. A move you cannot explain from evidence gets written as unclear, not guessed at.
+
+Then the three to five things worth doing about it: a subject line worth retiring, a segment worth splitting, a flow with a step nobody reaches. One line each.
+
+Never report the same week twice. A quiet week gets the headline, the table, and one line saying it was quiet.""",
+                "crons": ["H 8 * * 1"],
+                "asks": [
+                    "Where do the email numbers come from?",
+                    "Where is the send calendar?",
+                    "What day and hour should this land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+        ],
     },
     {
         "name": "Mina",
@@ -304,6 +421,10 @@ You support record preparation, not professional accounting or tax advice. Do no
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Theo",
@@ -360,6 +481,10 @@ You provide operational support, not investment, legal, tax, valuation, or secur
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Quinn",
@@ -416,6 +541,10 @@ For cohorts, funnels, and experiments, keep eligibility, exposure, conversion wi
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Max",
@@ -448,6 +577,61 @@ You are rigorous about data quality. You flag when contact information looks sta
             {"slug": "lead-finder-local-businesses", "cron": None},
             {"slug": "business-ownerceo-finder", "cron": None},
             {"slug": "email-address-finder", "cron": None},
+        ],
+        "routines": [
+            {
+                "key": "weekday-prospecting-batch",
+                "title": "The next few names, researched with drafts waiting",
+                "prompt": """Take the next batch off the target list at the size the user set, five by default, preferring strong-fit rows that are new or enriched and have never been touched.
+
+Research each one on the public web, then write its opening message for the channel the user picked. Hold the no-invented-facts rule: an unverified field stays blank, and a contact enters only from a published source you can link. Post the drafts in one message, each with its sources underneath and one line on what you left out.
+
+Name any row you could not verify, with the reason, at the end. Never re-draft a row you drafted in the last seven days. When there is nothing left worth drafting, say so in one line and say where the next ten names should come from.
+
+Nothing sends. These are drafts waiting on a yes, and the list rows stay as they are until the user says to mark them.""",
+                "crons": ["H 8 * * 1-5"],
+                "asks": [
+                    "Where is the target list?",
+                    "How many should I work per run? (five by default)",
+                    "Which channel are the first touches for?",
+                    "What time should the batch land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "monday-list-top-up",
+                "title": "Tops up the target list before it runs dry",
+                "prompt": """Audit the target list: count the untouched strong-fit rows, and check for duplicates, stale ownership, and suppression conflicts. Name what is wrong rather than quietly fixing it.
+
+If ten or more untouched strong-fit rows remain, say the list is healthy with the count and stop. Otherwise research up to ten fresh rows at the same bar as the original build — scored fit, verified titles, no guessed contacts — and never re-add a person-and-company pair that came off the list in the last 30 days.
+
+Put the new rows here with the fit reason on each, and wait. Writing them back to the list is the user's call, not this run's.""",
+                "crons": ["H 9 * * 1"],
+                "asks": [
+                    "Where is the target list?",
+                    "What does a strong-fit row look like for you?",
+                    "What day and hour should this run, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "friday-pipeline-recap",
+                "title": "The week's pipeline movement and what is stuck",
+                "prompt": """Pull the week's movement from the numbers source the user trusts, confirming its shape before you read it. Never carry last week forward as news.
+
+A deal already recapped with no change since gets one rollup line, not a repeat block. If nothing moved and nothing is newly stuck, say the week was quiet in one line, add a one-line stalled-age rollup naming the oldest stuck deal and its age, and stop.
+
+Otherwise one block per deal that moved or stalled: the movement with its evidence, your forecast grade, and the one next action with an owner. Label every load-bearing claim FACT, INFERENCE, or UNKNOWN.
+
+Close with the outreach tally — drafted, sent, replies split positive, neutral and negative, meetings booked — graded against a 3-5% reply rate and two to three meetings per hundred sent, then the top three actions for Monday.""",
+                "crons": ["H 16 * * 5"],
+                "asks": [
+                    "Where do the pipeline numbers live?",
+                    "Where are the deal notes?",
+                    "What day and hour should the recap land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
         ],
     },
     {
@@ -498,6 +682,10 @@ For upgrades, you prefer the smallest supported change that removes the risk. Yo
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Riley",
@@ -547,6 +735,10 @@ You prepare renewal and expansion work without forcing a sale. You confirm dates
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Jordan",
@@ -596,6 +788,10 @@ For pipeline and renewals, you measure time in stage against the team's defined 
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Frankie",
@@ -631,6 +827,38 @@ You are conservative about commitments. You never promise a delivery date, refun
             # cadences; Nadia's weekly market digest is the other, and both
             # are research-only (see PreloadSeed.cron).
             {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
+        ],
+        "routines": [
+            {
+                "key": "day-ahead-brief",
+                "title": "Today's meetings, and what still needs you",
+                "prompt": """Read today's calendar and report in this order: what is on today with who is attending, which of those need prep you have not done, what is waiting on someone else, and anything double-booked or missing a location or an agenda.
+
+For each meeting that needs it, say what a good outcome looks like and the one thing to have ready. Keep it scannable: one line per item, owners in bold, times explicit, and a one-line summary at the top for anyone with thirty seconds.
+
+If the day is clear and nothing has changed since your last run, say so in one line. Never invent an attendee, an agenda, or a commitment.""",
+                "crons": ["H 8 * * 1-5"],
+                "asks": [
+                    "Which calendar should I read?",
+                    "What time should the brief land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
+            {
+                "key": "week-ahead-review",
+                "title": "What moved last week, and what is stuck",
+                "prompt": """Fix the period: the last seven full days against the seven before. Compare like with like — a holiday week goes against the prior holiday week, not the one before it.
+
+Report what moved, then what is stuck, in this order: overdue actions, slipped milestones, anything breaching a commitment, and anything with no owner. One line per item with the owner on it. Every number carries its source, and a move you cannot explain from evidence is written as unclear.
+
+Never report the same week twice. A quiet week gets the headline, the summary, and one line saying it was quiet — plus the stuck list, if anything is stuck.""",
+                "crons": ["H 8 * * 1"],
+                "asks": [
+                    "Where do I read what moved — a tracker, a board, a sheet?",
+                    "What day and hour should the review land, and in which timezone?",
+                ],
+                "session_mode": "THREAD",
+            },
         ],
     },
     {
@@ -681,6 +909,10 @@ You draft candidate messages but never send them. Rejection drafts state the dec
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Vera",
@@ -730,6 +962,10 @@ You cannot approve a budget, choose a vendor, accept terms, issue a purchase ord
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
     {
         "name": "Ellis",
@@ -779,6 +1015,10 @@ You do not give legal advice. You do not say language is legal, enforceable, mar
             ),
         ],
         "preloads": [],
+        # No standing work yet. Explicit rather than omitted: a roster
+        # entry declaring nothing to do unattended is a decision, and the
+        # required key is what makes somebody make it.
+        "routines": [],
     },
 ]
 
@@ -1092,6 +1332,93 @@ async def _prune_preloads(
     )
 
 
+async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
+    """Push the roster's routine proposals onto the template, keyed by slug.
+
+    Template rows only. A hire's rows are handled by ``_sync_hired_routines``,
+    which is far more cautious, because a routine on a hire may already be
+    running on somebody's account.
+    """
+    existing = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id}
+    )
+    by_key = {row.key: row for row in existing if row.key is not None}
+    wanted = {routine["key"] for routine in entry["routines"]}
+    for routine in entry["routines"]:
+        fields = _routine_fields(routine)
+        current = by_key.get(routine["key"])
+        if current is None:
+            await prisma.models.ExpertRoutine.prisma().create(
+                data=prisma.types.ExpertRoutineCreateInput(
+                    expertId=template_id, key=routine["key"], **fields
+                )
+            )
+        else:
+            await prisma.models.ExpertRoutine.prisma().update(
+                where={"id": current.id}, data=fields
+            )
+    stale = [row.id for row in existing if row.key not in wanted]
+    if not stale:
+        return
+    await prisma.models.ExpertRoutine.prisma().delete_many(
+        where={"id": {"in": stale}, "expertId": template_id}
+    )
+    logger.info(
+        f"Removed {len(stale)} stale template routine(s) from '{entry['name']}'"
+    )
+
+
+def _routine_fields(
+    routine: RoutineSeed,
+) -> prisma.types.ExpertRoutineUpdateManyMutationInput:
+    """The columns a roster entry owns on a template row.
+
+    ``grantsCredentials`` is absent on purpose: it is never roster-declared, so
+    a template row keeps the schema default of False and no roster edit can
+    hand a seeded routine the keys to somebody's inbox.
+
+    ``source`` is written rather than defaulted, because it is what decides
+    that a hired copy of this row reaches nothing until its owner says so.
+    """
+    return {
+        "title": routine["title"],
+        "prompt": routine["prompt"],
+        "crons": routine["crons"],
+        "asks": routine["asks"],
+        "sessionMode": prisma.enums.ExpertRoutineSession(routine["session_mode"]),
+        "source": prisma.enums.ExpertRoutineSource.TEMPLATE,
+    }
+
+
+async def _sync_hired_routines(template_id: str, entry: RosterEntry) -> int:
+    """Refresh routine proposals on hires — but only the untouched ones.
+
+    A routine nobody has switched on and nobody has edited is still just an
+    offer, so re-wording it or fixing its suggested hour is safe and reaches
+    people who hired last month. Everything else is off limits: once a routine
+    is running, or once its owner has changed a single thing about it, what it
+    does is theirs and a roster edit must never silently rewrite it.
+
+    New roster routines are not added to existing hires either. A hire's
+    routine list is what that expert arrived with; growing it behind the
+    owner's back would put unasked-for standing work on their team page.
+    """
+    if not entry["routines"]:
+        return 0
+    refreshed = 0
+    for routine in entry["routines"]:
+        refreshed += await prisma.models.ExpertRoutine.prisma().update_many(
+            where={
+                "key": routine["key"],
+                "enabledAt": None,
+                "customizedAt": None,
+                "Expert": {"is": {"sourceTemplateId": template_id}},
+            },
+            data=_routine_fields(routine),
+        )
+    return refreshed
+
+
 async def _resolve_roster_preloads() -> dict[str, str]:
     slugs = {preload["slug"] for entry in ROSTER for preload in entry["preloads"]}
     resolved = {
@@ -1157,14 +1484,16 @@ async def seed_roster() -> list[str]:
     for entry in ROSTER:
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry, resolved_versions)
+        await _sync_routines(template.id, entry)
         await _sync_bundled_skills(
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
         refreshed = await _backfill_hired_copies(template)
+        routines = await _sync_hired_routines(template.id, entry)
         template_ids.append(template.id)
         logger.info(
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
-            f"refreshed {refreshed} hired copies"
+            f"refreshed {refreshed} hired copies and {routines} untouched routine(s)"
         )
     await _clear_removed_cadences()
     return template_ids

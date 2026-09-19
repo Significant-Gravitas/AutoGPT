@@ -41,7 +41,7 @@ _MAX_MESSAGE_CHARS = 2_000
 # Same wording for "no such chat" and "belongs to someone else", so the tool
 # is not an existence oracle for session ids.
 _NOT_FOUND = (
-    "No expert chat with id {session_id}. Call list_expert_chats for the ids "
+    "No expert chat with id {session_id}. Call tool:list_expert_chats for the ids "
     "you can read."
 )
 
@@ -166,7 +166,7 @@ class ListExpertChatsTool(BaseTool):
         return ExpertChatListResponse(
             message=(
                 f"{len(rows)} expert chat{'s' if len(rows) != 1 else ''}: "
-                f"{listing}. Read one with read_expert_chat.{more}"
+                f"{listing}. Read one with tool:read_expert_chat.{more}"
             ),
             session_id=session.session_id,
             chats=rows,
@@ -310,7 +310,7 @@ class ReadExpertChatTool(BaseTool):
             )
         if has_more and next_cursor is not None:
             summary += (
-                " Older messages remain — call read_expert_chat again with "
+                " Older messages remain — call tool:read_expert_chat again with "
                 f"before_sequence={next_cursor}."
             )
         elif kept:

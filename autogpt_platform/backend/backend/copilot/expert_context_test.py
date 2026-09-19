@@ -20,6 +20,7 @@ import pytest
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertRoutine,
     ExpertWorkflowRef,
 )
 from backend.copilot.expert_context import (
@@ -64,9 +65,9 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the <skills_update> drift-notice sentence.
+# Last re-pinned for naming deferred tools by their `tool:<name>` capability id.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "a7877c867b2f688996ac0ddab71b2dfd7c9ff110ee2dcf5fa9092fee61268d71"
+    "1b84b359d4bf0526c3cc70665a41b241d2c652d2ca9f10a097902a5f9b1d82a3"
 )
 
 
@@ -672,15 +673,21 @@ class TestBuildExpertContextPlainSession:
         assert results[0] == results[1]
 
     @pytest.mark.asyncio
-    async def test_no_experts_returns_empty(self):
+    async def test_no_experts_renders_no_roster(self):
+        """A teamless account still gets the standing-work instruction — it is
+        the account most likely to be in a plain Otto chat asking for something
+        weekly — but nothing that would describe a team it does not have."""
         from backend.copilot.expert_context import build_expert_context
 
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_routines = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
-        assert result == ""
+        assert "<team_context>" not in result
+        assert "<routines>" not in result
+        assert result.strip().startswith("<standing_work>")
 
     @pytest.mark.asyncio
     async def test_no_experts_with_team_flag_renders_head_of_ai_block(self):
@@ -711,8 +718,8 @@ class TestBuildExpertContextPlainSession:
         assert "<team_context>" in result
         assert "</team_context>" in result
         assert "Head of AI" in result
-        assert "hire_expert(template_id=...)" in result
-        assert "raise_expert(...)" in result
+        assert "`tool:hire_expert` (`template_id`)" in result
+        assert "`tool:raise_expert`" in result
         assert "Propose one hire at a time." in result
         assert (
             "- Maria — Marketing Lead (template_id: tpl-1); "
@@ -925,19 +932,22 @@ class TestInjectUserContextExpertWiring:
         assert "Finding leads" in result
 
     @pytest.mark.asyncio
-    async def test_no_expert_block_without_expert_or_team(self):
+    async def test_no_team_or_expert_block_without_either(self):
         from backend.copilot.model import ChatMessage
         from backend.copilot.service import inject_user_context
 
         msg = ChatMessage(role="user", content="hello", sequence=None)
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
+        mock_db.list_routines = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], user_id="user-1"
             )
 
-        assert result == "hello"
+        assert result.endswith("hello")
+        assert "<team_context>" not in result
+        assert "<expert_identity>" not in result
 
 
 class TestStripInjectedContextForDisplay:
@@ -1080,7 +1090,7 @@ class TestExpertComputerBlock:
         """The system prompt drops the plain chat's note for every expert
         session, so a failed lookup must not cost the expert its block."""
         from backend.copilot.expert_context import (
-            _expert_computer_block,
+            render_expert_computer_block,
             build_expert_context,
         )
         from backend.copilot.prompting import get_sdk_supplement
@@ -1094,7 +1104,7 @@ class TestExpertComputerBlock:
             patch(f"{_EC}.ChatConfig", return_value=config),
         ):
             context = await build_expert_context("user-1", "exp-1")
-            assert context == _expert_computer_block()
+            assert context == render_expert_computer_block()
         turn = get_sdk_supplement(use_e2b=True, expert_session=True) + context
 
         assert turn.count("### Your computer") + turn.count("<expert_computer>") == 1
@@ -1164,3 +1174,141 @@ class TestExpertComputerBlock:
 
         assert "<expert_computer>" not in result
         assert "<expert_workflows>" in result
+
+
+class TestRoutinesBlock:
+    """Standing work, as the model is told about it.
+
+    Nothing here asserts the wording; what each test pins is a decision — that
+    Otto is told routines exist at all, that a proposal is described as a
+    proposal and the owner's own words are not, and that a one-shot says when
+    it runs instead of saying nothing.
+    """
+
+    @staticmethod
+    def _routine(**overrides) -> ExpertRoutine:
+        return ExpertRoutine(
+            **{
+                "id": "routine-1",
+                "expert_id": None,
+                "title": "Weekly calendar read",
+                "prompt": "Read the week ahead.",
+                "crons": ["0 8 * * 1"],
+                "source": "OWNER",
+                "enabled": True,
+                **overrides,
+            }
+        )
+
+    @staticmethod
+    def _db(routines: list[ExpertRoutine]) -> MagicMock:
+        db = MagicMock()
+        db.list_experts = AsyncMock(return_value=[])
+        db.list_templates = AsyncMock(return_value=[])
+        db.list_routines = AsyncMock(return_value=routines)
+        return db
+
+    async def _otto_context(self, routines: list[ExpertRoutine]) -> str:
+        from backend.copilot.expert_context import build_expert_context
+
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=self._db(routines))):
+            return await build_expert_context("user-1", None)
+
+    @pytest.mark.asyncio
+    async def test_otto_is_told_it_can_hold_standing_work(self):
+        """The bug this closes: with nothing in its prompt naming a routine,
+        the model reached for ``schedule_followup`` — the only scheduling tool
+        it had ever been told about — and pinned a weekly job to whatever chat
+        the user happened to be in."""
+        result = await self._otto_context([])
+
+        assert "<standing_work>" in result
+        assert "`tool:schedule_routine`" in result
+        assert "`tool:list_routines`" in result
+
+    @pytest.mark.asyncio
+    async def test_the_flag_that_hides_the_tools_hides_the_instruction(self):
+        """Routines ride the ``expert_resources`` group. With the flag off the
+        tools are not declared, and naming a tool the turn cannot call is worse
+        than saying nothing."""
+        from backend.copilot.expert_context import build_expert_context
+
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db([]))),
+            patch(f"{_EC}.is_feature_enabled", _flag_mock(HIRE_EXPERTS=False)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<standing_work>" not in result
+        assert "schedule_routine" not in result
+
+    @pytest.mark.asyncio
+    async def test_the_accounts_own_routines_are_listed_to_it(self):
+        result = await self._otto_context([self._routine()])
+
+        assert "<routines>" in result
+        assert "Weekly calendar read" in result
+        assert "routine-1" in result
+        assert "0 8 * * 1" in result
+
+    @pytest.mark.asyncio
+    async def test_a_proposal_is_described_as_one(self):
+        """A seeded routine's wording was written for everybody, so it has to
+        be resolved with this owner before it runs."""
+        result = await self._otto_context(
+            [self._routine(source="TEMPLATE", enabled=False, asks=["Which calendar?"])]
+        )
+
+        assert "(proposal)" in result
+        assert "are offers, not plans" in result
+        assert "Which calendar?" in result
+
+    @pytest.mark.asyncio
+    async def test_the_owners_own_words_are_not(self):
+        """Said about a routine the user dictated, "answer its open questions"
+        is nonsense — and worse, it sends the model back to re-ask things they
+        already answered."""
+        result = await self._otto_context([self._routine(source="OWNER")])
+
+        assert "<routines>" in result
+        assert "(proposal)" not in result
+        assert "are offers, not plans" not in result
+
+    @pytest.mark.asyncio
+    async def test_a_one_shot_says_when_it_runs(self):
+        """It has no cron, so the cadence-shaped rendering left it describing
+        itself with an empty string where its time should be."""
+        result = await self._otto_context(
+            [
+                self._routine(
+                    title="Check the deploy",
+                    crons=[],
+                    run_at=datetime(2026, 9, 20, 14, 30, tzinfo=timezone.utc),
+                )
+            ]
+        )
+
+        assert "2026-09-20 14:30" in result
+
+    @pytest.mark.asyncio
+    async def test_a_mixed_list_marks_only_the_proposals(self):
+        """An expert holds a template's offers and the owner's own routines at
+        once. One blanket rule about drafts would send the model back to re-ask
+        questions the user already answered."""
+        result = await self._otto_context(
+            [
+                self._routine(
+                    id="r-template",
+                    title="Shipped with me",
+                    source="TEMPLATE",
+                    enabled=False,
+                ),
+                self._routine(
+                    id="r-owner", title="Mine", source="OWNER", enabled=False
+                ),
+            ]
+        )
+
+        lines = [ln for ln in result.splitlines() if ln.startswith("- ")]
+        marked = {ln.split(" (id: ")[0][2:]: "(proposal)" in ln for ln in lines}
+        assert marked == {"Shipped with me": True, "Mine": False}
