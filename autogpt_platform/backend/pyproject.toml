@@ -13,7 +13,7 @@ aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
 agentmail = ">=0.4.5,<0.6.0"
-anthropic = "^0.79.0"
+anthropic = ">=0.79,<1.7"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bcrypt = "^5.0.0"
