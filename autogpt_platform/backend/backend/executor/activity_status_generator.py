@@ -2,6 +2,7 @@
 Module for generating AI-based activity status for graph executions.
 """
 
+import asyncio
 import json
 import logging
 import math
@@ -20,9 +21,15 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
+from backend.executor.run_judge import (
+    JudgeResult,
+    judge_execution_safely,
+    verdicts_block,
+)
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
@@ -38,6 +45,13 @@ _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 _MAX_JSON_RETRIES = 3
 _MAX_OUTPUT_TOKENS = 150
+
+# Per-node input/output samples are clipped hard to keep the prompt small;
+# the graph's terminal/output nodes are what the judge actually needs to see,
+# so they get a much larger allowance (still bounded by the Jev byte budget).
+_NODE_DATA_CHAR_LIMIT = 100
+_GRAPH_OUTPUT_CHAR_LIMIT = 2_000
+_GRAPH_OUTPUT_BLOCK_NAMES = frozenset({"AgentOutputBlock"})
 
 # Sentinel for ``generate_activity_status_for_execution.model_name``. The
 # parameter defaults to this for cloud routing. Under the local transport
@@ -185,6 +199,7 @@ class NodeInfo(TypedDict):
     recent_errors: list[ErrorInfo]
     recent_outputs: list[InputOutputInfo]
     recent_inputs: list[InputOutputInfo]
+    is_graph_output: bool
 
 
 class NodeRelation(TypedDict):
@@ -204,6 +219,7 @@ class ActivityStatusResponse(TypedDict):
 
     activity_status: str
     correctness_score: float
+    judge: NotRequired[dict[str, Any] | None]
 
 
 def _truncate_uuid(uuid_str: str) -> str:
@@ -295,10 +311,13 @@ async def generate_activity_status_for_execution(
         logger.debug(
             f"Skipping activity status generation for {graph_exec_id}: already exists"
         )
-        return {
+        existing: ActivityStatusResponse = {
             "activity_status": execution_stats.activity_status,
             "correctness_score": execution_stats.correctness_score,
         }
+        if execution_stats.judge is not None:
+            existing["judge"] = execution_stats.judge
+        return existing
 
     # Check for deterministic failures that don't need LLM analysis.
     deterministic_result = _get_deterministic_failure_response(
@@ -308,6 +327,17 @@ async def generate_activity_status_for_execution(
         logger.info(
             f"Skipping LLM analysis for {graph_exec_id}: deterministic failure detected"
         )
+        # The judge short-circuits the same failures without calling Jev, so
+        # the persisted record stays consistent across both paths.
+        judge = await judge_execution_safely(
+            {},
+            execution_stats,
+            execution_status,
+            graph_exec_id=graph_exec_id,
+            settings=Settings(),
+        )
+        if judge is not None:
+            deterministic_result["judge"] = judge.to_stats()
         return deterministic_result
 
     # Acquire an OpenRouter-backed (or local-transport) OpenAI client.
@@ -329,6 +359,7 @@ async def generate_activity_status_for_execution(
         )
         return None
 
+    judge_task: "asyncio.Task[JudgeResult | None] | None" = None
     try:
         # Get all node executions for this graph execution
         node_executions = await db_client.get_node_executions(
@@ -367,10 +398,35 @@ async def generate_activity_status_for_execution(
             "  - correctness_score: number between 0.0 and 1.0\n"
         )
 
+        # TypeSafe Jev run judge. ``shadow`` runs it concurrently with the
+        # summary LLM and only records the verdicts; ``primary`` awaits it
+        # first so the verdicts can condition the prose and set the score.
+        judge_settings = Settings()
+        judge_mode = judge_settings.config.run_judge_mode
+        judge_result: JudgeResult | None = None
+        if judge_mode != "off":
+            judge_task = asyncio.create_task(
+                judge_execution_safely(
+                    execution_data,
+                    execution_stats,
+                    execution_status,
+                    graph_exec_id=graph_exec_id,
+                    settings=judge_settings,
+                )
+            )
+        if judge_mode == "primary" and judge_task is not None:
+            judge_result = await _await_judge(judge_task, graph_exec_id)
+            judge_task = None
+
         execution_data_json = json.dumps(execution_data, indent=2)
         user_prompt_content = user_prompt.replace("{{GRAPH_NAME}}", graph_name).replace(
             "{{EXECUTION_DATA}}", execution_data_json
         )
+        if judge_result is not None and judge_result.ok:
+            user_prompt_content = (
+                f"{user_prompt_content}\n\n{verdicts_block(judge_result)}\n"
+                "Write the activity_status so it is consistent with these verdicts."
+            )
 
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system_prompt_with_format},
@@ -490,10 +546,30 @@ async def generate_activity_status_for_execution(
             db_client=db_client,
         )
 
+        if judge_task is not None:
+            judge_result = await _await_judge(judge_task, graph_exec_id)
+            judge_task = None
+
         if activity_response is None:
             raise RuntimeError(
                 f"Failed to parse OpenRouter response after {_MAX_JSON_RETRIES} attempts: {last_error}"
             )
+
+        if judge_result is not None:
+            activity_response["judge"] = judge_result.to_stats()
+            _persist_judge_cost(
+                judge_result,
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                db_client=db_client,
+            )
+            if judge_mode == "primary" and judge_result.ok:
+                # Shadow mode never touches correctness_score; primary derives
+                # it from P(delivered) + 0.5 * P(partially_delivered).
+                activity_response["correctness_score"] = float(
+                    judge_result.derived_correctness_score or 0.0
+                )
 
         logger.debug(
             f"Generated activity status for {graph_exec_id}: {activity_response}"
@@ -504,6 +580,21 @@ async def generate_activity_status_for_execution(
         logger.exception(
             f"Failed to generate activity status for execution {graph_exec_id}: {str(e)}"
         )
+        return None
+    finally:
+        # Never leave a shadow judge task dangling if the summary path raised.
+        if judge_task is not None and not judge_task.done():
+            judge_task.cancel()
+
+
+async def _await_judge(
+    judge_task: "asyncio.Task[JudgeResult | None]", graph_exec_id: str
+) -> JudgeResult | None:
+    """Collect the judge task; a judge failure must never fail the summary."""
+    try:
+        return await judge_task
+    except Exception:
+        logger.exception(f"run_judge task failed for {graph_exec_id}; ignoring")
         return None
 
 
@@ -546,6 +637,7 @@ def _persist_activity_status_cost(
     model_name: str,
     provider: str,
     db_client: "DatabaseManagerAsyncClient",
+    block_name: str = "activity_status_generator",
 ) -> None:
     """Schedule a PlatformCostLog entry for the activity-status LLM call.
 
@@ -581,7 +673,7 @@ def _persist_activity_status_cost(
                 user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
-                block_name="activity_status_generator",
+                block_name=block_name,
                 provider=provider,
                 cost_microdollars=cost_microdollars,
                 input_tokens=input_tokens or None,
@@ -590,7 +682,7 @@ def _persist_activity_status_cost(
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
                 metadata={
-                    "source": "activity_status_generator",
+                    "source": block_name,
                     "execution_path": "sync",
                 },
             ),
@@ -601,6 +693,31 @@ def _persist_activity_status_cost(
             "the activity status itself was returned successfully",
             graph_exec_id,
         )
+
+
+def _persist_judge_cost(
+    judge_result: JudgeResult,
+    *,
+    user_id: str,
+    graph_exec_id: str,
+    graph_id: str,
+    db_client: "DatabaseManagerAsyncClient",
+) -> None:
+    """Tokens-only PlatformCostLog row for the Jev call (TypeSafe reports no price)."""
+    if judge_result.source != "jev":
+        return
+    _persist_activity_status_cost(
+        cost_usd=None,
+        input_tokens=judge_result.input_tokens or 0,
+        output_tokens=judge_result.output_tokens or 0,
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+        graph_id=graph_id,
+        model_name="jev-latest",
+        provider="typesafe",
+        db_client=db_client,
+        block_name="run_judge",
+    )
 
 
 def _build_execution_summary(
@@ -622,6 +739,10 @@ def _build_execution_summary(
     input_output_data: dict[str, Any] = {}
     node_map: dict[str, NodeInfo] = {}
 
+    # Terminal nodes (no outgoing link) and explicit output blocks are the
+    # graph's results: the judge sees their outputs at a much larger size.
+    link_source_ids = {link.source_id for link in graph_links}
+
     # Process node executions
     for node_exec in node_executions:
         block = get_block(node_exec.block_id)
@@ -630,6 +751,10 @@ def _build_execution_summary(
                 f"Block {node_exec.block_id} not found for node {node_exec.node_id}"
             )
             continue
+        is_graph_output = (
+            node_exec.node_id not in link_source_ids
+            or block.name in _GRAPH_OUTPUT_BLOCK_NAMES
+        )
 
         # Track execution counts per node
         if node_exec.node_id not in node_execution_counts:
@@ -670,8 +795,11 @@ def _build_execution_summary(
             if node_exec.node_id not in node_outputs:
                 node_outputs[node_exec.node_id] = []
 
-            # Truncate output data to 100 chars to save space
-            truncated_output = truncate(node_exec.output_data, 100)
+            # Truncate output data to save space; graph outputs keep more.
+            truncated_output = truncate(
+                node_exec.output_data,
+                _GRAPH_OUTPUT_CHAR_LIMIT if is_graph_output else _NODE_DATA_CHAR_LIMIT,
+            )
 
             node_outputs[node_exec.node_id].append(
                 {
@@ -687,7 +815,7 @@ def _build_execution_summary(
                 node_inputs[node_exec.node_id] = []
 
             # Truncate input data to 100 chars to save space
-            truncated_input = truncate(node_exec.input_data, 100)
+            truncated_input = truncate(node_exec.input_data, _NODE_DATA_CHAR_LIMIT)
 
             node_inputs[node_exec.node_id].append(
                 {
@@ -709,6 +837,7 @@ def _build_execution_summary(
                 "recent_errors": [],  # Will be set later
                 "recent_outputs": [],  # Will be set later
                 "recent_inputs": [],  # Will be set later
+                "is_graph_output": is_graph_output,
             }
             nodes.append(node_data)
             node_map[node_exec.node_id] = node_data
