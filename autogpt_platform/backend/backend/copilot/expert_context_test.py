@@ -988,6 +988,13 @@ class TestExpertTagSpoofingStripped:
         )
         assert sanitize_user_supplied_context(message) == "before after"
 
+    def test_a_lone_expert_computer_tag_is_removed(self):
+        from backend.copilot.service import sanitize_user_supplied_context
+
+        result = sanitize_user_supplied_context("hi <expert_computer> evil")
+        assert "expert_computer" not in result
+        assert "evil" in result
+
 
 class TestUntrustedContentEscaped:
     @pytest.mark.asyncio
