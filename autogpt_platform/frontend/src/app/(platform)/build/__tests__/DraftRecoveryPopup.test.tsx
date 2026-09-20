@@ -105,9 +105,8 @@ describe("DraftRecoveryPopup", () => {
 
   describe("when closed", () => {
     it("renders nothing when isOpen is false", async () => {
-      const { useDraftRecoveryPopup } = await import(
-        "../components/DraftRecoveryDialog/useDraftRecoveryPopup"
-      );
+      const { useDraftRecoveryPopup } =
+        await import("../components/DraftRecoveryDialog/useDraftRecoveryPopup");
       vi.mocked(useDraftRecoveryPopup).mockReturnValue({
         isOpen: false,
         popupRef: { current: null },
@@ -128,9 +127,8 @@ describe("DraftRecoveryPopup", () => {
 
   describe("when diff is null", () => {
     it("falls back to node/edge count display", async () => {
-      const { useDraftRecoveryPopup } = await import(
-        "../components/DraftRecoveryDialog/useDraftRecoveryPopup"
-      );
+      const { useDraftRecoveryPopup } =
+        await import("../components/DraftRecoveryDialog/useDraftRecoveryPopup");
       vi.mocked(useDraftRecoveryPopup).mockReturnValue({
         isOpen: true,
         popupRef: { current: null },
@@ -149,9 +147,8 @@ describe("DraftRecoveryPopup", () => {
     });
 
     it("uses singular for 1 block", async () => {
-      const { useDraftRecoveryPopup } = await import(
-        "../components/DraftRecoveryDialog/useDraftRecoveryPopup"
-      );
+      const { useDraftRecoveryPopup } =
+        await import("../components/DraftRecoveryDialog/useDraftRecoveryPopup");
       vi.mocked(useDraftRecoveryPopup).mockReturnValue({
         isOpen: true,
         popupRef: { current: null },

@@ -749,9 +749,8 @@ export default class BackendAPI {
     path: string,
     formData: FormData,
   ): Promise<string> {
-    const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
-      "./helpers"
-    );
+    const { makeAuthenticatedFileUpload, buildServerUrl } =
+      await import("./helpers");
     const url = buildServerUrl(path);
     return await makeAuthenticatedFileUpload(url, formData);
   }
@@ -937,9 +936,8 @@ export default class BackendAPI {
     path: string,
     payload?: Record<string, any>,
   ) {
-    const { makeAuthenticatedRequest, buildServerUrl } = await import(
-      "./helpers"
-    );
+    const { makeAuthenticatedRequest, buildServerUrl } =
+      await import("./helpers");
     const url = buildServerUrl(path);
 
     // For server-side requests, try to read impersonation from cookies

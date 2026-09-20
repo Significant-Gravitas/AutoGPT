@@ -525,23 +525,23 @@ export function useYourPlanCard() {
     // be released first via resumeSubscription, not stacked with a new tier.
     canUpgrade: Boolean(
       plan?.nextTier &&
-        !plan?.isPendingCancel &&
-        !plan?.isPendingDowngrade &&
-        !plan?.isPendingCycleSwitch,
+      !plan?.isPendingCancel &&
+      !plan?.isPendingDowngrade &&
+      !plan?.isPendingCycleSwitch,
     ),
     // Downgrade only when an active paid sub has a tier below it AND no
     // pending change is already in flight — avoids stacking schedules.
     canDowngrade: Boolean(
       plan?.isPaidPlan &&
-        plan?.previousTier &&
-        !plan?.isPendingCancel &&
-        !plan?.isPendingDowngrade &&
-        !plan?.isPendingCycleSwitch,
+      plan?.previousTier &&
+      !plan?.isPendingCancel &&
+      !plan?.isPendingDowngrade &&
+      !plan?.isPendingCycleSwitch,
     ),
     canResume: Boolean(
       plan?.isPendingCancel ||
-        plan?.isPendingDowngrade ||
-        plan?.isPendingCycleSwitch,
+      plan?.isPendingDowngrade ||
+      plan?.isPendingCycleSwitch,
     ),
     selectedCycle,
     pendingCycle,

@@ -67,9 +67,8 @@ describe("McpConnectPanel", () => {
   // Saving a manual credential probes the server first, so the default is an
   // accepting server; the tests that care override it.
   beforeEach(async () => {
-    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
       status: 200,
       data: { tools: [], server_name: "Example" },
@@ -106,9 +105,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("allows manual authentication without first attempting OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     render(
       <McpConnectPanel
         onSuccess={() => {}}
@@ -170,9 +168,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("falls back to manual-token form when initiate returns 400", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
@@ -196,9 +193,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("offers the manual form for a catalog service that has no OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     // A catalog entry without OAuth is rejected in quite different words from
     // the "does not advertise OAuth" case above. Both mean the same thing to
@@ -230,9 +226,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("keeps the OAuth form for a 400 that is not about missing OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     // A failed client registration is a problem with this attempt, on a server
     // that does support OAuth. Sending the user off to find an API token would
@@ -597,9 +592,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("lets the user switch from manual-token back to OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(400, noOAuthDetail.detail),
@@ -730,9 +724,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("renders an aria-live error region when a non-400 error occurs", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(500, "internal server error"),

@@ -168,9 +168,8 @@ describe("MCPToolDialog credential binding", () => {
     // Storing via the endpoint directly leaves the provider map without the
     // credential the node is about to be bound to, and the builder renders
     // that binding as "was removed" until the next page load.
-    const { postV2StoreABearerTokenForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2StoreABearerTokenForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     const mcpStoreToken = vi.fn().mockResolvedValue(CREDENTIAL);
     const providers = {
       mcp: { mcpStoreToken, savedCredentials: [] },
@@ -204,9 +203,8 @@ describe("MCPToolDialog credential binding", () => {
       postV2DiscoverAvailableToolsOnAnMcpServer,
       postV2StoreABearerTokenForAnMcpServer,
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
 
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer)
       .mockResolvedValueOnce(
@@ -368,9 +366,8 @@ describe("MCPToolDialog credential binding", () => {
   });
 
   it("does not reuse a credential after changing to a public server", async () => {
-    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     const onConfirm = vi.fn();
     render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
 

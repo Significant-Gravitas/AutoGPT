@@ -52,9 +52,8 @@ async function setupSuccessfulPopup() {
 }
 
 async function mockInitiateOk() {
-  const { getV1InitiateOauthFlow } = await import(
-    "@/app/api/__generated__/endpoints/integrations/integrations"
-  );
+  const { getV1InitiateOauthFlow } =
+    await import("@/app/api/__generated__/endpoints/integrations/integrations");
   vi.mocked(getV1InitiateOauthFlow).mockResolvedValue({
     status: 200,
     data: {
@@ -73,9 +72,8 @@ describe("useOAuthConnect — error toast", () => {
     await setupSuccessfulPopup();
     await mockInitiateOk();
 
-    const { postV1ExchangeOauthCodeForTokens } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { postV1ExchangeOauthCodeForTokens } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(postV1ExchangeOauthCodeForTokens).mockRejectedValue(
       makeApiError(422, {
         detail: [
@@ -110,9 +108,8 @@ describe("useOAuthConnect — error toast", () => {
     await setupSuccessfulPopup();
     await mockInitiateOk();
 
-    const { postV1ExchangeOauthCodeForTokens } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { postV1ExchangeOauthCodeForTokens } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(postV1ExchangeOauthCodeForTokens).mockRejectedValue(
       makeApiError(400, {
         detail: "OAuth2 callback failed to exchange code for tokens",
@@ -134,9 +131,8 @@ describe("useOAuthConnect — error toast", () => {
   });
 
   it("shows the 501 dict detail message for an unconfigured provider", async () => {
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
       makeApiError(501, {
         detail: {
@@ -160,9 +156,8 @@ describe("useOAuthConnect — error toast", () => {
   });
 
   it("still fires the toast after a StrictMode mount→cleanup→remount", async () => {
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
       makeApiError(501, { detail: { message: "not configured" } }),
     );
@@ -191,16 +186,14 @@ describe("useOAuthConnect — popup window lifecycle", () => {
 
     const fakeWindow = { closed: false, close: vi.fn() };
     const callOrder: string[] = [];
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
       callOrder.push("preOpen");
       return fakeWindow as unknown as Window;
     });
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockImplementation(async () => {
       callOrder.push("initiate");
       return {
@@ -240,9 +233,8 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       fakeWindow as unknown as Window,
     );
 
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
       makeApiError(501, { detail: { message: "not configured" } }),
     );
@@ -259,17 +251,15 @@ describe("useOAuthConnect — popup window lifecycle", () => {
 
   it("closes the pre-opened window and skips adoption when unmounted mid-initiation", async () => {
     const fakeWindow = { closed: false, close: vi.fn() };
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockReturnValue(
       fakeWindow as unknown as Window,
     );
 
     let resolveInitiate: (value: unknown) => void = () => {};
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -305,9 +295,8 @@ describe("useOAuthConnect — popup window lifecycle", () => {
   it("warns the user when the browser blocked the popup", async () => {
     await mockInitiateOk();
 
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
     vi.mocked(openOAuthPopup).mockReturnValue({
       promise: new Promise(() => {}), // flow stays in flight
@@ -333,9 +322,8 @@ describe("useOAuthConnect — popup window lifecycle", () => {
   it("shows only the failure toast when both popup and fallback tab are blocked", async () => {
     await mockInitiateOk();
 
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
     vi.mocked(openOAuthPopup).mockImplementation(
       () =>
@@ -375,9 +363,8 @@ describe("useOAuthConnect — popup window lifecycle", () => {
     vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
 
     let resolveInitiate: (value: unknown) => void = () => {};
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -419,9 +406,8 @@ describe("useOAuthConnect — login request shape", () => {
   }) {
     await setupSuccessfulPopup();
     await mockInitiateOk();
-    const { postV1ExchangeOauthCodeForTokens } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { postV1ExchangeOauthCodeForTokens } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(postV1ExchangeOauthCodeForTokens).mockResolvedValue({
       status: 200,
       data: { id: "cred-1" },
@@ -432,9 +418,8 @@ describe("useOAuthConnect — login request shape", () => {
     );
     await result.current.connect();
 
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     return vi.mocked(getV1InitiateOauthFlow).mock.calls[0];
   }
 
@@ -462,9 +447,8 @@ describe("useOAuthConnect — login request shape", () => {
 
   it("does not retry a 404 that is not about the upgrade target", async () => {
     await setupSuccessfulPopup();
-    const { getV1InitiateOauthFlow } = await import(
-      "@/app/api/__generated__/endpoints/integrations/integrations"
-    );
+    const { getV1InitiateOauthFlow } =
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
       makeApiError(404, { detail: "Provider 'foo' does not support OAuth" }),
     );
@@ -487,9 +471,7 @@ describe("useOAuthConnect — login request shape", () => {
   it("retries without the upgrade target when the backend 404s it", async () => {
     await setupSuccessfulPopup();
     const { getV1InitiateOauthFlow, postV1ExchangeOauthCodeForTokens } =
-      await import(
-        "@/app/api/__generated__/endpoints/integrations/integrations"
-      );
+      await import("@/app/api/__generated__/endpoints/integrations/integrations");
     vi.mocked(getV1InitiateOauthFlow)
       .mockRejectedValueOnce(
         makeApiError(404, { detail: "Credential to upgrade not found" }),

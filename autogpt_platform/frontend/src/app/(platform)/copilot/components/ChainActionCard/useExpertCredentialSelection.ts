@@ -63,9 +63,9 @@ export function useExpertCredentialSelection(
   // it has not caught up with is merely absent, not unusable.
   const isSelectedLoaded = Boolean(
     selectedID &&
-      provider?.savedCredentials.some(
-        (credential) => credential.id === selectedID,
-      ),
+    provider?.savedCredentials.some(
+      (credential) => credential.id === selectedID,
+    ),
   );
   // A granted selection stays put: swapping it for a different granted
   // account would undo the choice just made, and clearing it would flip the

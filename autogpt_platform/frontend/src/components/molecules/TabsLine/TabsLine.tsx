@@ -26,8 +26,9 @@ function useTabsLine() {
   return context;
 }
 
-interface TabsLineProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
+interface TabsLineProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Root
+> {
   /**
    * `compact` is the dense neutral style: flush, zinc underline, 14px
    * triggers with tighter padding. `default` keeps the purple accent.
@@ -48,8 +49,9 @@ function TabsLine({ variant = "default", ...props }: TabsLineProps) {
   );
 }
 
-interface TabsLineListProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
+interface TabsLineListProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.List
+> {
   /**
    * When `true`, removes the left padding on the first tab trigger so it
    * aligns flush with the list's left edge. Defaults to `false`.
@@ -107,8 +109,9 @@ const TabsLineList = React.forwardRef<
 });
 TabsLineList.displayName = "TabsLineList";
 
-interface TabsLineTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> {
+interface TabsLineTriggerProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Trigger
+> {
   /** Hugeicon shown before the label at 14px. */
   icon?: IconSvgElement;
 }

@@ -17,9 +17,9 @@ import { trackTourScenarioComplete, trackTourStart } from "./tracking";
 
 const ArtifactPanel = dynamic(
   () =>
-    import(
-      "@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel"
-    ).then((m) => m.ArtifactPanel),
+    import("@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
   { ssr: false },
 );
 
