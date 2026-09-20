@@ -37,6 +37,44 @@ def wait_for_postgres(max_retries=5, delay=5):
     return False
 
 
+def wait_for_redis_cluster(max_retries=30, delay=2):
+    """Block until the 3-shard cluster has finished forming.
+
+    ``redis-init`` creates the cluster asynchronously after the shards come
+    up. Until ``cluster_state`` is ``ok`` the backend's ``RedisCluster``
+    client cannot resolve slots, and its connection retry backs off for tens
+    of minutes rather than failing — so a test session started too early
+    looks like a hang, not like a race.
+    """
+    for _ in range(max_retries):
+        result = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yaml",
+                "--env-file",
+                "../.env",
+                "exec",
+                "redis-0",
+                "redis-cli",
+                "-p",
+                "17000",
+                "cluster",
+                "info",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if "cluster_state:ok" in result.stdout:
+            print("Redis cluster is ready.")
+            return True
+        print(f"Redis cluster is not ready yet. Retrying in {delay} seconds...")
+        time.sleep(delay)
+    print("Failed to form the Redis cluster.")
+    return False
+
+
 def run_command(command, check=True):
     try:
         subprocess.run(command, check=check)
@@ -60,7 +98,7 @@ def test():
         ]
     )
 
-    if not wait_for_postgres():
+    if not wait_for_postgres() or not wait_for_redis_cluster():
         run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
         sys.exit(1)
 
