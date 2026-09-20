@@ -14,7 +14,13 @@ const options = ["Research", "Outreach", "Reporting"];
 // The field is controlled, so every keystroke round-trips through state the
 // way it does under the chain card; a fired change event would not catch text
 // that is lost between one render and the next.
-function FieldHarness({ initial }: { initial: MultiAnswer }) {
+function FieldHarness({
+  initial,
+  autoFocus = false,
+}: {
+  initial: MultiAnswer;
+  autoFocus?: boolean;
+}) {
   const [value, setValue] = useState<MultiAnswer>(initial);
   return (
     <>
@@ -23,7 +29,7 @@ function FieldHarness({ initial }: { initial: MultiAnswer }) {
         options={options}
         value={value}
         labelId="areas"
-        autoFocus={false}
+        autoFocus={autoFocus}
         onChange={setValue}
         onSubmit={() => undefined}
       />
@@ -150,6 +156,27 @@ describe("QuestionMultiAnswerField", () => {
     await user.type(textbox(), " lead");
     expect(textbox().value).toBe("Research lead");
     expect(ticked()).toEqual(["Outreach"]);
+  });
+
+  it("keeps keyboard focus on the box just unticked instead of the first tick", async () => {
+    const user = userEvent.setup();
+    render(<FieldHarness initial={empty()} autoFocus />);
+
+    const research = screen.getByRole("checkbox", { name: "Research" });
+    const reporting = screen.getByRole("checkbox", { name: "Reporting" });
+    expect(document.activeElement).toBe(research);
+
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(ticked()).toEqual(["Reporting"]);
+    expect(document.activeElement).toBe(reporting);
+
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(ticked()).toEqual(["Research", "Reporting"]);
+    expect(document.activeElement).toBe(research);
+
+    await user.keyboard("{Enter}");
+    expect(ticked()).toEqual(["Reporting"]);
+    expect(document.activeElement).toBe(research);
   });
 
   it("orders the ticks as the options were offered", async () => {

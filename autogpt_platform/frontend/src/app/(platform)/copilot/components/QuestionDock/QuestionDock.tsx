@@ -31,7 +31,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
   const formId = useId();
 
   const dismissed = dockId === dismissedId;
@@ -109,6 +109,9 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 {q.question}
               </span>
               <QuestionMultiAnswerField
+                ref={(element) => {
+                  inputRefs.current[q.keyword] = element;
+                }}
                 options={q.options}
                 value={toMultiAnswer(answers[q.keyword])}
                 labelId={`${formId}-${q.keyword}`}

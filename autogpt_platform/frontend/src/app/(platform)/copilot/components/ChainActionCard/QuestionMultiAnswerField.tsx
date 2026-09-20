@@ -3,9 +3,12 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { isKey } from "@/lib/keyboard";
-import { useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { MultiAnswer } from "../../tools/clarifying-questions";
-import { QuestionCheckboxList } from "./QuestionCheckboxList";
+import {
+  QuestionCheckboxList,
+  type QuestionCheckboxListHandle,
+} from "./QuestionCheckboxList";
 
 interface Props {
   options: string[];
@@ -16,17 +19,22 @@ interface Props {
   onSubmit: () => void;
 }
 
+export interface QuestionMultiAnswerFieldHandle {
+  focus: () => void;
+}
+
 /** The answer input for a question that takes several answers: the options
  *  as a checkbox group, plus typed text kept *alongside* the ticks rather
  *  than replacing them — "any of these, and also…" is the whole point. */
-export function QuestionMultiAnswerField({
-  options,
-  value,
-  labelId,
-  autoFocus,
-  onChange,
-  onSubmit,
-}: Props) {
+export const QuestionMultiAnswerField = forwardRef<
+  QuestionMultiAnswerFieldHandle,
+  Props
+>(function QuestionMultiAnswerField(
+  { options, value, labelId, autoFocus, onChange, onSubmit },
+  ref,
+) {
+  const listRef = useRef<QuestionCheckboxListHandle>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   // The ticks and the typed text arrive in separate slots and stay that way:
   // text that happens to equal an option is still the user's own words, so it
   // neither ticks the box nor drains out of the textarea — including after a
@@ -34,6 +42,15 @@ export function QuestionMultiAnswerField({
   const selected = value.selected.filter((pick) => options.includes(pick));
   const custom = value.custom;
   const [typing, setTyping] = useState(() => custom.length > 0);
+
+  // "Answer this one" lands wherever the user left off: the open textarea if
+  // they were typing, otherwise the checkbox group.
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (typing) textareaRef.current?.focus();
+      else listRef.current?.focus();
+    },
+  }));
 
   function commit(nextSelected: string[], nextCustom: string) {
     // Rebuilt in the order they were offered, so the reply reads like the
@@ -56,6 +73,7 @@ export function QuestionMultiAnswerField({
   return (
     <div className="flex flex-col gap-2">
       <QuestionCheckboxList
+        ref={listRef}
         options={options}
         selected={selected}
         labelId={labelId}
@@ -64,6 +82,7 @@ export function QuestionMultiAnswerField({
       />
       {typing ? (
         <textarea
+          ref={textareaRef}
           rows={2}
           aria-labelledby={labelId}
           autoFocus
@@ -90,4 +109,4 @@ export function QuestionMultiAnswerField({
       )}
     </div>
   );
-}
+});

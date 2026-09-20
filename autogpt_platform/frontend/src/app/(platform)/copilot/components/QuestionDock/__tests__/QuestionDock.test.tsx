@@ -113,6 +113,36 @@ describe("QuestionDock", () => {
     );
   });
 
+  it("focuses an unanswered multi-select question instead of sending", async () => {
+    const user = userEvent.setup();
+    const onSend = renderDock([
+      questionMessage([
+        { question: "Which region?", keyword: "region" },
+        {
+          question: "What areas should they own?",
+          keyword: "areas",
+          options: ["Research", "Outreach", "Reporting"],
+          allow_multiple: true,
+        },
+      ]),
+    ]);
+
+    await user.type(screen.getByLabelText("Which region?"), "Europe");
+    await user.click(screen.getByRole("button", { name: "Answer" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: "Research" }),
+    );
+
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(screen.getByRole("button", { name: "Answer" }));
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSend).toHaveBeenCalledWith(
+      "**Here are my answers:**\n\n> Which region?\n\nEurope\n\n> What areas should they own?\n\nOutreach\n\nPlease proceed.",
+    );
+  });
+
   it("hides after skipping", async () => {
     const user = userEvent.setup();
     const onSend = renderDock([

@@ -3,7 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { isKey } from "@/lib/keyboard";
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 interface Props {
   /** Expected trimmed and deduped — `toOptions` establishes that invariant,
@@ -15,23 +15,41 @@ interface Props {
   onToggle: (option: string) => void;
 }
 
+export interface QuestionCheckboxListHandle {
+  focus: () => void;
+}
+
 /** The options for a multi-select question as a real checkbox group: one stop
  *  in the tab order, arrows moving focus only. The radiogroup's "arrows also
  *  select" model cannot work here — arrowing past four boxes would tick all
  *  four on the way to the fifth. */
-export function QuestionCheckboxList({
-  options,
-  selected,
-  labelId,
-  focusActiveOption,
-  onToggle,
-}: Props) {
+export const QuestionCheckboxList = forwardRef<
+  QuestionCheckboxListHandle,
+  Props
+>(function QuestionCheckboxList(
+  { options, selected, labelId, focusActiveOption, onToggle },
+  ref,
+) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const first = options.findIndex((option) => selected.includes(option));
   const active = first === -1 ? 0 : first;
 
+  useImperativeHandle(ref, () => ({
+    focus: () => refs.current[active]?.focus(),
+  }));
+
+  // Focus lands on the group once, when asked. `active` is the tab stop, not
+  // the caret: it follows the first tick, and re-running on every change would
+  // yank focus off the box the user just unticked.
+  const focused = useRef(false);
   useEffect(() => {
-    if (focusActiveOption) refs.current[active]?.focus();
+    if (!focusActiveOption) {
+      focused.current = false;
+      return;
+    }
+    if (focused.current) return;
+    focused.current = true;
+    refs.current[active]?.focus();
   }, [focusActiveOption, active]);
 
   function handleKeyDown(event: React.KeyboardEvent, index: number) {
@@ -91,4 +109,4 @@ export function QuestionCheckboxList({
       })}
     </div>
   );
-}
+});
