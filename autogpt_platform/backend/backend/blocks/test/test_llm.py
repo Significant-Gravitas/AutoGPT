@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import httpx
+import httpx2
 import openai
 import pytest
 
@@ -1007,8 +1008,8 @@ class TestAITextSummarizerValidation:
 
 def _make_anthropic_status_error(status_code: int) -> anthropic.APIStatusError:
     """Create an anthropic.APIStatusError with the given status code."""
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    response = httpx.Response(status_code, request=request)
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(status_code, request=request)
     return anthropic.APIStatusError(
         f"Error code: {status_code}", response=response, body=None
     )
@@ -1560,7 +1561,7 @@ class TestLLMRequestTimeout:
             ),
             pytest.param(
                 lambda: anthropic.APITimeoutError(
-                    request=httpx.Request("POST", "http://x")
+                    request=httpx2.Request("POST", "http://x")
                 ),
                 id="anthropic-sdk",
             ),
