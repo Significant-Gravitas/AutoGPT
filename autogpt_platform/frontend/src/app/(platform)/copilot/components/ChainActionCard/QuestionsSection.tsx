@@ -9,7 +9,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { m } from "framer-motion";
 import { useId, useState } from "react";
-import { isAnswered, toAnswerText } from "../../tools/clarifying-questions";
+import {
+  isAnswered,
+  toAnswerText,
+  toMultiAnswer,
+} from "../../tools/clarifying-questions";
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
@@ -96,7 +100,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           <QuestionMultiAnswerField
             key={id}
             options={multiOptions}
-            value={answer ?? []}
+            value={toMultiAnswer(answer)}
             labelId={labelId}
             autoFocus={current > 0}
             onChange={(value) => request.onAnswer(question.keyword, value)}

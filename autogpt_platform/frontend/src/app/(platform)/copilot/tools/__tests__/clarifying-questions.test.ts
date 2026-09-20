@@ -6,6 +6,7 @@ import {
   isAnswered,
   normalizeClarifyingQuestions,
   toAnswerList,
+  toMultiAnswer,
 } from "../clarifying-questions";
 
 describe("normalizeClarifyingQuestions", () => {
@@ -274,26 +275,47 @@ describe("extractClarifyingQuestions", () => {
 describe("multi-select answers", () => {
   it("reads one answer and many through the same list", () => {
     expect(toAnswerList("  Europe  ")).toEqual(["Europe"]);
-    expect(toAnswerList(["Research", "  ", " Outreach "])).toEqual([
+    expect(
+      toAnswerList({ selected: ["Research"], custom: " Outreach " }),
+    ).toEqual(["Research", "Outreach"]);
+    expect(toAnswerList({ selected: ["Research"], custom: "  " })).toEqual([
       "Research",
-      "Outreach",
     ]);
+  });
+
+  it("keeps typed text after the ticks, even when it equals one", () => {
+    expect(
+      toAnswerList({ selected: ["Research"], custom: "Research" }),
+    ).toEqual(["Research", "Research"]);
   });
 
   it("treats a blank answer of either shape as unanswered", () => {
     expect(isAnswered(undefined)).toBe(false);
     expect(isAnswered("   ")).toBe(false);
-    expect(isAnswered([])).toBe(false);
-    expect(isAnswered([" "])).toBe(false);
-    expect(isAnswered(["Research"])).toBe(true);
+    expect(isAnswered({ selected: [], custom: "" })).toBe(false);
+    expect(isAnswered({ selected: [], custom: " " })).toBe(false);
+    expect(isAnswered({ selected: ["Research"], custom: "" })).toBe(true);
+    expect(isAnswered({ selected: [], custom: "Partnerships" })).toBe(true);
   });
 
   it("bullets several picks and leaves one inline", () => {
-    expect(formatAnswer(["Research", "Outreach"])).toBe(
-      "- Research\n- Outreach",
+    expect(
+      formatAnswer({ selected: ["Research", "Outreach"], custom: "" }),
+    ).toBe("- Research\n- Outreach");
+    expect(formatAnswer({ selected: ["Research"], custom: "" })).toBe(
+      "Research",
     );
-    expect(formatAnswer(["Research"])).toBe("Research");
     expect(formatAnswer("Europe")).toBe("Europe");
+  });
+
+  it("reads a multi-select field's value from either answer shape", () => {
+    expect(toMultiAnswer(undefined)).toEqual({ selected: [], custom: "" });
+    expect(toMultiAnswer("Partnerships")).toEqual({
+      selected: [],
+      custom: "Partnerships",
+    });
+    const answer = { selected: ["Research"], custom: "Research" };
+    expect(toMultiAnswer(answer)).toBe(answer);
   });
 });
 
@@ -320,7 +342,7 @@ describe("buildClarificationAnswersMessage", () => {
 
   it("lists a multi-select answer under its question", () => {
     const result = buildClarificationAnswersMessage(
-      { areas: ["Research", "Outreach"] },
+      { areas: { selected: ["Research", "Outreach"], custom: "" } },
       [{ question: "Which areas?", keyword: "areas" }],
       "create",
     );

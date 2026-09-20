@@ -88,6 +88,6 @@ export const MultiSelect: Story = {
 export const MultiSelectAnswered: Story = {
   args: {
     ...MultiSelect.args,
-    answers: { areas: ["Research", "Reporting"] },
+    answers: { areas: { selected: ["Research", "Reporting"], custom: "" } },
   },
 };

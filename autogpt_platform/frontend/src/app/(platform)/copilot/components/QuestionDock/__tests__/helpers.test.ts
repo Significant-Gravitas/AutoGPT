@@ -168,7 +168,7 @@ describe("buildAnswersMessage", () => {
           allow_multiple: true,
         },
       ],
-      { areas: ["Research", " Outreach "] },
+      { areas: { selected: ["Research"], custom: " Outreach " } },
     );
 
     expect(message).toContain(
@@ -179,7 +179,7 @@ describe("buildAnswersMessage", () => {
   it("leaves a one-pick multi-select answer inline", () => {
     const message = buildAnswersMessage(
       [{ question: "Which areas?", keyword: "areas", allow_multiple: true }],
-      { areas: ["Research"] },
+      { areas: { selected: ["Research"], custom: "" } },
     );
 
     expect(message).toContain("> Which areas?\n\nResearch\n\nPlease proceed.");

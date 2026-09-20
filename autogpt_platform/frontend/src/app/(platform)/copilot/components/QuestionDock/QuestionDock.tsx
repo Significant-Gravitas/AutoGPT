@@ -5,6 +5,7 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import {
   isAnswered,
   toAnswerText,
+  toMultiAnswer,
   type QuestionAnswer,
 } from "../../tools/clarifying-questions";
 import { QuestionMultiAnswerField } from "../ChainActionCard/QuestionMultiAnswerField";
@@ -109,7 +110,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
               </span>
               <QuestionMultiAnswerField
                 options={q.options}
-                value={answers[q.keyword] ?? []}
+                value={toMultiAnswer(answers[q.keyword])}
                 labelId={`${formId}-${q.keyword}`}
                 autoFocus={false}
                 onChange={(value) =>

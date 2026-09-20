@@ -4,15 +4,15 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { isKey } from "@/lib/keyboard";
 import { useState } from "react";
-import type { QuestionAnswer } from "../../tools/clarifying-questions";
+import type { MultiAnswer } from "../../tools/clarifying-questions";
 import { QuestionCheckboxList } from "./QuestionCheckboxList";
 
 interface Props {
   options: string[];
-  value: QuestionAnswer;
+  value: MultiAnswer;
   labelId: string;
   autoFocus: boolean;
-  onChange: (value: string[]) => void;
+  onChange: (value: MultiAnswer) => void;
   onSubmit: () => void;
 }
 
@@ -27,20 +27,21 @@ export function QuestionMultiAnswerField({
   onChange,
   onSubmit,
 }: Props) {
-  // Picks and typed text share one list; what separates them is membership of
-  // `options`, the same rule the single-select field uses for a custom answer.
-  const picks = Array.isArray(value) ? value : value ? [value] : [];
-  const selected = picks.filter((pick) => options.includes(pick));
-  const custom = picks.find((pick) => !options.includes(pick)) ?? "";
+  // The ticks and the typed text arrive in separate slots and stay that way:
+  // text that happens to equal an option is still the user's own words, so it
+  // neither ticks the box nor drains out of the textarea — including after a
+  // remount, since the answer itself remembers which was which.
+  const selected = value.selected.filter((pick) => options.includes(pick));
+  const custom = value.custom;
   const [typing, setTyping] = useState(() => custom.length > 0);
 
   function commit(nextSelected: string[], nextCustom: string) {
     // Rebuilt in the order they were offered, so the reply reads like the
     // question however the user ticked their way down it.
-    onChange([
-      ...options.filter((option) => nextSelected.includes(option)),
-      ...(nextCustom ? [nextCustom] : []),
-    ]);
+    onChange({
+      selected: options.filter((option) => nextSelected.includes(option)),
+      custom: nextCustom,
+    });
   }
 
   function handleToggle(option: string) {

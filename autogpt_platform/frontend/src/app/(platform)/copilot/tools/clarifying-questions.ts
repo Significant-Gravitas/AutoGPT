@@ -7,14 +7,26 @@ export interface ClarifyingQuestion {
   allow_multiple?: boolean;
 }
 
+/** A multi-select answer: the ticked options, and any typed text kept in its
+ *  own slot rather than mixed in with them. Membership of `options` cannot
+ *  tell the two apart — "Research" on the way to "Research and development"
+ *  is typing, not a tick — so the shape has to. */
+export interface MultiAnswer {
+  selected: string[];
+  custom: string;
+}
+
 /** One question's answer: a single-select pick or typed text is a string, a
- *  multi-select one is the list of picks (typed text included). */
-export type QuestionAnswer = string | string[];
+ *  multi-select one is a MultiAnswer. */
+export type QuestionAnswer = string | MultiAnswer;
 
 /** An answer as its list of picks, blanks dropped — so an empty list is the
  *  one definition of "not answered yet" every caller shares. */
 export function toAnswerList(answer: QuestionAnswer | undefined): string[] {
-  const picks = Array.isArray(answer) ? answer : [answer ?? ""];
+  const picks =
+    typeof answer === "string" || answer === undefined
+      ? [answer ?? ""]
+      : [...answer.selected, answer.custom];
   return picks.flatMap((pick) => (pick.trim() ? [pick.trim()] : []));
 }
 
@@ -26,6 +38,13 @@ export function isAnswered(answer: QuestionAnswer | undefined): boolean {
  *  space the user just typed survives the round trip through state. */
 export function toAnswerText(answer: QuestionAnswer | undefined): string {
   return typeof answer === "string" ? answer : "";
+}
+
+/** An answer as a multi-select field reads it. A string answer was never a
+ *  pick, so it becomes the typed text. */
+export function toMultiAnswer(answer: QuestionAnswer | undefined): MultiAnswer {
+  if (typeof answer === "string") return { selected: [], custom: answer };
+  return answer ?? { selected: [], custom: "" };
 }
 
 /** The answer as it reads in the message sent back: several picks become a

@@ -1327,11 +1327,14 @@ describe("ChainActionCard", () => {
       const { rerender } = renderCard({ questions: [request] });
 
       fireEvent.click(screen.getByRole("checkbox", { name: "Reporting" }));
-      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", ["Reporting"]);
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Reporting"],
+        custom: "",
+      });
 
       const withOne = questionRequest({
         questions: [areas],
-        answers: { areas: ["Reporting"] },
+        answers: { areas: { selected: ["Reporting"], custom: "" } },
         onAnswer: request.onAnswer,
       });
       rerender(
@@ -1347,27 +1350,30 @@ describe("ChainActionCard", () => {
       );
       fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
 
-      expect(withOne.onAnswer).toHaveBeenLastCalledWith("areas", [
-        "Research",
-        "Reporting",
-      ]);
+      expect(withOne.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research", "Reporting"],
+        custom: "",
+      });
     });
 
     it("unticks a pick that is clicked again", () => {
       const request = questionRequest({
         questions: [areas],
-        answers: { areas: ["Research", "Outreach"] },
+        answers: { areas: { selected: ["Research", "Outreach"], custom: "" } },
       });
       renderCard({ questions: [request] });
 
       fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
-      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", ["Outreach"]);
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Outreach"],
+        custom: "",
+      });
     });
 
     it("keeps the options on screen while typing an extra answer", () => {
       const request = questionRequest({
         questions: [areas],
-        answers: { areas: ["Research"] },
+        answers: { areas: { selected: ["Research"], custom: "" } },
       });
       renderCard({ questions: [request] });
 
@@ -1377,10 +1383,10 @@ describe("ChainActionCard", () => {
       });
 
       expect(screen.getByRole("checkbox", { name: "Research" })).toBeDefined();
-      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", [
-        "Research",
-        "Partnerships",
-      ]);
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research"],
+        custom: "Partnerships",
+      });
     });
 
     it("stays on the question after a pick instead of advancing", () => {
@@ -1412,7 +1418,9 @@ describe("ChainActionCard", () => {
         questions: [
           questionRequest({
             questions: [areas],
-            answers: { areas: ["Research", "Outreach"] },
+            answers: {
+              areas: { selected: ["Research", "Outreach"], custom: "" },
+            },
           }),
         ],
       });
