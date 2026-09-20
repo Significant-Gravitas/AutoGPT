@@ -1551,14 +1551,14 @@ files = [
 
 [[package]]
 name = "exa-py"
-version = "1.16.1"
+version = "2.21.0"
 description = "Python SDK for Exa API."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "exa_py-1.16.1-py3-none-any.whl", hash = "sha256:3b323ed32725b72110720306ea12da09161cfa9c8ac64797a9c0b66869741f27"},
-    {file = "exa_py-1.16.1.tar.gz", hash = "sha256:3cb371b8efd321881a8217070f16afdac5afbaa9229177f80d5c427e1a6dbd59"},
+    {file = "exa_py-2.21.0-py3-none-any.whl", hash = "sha256:bb4fb97c812251ef2f359323d25bdd01e0ec57d7c71f0c7f7041e64db6ba7123"},
+    {file = "exa_py-2.21.0.tar.gz", hash = "sha256:cabefd938a0586767afcbc27298b5a8e73895823caccb664c45900e430bb4fa8"},
 ]
 
 [package.dependencies]
@@ -8936,4 +8936,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "1a1dc6acb4de31cd15a67c84df2208a74de570b4273f2de9178e55bf125184ba"
+content-hash = "0775ceb3c13fc0e920726e46be5cccdf31cf76930399cf5059dd15bb2f629cb1"
