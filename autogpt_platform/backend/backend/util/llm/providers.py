@@ -39,6 +39,7 @@ from typing import Any, Literal, cast
 
 import anthropic
 import httpx
+import httpx2
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -93,6 +94,19 @@ def request_timeout(timeout_seconds: float) -> httpx.Timeout:
     the pin costs them nothing.
     """
     return httpx.Timeout(
+        timeout_seconds,
+        connect=FAST_FAIL_TIMEOUT_SECONDS,
+        pool=FAST_FAIL_TIMEOUT_SECONDS,
+    )
+
+
+def anthropic_request_timeout(timeout_seconds: float) -> httpx2.Timeout:
+    """``request_timeout`` for the Anthropic SDK, which runs on httpx2 since 1.x.
+
+    It only recognises its own ``Timeout`` class; an ``httpx.Timeout`` would be
+    taken for a scalar and land in every phase as an object instead of seconds.
+    """
+    return httpx2.Timeout(
         timeout_seconds,
         connect=FAST_FAIL_TIMEOUT_SECONDS,
         pool=FAST_FAIL_TIMEOUT_SECONDS,
@@ -576,7 +590,7 @@ async def _call_anthropic_messages(
         messages=anth_messages,
         max_tokens=max_tokens,
         tools=an_tools,
-        timeout=request_timeout(timeout_seconds),
+        timeout=anthropic_request_timeout(timeout_seconds),
     )
     if temperature is not None and _anthropic_accepts_temperature(model):
         create_kwargs["temperature"] = temperature
