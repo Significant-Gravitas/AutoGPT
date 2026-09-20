@@ -7374,24 +7374,24 @@ uvicorn = ["uvicorn (>=0.34.0)"]
 
 [[package]]
 name = "stagehand"
-version = "3.7.0"
+version = "3.23.0"
 description = "The official Python library for the stagehand API"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "stagehand-3.7.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:4918068e6c02717c09766f1df41d5a41ac2ad9b610a30bb584a7d5d359f8d654"},
-    {file = "stagehand-3.7.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:cedb940ebbd47930227f5ef82077080aeb1f77480913382183187aba98e3cca5"},
-    {file = "stagehand-3.7.0-py3-none-manylinux2014_x86_64.whl", hash = "sha256:87df69bca9a611c4acae7383333f1e0cf67cc5b92be91639c65772aa59f8e6ea"},
-    {file = "stagehand-3.7.0-py3-none-win_amd64.whl", hash = "sha256:09d809f3b35389b2ed0b879e8909a8ed01e1ba9330f39c08cfcefe1699197585"},
-    {file = "stagehand-3.7.0.tar.gz", hash = "sha256:53cdd79111147a4c6fedcf17ef92427472beaf11ad3fcd800736ae3475a5cc54"},
+    {file = "stagehand-3.23.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:6aac8ae3aee9174cf9d6a0d278d666401436664cb76e069cc107c6efd90bff1c"},
+    {file = "stagehand-3.23.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:bc159bac0c55c8b4bf5d91f81e944cfb1dd16b922ec01a4bbaa3bc925c7116bb"},
+    {file = "stagehand-3.23.0-py3-none-manylinux2014_x86_64.whl", hash = "sha256:914fbd51263763981950db472e8148f58d75301e50a192524538ae50390a6bd1"},
+    {file = "stagehand-3.23.0-py3-none-win_amd64.whl", hash = "sha256:c4855c8f604898a4b5778a1013cfde143699732c50eaaf2df70854394fdaf2ad"},
+    {file = "stagehand-3.23.0.tar.gz", hash = "sha256:1a26631de1291f3b21238bf0c14fcd95083d419632ff9da64a0a20c87ea79c71"},
 ]
 
 [package.dependencies]
 anyio = ">=3.5.0,<5"
 distro = ">=1.7.0,<2"
 httpx = ">=0.23.0,<1"
-pydantic = ">=1.9.0,<3"
+pydantic = ">=2.0.0,<3"
 sniffio = "*"
 typing-extensions = ">=4.14,<5"
 
