@@ -42,6 +42,10 @@ export const QuestionMultiAnswerField = forwardRef<
   const selected = value.selected.filter((pick) => options.includes(pick));
   const custom = value.custom;
   const [typing, setTyping] = useState(() => custom.length > 0);
+  // Focus follows an explicit toggle. A saved custom answer reopens the
+  // textarea too, but must not steal focus when the card pages back to it —
+  // that is what the pager's autoFocus is for.
+  const [toggled, setToggled] = useState(false);
 
   // "Answer this one" lands wherever the user left off: the open textarea if
   // they were typing, otherwise the checkbox group.
@@ -77,7 +81,7 @@ export const QuestionMultiAnswerField = forwardRef<
         options={options}
         selected={selected}
         labelId={labelId}
-        focusActiveOption={autoFocus}
+        focusActiveOption={autoFocus && !typing}
         onToggle={handleToggle}
       />
       {typing ? (
@@ -85,7 +89,7 @@ export const QuestionMultiAnswerField = forwardRef<
           ref={textareaRef}
           rows={2}
           aria-labelledby={labelId}
-          autoFocus
+          autoFocus={autoFocus || toggled}
           value={custom}
           onChange={(e) => commit(selected, e.target.value)}
           // Enter advances the pager; Shift+Enter is the newline.
@@ -100,7 +104,10 @@ export const QuestionMultiAnswerField = forwardRef<
       ) : (
         <button
           type="button"
-          onClick={() => setTyping(true)}
+          onClick={() => {
+            setToggled(true);
+            setTyping(true);
+          }}
           className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
         >
           <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />

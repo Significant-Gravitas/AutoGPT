@@ -134,6 +134,26 @@ describe("QuestionMultiAnswerField", () => {
     expect(answer()).toEqual({ selected: [], custom: "Researching" });
   });
 
+  it("does not steal focus for a saved custom answer unless asked to", async () => {
+    const user = userEvent.setup();
+    render(<FieldHarness initial={{ selected: [], custom: "Researcher" }} />);
+    expect(document.activeElement).not.toBe(textbox());
+
+    cleanup();
+    render(
+      <FieldHarness
+        initial={{ selected: [], custom: "Researcher" }}
+        autoFocus
+      />,
+    );
+    expect(document.activeElement).toBe(textbox());
+
+    cleanup();
+    render(<FieldHarness initial={empty()} />);
+    await user.click(screen.getByRole("button", { name: "Type something…" }));
+    expect(document.activeElement).toBe(textbox());
+  });
+
   it("keeps the ticks and the text apart while both change", async () => {
     const user = userEvent.setup();
     render(<FieldHarness initial={{ selected: ["Research"], custom: "" }} />);
