@@ -8,13 +8,14 @@ import pytest
 from ldclient import Context, LDClient
 from posthog import Posthog
 from posthog.request import GetResponse
+from pydantic import ValidationError
 
 import backend.data.redis_client as redis_client
 import backend.util.feature_flag as ff
 import backend.util.feature_flag_definition_cache as cache
 import backend.util.feature_flag_posthog as ph
 from backend.util.feature_flag import Flag, evaluate_feature_flag
-from backend.util.settings import FeatureFlagBackend, FlagDefinitionCacheBackend
+from backend.util.settings import Config, FeatureFlagBackend, FlagDefinitionCacheBackend
 from backend.util.testing import is_tcp_port_reachable
 
 REFRESH = 30
@@ -284,6 +285,13 @@ class TestSelection:
         )
 
         assert isinstance(cache.get_flag_definition_cache(), expected)
+
+    @pytest.mark.parametrize("field", ["refresh_seconds", "cache_ttl_seconds"])
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_a_non_positive_duration_is_refused_at_startup(self, field, value):
+        """0 clamped the poll to one second and made Redis reject every write."""
+        with pytest.raises(ValidationError):
+            Config(**{f"posthog_flag_definition_{field}": value})
 
     def test_redis_is_the_default(self):
         assert (
