@@ -8,10 +8,12 @@ from ldclient import Context, LDClient
 
 import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
+    _NON_BOOLEAN_FLAG_VALUES,
     Flag,
     _env_flag_override,
     _fetch_user_context_data,
     _force_all_flags_enabled,
+    create_feature_flag_dependency,
     evaluate_feature_flag,
     feature_flag,
     get_client,
@@ -19,6 +21,7 @@ from backend.util.feature_flag import (
     mock_flag_variation,
     shutdown_launchdarkly,
 )
+from backend.util.settings import AppEnvironment
 
 
 @pytest.fixture
@@ -210,6 +213,20 @@ class TestForceAllFlags:
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
         assert _env_flag_override(Flag.STRIPE_PRODUCT_ID_TOPUP) is None
         assert _env_flag_override(Flag.COPILOT_MODEL_ROUTING) is None
+        for value in _NON_BOOLEAN_FLAG_VALUES:
+            assert _env_flag_override(value) is None, value
+
+    def test_non_boolean_set_covers_every_json_valued_flag(self):
+        """Every flag read through ``get_feature_flag_value`` as a payload."""
+        assert _NON_BOOLEAN_FLAG_VALUES >= {
+            Flag.STRIPE_PRODUCT_ID_TOPUP.value,
+            Flag.COPILOT_MODEL_ROUTING.value,
+            Flag.COPILOT_TIER_MULTIPLIERS.value,
+            Flag.COPILOT_COST_LIMITS.value,
+            Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
+            Flag.COPILOT_TIER_STRIPE_PRICES.value,
+            Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        }
 
     def test_per_flag_false_wins_over_force_all(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
@@ -227,6 +244,129 @@ class TestForceAllFlags:
         monkeypatch.setenv("FORCE_ALL_FLAGS", "false")
         assert _force_all_flags_enabled() is False
         assert _env_flag_override(Flag.CHAT) is None
+
+    def test_ignored_in_production(
+        self, monkeypatch: pytest.MonkeyPatch, mocker, caplog: pytest.LogCaptureFixture
+    ):
+        self._clear(monkeypatch)
+        monkeypatch.setattr(feature_flag_module, "_force_all_logged", False)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.PRODUCTION
+        )
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
+            assert _force_all_flags_enabled() is False
+            assert _env_flag_override(Flag.CHAT) is None
+        assert "FORCE_ALL_FLAGS is set but app_env is production" in caplog.text
+
+    def test_per_flag_override_still_works_in_production(
+        self, monkeypatch: pytest.MonkeyPatch, mocker
+    ):
+        self._clear(monkeypatch)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.PRODUCTION
+        )
+        monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
+        assert _env_flag_override(Flag.CHAT) is True
+
+    def test_honoured_in_local(self, monkeypatch: pytest.MonkeyPatch, mocker):
+        self._clear(monkeypatch)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.LOCAL
+        )
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        assert _env_flag_override(Flag.CHAT) is True
+
+    def test_warns_once_when_honoured(
+        self, monkeypatch: pytest.MonkeyPatch, mocker, caplog: pytest.LogCaptureFixture
+    ):
+        self._clear(monkeypatch)
+        monkeypatch.setattr(feature_flag_module, "_force_all_logged", False)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.LOCAL
+        )
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            assert _force_all_flags_enabled() is True
+            assert _force_all_flags_enabled() is True
+        warnings = [
+            r for r in caplog.records if "FORCE_ALL_FLAGS is on" in r.getMessage()
+        ]
+        assert len(warnings) == 1
+        assert warnings[0].levelno == logging.WARNING
+
+
+class TestEnvOverrideWiring:
+    """The decorator and the router dependency must honour the env override
+    before their "LaunchDarkly not initialised / not configured" bail-out,
+    which is the normal local-dev state."""
+
+    @pytest.fixture(autouse=True)
+    def clear_env(self, monkeypatch: pytest.MonkeyPatch):
+        for name in (
+            "FORCE_ALL_FLAGS",
+            "NEXT_PUBLIC_FORCE_ALL_FLAGS",
+            "FORCE_FLAG_TEST_FLAG",
+            "NEXT_PUBLIC_FORCE_FLAG_TEST_FLAG",
+            "FORCE_FLAG_CHAT",
+            "NEXT_PUBLIC_FORCE_FLAG_CHAT",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+    @pytest.mark.asyncio
+    async def test_decorator_force_all_wins_over_uninitialised_client(
+        self, ld_client, monkeypatch: pytest.MonkeyPatch
+    ):
+        ld_client.is_initialized.return_value = False
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+
+        @feature_flag("test-flag")
+        async def test_function(user_id: str):
+            return "success"
+
+        assert await test_function(user_id="test-user") == "success"
+        ld_client.variation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_decorator_per_flag_false_wins_over_launchdarkly(
+        self, ld_client, monkeypatch: pytest.MonkeyPatch
+    ):
+        ld_client.variation.return_value = True
+        monkeypatch.setenv("FORCE_FLAG_TEST_FLAG", "false")
+
+        @feature_flag("test-flag")
+        async def test_function(user_id: str):
+            return "success"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await test_function(user_id="test-user")
+        assert exc_info.value.status_code == 404
+        ld_client.variation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dependency_force_all_wins_over_unconfigured_sdk(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=False)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+
+        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        assert await check_feature_flag(user_id=None) is None
+
+    @pytest.mark.asyncio
+    async def test_dependency_per_flag_false_returns_404(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=False)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
+
+        # default=True so the 404 can only come from the override, not the
+        # unconfigured-SDK fallback.
+        check_feature_flag = create_feature_flag_dependency(Flag.CHAT, default=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await check_feature_flag(user_id=None)
+        assert exc_info.value.status_code == 404
 
 
 class TestUserContext:

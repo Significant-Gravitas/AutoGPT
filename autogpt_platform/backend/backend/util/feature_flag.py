@@ -14,7 +14,7 @@ from ldclient.config import Config
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -437,12 +437,27 @@ async def _evaluate_flag_value(
 
 _TRUTHY = ("1", "true", "yes", "on")
 
-# Non-boolean flags can't be forced to a bare ``True`` — their callers expect a
-# string / JSON value — so the master switch below skips them (mirrors the
-# frontend's ``ARRAY_TYPED_FLAGS``).
+# Flags whose callers read a string / JSON value through
+# ``get_feature_flag_value`` rather than a bool. The master switch below skips
+# them so it never hands a bare ``True`` to a caller expecting a payload
+# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). ``get_feature_flag_value``
+# itself never consults the env override; this set only matters on the boolean
+# paths (``evaluate_feature_flag``, ``feature_flag``,
+# ``create_feature_flag_dependency``).
 _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
-    {Flag.STRIPE_PRODUCT_ID_TOPUP.value, Flag.COPILOT_MODEL_ROUTING.value}
+    {
+        Flag.STRIPE_PRODUCT_ID_TOPUP.value,
+        Flag.COPILOT_MODEL_ROUTING.value,
+        Flag.COPILOT_TIER_MULTIPLIERS.value,
+        Flag.COPILOT_COST_LIMITS.value,
+        Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
+        Flag.COPILOT_TIER_STRIPE_PRICES.value,
+        Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+    }
 )
+
+# Log the master switch's state once per process, not once per evaluation.
+_force_all_logged = False
 
 
 def _force_all_flags_enabled() -> bool:
@@ -454,12 +469,35 @@ def _force_all_flags_enabled() -> bool:
     so a single flag can be excluded with ``=false`` while the rest stay on.
     Defaults off. Intended for local dev, where LaunchDarkly is unconfigured
     and every flag is otherwise off.
+
+    Ignored (with an error log) when ``app_env`` is production: one env var
+    must not open every fail-closed gate for every user at once. Per-flag
+    ``FORCE_FLAG_<NAME>`` overrides are unaffected by this guard.
     """
+    global _force_all_logged
+    switched_on = False
     for name in ("FORCE_ALL_FLAGS", "NEXT_PUBLIC_FORCE_ALL_FLAGS"):
         raw = os.environ.get(name)
         if raw is not None and raw.strip().lower() in _TRUTHY:
-            return True
-    return False
+            switched_on = True
+            break
+    if not switched_on:
+        return False
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        if not _force_all_logged:
+            logger.error(
+                "FORCE_ALL_FLAGS is set but app_env is production; ignoring it. "
+                "The master switch is for local dev only."
+            )
+            _force_all_logged = True
+        return False
+    if not _force_all_logged:
+        logger.warning(
+            "FORCE_ALL_FLAGS is on: every boolean feature flag is forced on "
+            "(per-flag FORCE_FLAG_<NAME>=false still wins)."
+        )
+        _force_all_logged = True
+    return True
 
 
 def _env_flag_override(flag_key: Flag | str) -> bool | None:
@@ -580,6 +618,9 @@ def feature_flag(
                 # local-dev state, where the decorator would otherwise 404.
                 override = _env_flag_override(flag_key)
                 if override is not None:
+                    logger.debug(
+                        f"Feature flag {flag_key} overridden by env: {override}"
+                    )
                     is_enabled = override
                 elif not get_client().is_initialized():
                     logger.warning(
@@ -658,6 +699,7 @@ def create_feature_flag_dependency(
         # would otherwise 404.
         override = _env_flag_override(flag_key)
         if override is not None:
+            logger.debug(f"Feature flag {flag_key.value} overridden by env: {override}")
             if not override:
                 raise HTTPException(status_code=404, detail="Feature not available")
             return
