@@ -156,6 +156,51 @@ describe("useSendMessage with local attachments", () => {
     expect(result.current.isUploadingFiles).toBe(false);
   });
 
+  it("still sends the workspace references when every local upload fails", async () => {
+    uploadFileDirectMock.mockRejectedValue(new Error("boom"));
+    const { result, sendMessage } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend(
+        "compare",
+        [makeFile("talk.pdf")],
+        [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+      );
+    });
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage).toHaveBeenCalledWith({
+      text: "compare",
+      files: [
+        {
+          type: "file",
+          mediaType: "text/plain",
+          filename: "notes.txt",
+          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+        },
+      ],
+      metadata: undefined,
+    });
+    await waitFor(() => expect(result.current.pendingSend).toBeNull());
+    expect(result.current.isUploadingFiles).toBe(false);
+  });
+
+  it("does not publish a placeholder for a text-only first message", async () => {
+    const creation = deferred<string>();
+    const { result, createSession } = renderSendMessage(null);
+    createSession.mockReturnValue(creation.promise);
+
+    act(() => {
+      void result.current.onSend("just text");
+    });
+
+    await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+    expect(result.current.pendingSend).toBeNull();
+    expect(useCopilotStreamStore.getState().pendingFirstSend?.text).toBe(
+      "just text",
+    );
+  });
+
   it("shows the placeholder while the first chat's session is still being created", async () => {
     const creation = deferred<string>();
     uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
