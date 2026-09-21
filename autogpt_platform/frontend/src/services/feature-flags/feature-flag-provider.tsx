@@ -15,7 +15,7 @@ import { buildLDContext } from "./helpers";
 // effectively unbounded.
 const LAUNCHDARKLY_INIT_TIMEOUT_SECONDS = 5;
 
-// Rewritten to https://events.launchdarkly.com in next.config.mjs.
+// Proxied to https://events.launchdarkly.com by src/app/api/ld-events.
 const LAUNCHDARKLY_EVENTS_PATH = "/api/ld-events";
 
 // The SDK default is 2s, so every open tab posts 30 times a minute through our
