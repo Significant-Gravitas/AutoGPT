@@ -13,7 +13,7 @@ interface Props {
   isScheduled: boolean;
   onToggle: () => void;
   onToggleSchedule: () => void;
-  readOnly?: boolean;
+  mode: "import" | "publish";
 }
 
 export function WorkflowRow({
@@ -22,9 +22,10 @@ export function WorkflowRow({
   isScheduled,
   onToggle,
   onToggleSchedule,
-  readOnly,
+  mode,
 }: Props) {
-  const source = getWorkflowSourceLabel(workflow.source);
+  const readOnly = mode === "publish";
+  const source = getWorkflowSourceLabel(workflow.source, mode);
   const scheduleId = `review-schedule-${workflow.index}`;
 
   return (

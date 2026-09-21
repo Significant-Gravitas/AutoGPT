@@ -164,17 +164,20 @@ describe("ExpertReviewDialog", () => {
     expect(primaryButton().hasAttribute("disabled")).toBe(true);
   });
 
-  test("publishing is blocked until every agent is on the marketplace", async () => {
+  // Only the publish route can tell whether an agent without a stored listing
+  // was published later, so the dialog names it as the admin's own agent and
+  // lets the route decide instead of calling it unpublished.
+  test("publishing leaves an agent's marketplace status to the server", async () => {
     renderDialog({ mode: "publish" });
 
-    expect(
-      await screen.findByText(
-        "Publish these agents to the marketplace first: Draft Poster",
-      ),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled"),
-    ).toBe(true);
+    expect(await screen.findByText("Your agent")).toBeDefined();
+    expect(screen.queryByText("From file")).toBeNull();
+    expect(screen.queryByText(/Publish these agents/)).toBeNull();
+
+    const publish = screen.getByRole("button", { name: "Publish" });
+    expect(publish.hasAttribute("disabled")).toBe(false);
+    await userEvent.click(publish);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
   // The publish route builds the package from the stored expert and takes no

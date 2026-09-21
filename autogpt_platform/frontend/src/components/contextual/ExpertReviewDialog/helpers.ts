@@ -67,10 +67,10 @@ export function serializeExpertEdits(edits: ExpertImportEdits): string {
 }
 
 /** Why the primary button is disabled, phrased for the user, or null when it
- *  is not. Publishing needs every kept agent on the marketplace already —
- *  a template nobody else can install is worse than no template. */
+ *  is not. Whether every agent is on the marketplace is not decided here:
+ *  only the publish route can see a listing the admin made after attaching
+ *  the agent, and it names the ones it cannot find. */
 export function getBlockingReason(
-  mode: "import" | "publish",
   draft: ExpertReviewDraft,
   preview: ExpertPackagePreview | null,
 ): string | null {
@@ -79,24 +79,20 @@ export function getBlockingReason(
   const errors = preview?.errors ?? [];
   if (errors.length > 0) return "Fix the problems above to continue.";
 
-  if (mode === "publish") {
-    const unpublished = (preview?.workflows ?? []).filter(
-      (workflow) =>
-        workflow.source !== "store" &&
-        !draft.removedWorkflowIndices.includes(workflow.index),
-    );
-    if (unpublished.length > 0) {
-      const names = unpublished.map((workflow) => workflow.name).join(", ");
-      return `Publish these agents to the marketplace first: ${names}`;
-    }
-  }
-
   return null;
 }
 
-export function getWorkflowSourceLabel(source: WorkflowResolution["source"]) {
+export function getWorkflowSourceLabel(
+  source: WorkflowResolution["source"],
+  mode: "import" | "publish",
+) {
   if (source === "store")
     return { label: "Marketplace", variant: "info" } as const;
+  if (mode === "publish") {
+    return source === "graph"
+      ? ({ label: "Your agent", variant: "info" } as const)
+      : ({ label: "Can't publish", variant: "error" } as const);
+  }
   if (source === "graph")
     return { label: "From file", variant: "info" } as const;
   return { label: "Can't import", variant: "error" } as const;

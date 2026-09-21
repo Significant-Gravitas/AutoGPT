@@ -84,6 +84,19 @@ const maria: Expert = {
   ],
 };
 
+// Attached from the library and published afterwards: publishing an agent never
+// writes back to the workflow, so the stored listing stays empty even though
+// the publish route will find the listing by the agent's graph.
+const withUnlistedAgent: Expert = {
+  ...maria,
+  workflows: [
+    {
+      ...maria.workflows[0],
+      store_listing_version_id: null,
+    },
+  ],
+};
+
 function renderPage() {
   return render(
     <>
@@ -133,6 +146,34 @@ describe("Publishing an expert to the marketplace", () => {
     expect(await screen.findByText("Published Maria")).toBeDefined();
   });
 
+  test("publishes an agent that was listed after it was attached", async () => {
+    let publishRequests = 0;
+    server.use(
+      getGetExpertMockHandler(withUnlistedAgent),
+      http.post("/api/proxy/api/experts/expert-maria/publish", () => {
+        publishRequests += 1;
+        return HttpResponse.json(
+          { ...withUnlistedAgent, id: "template-maria" },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderPage();
+    await openSettings();
+    await userEvent.click(screen.getByTestId("expert-publish-button"));
+
+    expect(await screen.findByText("Your agent")).toBeDefined();
+    expect(screen.queryByText(/Publish these agents/)).toBeNull();
+    const confirm = screen.getByRole("button", { name: "Publish" });
+    expect(confirm.hasAttribute("disabled")).toBe(false);
+
+    await userEvent.click(confirm);
+
+    expect(await screen.findByText("Published Maria")).toBeDefined();
+    expect(publishRequests).toBe(1);
+  });
+
   test("says the expert is already on the marketplace", async () => {
     server.use(
       getGetPublishedTemplateMockHandler({ ...maria, id: "template-maria" }),
@@ -150,6 +191,7 @@ describe("Publishing an expert to the marketplace", () => {
 
   test("names the agents the backend refuses to publish without", async () => {
     server.use(
+      getGetExpertMockHandler(withUnlistedAgent),
       http.post("/api/proxy/api/experts/expert-maria/publish", () =>
         HttpResponse.json(
           {

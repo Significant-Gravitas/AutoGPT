@@ -4,6 +4,7 @@ import {
   buildDraftFromPreview,
   buildEditsFromDraft,
   getBlockingReason,
+  getWorkflowSourceLabel,
   serializeExpertEdits,
   type ExpertReviewDraft,
 } from "../helpers";
@@ -52,24 +53,39 @@ test("the edits travel as the JSON the form field takes", () => {
 
 describe("getBlockingReason", () => {
   const whole = buildDraftFromPreview(preview);
-  const cases: [
-    "import" | "publish",
-    ExpertReviewDraft,
-    ExpertPackagePreview,
-    string | null,
-  ][] = [
-    ["import", whole, preview, null],
-    ["import", { ...whole, name: "  " }, preview, "Give this expert a name."],
+  const cases: [ExpertReviewDraft, ExpertPackagePreview, string | null][] = [
+    [whole, preview, null],
+    [{ ...whole, name: "  " }, preview, "Give this expert a name."],
     [
-      "import",
       whole,
       { ...preview, errors: [{ code: "cap", message: "Full." }] },
       "Fix the problems above to continue.",
     ],
-    ["publish", { ...whole, removedWorkflowIndices: [1] }, preview, null],
   ];
 
-  test.each(cases)("%s, case %#", (mode, draft, current, expected) => {
-    expect(getBlockingReason(mode, draft, current)).toBe(expected);
+  test.each(cases)("case %#", (draft, current, expected) => {
+    expect(getBlockingReason(draft, current)).toBe(expected);
+  });
+});
+
+// A workflow without a stored listing is what the file carries on import, but
+// on publish it is the admin's own agent, and only the route knows whether it
+// has been published since. Neither reading gets to call it unpublished.
+describe("getWorkflowSourceLabel", () => {
+  const cases: [
+    "import" | "publish",
+    "store" | "graph" | "unresolvable",
+    string,
+  ][] = [
+    ["import", "store", "Marketplace"],
+    ["import", "graph", "From file"],
+    ["import", "unresolvable", "Can't import"],
+    ["publish", "store", "Marketplace"],
+    ["publish", "graph", "Your agent"],
+    ["publish", "unresolvable", "Can't publish"],
+  ];
+
+  test.each(cases)("%s, %s", (mode, source, label) => {
+    expect(getWorkflowSourceLabel(source, mode).label).toBe(label);
   });
 });

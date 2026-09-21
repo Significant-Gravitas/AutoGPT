@@ -24,8 +24,10 @@ export function buildPreviewFromExpert(expert: Expert): ExpertPackagePreview {
     workflows: expert.workflows.map((workflow, index) => ({
       index,
       name: workflow.name ?? "Untitled workflow",
-      // Only an agent that already has a marketplace listing can travel in a
-      // template, which is exactly what the publish route checks for.
+      // A missing stored listing does not mean the agent is unpublished: the
+      // admin may have published it after attaching it, which never writes
+      // back to the workflow. The publish route looks that listing up itself
+      // and names the agents it cannot find, so the dialog only confirms.
       source: workflow.store_listing_version_id ? "store" : "graph",
       store_listing_version_id: workflow.store_listing_version_id,
       schedule_cron: workflow.schedule_cron,

@@ -46,7 +46,7 @@ export function ExpertReviewDialog({
     toggleSchedule,
     edits,
     blockingReason,
-  } = useExpertReviewDialog({ mode, open, preview });
+  } = useExpertReviewDialog({ open, preview });
 
   const identity = preview?.manifest.identity;
   const isImport = mode === "import";
@@ -111,7 +111,7 @@ export function ExpertReviewDialog({
                   isScheduled={draft.scheduledIndices.includes(workflow.index)}
                   onToggle={() => toggleWorkflow(workflow.index)}
                   onToggleSchedule={() => toggleSchedule(workflow.index)}
-                  readOnly={!isImport}
+                  mode={mode}
                 />
               ))}
             </Section>
