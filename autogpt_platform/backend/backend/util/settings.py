@@ -807,12 +807,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     posthog_flag_definition_refresh_seconds: int = Field(
         default=30,
+        ge=1,
         description="How often the elected refresher fetches PostHog flag "
         "definitions, and how often every other process re-reads the shared copy.",
     )
 
     posthog_flag_definition_cache_ttl_seconds: int = Field(
         default=600,
+        ge=1,
         description="How long a shared copy of the PostHog flag definitions stays "
         "readable. Past it the cache is empty and the next process to poll fetches "
         "from PostHog directly.",

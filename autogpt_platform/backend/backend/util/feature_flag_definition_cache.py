@@ -89,7 +89,7 @@ def get_flag_definition_cache() -> FlagDefinitionCacheProvider | None:
 
 def refresh_interval_seconds() -> int:
     """How often the SDK polls: the refresher fetches, the rest re-read."""
-    return max(1, settings.config.posthog_flag_definition_refresh_seconds)
+    return settings.config.posthog_flag_definition_refresh_seconds
 
 
 class RedisFlagDefinitionCache:
