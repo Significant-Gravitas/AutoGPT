@@ -193,9 +193,16 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
 // ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
 // with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
 // their LaunchDarkly / default values.
-const isForceAllFlags = ["1", "true", "yes", "on"].includes(
-  (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
-);
+//
+// Inert in a production build, mirroring the backend's app_env guard:
+// NEXT_PUBLIC_* vars are inlined at build time, so one stray value in a
+// production env file would otherwise bake every fail-closed gate open into
+// the client bundle. Per-flag overrides are unaffected.
+const isForceAllFlags =
+  process.env.NODE_ENV !== "production" &&
+  ["1", "true", "yes", "on"].includes(
+    (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
+  );
 
 export function envFlagOverride<T extends Flag>(
   flag: T,

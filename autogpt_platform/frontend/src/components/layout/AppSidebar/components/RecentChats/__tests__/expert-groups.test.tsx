@@ -31,6 +31,7 @@ const mariaExpert: Expert = {
   name: "Maria",
   avatar_url: "https://example.com/maria.png",
   role: "Marketing Strategist",
+  job_title: "Marketing Manager",
   bio: null,
   skills: [],
   tagline: "Grows your brand while you sleep",
@@ -136,26 +137,26 @@ describe("RecentChats — expert groups", () => {
     expect(screen.queryByText("autopilot chat 1")).toBeNull();
   });
 
-  it("shows only the first 10 chats and reveals more via Load more", async () => {
-    const sessions = makeSessions(22);
+  it("shows four chats and reveals four more at a time", async () => {
+    const sessions = makeSessions(10);
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
       getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
 
-    expect(await screen.findByText("autopilot chat 10")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 11")).toBeNull();
+    expect(await screen.findByText("autopilot chat 4")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 5")).toBeNull();
 
     const loadMore = () =>
       screen.getByRole("button", { name: "Load more Otto chats" });
 
     fireEvent.click(loadMore());
-    expect(await screen.findByText("autopilot chat 20")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 21")).toBeNull();
+    expect(await screen.findByText("autopilot chat 8")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 9")).toBeNull();
 
     fireEvent.click(loadMore());
-    expect(await screen.findByText("autopilot chat 22")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 10")).toBeDefined();
     expect(
       screen.queryByRole("button", { name: "Load more Otto chats" }),
     ).toBeNull();
@@ -169,15 +170,21 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
-    expect(await screen.findByText("expert-maria chat 10")).toBeDefined();
-    expect(screen.queryByText("expert-maria chat 11")).toBeNull();
-    expect(screen.queryByText("autopilot chat 11")).toBeNull();
+    expect(await screen.findByText("expert-maria chat 4")).toBeDefined();
+    expect(await screen.findByText("Marketing Manager")).toBeDefined();
+    expect(
+      screen.getByText("Marketing Manager").classList.contains("opacity-70"),
+    ).toBe(true);
+    expect(screen.queryByText(mariaExpert.role)).toBeNull();
+    expect(screen.queryByText("expert-maria chat 5")).toBeNull();
+    expect(screen.queryByText("autopilot chat 5")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Load more Maria chats" }),
     );
-    expect(await screen.findByText("expert-maria chat 11")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 11")).toBeNull();
+    expect(await screen.findByText("expert-maria chat 8")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 9")).toBeNull();
+    expect(screen.queryByText("autopilot chat 5")).toBeNull();
   });
 
   it("falls back to a generic Expert label when the expert is unknown", async () => {
@@ -218,6 +225,10 @@ describe("RecentChats — expert groups", () => {
     const avatar = expertGroup.querySelector(
       'img[data-testid="notion-avatar-image"]',
     );
+    expect(avatar?.getAttribute("width")).toBe("32");
+    expect(avatar?.getAttribute("height")).toBe("32");
+    expect(avatar?.classList.contains("border")).toBe(true);
+    expect(avatar?.classList.contains("border-zinc-400")).toBe(true);
     expect(avatar?.getAttribute("data-avatar")).toMatch(
       /\.violet\.svg\?v=\d+$/,
     );
@@ -256,13 +267,13 @@ describe("RecentChats — expert groups", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Load more Otto chats" }),
     );
-    expect(await screen.findByText("autopilot chat 11")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 8")).toBeDefined();
 
     const callsBefore = listCalls;
     vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
     await waitFor(() => expect(listCalls).toBeGreaterThan(callsBefore));
 
-    expect(screen.getByText("autopilot chat 11")).toBeDefined();
+    expect(screen.getByText("autopilot chat 8")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
 

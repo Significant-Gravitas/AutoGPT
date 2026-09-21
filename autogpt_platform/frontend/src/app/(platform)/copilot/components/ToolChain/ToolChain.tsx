@@ -30,7 +30,11 @@ import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import {
+  buildChainReply,
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { ChainRowView } from "./ChainRowView";
 import {
@@ -64,6 +68,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const sendingRef = useRef(false);
   const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
@@ -146,13 +151,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       if (!canAutoSend || autoSentRef.current) return;
       autoSentRef.current = true;
       setAutoSent(true);
-      const message = pendingActions
-        .map((entry) => entry.buildMessage())
-        .filter(Boolean)
-        .join("\n\n");
+      const message = buildChainReply(pendingActions);
       if (!message) return;
-      pendingActions.forEach((entry) => entry.onSent?.());
-      sendReply(message);
+      void sendAfter(pendingActions, message);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
@@ -234,13 +235,24 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = readyActions
-      .map((entry) => entry.buildMessage())
-      .filter(Boolean)
-      .join("\n\n");
+    const message = buildChainReply(readyActions);
     if (!message) return;
-    readyActions.forEach((entry) => entry.onSent?.());
-    sendReply(message);
+    void sendAfter(readyActions, message);
+  }
+
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
+  async function sendAfter(entries: ChainActionEntry[], message: string) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+      entries.forEach((entry) => entry.onSent?.());
+      sendReply(message);
+    } finally {
+      sendingRef.current = false;
+    }
   }
 
   return (

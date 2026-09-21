@@ -48,7 +48,6 @@ from backend.data.workspace_scope import (
     expert_skills_folder,
 )
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.mcp_guide import render_mcp_guide
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
@@ -153,8 +152,8 @@ _NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
-# Default skills — migrated from the legacy ``get_agent_building_guide`` /
-# ``get_mcp_guide`` tools so users get a uniform discovery surface.  These
+# Default skills — migrated from the legacy ``get_agent_building_guide``
+# tool so users get a uniform discovery surface.  These
 # are *read-only* — store_skill / delete_skill refuse to touch them.  Body
 # is loaded from disk lazily so adding more defaults is a drop-in.
 # ---------------------------------------------------------------------------
@@ -184,15 +183,6 @@ DEFAULT_SKILLS: tuple[_DefaultSkill, ...] = (
             "validate_agent_graph",
             "fix_agent_graph",
         ),
-    ),
-    _DefaultSkill(
-        name="mcp_tool_guide",
-        description=(
-            "MCP server URLs and auth setup — load before calling "
-            "run_mcp_tool when you need server URLs or auth details."
-        ),
-        body_path=_SDK_DIR / "mcp_tool_guide.md",
-        triggers=("run_mcp_tool",),
     ),
 )
 
@@ -412,7 +402,7 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     """Read a default skill's body from disk (cached at module level
     via :func:`functools.lru_cache` would re-read on test reloads, so
     we hit the disk each call — these files are small)."""
-    return render_mcp_guide(skill.body_path.read_text(encoding="utf-8"))
+    return skill.body_path.read_text(encoding="utf-8")
 
 
 def get_default_skill_with_body(name: str) -> ParsedSkill | None:
@@ -1544,10 +1534,11 @@ async def build_skills_context(
     if not index:
         return ""
     return (
-        "Skills are reusable procedures available via `read_skill(name)`. "
+        "Skills are reusable procedures loaded with "
+        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
         "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and call `read_skill(name=...)` to load the "
-        "full body before acting; distill a new one with `store_skill` "
+        "close paraphrase) and load the "
+        "full body before acting; distill a new one with `tool:store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
     )
@@ -1630,8 +1621,8 @@ async def build_skills_update_notice(
     if removed:
         lines.append(f"Removed skills: {_names(removed)}.")
     lines.append(
-        "Call `list_skills` to see the current list, then "
-        "`read_skill(name=...)` to load a new skill's body before using it."
+        "Call `tool:list_skills` to see the current list, then "
+        "`tool:read_skill` to load a new skill's body before using it."
     )
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
@@ -1713,7 +1704,7 @@ class StoreSkillTool(BaseTool):
     def description(self) -> str:
         return (
             "Save a reusable procedure as a skill. Surfaces in "
-            "<available_skills> next turn; loads via read_skill(name)."
+            "<available_skills> next turn; loads via tool:read_skill."
         )
 
     @property
@@ -1944,7 +1935,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (non-UTF-8 contents). "
-                    "Re-create it with store_skill."
+                    "Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -1953,7 +1944,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (missing/invalid "
-                    "frontmatter). Re-create it with store_skill."
+                    "frontmatter). Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )

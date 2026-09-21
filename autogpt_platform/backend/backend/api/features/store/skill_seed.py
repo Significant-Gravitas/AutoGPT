@@ -30,7 +30,6 @@ import os
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import TypedDict
 
 import httpx
 import prisma
@@ -52,6 +51,7 @@ from backend.data import db as database
 
 from .categories import validate_canonical_categories
 from .skill_submission_db import snapshot_version_files
+from .starter_skill_catalog_wave_three import WAVE_THREE_STARTER_SKILLS, StarterSkill
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +62,7 @@ SKILLS_DIR = "skills"
 _CONTENT_DIR = Path(__file__).parent / "starter_skills"
 
 
-class CatalogEntry(TypedDict):
-    slug: str
-    categories: list[str]
-    required_providers: list[str]
-
+CatalogEntry = StarterSkill
 
 STARTER_SKILLS: list[CatalogEntry] = [
     {
@@ -114,6 +110,286 @@ STARTER_SKILLS: list[CatalogEntry] = [
         "categories": ["marketing"],
         "required_providers": [],
     },
+    {
+        "slug": "bookkeeping-getting-started",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "expense-categorization",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "invoice-drafting-and-issue",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "accounts-receivable-follow-up",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "statement-reconciliation",
+        "categories": ["finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "month-end-close-checklist",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "monthly-profit-and-loss-summary",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "bookkeeping-exception-escalation",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "investor-relations-getting-started",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "pitch-deck-review",
+        "categories": ["finance", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "fundraising-data-room-checklist",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "investor-targeting-and-research",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "fundraising-pipeline-review",
+        "categories": ["finance", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "cap-table-hygiene",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "monthly-investor-update",
+        "categories": ["finance", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "board-and-investor-metrics-brief",
+        "categories": ["finance", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "kpi-analysis-getting-started",
+        "categories": ["research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-definition-and-data-quality",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "weekly-kpi-digest",
+        "categories": ["research", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-anomaly-detection",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "metric-movement-analysis",
+        "categories": ["research", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "cohort-and-retention-analysis",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "funnel-conversion-analysis",
+        "categories": ["research", "marketing"],
+        "required_providers": [],
+    },
+    {
+        "slug": "experiment-readout",
+        "categories": ["research", "development"],
+        "required_providers": [],
+    },
+    {
+        "slug": "recruiting-getting-started",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "role-intake-and-job-description",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "hiring-rubric-design",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "resume-screening",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "interview-plan-and-scorecard",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-interview-debrief",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-rejection-email",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "candidate-offer-draft",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    {
+        "slug": "procurement-getting-started",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-requirements-brief",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-quote-comparison",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-due-diligence",
+        "categories": ["operations", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "procurement-decision-memo",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-renewal-tracker",
+        "categories": ["operations", "finance"],
+        "required_providers": [],
+    },
+    {
+        "slug": "vendor-performance-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "spend-anomaly-review",
+        "categories": ["finance", "operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-ops-getting-started",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "nda-playbook-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "msa-playbook-review",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-clause-comparison",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-key-term-extraction",
+        "categories": ["operations", "research"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-deviation-triage",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "contract-obligation-tracker",
+        "categories": ["operations"],
+        "required_providers": [],
+    },
+    {
+        "slug": "counsel-escalation-brief",
+        "categories": ["operations", "content"],
+        "required_providers": [],
+    },
+    *[
+        {"slug": slug, "categories": ["development"], "required_providers": []}
+        for slug in (
+            "dependency-security-getting-started",
+            "dependency-inventory",
+            "outdated-dependency-review",
+            "vulnerability-triage",
+            "cve-stack-relevance",
+            "dependency-upgrade-plan",
+            "dependency-upgrade-pr",
+            "dependency-change-risk-review",
+        )
+    ],
+    *[
+        {"slug": slug, "categories": ["support"], "required_providers": []}
+        for slug in (
+            "customer-success-getting-started",
+            "customer-onboarding-plan",
+            "customer-health-score",
+            "churn-risk-review",
+            "renewal-readiness-review",
+            "renewal-touchpoint-draft",
+            "expansion-opportunity-brief",
+            "customer-success-plan",
+        )
+    ],
+    *[
+        {"slug": slug, "categories": ["sales"], "required_providers": []}
+        for slug in (
+            "deal-desk-getting-started",
+            "proposal-draft",
+            "statement-of-work-draft",
+            "pipeline-stage-aging-review",
+            "deal-risk-review",
+            "renewal-negotiation-brief",
+            "pricing-and-terms-approval-brief",
+            "proposal-quality-check",
+        )
+    ],
+    *WAVE_THREE_STARTER_SKILLS,
 ]
 
 

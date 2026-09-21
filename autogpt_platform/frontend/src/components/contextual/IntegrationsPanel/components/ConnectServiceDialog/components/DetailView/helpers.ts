@@ -74,3 +74,14 @@ export function chatgptModelsSentence(
   if (named.length === 1) return named[0];
   return `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
 }
+
+// A server URL sitting next to a secret reads as a login form, so password
+// managers offer the saved site credential for both fields. Each vendor
+// honours its own opt-out attribute, so all of them are set.
+export const noPasswordManager = {
+  autoComplete: "off",
+  "data-1p-ignore": true,
+  "data-lpignore": "true",
+  "data-bwignore": true,
+  "data-form-type": "other",
+} as const;

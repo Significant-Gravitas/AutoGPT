@@ -58,9 +58,14 @@ class TestRateCardUsd:
         assert rate_card_usd("moonshotai/kimi-k2.6") == (0.60, 2.80)
 
     def test_kimi_k3_premium_override(self) -> None:
-        # K3 is split-priced ($3/$15 per Mtok) — the override must win
-        # over the shared K2.x default.
-        assert rate_card_usd("moonshotai/kimi-k3") == (3.00, 15.00)
+        # K3 is split-priced ($1.70/$8.50 per Mtok) — the override must win
+        # over the shared K2.x default.  Sourced from the catalog entry's
+        # provider_*_usd_per_1m, which tracks OpenRouter's published price
+        # for moonshotai/kimi-k3 (/api/v1/models, re-checked 2026-09-20).
+        # It was $3/$15 until SECRT-2701: that is Moonshot AI's own
+        # first-party endpoint (and the :batch SKU), not the default route
+        # — we pin no provider, so OpenRouter picks the cheapest endpoint.
+        assert rate_card_usd("moonshotai/kimi-k3") == (1.70, 8.50)
 
     def test_future_moonshot_sku_inherits_default(self) -> None:
         # Verifies the prefix-based fallback — new SKUs don't need a code
