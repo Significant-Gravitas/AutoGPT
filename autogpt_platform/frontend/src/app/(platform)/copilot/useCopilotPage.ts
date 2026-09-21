@@ -279,6 +279,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
+    pendingSend,
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
@@ -412,6 +413,7 @@ export function useCopilotPage() {
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,

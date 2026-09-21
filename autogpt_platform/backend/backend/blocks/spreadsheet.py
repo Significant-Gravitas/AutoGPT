@@ -26,6 +26,10 @@ class ReadSpreadsheetBlock(Block):
             default=None,
             advanced=False,
         )
+        sheet_name: str | None = SchemaField(
+            description="Name of the worksheet to read from an Excel file. Defaults to the first sheet.",
+            default=None,
+        )
         delimiter: str = SchemaField(
             description="The delimiter used in the CSV/spreadsheet data",
             default=",",
@@ -126,16 +130,28 @@ class ReadSpreadsheetBlock(Block):
             if file_extension in [".xlsx", ".xls"]:
                 # Handle Excel files
                 try:
-                    from io import StringIO
-
                     import pandas as pd
 
-                    # Read Excel file
-                    df = pd.read_excel(file_path)
+                    # dtype=object and keep_default_na=False keep the sheet's own
+                    # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
+                    # missing, and a gap in a numeric column no longer upcasts the
+                    # whole column to float (turning 12 into "12.0").
+                    df = pd.read_excel(
+                        file_path,
+                        sheet_name=input_data.sheet_name or 0,
+                        dtype=object,
+                        keep_default_na=False,
+                    )
 
-                    # Convert to CSV string
+                    # Write the CSV with the same dialect it is parsed with below,
+                    # otherwise a non-default delimiter yields a single column.
                     csv_buffer = StringIO()
-                    df.to_csv(csv_buffer, index=False)
+                    df.to_csv(
+                        csv_buffer,
+                        index=False,
+                        sep=input_data.delimiter,
+                        quotechar=input_data.quotechar,
+                    )
                     csv_content = csv_buffer.getvalue()
 
                 except ImportError:
@@ -173,7 +189,7 @@ class ReadSpreadsheetBlock(Block):
         def process_row(row):
             data = {}
             for i, value in enumerate(row):
-                if i not in input_data.skip_columns:
+                if str(i) not in input_data.skip_columns:
                     if input_data.has_header and header:
                         data[header[i]] = value.strip() if input_data.strip else value
                     else:

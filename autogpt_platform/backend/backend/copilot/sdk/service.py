@@ -707,13 +707,10 @@ async def _consume_sdk_until_done(
         measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
         compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
-            # Compaction events end with StreamFinishStep, which maps to
-            # Vercel AI SDK's "finish-step" — that clears activeTextParts.
-            # Close any open text block BEFORE the compaction events so
-            # the text-end arrives before finish-step, preventing
-            # "text-end for missing text part" errors on the frontend.
+            # Compaction events end with StreamFinishStep; open blocks must
+            # close before it (see ``SDKResponseAdapter.end_open_blocks``).
             pre_close: list[StreamBaseResponse] = []
-            state.adapter._end_text_if_open(pre_close)
+            state.adapter.end_open_blocks(pre_close)
             # Compaction events bypass the adapter, so sync step state
             # when a StreamFinishStep is present — otherwise the adapter
             # will skip StreamStartStep on the next AssistantMessage.
@@ -4231,7 +4228,7 @@ async def _run_stream_attempt(
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
-        state.adapter._end_text_if_open(closing_responses)
+        state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
         notice_block_id = str(uuid.uuid4())
@@ -5896,7 +5893,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
-                    state.adapter._end_text_if_open(cleanup_events)
+                    state.adapter.end_open_blocks(cleanup_events)
                 cleanup_events.extend(
                     interrupted.finalize(
                         session,
