@@ -8,7 +8,10 @@ export function downloadFile(filename: string, blob: Blob): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // `click()` only queues the download; revoking in the same tick can leave
+  // Safari and Firefox fetching a URL that no longer resolves, which saves a
+  // zero-byte file with no error. Same deferral the admin export helpers use.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 const ENCODED_FILENAME = /filename\*\s*=\s*UTF-8''([^;]+)/i;
