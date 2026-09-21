@@ -124,6 +124,9 @@ def no_skills(mocker: pytest_mock.MockFixture):
     mocker.patch.object(
         package_export.experts_db, "bundled_skill_listings", return_value=[]
     )
+    # No stored folder resolves by default, so a skill is read from the slug
+    # derived from its name — the case every skill stored through the API is in.
+    mocker.patch.object(package_export, "find_user_skill_slugs", return_value={})
     return mocker.patch.object(package_export, "read_user_skill_package")
 
 
@@ -445,7 +448,12 @@ async def test_a_template_carries_the_hub_skills_it_bundles_as_a_hire_installs_t
 ):
     """Downloading a marketplace template must not lose the skills a hire of
     it would come with — and they are read behind the same gate a hire uses,
-    keyed by the downloader."""
+    keyed by the downloader.
+
+    The card's slug is the folder a hire installs into, which is the listing's
+    slug; its name is the listing's own name, so a reviewer reading the package
+    sees "Brand-Voice-Guide" rather than "brand-voice-guide".
+    """
     bundled = mocker.patch.object(
         package_export.experts_db,
         "bundled_skill_listings",
@@ -459,8 +467,8 @@ async def test_a_template_carries_the_hub_skills_it_bundles_as_a_hire_installs_t
     bundled.assert_awaited_once_with(DOWNLOADER, "template-1")
     listed.assert_not_called()
     assert [(s.slug, s.name, s.description) for s in package.manifest.skills] == [
-        ("brand-voice-guide", "brand-voice-guide", "brand-voice-guide description"),
-        ("outreach", "outreach", "outreach description"),
+        ("brand-voice-guide", "Brand-Voice-Guide", "brand-voice-guide description"),
+        ("outreach", "Outreach", "outreach description"),
     ]
     installed = prepare_user_skill(
         name="brand-voice-guide",
@@ -714,3 +722,27 @@ async def test_an_export_reads_back_as_the_same_expert(
 def test_the_download_is_named_after_the_expert():
     assert package_filename("Maria Ops") == "maria-ops.expert.zip"
     assert package_filename("!!!") == "expert.expert.zip"
+
+
+async def test_a_skill_is_read_from_the_folder_it_is_stored_under(
+    mocker: pytest_mock.MockFixture, no_skills
+):
+    """A hand-written SKILL.md may be named differently from its folder. The
+    export must follow the folder, or the skill vanishes from the package
+    without an error."""
+    mocker.patch.object(
+        package_export,
+        "list_user_skills",
+        return_value=[ParsedSkill(name="Deep Research", description="d", body="")],
+    )
+    mocker.patch.object(
+        package_export,
+        "find_user_skill_slugs",
+        return_value={"deep research": "deep-research"},
+    )
+    no_skills.return_value = SkillPackage(skill_md="---\nname: x\n---\nbody")
+
+    package = await _build(_expert())
+
+    no_skills.assert_awaited_once_with(OWNER, "deep-research", expert_id="expert-1")
+    assert [card.slug for card in package.manifest.skills] == ["deep-research"]

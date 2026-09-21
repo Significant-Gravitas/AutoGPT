@@ -342,7 +342,7 @@ async def test_a_users_mention_is_not_mistaken_for_the_bot(app_id):
     ctx = await TeamsAdapter(MagicMock())._build_context(activity)
     assert ctx is not None
     assert ctx.bot_mentioned is False
-    assert ctx.mentionable_users == (("Bob", "29:bob"),)
+    assert ctx.mentionable_users == (("Ada", "29:user"), ("Bob", "29:bob"))
 
 
 @pytest.mark.asyncio
@@ -363,7 +363,16 @@ async def test_mentionable_users_exclude_the_bot(app_id):
     )
     ctx = await TeamsAdapter(MagicMock())._build_context(activity)
     assert ctx is not None
-    assert ctx.mentionable_users == (("Grace", "29:grace"),)
+    assert ctx.mentionable_users == (("Ada", "29:user"), ("Grace", "29:grace"))
+
+
+@pytest.mark.asyncio
+async def test_the_author_can_be_pinged_back_by_name_or_id(app_id):
+    """The bot is answering the author, so "@Ada" or "<@29:user>" back to
+    them must ping, even when the message mentioned nobody."""
+    ctx = await TeamsAdapter(MagicMock())._build_context(_activity())
+    assert ctx is not None
+    assert ctx.mentionable_users == (("Ada", "29:user"),)
 
 
 # ── Threading ──────────────────────────────────────────────────────
@@ -585,6 +594,54 @@ async def test_send_link_uses_an_adaptive_card_button(app_id):
     # Pinned to 1.2 — the highest version every Teams client renders.
     assert card["content"]["version"] == "1.2"
     assert card["content"]["actions"][0]["url"] == "https://example.com/link"
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_message_updates_activity(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(return_value=None)
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.OK
+    args = adapter._client.update_activity.await_args.args
+    assert args[1] == "a:chat"
+    assert args[2] == "activity-9"
+    activity = args[3]
+    assert activity["type"] == "message"
+    assert activity["text"] == "updated text"
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_message_failed_on_connector_error(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+    from backend.copilot.bot.adapters.teams.api_client import TeamsApiError
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(
+        side_effect=TeamsApiError("boom", status_code=500)
+    )
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.FAILED
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_message_not_found_on_404(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+    from backend.copilot.bot.adapters.teams.api_client import TeamsApiError
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(
+        side_effect=TeamsApiError("not found", status_code=404)
+    )
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.NOT_FOUND
 
 
 @pytest.mark.asyncio

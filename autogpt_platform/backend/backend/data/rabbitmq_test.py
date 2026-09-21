@@ -20,8 +20,11 @@ from backend.data.rabbitmq import (
     ExchangeType,
     Queue,
     RabbitMQConfig,
+    declare_broadcast_queue,
+    reap_shared_queue,
 )
 from backend.executor.utils import (
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
@@ -60,12 +63,67 @@ def test_graph_execution_queue_is_quorum() -> None:
     assert run.exchange is GRAPH_EXECUTION_EXCHANGE
 
 
-def test_graph_execution_cancel_queue_is_quorum() -> None:
-    """Cancel queue must also be quorum — losing cancellations on a node
-    flap is just as bad as losing runs."""
+def test_graph_execution_config_declares_no_cancel_queue() -> None:
+    """Cancels fan out to a per-pod exclusive queue each consumer declares
+    itself; a queue here would be shared by the whole fleet again, and
+    RabbitMQ would round-robin each cancel to one arbitrary pod."""
     cfg = create_execution_queue_config()
-    cancel = next(q for q in cfg.queues if q.name.endswith("cancel_queue_v2"))
-    assert cancel.arguments == {"x-queue-type": "quorum"}
+    assert GRAPH_EXECUTION_CANCEL_EXCHANGE in cfg.exchanges
+    assert [q.name for q in cfg.queues] == [GRAPH_EXECUTION_QUEUE_NAME]
+
+
+class TestDeclareBroadcastQueue:
+    def test_queue_is_exclusive_auto_delete_and_bound_to_the_exchange(self) -> None:
+        channel = MagicMock()
+        name = declare_broadcast_queue(
+            channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, "executor-1"
+        )
+        assert name.startswith(f"{GRAPH_EXECUTION_CANCEL_EXCHANGE.name}.instance.")
+        channel.queue_declare.assert_called_once_with(
+            queue=name, durable=False, exclusive=True, auto_delete=True
+        )
+        channel.queue_bind.assert_called_once_with(
+            queue=name, exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE.name, routing_key=""
+        )
+
+    def test_each_instance_gets_its_own_queue(self) -> None:
+        names = {
+            declare_broadcast_queue(
+                MagicMock(), GRAPH_EXECUTION_CANCEL_EXCHANGE, instance_id
+            )
+            for instance_id in ("executor-1", "executor-2", "executor-1")
+        }
+        assert len(names) == 3
+
+
+class TestReapSharedQueue:
+    def test_leaves_a_queue_that_an_old_instance_still_drains(self) -> None:
+        """Deleting it then would take that instance's broadcasts away."""
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_declare.return_value.method.consumer_count = 1
+
+        assert reap_shared_queue(channel, "old_queue") is False
+        scratch.queue_delete.assert_not_called()
+        scratch.close.assert_called_once()
+
+    def test_deletes_a_queue_nothing_consumes(self) -> None:
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_declare.return_value.method.consumer_count = 0
+
+        assert reap_shared_queue(channel, "old_queue") is True
+        scratch.queue_declare.assert_called_once_with(queue="old_queue", passive=True)
+        scratch.queue_delete.assert_called_once_with(queue="old_queue")
+        scratch.close.assert_called_once()
+
+    def test_a_missing_queue_is_not_an_error(self) -> None:
+        channel = MagicMock()
+        scratch = channel.connection.channel.return_value
+        scratch.queue_declare.side_effect = RuntimeError("NOT_FOUND")
+
+        assert reap_shared_queue(channel, "old_queue") is False
+        scratch.queue_delete.assert_not_called()
 
 
 def test_copilot_execution_queue_is_quorum_with_consumer_timeout() -> None:
@@ -83,10 +141,11 @@ def test_copilot_execution_queue_is_quorum_with_consumer_timeout() -> None:
     assert timeout_ms >= 60 * 60 * 1000  # at least 1 hour
 
 
-def test_copilot_cancel_queue_is_quorum() -> None:
+def test_copilot_config_declares_no_cancel_queue() -> None:
+    """Copilot cancels fan out to a per-pod exclusive queue the consumer
+    declares itself; a queue here would be shared by the whole fleet again."""
     cfg = create_copilot_queue_config()
-    cancel = next(q for q in cfg.queues if q.name.endswith("cancel_queue_v2"))
-    assert cancel.arguments == {"x-queue-type": "quorum"}
+    assert [q.name for q in cfg.queues] == [COPILOT_EXECUTION_QUEUE_NAME]
 
 
 # ---------- AsyncRabbitMQ.publish_message: mock-driven behaviour ----------

@@ -26,8 +26,10 @@ export function SectionHeader({
   action,
   secondaryAction,
 }: Props) {
+  // A phone stacks the actions under the text rather than hiding them: for
+  // the skills shelf this block is the only route to authoring your own.
   return (
-    <div className="mb-7 flex items-end justify-between gap-4">
+    <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         {eyebrow ? (
           <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
@@ -47,7 +49,7 @@ export function SectionHeader({
         ) : null}
       </div>
       {action || secondaryAction ? (
-        <div className="hidden shrink-0 flex-col items-end gap-2 sm:flex">
+        <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2">
           {secondaryAction ? (
             <Button
               as="NextLink"

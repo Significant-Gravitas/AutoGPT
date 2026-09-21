@@ -25,8 +25,15 @@ from backend.copilot.baseline.service import (
     _mark_tools_with_cache_control,
     _supports_prompt_cache_markers,
 )
+from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.tools import expert_tool_disabled_groups, get_available_tools
+from backend.copilot.tools import (
+    ToolGroup,
+    expert_tool_disabled_groups,
+    get_available_tools,
+    get_tool,
+    reachable_tool_names,
+)
 from backend.copilot.tools.list_agent_triggers import AgentTriggerListResponse
 from backend.copilot.tools.manage_presets import PresetListResponse
 from backend.copilot.tools.manage_schedules import ScheduleListResponse
@@ -34,6 +41,8 @@ from backend.copilot.tools.models import (
     AgentInfo,
     AgentOutputResponse,
     AgentsFoundResponse,
+    CapabilityDetailsResponse,
+    CapabilityListResponse,
     ErrorResponse,
     ExecutionStartedResponse,
     MemorySearchResponse,
@@ -62,6 +71,11 @@ TERMINAL_TOOL = "ask_question"
 LIBRARY_SEARCH_TOOLS = ("find_library_agent", "find_agent")
 DELEGATION_TOOLS = ("delegate_to_expert", "run_sub_session")
 HANDOFF_TOOL = "handoff_to_expert"
+FIND_TOOL = "find_capability"
+DESCRIBE_TOOL = "describe_capability"
+RUN_TOOL = "run_capability"
+# The wrappers that name their target in ``id`` instead of being the target.
+CAPABILITY_WRAPPERS = (RUN_TOOL, DESCRIBE_TOOL)
 WEB_TOOLS = ("web_search", "web_fetch")
 STUB_EXECUTION_ID = "style-eval-execution"
 STUB_GRAPH_ID = "style-eval-graph"
@@ -91,13 +105,25 @@ def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
     return openai.AsyncOpenAI(api_key=api_key or "", base_url=base_url)
 
 
+def _expert_disabled_groups(expert: Expert | None) -> list[ToolGroup]:
+    return expert_tool_disabled_groups(
+        experts_enabled=DELEGATION_ENABLED, expert_id=expert.id if expert else None
+    )
+
+
 def expert_tools(expert: Expert | None) -> list[ChatCompletionToolParam]:
     """Production's tool surface for the session (hire-experts on, memory on):
     an expert loses the staffing tools, plain Otto the expert-only ones."""
-    disabled = expert_tool_disabled_groups(
-        experts_enabled=DELEGATION_ENABLED, expert_id=expert.id if expert else None
-    )
-    return get_available_tools(disabled_groups=disabled)
+    return get_available_tools(disabled_groups=_expert_disabled_groups(expert))
+
+
+def expert_reachable_tools(expert: Expert | None) -> frozenset[str]:
+    """Everything the session can run, declared or reached by id.
+
+    The schema list above is the eager core; the rest of the surface is a
+    ``run_capability`` call away, under the same group gate.
+    """
+    return reachable_tool_names(disabled_groups=_expert_disabled_groups(expert))
 
 
 async def generate_turn(
@@ -148,7 +174,9 @@ async def generate_turn(
         ]
         if not tool_calls:
             break
-        turn.tool_calls += [tc.function.name for tc in tool_calls]
+        turn.tool_calls += [
+            called_name(tc.function.name, tc.function.arguments) for tc in tool_calls
+        ]
         asked = [tc for tc in tool_calls if tc.function.name == TERMINAL_TOOL]
         if asked:
             texts += [question_text(tc.function.arguments) for tc in asked]
@@ -185,6 +213,17 @@ def stub_tool_result(
     An ad-hoc "no results" blob instead kept the model retrying the same tools
     until the round cap, on 6 of 90 prompts."""
     args = _arguments(arguments)
+    if name == FIND_TOOL:
+        return _capability_search(str(args.get("query") or ""))
+    if name == DESCRIBE_TOOL:
+        return _capability_details(called_name(name, arguments))
+    if name == RUN_TOOL:
+        # Since the swap the model reaches all but the eager core through
+        # run_capability, so the table below would answer almost nothing if
+        # it kept dispatching on the wrapper's name and arguments.
+        name = called_name(name, arguments)
+        nested = args.get("input")
+        args = dict(nested) if isinstance(nested, dict) else {}
     workflow = _workflow(expert, args)
     if name in LIBRARY_SEARCH_TOOLS:
         return _dump(_library_result(expert))
@@ -273,6 +312,67 @@ def stub_tool_result(
             )
         )
     return _dump(NoResultsResponse(message=f"Nothing to return from {name}."))
+
+
+def called_name(name: str, arguments: str) -> str:
+    """The tool the model actually asked for.
+
+    ``run_capability(id="tool:memory_search")`` is a call to ``memory_search``
+    as far as this eval is concerned; recording the wrapper instead would
+    collapse every per-tool measurement onto one name.
+    """
+    if name not in CAPABILITY_WRAPPERS:
+        return name
+    target = str(_arguments(arguments).get("id") or "").strip()
+    for prefix in ("tool:", "block:", "mcp:"):
+        if target.startswith(prefix):
+            return target[len(prefix) :]
+    return target or name
+
+
+def _capability_details(capability_id: str) -> str:
+    """What ``describe_capability`` answers: the entry and its input shape.
+
+    Only platform tools are described here — a block or MCP schema needs the
+    account the eval does not have, and no stub below answers one anyway.
+    """
+    entry = get_registry().get(capability_id)
+    tool = get_tool(capability_id) if entry else None
+    if entry is None or tool is None:
+        return _dump(
+            NoResultsResponse(message=f"No capability with id {capability_id!r}.")
+        )
+    return _dump(
+        CapabilityDetailsResponse(
+            message=f"{tool.description} Run it with run_capability(id='{entry.id}').",
+            capability=entry.listing(),
+            parameters=tool.parameters,
+        )
+    )
+
+
+def _capability_search(query: str) -> str:
+    """The real index, so a search here ranks what production ranks.
+
+    The registry is built in-process from the block and tool registries, the
+    same way the retrieval benchmark builds it, so this needs no database.
+    """
+    result = get_registry().search(query)
+    hits = list(result.hits)
+    if not hits and not result.fallback:
+        return _dump(
+            NoResultsResponse(message=f"Nothing on the platform matches {query!r}.")
+        )
+    return _dump(
+        CapabilityListResponse(
+            message=f"Found {len(hits)} capabilities.",
+            query=query,
+            capabilities=[hit.entry.listing() for hit in hits],
+            count=len(hits),
+            fallback=[hit.entry.listing() for hit in result.fallback],
+            service=result.service,
+        )
+    )
 
 
 def _library_result(expert: Expert | None) -> ToolResponseBase:

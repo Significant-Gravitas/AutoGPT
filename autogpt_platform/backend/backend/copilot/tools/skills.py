@@ -28,7 +28,7 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
-from backend.copilot.service import strip_server_injected_tags
+from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace_scope import (
@@ -102,6 +102,8 @@ MAX_PACKAGE_PATH_DEPTH = 8
 # An E2B write is a 200 ms round trip and a workspace read a blob fetch, so
 # 60 of either in series is seconds of a turn.  Bounded, not unlimited.
 _COPY_CONCURRENCY = 16
+# Attempts at reading a package whose tree keeps moving under the read.
+_PACKAGE_READ_ATTEMPTS = 3
 # Passes delete_user_skill will make over a folder, each one page deep.
 # Bounded so a file that cannot be deleted can never spin the loop.
 _DELETE_PASSES = 20
@@ -146,12 +148,12 @@ _META_EXECUTABLE = "executable"
 # folder name is clean and the on-screen index never has dangling dashes.
 # Length cap matches MAX_NAME_CHARS via the {0,62} interior + 1 anchor at
 # each end.
-_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
-# Default skills — migrated from the legacy ``get_agent_building_guide`` /
-# ``get_mcp_guide`` tools so users get a uniform discovery surface.  These
+# Default skills — migrated from the legacy ``get_agent_building_guide``
+# tool so users get a uniform discovery surface.  These
 # are *read-only* — store_skill / delete_skill refuse to touch them.  Body
 # is loaded from disk lazily so adding more defaults is a drop-in.
 # ---------------------------------------------------------------------------
@@ -181,15 +183,6 @@ DEFAULT_SKILLS: tuple[_DefaultSkill, ...] = (
             "validate_agent_graph",
             "fix_agent_graph",
         ),
-    ),
-    _DefaultSkill(
-        name="mcp_tool_guide",
-        description=(
-            "MCP server URLs and auth setup — load before calling "
-            "run_mcp_tool when you need server URLs or auth details."
-        ),
-        body_path=_SDK_DIR / "mcp_tool_guide.md",
-        triggers=("run_mcp_tool",),
     ),
 )
 
@@ -278,7 +271,7 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
 
 
 def _validate_name(name: str) -> str | None:
-    if not _NAME_RE.match(name):
+    if not SKILL_NAME_RE.match(name):
         return (
             "name must be a slug (lowercase a-z, 0-9, _ or -; "
             f"1-{MAX_NAME_CHARS} chars; must start with a letter or digit)"
@@ -1234,21 +1227,52 @@ async def read_user_skill_package(
     Only a missing skill answers ``None``: a storage failure or an undecodable
     file raises, because a download that quietly omits part of the tree is worse
     than one that fails.
+
+    The read is bracketed by a fingerprint of the tree and retried when it
+    moves, because ``store_user_skill`` writes the siblings before the root: a
+    concurrent store caught mid-write would otherwise hand back one version's
+    ``SKILL.md`` with another's files. Exhausting the attempts raises rather
+    than serving a package that may be mixed.
     """
     slug = skill_slug(name)
     if not slug:
         return None
     manager = await _get_user_skill_manager(user_id, scope)
-    try:
-        raw = await manager.read_file(_skill_md_path(slug, expert_id))
-    except FileNotFoundError:
-        return None
-    return SkillPackage(
-        skill_md=raw.decode("utf-8"),
-        files=await _read_package_files(
-            manager, skill_folder(expert_id), slug, complete=True
-        ),
+    folder = skill_folder(expert_id)
+    root_path = _skill_md_path(slug, expert_id)
+    for _ in range(_PACKAGE_READ_ATTEMPTS):
+        before = await _package_fingerprint(manager, folder, slug, root_path)
+        if before is None:
+            return None
+        try:
+            raw = await manager.read_file(root_path)
+        except FileNotFoundError:
+            return None
+        # Only a moved fingerprint retries; any other failure in here is this
+        # caller's answer, not a concurrent write.
+        files = await _read_package_files(manager, folder, slug, complete=True)
+        if await _package_fingerprint(manager, folder, slug, root_path) == before:
+            return SkillPackage(skill_md=raw.decode("utf-8"), files=files)
+    raise ConflictError(
+        f"Skill '{slug}' was being changed while it was read. Try again."
     )
+
+
+async def _package_fingerprint(
+    manager: WorkspaceManager, folder: str, slug: str, root_path: str
+) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    """Row ids of a package's ``SKILL.md`` and every sibling, ``None`` when the
+    skill is not there.
+
+    Sound only because ``write_file`` mints a fresh id per write and overwrites
+    by deleting and recreating rather than updating in place, so no write to
+    this tree can leave the ids untouched.
+    """
+    root = await manager.get_file_info_by_path(root_path)
+    if root is None:
+        return None
+    files = await _list_package_files(manager, folder, slug, cap=None)
+    return root.id, tuple(sorted((f.path, f.file_id) for f in files))
 
 
 async def list_user_skill_files(
@@ -1283,13 +1307,19 @@ async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
 
 
-async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:
+async def find_user_skill_slugs(
+    user_id: str, names: list[str], *, expert_id: str | None = None
+) -> dict[str, str]:
     """Folder slug per requested name, keyed by the lowercased name.
 
     Matches the folder first, then the frontmatter name — a skill written by
     hand may be listed under a name that differs from its folder. One listing
     covers the whole batch, and a folder carrying store-time metadata is
     matched without reading it, so only hand-written skills cost a fetch.
+
+    *expert_id* picks the folder to scan, exactly as :func:`skill_folder` does
+    elsewhere: an expert's skills live under its own folder, so resolving them
+    against personal Otto's would find nothing.
     """
     wanted = {n.strip().lower() for n in names if n.strip()}
     if not wanted:
@@ -1297,7 +1327,7 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
     manager = await _get_user_skill_manager(user_id)
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
+    for f, slug in await _list_skill_roots(manager, skill_folder(expert_id)):
         if slug.strip().lower() in wanted:
             found[slug.strip().lower()] = slug
             continue
@@ -1533,12 +1563,98 @@ async def build_skills_context(
     if not index:
         return ""
     return (
-        "Skills are reusable procedures available via `read_skill(name)`. "
+        "Skills are reusable procedures loaded with "
+        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
         "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and call `read_skill(name=...)` to load the "
-        "full body before acting; distill a new one with `store_skill` "
+        "close paraphrase) and load the "
+        "full body before acting; distill a new one with `tool:store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
+    )
+
+
+# Non-greedy: history holds at most one ``<available_skills>`` block (the
+# first-turn injection), but a greedy match across two blocks would swallow
+# the user text between them.
+_SKILLS_BLOCK_RE = re.compile(r"<available_skills>(.*?)</available_skills>", re.DOTALL)
+# One index line per skill: ``- name: <slug> — <description> …``.
+_SKILLS_INDEX_LINE_RE = re.compile(r"^- name:\s*(\S+)", re.MULTILINE)
+
+# How many added/removed slugs to name inline before falling back to a
+# count — the notice is a nudge to call ``list_skills``, not the index.
+_MAX_UPDATE_NAMES = 10
+
+
+def previously_seen_skill_slugs(contents: Iterable[str]) -> set[str]:
+    """Slugs from every ``<available_skills>`` block in *contents*.
+
+    Pure parser over already-persisted session text — what the model saw at
+    session start. ``Iterable`` (not ``ChatMessage``) so callers pass plain
+    message contents without importing the chat model here.
+    """
+    seen: set[str] = set()
+    for content in contents:
+        if not content:
+            continue
+        for block in _SKILLS_BLOCK_RE.findall(content):
+            seen.update(_SKILLS_INDEX_LINE_RE.findall(block))
+    return seen
+
+
+async def build_skills_update_notice(
+    user_id: str | None,
+    expert_id: str | None = None,
+    prior_contents: Iterable[str] = (),
+) -> str:
+    """Per-turn ``<skills_update>`` notice, or ``""`` when nothing drifted.
+
+    Compares the registry now (``list_all_skills``: defaults plus the
+    session owner's own skills) against the ``<available_skills>`` index
+    baked into the session history at session start. Same set → ``""`` so
+    steady-state turns pay nothing. Any add or removal renders a small
+    notice naming the delta and pointing at ``list_skills`` — query-only
+    context the engines prepend to the current turn's model input without
+    persisting, mirroring the builder-context pattern.
+
+    Never raises: a registry or flag lookup failure degrades to ``""`` so
+    a skills hiccup can't block the turn.
+    """
+    if not user_id:
+        return ""
+    try:
+        if not await is_skills_feature_enabled(user_id):
+            return ""
+        current = await list_all_skills(user_id, expert_id)
+    except Exception:
+        logger.exception("[skills] failed to diff skills for update notice")
+        return ""
+    current_slugs = {s.name for s in current}
+    seen = previously_seen_skill_slugs(prior_contents)
+    added = sorted(slug for slug in current_slugs if slug not in seen)
+    removed = sorted(slug for slug in seen if slug not in current_slugs)
+    if not added and not removed:
+        return ""
+
+    def _names(slugs: list[str]) -> str:
+        if len(slugs) > _MAX_UPDATE_NAMES:
+            head = ", ".join(slugs[:_MAX_UPDATE_NAMES])
+            return f"{head}, and {len(slugs) - _MAX_UPDATE_NAMES} more"
+        return ", ".join(slugs)
+
+    lines = [
+        "Your available skills changed since this conversation started, "
+        "so the <available_skills> index in the first message is stale."
+    ]
+    if added:
+        lines.append(f"New skills: {_names(added)}.")
+    if removed:
+        lines.append(f"Removed skills: {_names(removed)}.")
+    lines.append(
+        "Call `tool:list_skills` to see the current list, then "
+        "`tool:read_skill` to load a new skill's body before using it."
+    )
+    return (
+        f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
 
 
@@ -1617,7 +1733,7 @@ class StoreSkillTool(BaseTool):
     def description(self) -> str:
         return (
             "Save a reusable procedure as a skill. Surfaces in "
-            "<available_skills> next turn; loads via read_skill(name)."
+            "<available_skills> next turn; loads via tool:read_skill."
         )
 
     @property
@@ -1848,7 +1964,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (non-UTF-8 contents). "
-                    "Re-create it with store_skill."
+                    "Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -1857,7 +1973,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (missing/invalid "
-                    "frontmatter). Re-create it with store_skill."
+                    "frontmatter). Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )

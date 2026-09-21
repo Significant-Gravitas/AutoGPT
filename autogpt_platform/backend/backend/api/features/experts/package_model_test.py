@@ -254,3 +254,63 @@ def test_the_combined_cap_is_the_skill_package_cap():
             a=_skill(*[MAX_PACKAGE_FILE_BYTES] * 9, room - 9 * MAX_PACKAGE_FILE_BYTES)
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# A slug is a folder name, in the archive and once installed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "slug",
+    ["..", ".", "a/b", "a\\b", " x ", "x\x00y", "-lead", "trail-", "Upper"],
+)
+def test_a_slug_that_is_not_a_plain_folder_name_is_refused(slug: str):
+    """``skills/../SKILL.md`` resolves outside the tree the manifest describes,
+    wherever the file is unpacked; the rest cannot name the folder an importer
+    would install into."""
+    with pytest.raises(ValidationError):
+        PackagedSkill(slug=slug, name="n")
+
+
+@pytest.mark.parametrize("slug", ["research", "deep-research", "a", "a_b", "x9"])
+def test_the_slugs_the_skill_store_produces_are_accepted(slug: str):
+    assert PackagedSkill(slug=slug, name="n").slug == slug
+
+
+def test_a_manifest_and_a_payload_that_disagree_are_refused_before_writing():
+    """The reader already refuses a tree that disagrees with its manifest, so
+    the writer must not be able to produce one."""
+    package = ExpertPackage(
+        manifest=ExpertManifest(
+            identity=IDENTITY, skills=[PackagedSkill(slug="research", name="n")]
+        ),
+        skills={},
+    )
+    with pytest.raises(ExpertPackageError, match="carries no files"):
+        validate_expert_package(package)
+
+    package = ExpertPackage(
+        manifest=ExpertManifest(identity=IDENTITY),
+        skills={"research": SkillPackage(skill_md="---\nname: x\n---\nb")},
+    )
+    with pytest.raises(ExpertPackageError, match="does not list"):
+        validate_expert_package(package)
+
+
+def test_avatar_bytes_and_the_manifest_have_to_agree():
+    """Otherwise the writer drops bytes nothing named, or names a file it never
+    wrote — and the reader refuses the result either way."""
+    declared = ExpertPackage(
+        manifest=ExpertManifest(
+            identity=IDENTITY, avatar=PackagedAvatar(kind="file", path="avatar.png")
+        ),
+        avatar_bytes=None,
+    )
+    with pytest.raises(ExpertPackageError, match="carries no bytes"):
+        validate_expert_package(declared)
+
+    undeclared = ExpertPackage(manifest=ExpertManifest(identity=IDENTITY))
+    undeclared.avatar_bytes = b"\x89PNG"
+    with pytest.raises(ExpertPackageError, match="does not declare"):
+        validate_expert_package(undeclared)

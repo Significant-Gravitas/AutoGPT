@@ -442,9 +442,9 @@ async def soft_delete_workspace_file(
         return None
 
     deleted_at = datetime.now(timezone.utc)
-    # Modify path to free up the unique constraint for new files at original path
-    # Format: {original_path}__deleted__{timestamp}
-    deleted_path = f"{file.path}__deleted__{int(deleted_at.timestamp())}"
+    # Frees the path for the next write, to microseconds: `write_file` soft-deletes
+    # the row it overwrites, so two writes in one second would collide here.
+    deleted_path = f"{file.path}__deleted__{deleted_at.timestamp():.6f}"
 
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
