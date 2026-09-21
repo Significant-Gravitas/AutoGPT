@@ -244,16 +244,12 @@ def _to_model(
     """Translate the overloaded ``voicePreferences`` column safely.
 
     Template rows store an internal ``{description, samples}`` JSON envelope
-    so the hire flow can present choices. Hired rows must store only the final
-    plain-text preference that is safe to render in prompts. Keep this branch
-    on ``isTemplate`` until those representations have separate columns.
+    so the hire flow can present choices, and so does an expert imported from
+    a package whose soul carried samples. Every row is decoded the same way:
+    a plain-text preference passes through untouched, and an envelope is
+    never rendered raw into a prompt whichever kind of row it sits on.
     """
-    if row.isTemplate:
-        voice_preferences, voice_samples = decode_voice_preferences(
-            row.voicePreferences
-        )
-    else:
-        voice_preferences, voice_samples = row.voicePreferences, []
+    voice_preferences, voice_samples = decode_voice_preferences(row.voicePreferences)
     return Expert(
         id=row.id,
         name=row.name,

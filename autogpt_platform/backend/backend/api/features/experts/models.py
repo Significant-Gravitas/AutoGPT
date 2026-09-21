@@ -210,9 +210,10 @@ class Expert(BaseModel):
     categories: list[str] = []
     identity: str
     voice_preferences: str
-    # Populated only on roster templates so the hire flow can offer a voice
-    # pick; always empty on hired copies, which persist the user's plain-text
-    # choice in voice_preferences instead.
+    # Populated on roster templates so the hire flow can offer a voice pick,
+    # and on an expert imported from a package whose soul carried samples;
+    # empty on hired copies, which persist the user's plain-text choice in
+    # voice_preferences instead.
     voice_samples: list[VoiceSample] = []
     # Roster templates only; a hire does not copy it.
     day_one: list[ExpertDayOneItem] = Field(
