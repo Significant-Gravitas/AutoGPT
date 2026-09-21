@@ -46,7 +46,10 @@ import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader } from "./components/ThreadHeader";
-import { PendingUploadMessage } from "./components/PendingUploadMessage";
+import {
+  PENDING_UPLOAD_MESSAGE_ID,
+  PendingUploadMessage,
+} from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import type { PendingUploadSend } from "../../copilotStreamStore";
@@ -352,8 +355,10 @@ export function ChatMessagesContainer({
   const hideForScroll = messagesReady && !settled;
 
   const lastMessage = messages[messages.length - 1];
-  const lastUserMessageID =
-    messages.findLast((message) => message.role === "user")?.id ?? null;
+  const showPendingSend = !readOnly && !!pendingSend;
+  const lastUserMessageID = showPendingSend
+    ? PENDING_UPLOAD_MESSAGE_ID
+    : (messages.findLast((message) => message.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -762,7 +767,7 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
-          {!readOnly && pendingSend && (
+          {showPendingSend && pendingSend && (
             <PendingUploadMessage
               pendingSend={pendingSend}
               isCompact={isCompact}

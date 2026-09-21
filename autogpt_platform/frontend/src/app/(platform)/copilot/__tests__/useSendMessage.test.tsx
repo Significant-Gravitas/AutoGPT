@@ -17,6 +17,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000001";
+const OTHER_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000002";
 const FILE_ID = "5f8b0f7e-9f30-4a3b-a6a1-000000000001";
 
 function deferred<T>() {
@@ -73,7 +74,6 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(result.current.pendingSend).not.toBeNull());
     expect(result.current.pendingSend).toEqual({
-      sessionId: SESSION_ID,
       text: "tell me about this",
       attachments: [
         {
@@ -213,7 +213,6 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
     expect(result.current.pendingSend).toEqual({
-      sessionId: null,
       text: "first",
       attachments: [
         {
@@ -228,16 +227,129 @@ describe("useSendMessage with local attachments", () => {
 
   it("hides a placeholder that belongs to another session", async () => {
     uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
-    const { result } = renderSendMessage("some-other-session");
+    const { result } = renderSendMessage(OTHER_SESSION_ID);
 
     act(() => {
-      useCopilotStreamStore.getState().setPendingUploadSend({
-        sessionId: SESSION_ID,
+      useCopilotStreamStore.getState().setPendingUploadSend(SESSION_ID, {
         text: "elsewhere",
         attachments: [],
       });
     });
 
     await waitFor(() => expect(result.current.pendingSend).toBeNull());
+    expect(result.current.isUploadingFiles).toBe(false);
+  });
+});
+
+describe("useSendMessage placeholders across sessions", () => {
+  function uploadResult(name: string) {
+    return { file_id: FILE_ID, name, mime_type: "application/pdf" };
+  }
+
+  it("keeps one placeholder per session and clears only the one that settles", async () => {
+    const uploadA = deferred<ReturnType<typeof uploadResult>>();
+    const uploadB = deferred<ReturnType<typeof uploadResult>>();
+    uploadFileDirectMock.mockImplementation((file: File) =>
+      file.name === "a.pdf" ? uploadA.promise : uploadB.promise,
+    );
+    const chatA = renderSendMessage(SESSION_ID);
+    const chatB = renderSendMessage(OTHER_SESSION_ID);
+
+    act(() => {
+      void chatA.result.current.onSend("from A", [makeFile("a.pdf")]);
+    });
+    act(() => {
+      void chatB.result.current.onSend("from B", [makeFile("b.pdf")]);
+    });
+
+    await waitFor(() =>
+      expect(chatA.result.current.pendingSend?.text).toBe("from A"),
+    );
+    await waitFor(() =>
+      expect(chatB.result.current.pendingSend?.text).toBe("from B"),
+    );
+    expect(chatA.result.current.isUploadingFiles).toBe(true);
+    expect(chatB.result.current.isUploadingFiles).toBe(true);
+
+    await act(async () => {
+      uploadA.resolve(uploadResult("a.pdf"));
+    });
+
+    await waitFor(() => expect(chatA.sendMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(chatA.result.current.pendingSend).toBeNull());
+    expect(chatA.result.current.isUploadingFiles).toBe(false);
+    expect(chatB.result.current.pendingSend?.text).toBe("from B");
+    expect(chatB.result.current.isUploadingFiles).toBe(true);
+    expect(chatB.sendMessage).not.toHaveBeenCalled();
+
+    await act(async () => {
+      uploadB.resolve(uploadResult("b.pdf"));
+    });
+
+    await waitFor(() => expect(chatB.sendMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(chatB.result.current.pendingSend).toBeNull());
+    expect(chatB.result.current.isUploadingFiles).toBe(false);
+  });
+
+  it("keeps the placeholder and the upload lock across a remount mid-upload", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const first = renderSendMessage();
+
+    act(() => {
+      void first.result.current.onSend("hold on", [makeFile("a.pdf")]);
+    });
+    await waitFor(() =>
+      expect(first.result.current.isUploadingFiles).toBe(true),
+    );
+    first.unmount();
+
+    const second = renderSendMessage();
+    expect(second.result.current.pendingSend?.text).toBe("hold on");
+    expect(second.result.current.isUploadingFiles).toBe(true);
+  });
+
+  it("moves the first send's placeholder onto the session once it is created", async () => {
+    const upload = deferred<ReturnType<typeof uploadResult>>();
+    uploadFileDirectMock.mockReturnValue(upload.promise);
+    const creation = deferred<string>();
+    const newChat = renderSendMessage(null);
+    newChat.createSession.mockImplementation(async () => {
+      const id = await creation.promise;
+      useCopilotStreamStore.getState().bindPendingFirstSendToSession(id);
+      return id;
+    });
+
+    act(() => {
+      void newChat.result.current.onSend("first", [makeFile("a.pdf")]);
+    });
+
+    await waitFor(() => expect(newChat.createSession).toHaveBeenCalledTimes(1));
+    expect(newChat.result.current.pendingSend?.text).toBe("first");
+    expect(newChat.result.current.isUploadingFiles).toBe(true);
+
+    // An existing chat open elsewhere must not pick up the unbound send.
+    const other = renderSendMessage(OTHER_SESSION_ID);
+    expect(other.result.current.pendingSend).toBeNull();
+    expect(other.result.current.isUploadingFiles).toBe(false);
+
+    await act(async () => {
+      creation.resolve(SESSION_ID);
+    });
+    newChat.unmount();
+
+    const created = renderSendMessage(SESSION_ID);
+    expect(created.result.current.pendingSend?.text).toBe("first");
+    expect(created.result.current.isUploadingFiles).toBe(true);
+    await waitFor(() => expect(uploadFileDirectMock).toHaveBeenCalledTimes(1));
+    expect(other.result.current.pendingSend).toBeNull();
+
+    await act(async () => {
+      upload.resolve(uploadResult("a.pdf"));
+    });
+
+    await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(created.result.current.pendingSend).toBeNull());
+    expect(created.result.current.isUploadingFiles).toBe(false);
+    expect(other.result.current.pendingSend).toBeNull();
   });
 });

@@ -875,7 +875,6 @@ describe("ChatMessagesContainer — expert kickoff", () => {
 
 describe("ChatMessagesContainer — pendingSend", () => {
   const pendingSend = {
-    sessionId: "sess-123",
     text: "tell me about this",
     attachments: [
       {

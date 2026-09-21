@@ -1,6 +1,9 @@
 import { cleanup, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PendingUploadMessage } from "../PendingUploadMessage";
+import {
+  PENDING_UPLOAD_MESSAGE_ID,
+  PendingUploadMessage,
+} from "../PendingUploadMessage";
 
 const flagState = vi.hoisted(() => ({ artifacts: false }));
 
@@ -54,7 +57,7 @@ describe("PendingUploadMessage", () => {
     flagState.artifacts = true;
     render(
       <PendingUploadMessage
-        pendingSend={{ sessionId: "s", text: "look at these", attachments }}
+        pendingSend={{ text: "look at these", attachments }}
       />,
     );
 
@@ -70,21 +73,26 @@ describe("PendingUploadMessage", () => {
   });
 
   it("falls back to plain file cards showing the media type when artifacts are off", () => {
-    render(
-      <PendingUploadMessage
-        pendingSend={{ sessionId: "s", text: "", attachments }}
-      />,
-    );
+    render(<PendingUploadMessage pendingSend={{ text: "", attachments }} />);
 
     expect(screen.getByText("application/pdf")).toBeDefined();
     expect(screen.getByText("text/markdown")).toBeDefined();
+  });
+
+  it("carries the message id the tail spacer measures", () => {
+    render(<PendingUploadMessage pendingSend={{ text: "hi", attachments }} />);
+
+    expect(
+      screen
+        .getByTestId("pending-upload-message")
+        .getAttribute("data-message-id"),
+    ).toBe(PENDING_UPLOAD_MESSAGE_ID);
   });
 
   it("reads Sending when nothing is left to upload", () => {
     render(
       <PendingUploadMessage
         pendingSend={{
-          sessionId: "s",
           text: "hi",
           attachments: attachments.filter((a) => !a.isUploading),
         }}

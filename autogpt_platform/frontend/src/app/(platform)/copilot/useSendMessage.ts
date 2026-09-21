@@ -2,8 +2,9 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
+  pendingUploadKey,
   useCopilotStreamStore,
   type PendingUploadAttachment,
   type PendingUploadSend,
@@ -52,7 +53,6 @@ export function useSendMessage({
   createSession,
   isUserStoppingRef,
 }: Args) {
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   // Synchronous concurrency guard for the "no session yet" path: rapid
   // double-press / double-Enter would otherwise overwrite `pendingFirstSend`
   // (losing the first message) AND fire two parallel `createSession`
@@ -103,10 +103,6 @@ export function useSendMessage({
     }));
   }
 
-  function setPendingUploadSend(send: PendingUploadSend | null) {
-    useCopilotStreamStore.getState().setPendingUploadSend(send);
-  }
-
   async function dispatchToSession(
     sid: string,
     text: string,
@@ -135,10 +131,8 @@ export function useSendMessage({
     // spot. The slot is re-set here (not only in onSend) because this is the
     // one path every send with files goes through, including the flush after
     // session creation.
-    setPendingUploadSend(
-      describePendingUpload(sid, text, files, prebuiltParts),
-    );
-    setIsUploadingFiles(true);
+    const pending = describePendingUpload(text, files, prebuiltParts);
+    useCopilotStreamStore.getState().setPendingUploadSend(sid, pending);
     let send: Promise<void> | undefined;
     try {
       const uploaded = await uploadFiles(files, sid);
@@ -165,8 +159,7 @@ export function useSendMessage({
       // so the placeholder can go in the same tick with no gap between the
       // two. Its promise only settles when the whole stream ends, which is
       // why the cleanup happens here and not after the await below.
-      setPendingUploadSend(null);
-      setIsUploadingFiles(false);
+      useCopilotStreamStore.getState().clearPendingUploadSend(sid, pending);
     }
     await send;
   }
@@ -245,9 +238,12 @@ export function useSendMessage({
     if (isCreatingSessionRef.current) return;
     isCreatingSessionRef.current = true;
     if (files && files.length > 0) {
-      setPendingUploadSend(
-        describePendingUpload(null, trimmed, files, workspaceParts),
-      );
+      useCopilotStreamStore
+        .getState()
+        .setPendingUploadSend(
+          null,
+          describePendingUpload(trimmed, files, workspaceParts),
+        );
     }
     // Workspace parts must reach the post-creation flush, which reads them
     // from the store via `takePendingFirstSend`. Append so a pre-set part
@@ -264,11 +260,14 @@ export function useSendMessage({
         expertKickoff: metadata?.kind === "expert_kickoff",
       });
     } catch (err) {
-      const { setPendingFirstSend, setPendingFileParts } =
-        useCopilotStreamStore.getState();
+      const {
+        setPendingFirstSend,
+        setPendingFileParts,
+        clearPendingUploadSend,
+      } = useCopilotStreamStore.getState();
       setPendingFirstSend(null);
       setPendingFileParts([]);
-      setPendingUploadSend(null);
+      clearPendingUploadSend(null);
       throw err;
     } finally {
       isCreatingSessionRef.current = false;
@@ -279,21 +278,20 @@ export function useSendMessage({
     useCopilotStreamStore.getState().setPendingFileParts(parts);
   }
 
-  const storedPendingSend = useCopilotStreamStore((s) => s.pendingUploadSend);
-  // A placeholder belongs to the chat it was sent from: one bound to another
-  // session (the user switched threads mid-upload) must not show up here.
-  const pendingSend =
-    storedPendingSend &&
-    (storedPendingSend.sessionId === null ||
-      storedPendingSend.sessionId === sessionId)
-      ? storedPendingSend
-      : null;
+  // A placeholder belongs to the chat it was sent from: one owned by another
+  // session (the user switched threads mid-upload) must not show up here,
+  // and the not-yet-bound first send only shows in the new-chat host.
+  const pendingSend = useCopilotStreamStore(
+    (s) => s.pendingUploadSends[pendingUploadKey(sessionId)] ?? null,
+  );
+  // Derived from the store rather than local state so the composer stays
+  // locked when the host remounts while this chat's upload is in flight.
+  const isUploadingFiles = pendingSend !== null;
 
   return { onSend, isUploadingFiles, pendingSend, setPendingFileParts };
 }
 
 function describePendingUpload(
-  sessionId: string | null,
   text: string,
   files: File[],
   prebuiltParts: FileUIPart[],
@@ -309,5 +307,5 @@ function describePendingUpload(
     sizeBytes: file.size,
     isUploading: true,
   }));
-  return { sessionId, text, attachments: [...stored, ...local] };
+  return { text, attachments: [...stored, ...local] };
 }

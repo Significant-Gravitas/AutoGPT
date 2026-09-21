@@ -18,6 +18,10 @@ interface Props {
   isCompact?: boolean;
 }
 
+/** Stable id so the tail spacer measures the placeholder like a real user
+ *  message; the bubble then keeps its spot when the persisted one lands. */
+export const PENDING_UPLOAD_MESSAGE_ID = "pending-upload-message";
+
 export function uploadStatusLabel(attachments: PendingUploadAttachment[]) {
   const count = attachments.filter((a) => a.isUploading).length;
   if (count === 0) return "Sending…";
@@ -110,6 +114,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
       <Message
         from="user"
         data-testid="pending-upload-message"
+        data-message-id={PENDING_UPLOAD_MESSAGE_ID}
         className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       >
         {pendingSend.text && (
