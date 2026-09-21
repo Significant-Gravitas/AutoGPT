@@ -7,6 +7,7 @@ import type { Attachment } from "../../../helpers/workspaceAttachments";
 interface Props {
   attachment: Attachment;
   name: string;
+  onError: () => void;
 }
 
 const THUMBNAIL_WIDTH = 128;
@@ -31,7 +32,7 @@ function useAttachmentPreviewUrl(attachment: Attachment): string | null {
   return objectUrl;
 }
 
-export function AttachmentThumbnail({ attachment, name }: Props) {
+export function AttachmentThumbnail({ attachment, name, onError }: Props) {
   const src = useAttachmentPreviewUrl(attachment);
   if (!src) return null;
   return (
@@ -40,6 +41,7 @@ export function AttachmentThumbnail({ attachment, name }: Props) {
       src={src}
       alt={name}
       data-testid="attachment-thumbnail"
+      onError={onError}
       className="h-full w-full object-cover"
     />
   );

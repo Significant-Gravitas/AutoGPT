@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Attachment } from "../../../../helpers/workspaceAttachments";
 import { FileChips } from "../FileChips";
 
@@ -125,5 +125,89 @@ describe("FileChips — image thumbnails", () => {
     );
     expect(screen.queryByTestId("attachment-thumbnail")).toBeNull();
     expect(screen.getByText("report.pdf")).toBeTruthy();
+  });
+
+  describe("thumbnail load failure", () => {
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => "blob:local-photo");
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    });
+
+    it("falls back to the filename chip for a local image and keeps its removal index", () => {
+      const onRemove = vi.fn();
+      render(
+        <FileChips
+          attachments={[workspaceAttachment, localImage]}
+          onRemove={onRemove}
+        />,
+      );
+      fireEvent.error(screen.getByTestId("attachment-thumbnail"));
+
+      expect(screen.queryByTestId("attachment-thumbnail")).toBeNull();
+      expect(screen.getByText("photo.png")).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole("button", { name: /remove photo\.png/i }),
+      );
+      expect(onRemove).toHaveBeenCalledWith(1);
+    });
+
+    it("falls back to the filename chip for a workspace image", () => {
+      const onRemove = vi.fn();
+      render(<FileChips attachments={[workspaceImage]} onRemove={onRemove} />);
+      fireEvent.error(screen.getByTestId("attachment-thumbnail"));
+
+      expect(screen.queryByTestId("attachment-thumbnail")).toBeNull();
+      expect(screen.getByText("diagram.jpg")).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole("button", { name: /remove diagram\.jpg/i }),
+      );
+      expect(onRemove).toHaveBeenCalledWith(0);
+    });
+
+    it("shows the upload spinner on the fallback chip while uploading", () => {
+      const { rerender } = render(
+        <FileChips attachments={[localImage]} onRemove={vi.fn()} />,
+      );
+      fireEvent.error(screen.getByTestId("attachment-thumbnail"));
+      rerender(
+        <FileChips
+          attachments={[localImage]}
+          onRemove={vi.fn()}
+          isUploading={true}
+        />,
+      );
+
+      expect(screen.getByText("photo.png")).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: /remove photo\.png/i }),
+      ).toBeNull();
+    });
+
+    it("does not carry a failure over to the attachment that replaces it", () => {
+      const replacement: Attachment = {
+        kind: "local",
+        file: new File(["gif"], "other.gif", { type: "image/gif" }),
+      };
+      const { rerender } = render(
+        <FileChips attachments={[localImage]} onRemove={vi.fn()} />,
+      );
+      fireEvent.error(screen.getByTestId("attachment-thumbnail"));
+      expect(screen.queryByTestId("attachment-thumbnail")).toBeNull();
+
+      rerender(<FileChips attachments={[replacement]} onRemove={vi.fn()} />);
+
+      expect(
+        screen.getByTestId("attachment-thumbnail").getAttribute("alt"),
+      ).toBe("other.gif");
+      expect(screen.queryByText("other.gif")).toBeNull();
+    });
   });
 });

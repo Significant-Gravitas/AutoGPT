@@ -41,7 +41,7 @@ export function AttachmentPreview({ artifact, readOnly }: Props) {
         aria-label={`Open ${artifact.title}`}
         data-testid="attachment-preview-image"
         className={cn(
-          "overflow-hidden rounded-2xl border bg-zinc-50 transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:border-zinc-300",
+          "max-w-[18rem] overflow-hidden rounded-2xl border bg-zinc-50 transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:border-zinc-300",
           isActive ? "border-violet-300" : "border-zinc-200",
         )}
       >
@@ -51,7 +51,7 @@ export function AttachmentPreview({ artifact, readOnly }: Props) {
           alt={artifact.title}
           loading="lazy"
           onError={() => setImageFailed(true)}
-          className="block max-h-64 max-w-[18rem] object-cover"
+          className="block h-auto max-h-64 max-w-full object-cover"
         />
       </button>
     );

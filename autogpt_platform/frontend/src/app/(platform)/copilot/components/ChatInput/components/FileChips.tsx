@@ -2,6 +2,7 @@
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 import {
   type Attachment,
   attachmentName,
@@ -49,6 +50,18 @@ export function FileChips({
   stacked = false,
 }: Props) {
   const reduceMotion = useReducedMotion();
+  // Keyed by attachment source so a failed thumbnail falls back to the
+  // readable chip without leaking onto whatever attachment replaces it.
+  const [failedThumbnailKeys, setFailedThumbnailKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  function markThumbnailFailed(key: string) {
+    setFailedThumbnailKeys((prev) => {
+      if (prev.has(key)) return prev;
+      return new Set(prev).add(key);
+    });
+  }
 
   return (
     <AnimatePresence initial={false}>
@@ -74,6 +87,7 @@ export function FileChips({
           >
             <AnimatePresence initial={false} mode="popLayout">
               {attachments.map((attachment, index) => {
+                const key = attachmentKey(attachment);
                 const name = attachmentName(attachment);
                 const fileIcon = getFileTypeIcon(
                   attachmentMimeType(attachment),
@@ -96,16 +110,20 @@ export function FileChips({
                   transition: { duration: DURATION, ease: EASE_OUT },
                   style: { willChange: "transform, opacity, filter" },
                 };
-                if (isImageAttachment(attachment)) {
+                if (
+                  isImageAttachment(attachment) &&
+                  !failedThumbnailKeys.has(key)
+                ) {
                   return (
                     <motion.span
-                      key={attachmentKey(attachment)}
+                      key={key}
                       {...motionProps}
                       className="relative inline-flex h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100"
                     >
                       <AttachmentThumbnail
                         attachment={attachment}
                         name={name}
+                        onError={() => markThumbnailFailed(key)}
                       />
                       {showSpinner ? (
                         <span className="absolute inset-0 flex items-center justify-center bg-white/60">
@@ -130,7 +148,7 @@ export function FileChips({
                 }
                 return (
                   <motion.span
-                    key={attachmentKey(attachment)}
+                    key={key}
                     {...motionProps}
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700",
