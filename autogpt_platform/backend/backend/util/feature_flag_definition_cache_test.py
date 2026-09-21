@@ -2,17 +2,20 @@
 
 import json
 import logging
+import uuid
 
 import pytest
 from ldclient import Context, LDClient
 from posthog import Posthog
 from posthog.request import GetResponse
 
+import backend.data.redis_client as redis_client
 import backend.util.feature_flag as ff
 import backend.util.feature_flag_definition_cache as cache
 import backend.util.feature_flag_posthog as ph
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.settings import FeatureFlagBackend, FlagDefinitionCacheBackend
+from backend.util.testing import is_tcp_port_reachable
 
 REFRESH = 30
 LOCK_TTL = REFRESH * cache._LOCK_TTL_POLLS
@@ -172,6 +175,17 @@ class TestElection:
 
         assert provider(redis).should_fetch_flag_definitions() is False
         assert leader.should_fetch_flag_definitions() is True
+
+    def test_a_stale_refresher_shutting_down_leaves_the_new_lock_alone(self, redis):
+        """It paused, its lock expired, another took it — it must not free that."""
+        stalled, replacement = provider(redis), provider(redis)
+        stalled.should_fetch_flag_definitions()
+        redis.advance(LOCK_TTL + 1)
+        assert replacement.should_fetch_flag_definitions() is True
+
+        stalled.shutdown()
+
+        assert provider(redis).should_fetch_flag_definitions() is False
 
     def test_becoming_the_refresher_says_so(self, redis, logs):
         provider(redis).should_fetch_flag_definitions()
@@ -339,7 +353,7 @@ class TestDefaultBackendIsUntouched:
     async def test_the_default_builds_no_definition_cache(
         self, mocker, ld_client, user_context
     ):
-        build = mocker.patch.object(cache, "get_flag_definition_cache")
+        build = mocker.patch.object(ph, "get_flag_definition_cache")
         ld_client.variation.return_value = True
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
@@ -419,6 +433,40 @@ class TestAgainstTheRealSDK:
         follower._load_feature_flags()
 
         fetches.assert_called_once()
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="no local Redis reachable; the lock scripts need one to run",
+)
+class TestTheLockScriptsOnRealRedis:
+    """FakeRedis stands in for Redis's semantics; only Redis runs the Lua."""
+
+    @pytest.fixture
+    def key(self):
+        key = f"test:flag_definitions:refresher:{uuid.uuid4().hex}"
+        yield key
+        redis_client.get_redis().delete(key)
+
+    def test_renewing_extends_only_our_own_lock(self, key):
+        redis = redis_client.get_redis()
+        redis.set(key, "holder", px=5_000)
+
+        assert redis.eval(cache._RENEW_LOCK, 1, key, "someone-else", 60_000) == 0
+        assert redis.pttl(key) <= 5_000
+
+        assert redis.eval(cache._RENEW_LOCK, 1, key, "holder", 60_000) == 1
+        assert redis.pttl(key) > 5_000
+
+    def test_releasing_frees_only_our_own_lock(self, key):
+        redis = redis_client.get_redis()
+        redis.set(key, "holder", px=60_000)
+
+        assert redis.eval(cache._RELEASE_LOCK, 1, key, "someone-else") == 0
+        assert redis.get(key) == "holder"
+
+        assert redis.eval(cache._RELEASE_LOCK, 1, key, "holder") == 1
+        assert redis.get(key) is None
 
 
 class TestMetrics:
