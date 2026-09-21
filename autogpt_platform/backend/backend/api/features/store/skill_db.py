@@ -181,12 +181,17 @@ async def get_live_skills(
     }
 
 
-def installable_skill(
+async def installable_skill(
     listing: prisma.models.SkillListing,
 ) -> tuple[ParsedSkill, SkillPackage]:
     """What :func:`install_marketplace_skill` would write for *listing*,
-    without writing it: the skill as it would be stored, and its package — a
-    ``SKILL.md`` alone, since a listing publishes nothing beside it.
+    without writing it: the skill as it would be stored, and its whole package.
+
+    The package carries the published version's files as well as its
+    ``SKILL.md``. A listing used to publish nothing beside the root, which is
+    why this was once synchronous; now that it can, reading only the root
+    would export a bundled skill stripped of the scripts and references a hire
+    of the same listing installs.
 
     Raises :class:`ValueError` exactly where the install would, so a caller
     packaging a listing skips the same ones a hire skips.
@@ -199,7 +204,10 @@ def installable_skill(
         triggers=list(active.triggers),
         version=str(active.version),
     )
-    return parsed, SkillPackage(skill_md=render_skill_markdown(parsed))
+    return parsed, SkillPackage(
+        skill_md=render_skill_markdown(parsed),
+        files=await _read_version_files(active.id),
+    )
 
 
 async def install_marketplace_skill(

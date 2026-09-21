@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -24,6 +25,7 @@ async def _make_listing(
     available: bool = True,
     categories: list[str] | None = None,
     body: str = "# body\n",
+    files: dict[str, str] | None = None,
 ) -> prisma.models.SkillListing:
     listing = await prisma.models.SkillListing.prisma().create(
         data={
@@ -50,6 +52,17 @@ async def _make_listing(
             ),
         }
     )
+    for relative_path, content in sorted((files or {}).items()):
+        raw = content.encode()
+        await prisma.models.SkillListingFile.prisma().create(
+            data={
+                "skillListingVersionId": version.id,
+                "relativePath": relative_path,
+                "sizeBytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "content": prisma.Base64.encode(raw),
+            }
+        )
     if updated_at is not None:
         await prisma.models.SkillListingVersion.prisma().update(
             where={"id": version.id}, data={"updatedAt": updated_at}
@@ -214,7 +227,7 @@ async def test_an_installable_skill_is_exactly_what_an_install_stores():
         stored = await read_user_skill_package(
             "user-1", listing.slug, expert_id="expert-a"
         )
-    parsed, package = skill_db.installable_skill(listing)
+    parsed, package = await skill_db.installable_skill(listing)
 
     assert stored is not None
     assert package.skill_md == stored.skill_md
@@ -224,11 +237,42 @@ async def test_an_installable_skill_is_exactly_what_an_install_stores():
     assert parsed.version == "1"
 
 
+async def test_an_installable_skill_carries_the_published_files_too():
+    """A listing can publish siblings beside its root. Reading only the root
+    would export a bundled skill stripped of the scripts and references a hire
+    of the very same listing gets."""
+    listing = await _make_listing(
+        "web-scraper",
+        files={"scripts/run.py": "print('hi')\n", "references/API.md": "# API\n"},
+    )
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id="expert-a"
+        )
+        stored = await read_user_skill_package(
+            "user-1", listing.slug, expert_id="expert-a"
+        )
+    _, package = await skill_db.installable_skill(listing)
+
+    assert stored is not None
+    assert [f.relative_path for f in package.files] == [
+        "references/API.md",
+        "scripts/run.py",
+    ]
+
+    # Same siblings, whatever order each side lists them in.
+    def by_path(files):
+        return sorted(files, key=lambda f: f.relative_path)
+
+    assert by_path(package.files) == by_path(stored.files)
+
+
 async def test_an_installable_skill_fails_where_the_install_would():
     listing = await _make_listing("no-body", body="   ")
 
     with pytest.raises(ValueError, match="body is required"):
-        skill_db.installable_skill(listing)
+        await skill_db.installable_skill(listing)
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
