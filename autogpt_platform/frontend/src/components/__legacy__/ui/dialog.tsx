@@ -37,6 +37,9 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+// Walks the static JSX tree only: a Description returned from a custom child
+// component is invisible here and would get a duplicate fallback. Such callers
+// should pass their own `aria-describedby` to DialogContent instead.
 function hasDialogDescription(node: React.ReactNode): boolean {
   return React.Children.toArray(node).some((child) => {
     if (!React.isValidElement(child)) return false;
