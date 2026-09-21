@@ -404,6 +404,104 @@ class FatalListenerTest(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class FillEnvSecretsTest(unittest.TestCase):
+    """`make init-env` bootstrap: .env.default ships secrets blank (SECRT-2611)."""
+
+    def test_fills_only_blank_known_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "# comment\n"
+                "ENCRYPTION_KEY=\n"
+                "UNSUBSCRIBE_SECRET_KEY=\n"
+                "OPENAI_API_KEY=\n"
+                "DB_PASS=already-set\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY"])
+            values = dict(
+                line.split("=", 1)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            self.assertEqual(values["DB_PASS"], "already-set")
+            # Not a secret this bootstrap owns: a blank must stay blank.
+            self.assertEqual(values["OPENAI_API_KEY"], "")
+            self.assertEqual(
+                len(base64.urlsafe_b64decode(values["ENCRYPTION_KEY"])), 32
+            )
+            self.assertTrue(values["UNSUBSCRIBE_SECRET_KEY"])
+
+    def test_rerunning_setup_does_not_rotate_existing_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
+
+            runtime_config.fill_env_blanks(path)
+            after_first = path.read_text(encoding="utf-8")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+            self.assertEqual(path.read_text(encoding="utf-8"), after_first)
+
+    def test_generated_values_differ_between_installs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            keys = []
+            for index in range(2):
+                path = Path(directory) / f"{index}.env"
+                path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
+                runtime_config.fill_env_blanks(path)
+                keys.append(path.read_text(encoding="utf-8"))
+            self.assertNotEqual(keys[0], keys[1])
+
+    def test_generated_file_becomes_owner_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("ENCRYPTION_KEY=\n", encoding="utf-8")
+            path.chmod(0o644)
+
+            runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_check_env_defaults_rejects_populated_duplicate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT:
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text("", encoding="utf-8")
+            (root / "backend/.env.default").write_text(
+                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n",
+                encoding="utf-8",
+            )
+            (root / "frontend/.env.default").write_text(
+                "BETTER_AUTH_SECRET=\n", encoding="utf-8"
+            )
+
+            self.assertEqual(
+                runtime_config.check_env_defaults(root),
+                ["backend/.env.default:ENCRYPTION_KEY"],
+            )
+
+    def test_env_default_ships_its_secrets_blank_and_generatable(self) -> None:
+        """`.env.default` is public, so these must ship blank (SECRT-2611) —
+        and every blank one must be fillable, or setup leaves a broken stack."""
+        platform_root = Path(__file__).parents[2]
+        self.assertEqual(runtime_config.check_env_defaults(platform_root), [])
+
+        with tempfile.TemporaryDirectory() as directory:
+            for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
+                content = (platform_root / relative_path).read_text(encoding="utf-8")
+                copy = Path(directory) / relative_path.replace("/", "_")
+                copy.write_text(content, encoding="utf-8")
+
+                # Blank is only safe if setup can actually fill it back in.
+                self.assertEqual(
+                    sorted(runtime_config.fill_env_blanks(copy)), sorted(names)
+                )
+
+
 def _replace_config_value(content: str, name: str, value: str) -> str:
     prefix = f"{name}="
     lines = [

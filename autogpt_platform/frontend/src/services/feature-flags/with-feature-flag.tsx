@@ -20,7 +20,8 @@ export function withFeatureFlag<P extends object, T extends Flag>(
 
     // Reading through useFlagStatus rather than the LaunchDarkly SDK is what
     // bounds this wait: `ready` resolves on the vendor's answer, on the 5s
-    // timeout, or immediately when no vendor is configured.
+    // timeout, immediately when no vendor is configured, and immediately on a
+    // local env override — which is how force-all renders on first paint.
     if (!ready) {
       return (
         <div className="flex min-h-screen items-center justify-center">

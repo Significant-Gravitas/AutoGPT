@@ -6,12 +6,18 @@ import logging
 import uuid
 
 import pytest
+from fastapi import HTTPException
 from ldclient import Context, LDClient
 
 import backend.util.feature_flag as ff
 import backend.util.feature_flag_posthog as ph
-from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
-from backend.util.settings import Config, FeatureFlagBackend
+from backend.util.feature_flag import (
+    Flag,
+    evaluate_feature_flag,
+    feature_flag,
+    is_feature_enabled,
+)
+from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
 
 
 @pytest.fixture(autouse=True)
@@ -557,3 +563,54 @@ class TestForcedFlagsInEveryBackend:
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
         posthog.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_force_all_opens_the_route_gates_under_posthog(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The local override sits above the vendor choice, on every gate.
+
+        Both gates consult it ahead of the "vendor cannot answer" bail-out, so
+        selecting PostHog must not put a developer's switch back behind one.
+        """
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff.settings.config, "app_env", AppEnvironment.LOCAL)
+        mocker.patch.object(ff, "_force_all_logged", True)
+        mocker.patch.object(ph, "is_configured", return_value=False)
+        mocker.patch.object(ph, "get_flag_client", return_value=None)
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await _gated_route()(user_id="u-1") == "served"
+
+    @pytest.mark.asyncio
+    async def test_posthog_answers_the_gates_again_without_the_switch(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff.settings.config, "app_env", AppEnvironment.LOCAL)
+        monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+        mocker.patch.object(ph, "is_configured", return_value=True)
+        stub_posthog(mocker, value=True)
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await _gated_route()(user_id="u-1") == "served"
+
+        stub_posthog(mocker, value=False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        with pytest.raises(HTTPException) as off:
+            await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert off.value.status_code == 404
+
+
+def _gated_route():
+    """A route behind the decorator, which holds a raw flag key rather than a Flag."""
+
+    @feature_flag(Flag.HIRE_EXPERTS.value)
+    async def route(user_id: str) -> str:
+        return "served"
+
+    return route

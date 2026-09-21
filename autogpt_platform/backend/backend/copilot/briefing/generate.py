@@ -22,6 +22,7 @@ from backend.data.db_accessors import (
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -288,6 +289,16 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 # otherwise be re-gathered and re-composed on every future
                 # run. Stamp it so this user's cron stops reprocessing it.
                 await client.mark_briefing_delivered(user_id, record.id)
+            emit_funnel_event(
+                user_id,
+                "briefing_generated",
+                {"run_count": 0, "decision_count": 0, "has_content": False},
+                (
+                    f"briefing_generated:{record.id}"
+                    if record is not None
+                    else f"briefing_generated:empty:{briefing_date.isoformat()}"
+                ),
+            )
             return {"status": "skipped", "reason": "nothing_to_say"}
         if record is None:
             record = await client.create_briefing(
@@ -300,6 +311,16 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             await client.update_briefing_content(
                 user_id, record.id, content.model_dump(mode="json")
             )
+        emit_funnel_event(
+            user_id,
+            "briefing_generated",
+            {
+                "run_count": content.completed_total + content.failed_total,
+                "decision_count": content.decision_total,
+                "has_content": True,
+            },
+            f"briefing_generated:{record.id}",
+        )
 
     message_id = str(
         uuid.uuid5(
@@ -314,6 +335,12 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
     )
     await client.mark_briefing_delivered(user_id, record.id)
+    emit_funnel_event(
+        user_id,
+        "briefing_delivered",
+        {"briefing_id": record.id},
+        f"briefing_delivered:{record.id}",
+    )
     return {
         "status": "delivered",
         "briefing_id": record.id,

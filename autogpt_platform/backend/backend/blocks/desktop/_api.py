@@ -38,6 +38,20 @@ STREAM_PORT = 6080
 # box (see ``backend.copilot.computer``).
 VNC_USER = "root"
 VNC_PASSWORD_PATH = "/root/.vnc/stream_password"
+# Root's logs live in root's directory, not /tmp: there the box's user could
+# plant a file of the same name, and with fs.protected_regular set the kernel
+# refuses even root an O_CREAT open of another user's file in a sticky
+# directory, which is what a box that ran its stream as the user has.
+_VNC_DIR = VNC_PASSWORD_PATH.rsplit("/", 1)[0]
+_X11VNC_LOG = f"{_VNC_DIR}/x11vnc.log"
+_X11VNC_ERROR_LOG = f"{_VNC_DIR}/x11vnc_stderr.log"
+_NOVNC_LOG = f"{_VNC_DIR}/novnc.log"
+# The password file goes too: x11vnc deletes it only once it has read it, and
+# one that failed before that would leave the credential resting on the box.
+_STOP_STREAM = (
+    "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true; "
+    f"rm -f {shlex.quote(VNC_PASSWORD_PATH)}"
+)
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
@@ -135,37 +149,60 @@ class DesktopSession:
         """Return the live stream URL and its password, starting the VNC stack
         only if needed.
 
-        *password* is the one this caller issued last time.  While noVNC is
-        still serving it (E2B's pause/resume restores processes) the same URL
-        comes back: restarting x11vnc and noVNC would sever the stream the
-        user is watching.  Without it, or once the proxy is gone, the stack is
-        (re)started under a fresh password, and whoever held the old URL is
-        locked out.  The caller decides when to forget the password (after a
+        *password* is the one this caller issued last time.  While x11vnc and
+        noVNC are both still serving it (E2B's pause/resume restores
+        processes) the same URL comes back: restarting them would sever the
+        stream the user is watching.  Without it, or once either is gone, the
+        stack is (re)started under a fresh password, and whoever held the old
+        URL is locked out.  The caller decides when to forget the password (after a
         pause, say) and so when a URL that may have leaked stops working.
         """
         if password is None or not await self._stream_listening():
             password = "".join(
                 secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
             )
+            await self._vnc_command(_STOP_STREAM)
             await self._vnc_command(
-                "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
-            )
-            await self._vnc_command(
-                f"umask 077 && mkdir -p {shlex.quote(VNC_PASSWORD_PATH.rsplit('/', 1)[0])}"
+                f"umask 077 && mkdir -p {shlex.quote(_VNC_DIR)}"
                 f" && printf %s {shlex.quote(password)} > {shlex.quote(VNC_PASSWORD_PATH)}"
             )
-            await self._vnc_command(
-                f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
-                f"-rfbport {VNC_PORT} -passwdfile rm:{VNC_PASSWORD_PATH} "
-                ">/tmp/x11vnc.log 2>/tmp/x11vnc_stderr.log"
-            )
-            await self.sandbox.commands.run(
-                f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
-                f"--listen {STREAM_PORT} --web /opt/noVNC > /tmp/novnc.log 2>&1",
-                background=True,
-                user=VNC_USER,
-            )
-            await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            # -noshm: x11vnc runs as root and Xvfb as the box's user, and the X
+            # server cannot attach a shared-memory segment that root owns
+            # (MIT-SHM BadAccess, x11vnc exits 1).  Without it the screen is
+            # read over the X socket instead.
+            try:
+                await self._vnc_command(
+                    f"x11vnc -bg -noshm -display {DISPLAY} -forever -wait 50 "
+                    f"-shared -rfbport {VNC_PORT} "
+                    f"-passwdfile rm:{VNC_PASSWORD_PATH} "
+                    f">{_X11VNC_LOG} 2>{_X11VNC_ERROR_LOG}"
+                )
+                # -bg returns once x11vnc has detached; one that dies after
+                # that would leave noVNC serving a stream with nothing behind.
+                await self._wait_for(f'netstat -tln | grep ":{VNC_PORT} "')
+            except Exception as exc:
+                # One that detached but never served is still running.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
+                # x11vnc's own words are in the box, not in the exception.
+                raise RuntimeError(
+                    f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
+                ) from exc
+            try:
+                await self.sandbox.commands.run(
+                    f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
+                    f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
+                    background=True,
+                    user=VNC_USER,
+                )
+                await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            except Exception as exc:
+                # Do not leave an x11vnc serving under a password nobody holds.
+                with contextlib.suppress(Exception):
+                    await self._vnc_command(_STOP_STREAM)
+                raise RuntimeError(
+                    f"noVNC did not start: {await self._tail(_NOVNC_LOG)}"
+                ) from exc
         host = self.sandbox.get_host(STREAM_PORT)
         url = (
             f"https://{host}/vnc.html"
@@ -173,9 +210,31 @@ class DesktopSession:
         )
         return DesktopStream(url=url, sandbox_id=self.sandbox_id), password
 
+    async def _tail(self, path: str) -> str:
+        try:
+            result = await self._vnc_command(f"tail -n 15 {shlex.quote(path)}")
+            return result.stdout.strip() or "(empty log)"
+        except Exception:
+            return "(log unreadable)"
+
     async def _stream_listening(self) -> bool:
-        """Whether noVNC is still serving the stream (it survives a pause)."""
-        return await self._check(f'netstat -tuln | grep -q ":{STREAM_PORT} "')
+        """Whether the whole stream is still up (it survives a pause).
+
+        Both halves, not just the proxy: noVNC keeps listening after x11vnc
+        has died, and a URL handed back then opens onto nothing.  A listener
+        on the VNC port is not proof of x11vnc either: once it is gone the
+        box's user can bind that port itself, so root's own process is asked
+        for as well, which that user cannot forge.
+        """
+        try:
+            await self._vnc_command(
+                f"pgrep -x -u {VNC_USER} x11vnc >/dev/null"
+                f' && netstat -tln | grep -q ":{VNC_PORT} "'
+                f' && netstat -tln | grep -q ":{STREAM_PORT} "'
+            )
+        except Exception:
+            return False
+        return True
 
     async def _vnc_command(self, command: str):
         return await self.run_command(command, user=VNC_USER)
@@ -223,6 +282,14 @@ class DesktopSession:
 
     async def kill(self) -> None:
         await self.sandbox.kill()
+
+    async def stop_stream(self) -> None:
+        """Stop serving the screen; the display itself stays up.
+
+        Whatever password the stream ran under stops working with it, and the
+        next ``start_stream`` brings the stack back under a fresh one.
+        """
+        await self._vnc_command(_STOP_STREAM)
 
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):

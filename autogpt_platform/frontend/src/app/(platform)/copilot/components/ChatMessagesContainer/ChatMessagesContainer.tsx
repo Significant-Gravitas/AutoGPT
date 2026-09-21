@@ -25,12 +25,17 @@ import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  getTurnMessages,
   parseSpecialMarkers,
 } from "./helpers";
 import {
+  isMidTurnSegmentRow,
+  splitMessagesAtDrainHints,
+  turnMessagesForRow,
+} from "./midTurnSplit";
+import {
   getLatestAssistantStatusMessage,
   isBookkeepingPart,
+  PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
@@ -343,9 +348,15 @@ export function ChatMessagesContainer({
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
 
+  // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
+  // was drained mid-stream renders as chain → follow-up bubble → chain, while
+  // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
+  // Read off the rendered rows: a fallback follow-up row the split drops in
+  // favour of the drain-point bubble has no element to anchor the tail on.
   const lastUserMessageID =
-    messages.findLast((message) => message.role === "user")?.id ?? null;
+    renderRows.findLast((row) => row.role === "user")?.id ?? null;
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -373,10 +384,19 @@ export function ChatMessagesContainer({
     if (lastMessage?.role !== "assistant") return false;
     // Ignore bookkeeping parts — none of them counts as "real" content that
     // hides the Thinking indicator. See `isBookkeepingPart` for the list.
-    const parts = lastMessage.parts.filter((p) => !isBookkeepingPart(p));
-    if (parts.length === 0) return false;
+    // A drain hint newer than the last content part is the one exception:
+    // the follow-up just landed and nothing has been produced past it, so
+    // the text or tool above it is settled and Thinking is the only sign
+    // the assistant picked the follow-up up.
+    let lastIndex = lastMessage.parts.length - 1;
+    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
+        return false;
+      lastIndex--;
+    }
+    if (lastIndex < 0) return false;
 
-    const lastPart = parts[parts.length - 1];
+    const lastPart = lastMessage.parts[lastIndex];
 
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
@@ -522,7 +542,7 @@ export function ChatMessagesContainer({
               <LoadingSpinner className="text-neutral-600" />
             </div>
           )}
-          {messages.map((message, messageIndex) => {
+          {renderRows.map((message, rowIndex) => {
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
             // and fall through to normal rendering).
@@ -552,7 +572,7 @@ export function ChatMessagesContainer({
             }
 
             const isLastAssistant =
-              messageIndex === messages.length - 1 &&
+              rowIndex === renderRows.length - 1 &&
               message.role === "assistant";
 
             const isCurrentlyStreaming =
@@ -561,11 +581,15 @@ export function ChatMessagesContainer({
 
             const isAssistant = message.role === "assistant";
 
-            const nextMessage = messages[messageIndex + 1];
+            const nextRow = renderRows[rowIndex + 1];
+            // A segment that only runs up to a mid-turn drain is never the end
+            // of its turn — the same backend turn continues under the follow-up
+            // bubble, so the stats bar and the assistant actions belong to the
+            // last segment alone.
             const isLastInTurn =
               isAssistant &&
-              messageIndex <= messages.length - 1 &&
-              (!nextMessage || nextMessage.role === "user");
+              !isMidTurnSegmentRow(message) &&
+              (!nextRow || nextRow.role === "user");
             // Bookkeeping parts are stripped before any render/split logic so
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
@@ -667,9 +691,9 @@ export function ChatMessagesContainer({
                   )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
-                      turnMessages={getTurnMessages(messages, messageIndex)}
+                      turnMessages={turnMessagesForRow(messages, message)}
                       elapsedSeconds={
-                        messageIndex === messages.length - 1
+                        rowIndex === renderRows.length - 1
                           ? frozenElapsedRef.current
                           : undefined
                       }

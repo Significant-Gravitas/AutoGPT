@@ -324,6 +324,90 @@ def test_fugu_ultra_v2_bills_at_authored_rates():
     assert fugu_entry.supports_reasoning is True
 
 
+def test_mercury_2_5_bills_at_authored_rates():
+    """Inception Mercury 2.5 (OpenRouter, Inception list price $0.04/$0.15
+    per 1M, $0.004/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    mercury = LLMModel("inception/mercury-2.5")
+    assert MODEL_COST[mercury] == 1
+    assert TOKEN_COST[mercury].model_dump() == {
+        "input": 6.0,
+        "output": 22.5,
+        "cache_read": 0.6,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[mercury].max_output_tokens == 65536
+    mercury_entry = next(m for m in CATALOG.models if m.slug == "inception/mercury-2.5")
+    assert mercury_entry.price_tier == 1
+    assert mercury_entry.context_window == 260000
+    assert mercury_entry.supports_tools is True
+    assert mercury_entry.supports_json_output is True
+    assert mercury_entry.supports_reasoning is True
+    assert mercury_entry.supports_parallel_tool_calls is True
+
+
+def test_hy4_preview_bills_at_authored_rates():
+    """Tencent Hy4 Preview (OpenRouter, live list price $0.834/$2.501 per
+    1M, $0.042/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    hy4 = LLMModel("tencent/hy4-preview")
+    assert MODEL_COST[hy4] == 2
+    assert TOKEN_COST[hy4].model_dump() == {
+        "input": 125.1,
+        "output": 375.15,
+        "cache_read": 6.3,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[hy4].max_output_tokens == 64000
+    hy4_entry = next(m for m in CATALOG.models if m.slug == "tencent/hy4-preview")
+    assert hy4_entry.price_tier == 2
+    assert hy4_entry.context_window == 1048576
+    assert hy4_entry.supports_tools is True
+    assert hy4_entry.supports_reasoning is True
+
+
+def test_pareto_bills_at_authored_rates():
+    """Unbiased Pareto (OpenRouter, list price $2.50/$7.50 per 1M, $0.25/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    pareto = LLMModel("unbiased/pareto")
+    assert MODEL_COST[pareto] == 1
+    assert TOKEN_COST[pareto].model_dump() == {
+        "input": 375.0,
+        "output": 1125.0,
+        "cache_read": 37.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[pareto].max_output_tokens == 131072
+    pareto_entry = next(m for m in CATALOG.models if m.slug == "unbiased/pareto")
+    assert pareto_entry.price_tier == 2
+    assert pareto_entry.context_window == 262144
+    assert pareto_entry.supports_tools is True
+
+
+def test_ling_3_0_flash_vl_bills_at_authored_rates():
+    """InclusionAI Ling 3.0 Flash VL (OpenRouter, list price $0.06/$0.18
+    per 1M) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    ling = LLMModel("inclusionai/ling-3.0-flash-vl")
+    assert MODEL_COST[ling] == 1
+    assert TOKEN_COST[ling].model_dump() == {
+        "input": 9.0,
+        "output": 27.0,
+        "cache_read": 1.8,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[ling].max_output_tokens == 32768
+    ling_entry = next(
+        m for m in CATALOG.models if m.slug == "inclusionai/ling-3.0-flash-vl"
+    )
+    assert ling_entry.price_tier == 1
+    assert ling_entry.context_window == 131072
+    assert ling_entry.supports_tools is True
+    assert ling_entry.supports_json_output is True
+    assert ling_entry.supports_reasoning is True
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

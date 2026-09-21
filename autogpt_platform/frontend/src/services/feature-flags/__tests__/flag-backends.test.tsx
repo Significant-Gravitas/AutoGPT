@@ -94,6 +94,26 @@ describe("posthog backend", () => {
 
     expect(result.current).toBe(true);
   });
+
+  it("honours the force-all switch, and serves PostHog again without it", async () => {
+    // The local override has to sit above the vendor choice, not inside the
+    // LaunchDarkly path: force-all is how a developer opens a gate locally,
+    // and picking posthog must not silently take that away.
+    process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS = "true";
+    const forced = await loadWithBackend("posthog");
+    postHog.enabled.mockReturnValue(false);
+    expect(
+      renderHook(() => forced.useFlagStatus(forced.Flag.HIRE_EXPERTS)).result
+        .current,
+    ).toEqual({ enabled: true, ready: true });
+
+    delete process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS;
+    const unforced = await loadWithBackend("posthog");
+    expect(
+      renderHook(() => unforced.useFlagStatus(unforced.Flag.HIRE_EXPERTS))
+        .result.current,
+    ).toEqual({ enabled: false, ready: true });
+  });
 });
 
 describe("dual backend", () => {
@@ -204,6 +224,7 @@ beforeEach(() => {
   Object.keys(process.env)
     .filter((key) => key.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
     .forEach((key) => delete process.env[key]);
+  delete process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS;
   env.launchDarklyEnabled = true;
   process.env.NEXT_PUBLIC_BEHAVE_AS = "CLOUD";
   process.env.NEXT_PUBLIC_POSTHOG_KEY = "phc_test";
