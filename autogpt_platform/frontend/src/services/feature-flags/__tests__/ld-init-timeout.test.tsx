@@ -14,21 +14,25 @@ const LD_HIGH_TIMEOUT_THRESHOLD_SECONDS = 5;
 
 const ld = vi.hoisted(() => ({ timeouts: [] as unknown[] }));
 
-interface LDProviderProps {
+interface Props {
   timeout?: number;
   children: ReactNode;
 }
 
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  LDProvider: ({ timeout, children }: LDProviderProps) => {
+vi.mock("launchdarkly-react-client-sdk", () => {
+  // Declared inside the factory: vi.mock is hoisted above module scope.
+  function MockLDProvider({ timeout, children }: Props) {
     ld.timeouts.push(timeout);
     return <>{children}</>;
-  },
-  // LaunchDarkly has not answered for any key yet: init lag, or an outage
-  // that will end in a timeout.
-  useFlags: () => ({}),
-  useLDClient: () => undefined,
-}));
+  }
+  return {
+    LDProvider: MockLDProvider,
+    // LaunchDarkly has not answered for any key yet: init lag, or an outage
+    // that will end in a timeout.
+    useFlags: () => ({}),
+    useLDClient: () => undefined,
+  };
+});
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, isUserLoading: false }),
