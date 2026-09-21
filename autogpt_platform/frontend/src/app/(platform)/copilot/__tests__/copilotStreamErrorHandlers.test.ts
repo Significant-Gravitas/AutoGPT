@@ -231,6 +231,7 @@ describe("handleStreamError — telling the two usage limits apart", () => {
     expect(onRateLimit.mock.calls[0][1]).toEqual(
       expect.objectContaining({ kind: "usage_limit", authProvider: "codex" }),
     );
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
   });
 
   it("still routes our own limit the same way, so the composer text survives", () => {
@@ -247,6 +248,25 @@ describe("handleStreamError — telling the two usage limits apart", () => {
     expect(onRateLimit).toHaveBeenCalledTimes(1);
     expect(onRateLimit.mock.calls[0][1]?.authProvider).toBe("platform");
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("names a streamed envelope on the platform route as the provider's refusal", () => {
+    // A self-host runs its own OpenRouter or local gateway on the "platform"
+    // route, so its upstream 429 carries the same authProvider as our
+    // admission cap. What tells them apart is that it came mid-turn, on the
+    // stream: our cap never gets that far. Routing it as our cap would tell
+    // a self-host to upgrade a plan we do not bill them for.
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error("boom"),
+      providerFailure: limit("platform"),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
   });
 });
 
@@ -289,7 +309,42 @@ describe("handleStreamError — structured detail from a pre-stream 429/etc.", (
         authProvider: "platform",
       }),
     );
+    // An envelope in the HTTP body means the turn was refused before the
+    // stream opened, which only our own cap does. The caller keeps the plan
+    // dialog for it and merely adds the switch offer.
+    expect(onRateLimit.mock.calls[0][2]).toBe("admission");
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("prefers the streamed envelope, and its origin, when both are in hand", () => {
+    const onRateLimit = vi.fn();
+
+    handleStreamError({
+      error: new Error(
+        JSON.stringify({
+          detail: {
+            kind: "usage_limit",
+            message: "admission",
+            authProvider: "platform",
+          },
+        }),
+      ),
+      providerFailure: {
+        kind: "usage_limit",
+        message: "streamed",
+        authProvider: "codex",
+        credentialId: "cred-1",
+        resetsAt: null,
+        retryable: false,
+        reconnectFixesIt: false,
+      },
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(onRateLimit.mock.calls[0][1]?.message).toBe("streamed");
+    expect(onRateLimit.mock.calls[0][2]).toBe("provider");
   });
 
   it("still handles a plain string `detail` the old way (backward compat)", () => {
@@ -309,5 +364,6 @@ describe("handleStreamError — structured detail from a pre-stream 429/etc.", (
     // — same behaviour as before this fix, for every backend that still
     // sends a bare string.
     expect(onRateLimit.mock.calls[0][1]).toBeUndefined();
+    expect(onRateLimit.mock.calls[0][2]).toBeUndefined();
   });
 });
