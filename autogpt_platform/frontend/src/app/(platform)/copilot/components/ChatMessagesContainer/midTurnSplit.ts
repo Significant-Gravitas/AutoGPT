@@ -19,16 +19,20 @@ export function isMidTurnSegmentRow(message: ChatMessage): boolean {
 
 /**
  * A follow-up bubble that stands in for the drain point because the stream
- * did not (or has not yet) drawn one: the chip `useCopilotPendingChips`
- * promotes just above the live assistant, or the hydrated mid-turn user row
+ * did not (or has not yet) drawn one: a chip `useCopilotPendingChips`
+ * promoted just above the live assistant, or the hydrated mid-turn user row
  * the resume cut keeps (see `useCopilotStream`). `makePromotedUserBubble`
- * builds the same prefix for the `midturn` flavour.
+ * builds every promoted id with the same `promoted-` prefix; the flavour
+ * behind it is not a reliable signal, since the auto-continue path also
+ * fires when the SDK swaps its placeholder id for the server's message id
+ * and promotes a mid-turn chip under the `auto-continue` name.
  */
-const MIDTURN_FALLBACK_ID_PREFIX = "promoted-midturn-";
+const PROMOTED_ROW_ID_PREFIX = "promoted-";
+const MIDTURN_FALLBACK_ID_PREFIX = `${PROMOTED_ROW_ID_PREFIX}midturn-`;
 
 export function isMidTurnFallbackRow(message: ChatMessage): boolean {
   return (
-    message.role === "user" && message.id.startsWith(MIDTURN_FALLBACK_ID_PREFIX)
+    message.role === "user" && message.id.startsWith(PROMOTED_ROW_ID_PREFIX)
   );
 }
 
@@ -95,9 +99,14 @@ export function messagesCarryDrainedText(messages: ChatMessage[]): boolean {
  *
  * Fallback rows sit directly above the assistant they belong to, so matching
  * walks back from the split only while it keeps seeing them: an earlier
- * turn's rows are never consumed. Each drawn bubble consumes one fallback row
- * of the same text, so a repeated "continue" whose second drain carried no
- * text still renders twice.
+ * turn's rows are never consumed. The walk also steps over assistant rows
+ * that draw nothing: the backend emits `data-status` chunks before `start`,
+ * so `useChat` writes them into a placeholder under its own id and then,
+ * once `start` carries the server's message id, pushes the real message
+ * after it — leaving a bookkeeping-only row between the fallback row and
+ * the assistant whose hint draws it. Each drawn bubble consumes one fallback
+ * row of the same text, so a repeated "continue" whose second drain carried
+ * no text still renders twice.
  */
 function dropFallbackRowsDrawnBy(
   rows: ChatMessage[],
@@ -112,14 +121,23 @@ function dropFallbackRowsDrawnBy(
   if (remaining.size === 0) return;
 
   let start = rows.length;
-  while (start > 0 && isMidTurnFallbackRow(rows[start - 1])) start--;
+  while (
+    start > 0 &&
+    (isMidTurnFallbackRow(rows[start - 1]) || drawsNothing(rows[start - 1]))
+  )
+    start--;
   const kept = rows.splice(start).filter((row) => {
+    if (!isMidTurnFallbackRow(row)) return true;
     const count = remaining.get(userText(row)) ?? 0;
     if (count === 0) return true;
     remaining.set(userText(row), count - 1);
     return false;
   });
   rows.push(...kept);
+}
+
+function drawsNothing(message: ChatMessage): boolean {
+  return message.role === "assistant" && !message.parts.some(isVisiblePart);
 }
 
 function userText(message: ChatMessage): string {

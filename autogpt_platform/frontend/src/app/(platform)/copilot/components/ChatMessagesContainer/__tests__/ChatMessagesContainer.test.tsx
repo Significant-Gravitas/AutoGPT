@@ -1066,6 +1066,44 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  it("draws one follow-up when the promoted bubble sits behind the stream's placeholder row", () => {
+    // The live shape: the prompt, the status-only placeholder `useChat`
+    // leaves before the server's message id arrives, the bubble the
+    // auto-continue effect promoted, then the assistant whose hint carries
+    // the same text.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              id: "placeholder-1",
+              role: "assistant",
+              parts: [{ type: "data-status", data: { message: "Preparing…" } }],
+            },
+            {
+              id: "promoted-auto-continue-pending-chip-local-1",
+              role: "user",
+              parts: [{ type: "text", text: "also check Friday" }],
+            },
+            drainedTurn[1],
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "placeholder-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
   it("leaves the turn whole when the hint carries no text", () => {
     const withoutText = [
       drainedTurn[0],

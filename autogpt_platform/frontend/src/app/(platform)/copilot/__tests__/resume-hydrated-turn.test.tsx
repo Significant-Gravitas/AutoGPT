@@ -192,6 +192,15 @@ const RESUME_REPLAY_WITH_DRAIN: UIMessageChunk[] = [
   { type: "text-end", id: "replay-2" },
 ];
 
+/** The same replay as the backend actually sends it: status chunks land
+ *  before `start`, so `useChat` parks them in a placeholder under its own id
+ *  and pushes the turn's real message after it. */
+const RESUME_REPLAY_WITH_DRAIN_AFTER_STATUS: UIMessageChunk[] = [
+  { type: "data-status", data: { message: "Setting up your environment…" } },
+  { type: "data-status", data: { message: "Preparing workspace…" } },
+  ...RESUME_REPLAY_WITH_DRAIN,
+];
+
 /** The replay from a backend that only reports how many messages it drained:
  *  the follow-up text has to come from the hydrated row instead. */
 const RESUME_REPLAY_WITH_COUNT_ONLY_DRAIN: UIMessageChunk[] =
@@ -337,6 +346,43 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       ]);
       expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
       expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
+    },
+  );
+
+  it(
+    "draws the follow-up once when status chunks precede the replay's start",
+    { timeout: 20000 },
+    async () => {
+      renderResumedSession(
+        DRAINED_MIDTURN_MESSAGES,
+        "2026-05-13T00:04:00Z",
+        RESUME_REPLAY_WITH_DRAIN_AFTER_STATUS,
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+
+      // The kept `-seq-5` row and the bubble the hint draws are the same
+      // follow-up. The status-only placeholder the SDK leaves between them
+      // must not stop the split from reconciling the two.
+      const ids = Array.from(
+        document.querySelectorAll("[data-message-id]"),
+      ).map((el) => el.getAttribute("data-message-id"));
+      expect(ids).toHaveLength(7);
+      expect(ids.slice(0, 3)).toEqual([
+        `${TEST_SESSION_ID}-seq-1`,
+        `${TEST_SESSION_ID}-seq-2`,
+        `${TEST_SESSION_ID}-seq-3`,
+      ]);
+      expect(ids.slice(4)).toEqual([
+        "resumed-turn-2#seg0",
+        "midturn-pm-1",
+        "resumed-turn-2",
+      ]);
+      expect(ids).not.toContain(`promoted-midturn-${TEST_SESSION_ID}-seq-5`);
+      expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
     },
   );
 

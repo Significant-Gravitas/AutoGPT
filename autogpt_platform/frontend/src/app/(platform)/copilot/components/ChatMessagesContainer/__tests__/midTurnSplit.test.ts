@@ -38,6 +38,10 @@ function hintPart(messages?: { id: string; content: string }[]): Part {
   } as unknown as Part;
 }
 
+function statusPart(message: string): Part {
+  return { type: "data-status", data: { message } } as unknown as Part;
+}
+
 function assistant(id: string, parts: Part[]): ChatMessage {
   return { id, role: "assistant", parts };
 }
@@ -344,6 +348,57 @@ describe("splitMessagesAtDrainHints", () => {
       "promoted-midturn-chip-1",
       "a0",
       "user-2",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("reaches a fallback row past the placeholder the stream leaves above the live assistant", () => {
+    // The backend emits `data-status` before `start`, so `useChat` parks
+    // those parts in a placeholder under its own id and pushes the real
+    // message after it. The placeholder draws nothing; it must not shield
+    // the fallback row above it from the bubble the hint draws.
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      fallback("pending-chip-local-1", "also check Friday"),
+      assistant("placeholder", [statusPart("Preparing workspace…")]),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "also check Friday" }]),
+        toolPart("write"),
+      ]),
+    ]);
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "placeholder",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("drops a bubble the auto-continue path promoted once the hint draws it", () => {
+    // The SDK swapping its placeholder id for the server's message id looks
+    // like an auto-continue to `useCopilotPendingChips`, which then promotes
+    // the mid-turn chip under that flavour. Same bubble, same reconciliation.
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      makePromotedUserBubble(
+        "also check Friday",
+        "auto-continue",
+        "pending-chip-local-1",
+      ),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "also check Friday" }]),
+        toolPart("write"),
+      ]),
+    ]);
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
       "a1#seg0",
       "midturn-pm-1",
       "a1",
