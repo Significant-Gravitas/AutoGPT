@@ -49,8 +49,8 @@ def test_the_baseline_covers_the_whole_roster_and_says_what_produced_it():
     assert {b.expert for b in baseline.experts} == {e.name for e in roster_experts()}, (
         "baseline.json does not cover the current roster. Regenerate it with "
         "`poetry run expert-style-eval --write-baseline`: a paid run against the "
-        "live models, roughly $1-2 per expert ($7.31 for the six-expert run on "
-        "2026-09-15). Adding, renaming or removing a roster expert always needs "
+        "live models, roughly $1-2 per expert ($26.89 for the twenty-four-expert "
+        "run on 2026-09-18). Adding, renaming or removing a roster expert needs "
         "one. Procedure: 'Adding or changing a roster expert' in backend/AGENTS.md."
     )
     for stored in baseline.experts:
