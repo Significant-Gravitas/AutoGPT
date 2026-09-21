@@ -76,6 +76,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
             CatalogCreator(name="sakana", display_name="Sakana AI"),
+            CatalogCreator(name="tencent", display_name="Tencent"),
             CatalogCreator(name="unbiased", display_name="Unbiased"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
@@ -1620,6 +1621,29 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=6.0,
                     output_credits_per_1m=22.5,
                     cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            # ----- Tencent -----
+            CatalogModel(
+                slug="tencent/hy4-preview",
+                display_name="Hy4 Preview",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=64000,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (fp8 endpoint): $0.834/$2.501 per
+                # Mtok, $0.042/Mtok cached input — credit rates at the
+                # standard 1.5x margin (verified live 2026-09-21).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=125.1,
+                    output_credits_per_1m=375.15,
+                    cache_read_credits_per_1m=6.3,
+                    provider_input_usd_per_1m=0.834,
+                    provider_output_usd_per_1m=2.501,
                 ),
             ),
             # ----- Unbiased -----
