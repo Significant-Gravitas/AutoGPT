@@ -196,9 +196,16 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
-# Spec frontmatter the platform has no use for.  Dropping it rewrites the
-# author's SKILL.md on every store, so it rides through parse and render.
-_CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
+# Frontmatter outside the core skill fields. Dropping it rewrites the author's
+# SKILL.md on every store, so it rides through parse and render.
+_CARRIED_FRONTMATTER_KEYS = (
+    "license",
+    "compatibility",
+    "allowed-tools",
+    "metadata",
+    "source",
+    "source_url",
+)
 
 
 @dataclass(frozen=True)
@@ -279,6 +286,37 @@ def _validate_name(name: str) -> str | None:
     if name in _DEFAULT_SKILLS_BY_NAME:
         return f"'{name}' is a built-in skill and cannot be overwritten"
     return None
+
+
+def validate_skill_content(
+    description: str, body: str, triggers: Iterable[str]
+) -> None:
+    trigger_list = list(triggers)
+    if not description:
+        raise ValueError("description is required")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValueError(
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
+            "(it appears in every turn's skills index)"
+        )
+    if not body:
+        raise ValueError("body is required")
+    if len(body) > MAX_BODY_CHARS:
+        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
+    if len(trigger_list) > MAX_TRIGGERS:
+        raise ValueError(
+            f"triggers must be ≤{MAX_TRIGGERS} entries "
+            "(they are inlined in <available_skills> every turn)"
+        )
+    oversized_trigger = next(
+        (trigger for trigger in trigger_list if len(trigger) > MAX_TRIGGER_CHARS),
+        None,
+    )
+    if oversized_trigger is not None:
+        raise ValueError(
+            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -662,28 +700,7 @@ async def store_user_skill(
     name_err = _validate_name(name)
     if name_err:
         raise ValueError(name_err)
-    if not description:
-        raise ValueError("description is required")
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        raise ValueError(
-            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
-            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
-            "(it appears in every turn's skills index)"
-        )
-    if not body:
-        raise ValueError("body is required")
-    if len(body) > MAX_BODY_CHARS:
-        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
-    if len(triggers) > MAX_TRIGGERS:
-        raise ValueError(
-            f"triggers must be ≤{MAX_TRIGGERS} entries "
-            "(they are inlined in <available_skills> every turn)"
-        )
-    oversized_trigger = next((t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None)
-    if oversized_trigger is not None:
-        raise ValueError(
-            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
-        )
+    validate_skill_content(description, body, triggers)
 
     parsed = ParsedSkill(
         name=name,
@@ -1517,10 +1534,11 @@ async def build_skills_context(
     if not index:
         return ""
     return (
-        "Skills are reusable procedures available via `read_skill(name)`. "
+        "Skills are reusable procedures loaded with "
+        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
         "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and call `read_skill(name=...)` to load the "
-        "full body before acting; distill a new one with `store_skill` "
+        "close paraphrase) and load the "
+        "full body before acting; distill a new one with `tool:store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
     )
@@ -1603,8 +1621,8 @@ async def build_skills_update_notice(
     if removed:
         lines.append(f"Removed skills: {_names(removed)}.")
     lines.append(
-        "Call `list_skills` to see the current list, then "
-        "`read_skill(name=...)` to load a new skill's body before using it."
+        "Call `tool:list_skills` to see the current list, then "
+        "`tool:read_skill` to load a new skill's body before using it."
     )
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
@@ -1686,7 +1704,7 @@ class StoreSkillTool(BaseTool):
     def description(self) -> str:
         return (
             "Save a reusable procedure as a skill. Surfaces in "
-            "<available_skills> next turn; loads via read_skill(name)."
+            "<available_skills> next turn; loads via tool:read_skill."
         )
 
     @property
@@ -1917,7 +1935,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (non-UTF-8 contents). "
-                    "Re-create it with store_skill."
+                    "Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -1926,7 +1944,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (missing/invalid "
-                    "frontmatter). Re-create it with store_skill."
+                    "frontmatter). Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )

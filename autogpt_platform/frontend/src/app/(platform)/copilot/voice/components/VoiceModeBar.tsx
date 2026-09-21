@@ -1,6 +1,9 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
+
 import type { VoiceState } from "../micStateMachine";
+import type { VoiceFailure } from "../useVoiceMode";
 import { VoiceTrace, type TraceSource } from "./VoiceTrace";
 
 /**
@@ -26,10 +29,44 @@ interface Props {
   statusLabel: string;
   /** Leaves voice mode — and while Otto speaks, is the stop control. */
   leaveButton?: React.ReactNode;
+  /** A transcription that failed with the audio still in hand. */
+  failure?: VoiceFailure | null;
+  onRetry?: () => void;
+  onDownload?: () => void;
 }
 
-export function VoiceModeBar({ state, statusLabel, leaveButton }: Props) {
+export function VoiceModeBar({
+  state,
+  statusLabel,
+  leaveButton,
+  failure = null,
+  onRetry,
+  onDownload,
+}: Props) {
   if (state === "off") return null;
+
+  // The trace says "everything is fine"; a failure has to take its place
+  // rather than sit beside it, and it stays until the user acts on it.
+  if (failure) {
+    return (
+      <div className="flex w-full flex-wrap items-center gap-2 py-1.5 pl-3 pr-1.5">
+        <span
+          role="alert"
+          className="min-w-0 flex-1 truncate text-sm text-red-600"
+        >
+          {failure.message}
+        </span>
+        <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
+          Retry
+        </Button>
+        <Button type="button" variant="ghost" size="xs" onClick={onDownload}>
+          Download recording
+        </Button>
+        {leaveButton}
+      </div>
+    );
+  }
+
   const { source, color } = APPEARANCE[state];
 
   return (

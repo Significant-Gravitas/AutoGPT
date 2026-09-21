@@ -546,8 +546,9 @@ class ChatSession(ChatSessionInfo):
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
-        Called by the baseline tool executor **before** the tool actually
-        runs (the announcement is about dispatch, not success).  If the
+        Called by :meth:`BaseTool.execute` — the one path both engines take —
+        after its gates and **before** the tool actually runs (the
+        announcement is about dispatch, not success).  If the
         tool raises, the name stays in the buffer for the rest of the
         turn — that matches the guide-read gate's contract ("was the tool
         called?") but means any future gate wanting *successful*

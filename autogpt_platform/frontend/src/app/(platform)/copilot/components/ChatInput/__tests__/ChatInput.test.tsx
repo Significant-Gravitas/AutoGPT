@@ -110,10 +110,22 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }));
 
+const voiceRetry = vi.fn();
+const voiceDownload = vi.fn();
+const voiceDismiss = vi.fn();
+let mockTranscriptionError: string | null = null;
+let mockHasFailedRecording = false;
+let mockIsTranscribing = false;
+
 vi.mock("../useVoiceRecording", () => ({
   useVoiceRecording: () => ({
     isRecording: false,
-    isTranscribing: false,
+    isTranscribing: mockIsTranscribing,
+    transcriptionError: mockTranscriptionError,
+    hasFailedRecording: mockHasFailedRecording,
+    retryTranscription: voiceRetry,
+    downloadFailedRecording: voiceDownload,
+    dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
@@ -233,6 +245,9 @@ afterEach(() => {
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+  mockTranscriptionError = null;
+  mockHasFailedRecording = false;
+  mockIsTranscribing = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -1118,6 +1133,71 @@ describe("ChatInput voice mode", () => {
     expect(screen.queryByTestId("voice-bar")).toBeNull();
     expect(isShown(textarea)).toBe(true);
     expect(textarea.value).toBe("half a thought");
+  });
+});
+
+describe("ChatInput transcription failure", () => {
+  const mockOnSend = vi.fn();
+
+  it("offers a retry and the recording itself when transcription fails", () => {
+    mockTranscriptionError = "Transcription service unavailable";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription service unavailable",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download recording/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(voiceRetry).toHaveBeenCalledTimes(1);
+    expect(voiceDownload).toHaveBeenCalledTimes(1);
+    expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the row up while the retry is in flight", () => {
+    // It must not blink away and back: that takes the Retry button with it
+    // and makes a slow retry look like it did nothing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    mockIsTranscribing = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^Retry$/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("renders in the card composer too", () => {
+    // The empty-state composer stacks its rows and supplies its own spacing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} stacked />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription failed",
+    );
+  });
+
+  it("says nothing when there is no failed recording to act on", () => {
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("stays out of voice mode's way", () => {
+    // Voice mode replaces the composer's controls; a dictation error from
+    // before it was entered must not squat on top of the voice bar.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(
+      <ChatInput onSend={mockOnSend} voiceBar={<div data-testid="bar" />} />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
