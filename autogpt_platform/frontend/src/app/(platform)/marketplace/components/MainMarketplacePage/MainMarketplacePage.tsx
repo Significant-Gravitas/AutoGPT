@@ -15,7 +15,7 @@ import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { SkillsList } from "../SkillsList/SkillsList";
 import { SkillsSection } from "../SkillsSection/SkillsSection";
-import { WorkflowsRail } from "../WorkflowsRail/WorkflowsRail";
+import { WorkflowsShelf } from "../WorkflowsShelf/WorkflowsShelf";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
@@ -79,7 +79,7 @@ export const MainMarkeplacePage = () => {
               <SkillsList category={category} />
             ) : null}
             {topAgents && (
-              <WorkflowsRail
+              <WorkflowsShelf
                 id={AGENTS_SECTION_ID}
                 agents={topAgents.agents}
                 featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}

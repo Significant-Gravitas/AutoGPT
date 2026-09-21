@@ -19,13 +19,15 @@ interface Props {
 export function SkillsSection({ category }: Props) {
   const {
     isLoggedIn,
-    skills,
+    skills: fetchedSkills,
     total,
     installedSlugs,
     isLoading,
     isError,
     refetch,
   } = useSkillsSection({ category });
+  // One shared query feeds both shelves; the card layout takes the first four.
+  const skills = fetchedSkills.slice(0, SHELF_SIZE);
 
   // Under a category filter an empty shelf means "no skills in this
   // category", so the whole section goes rather than offering an empty state.

@@ -14,10 +14,12 @@ import {
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { MarketplaceSkillDetails } from "@/app/api/__generated__/models/marketplaceSkillDetails";
 import { server } from "@/mocks/mock-server";
+import { HttpResponse, http } from "msw";
 import {
   configure,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
@@ -84,10 +86,11 @@ const outreachDetails: MarketplaceSkillDetails = {
 };
 
 const baseAgent = getGetV2ListStoreAgentsResponseMock().agents[0];
-const agents = ["Lead Finder", "Inbox Sorter"].map((agent_name, i) => ({
+// Ten so the shelf has more than the eight-tile preview to hold back.
+const agents = Array.from({ length: 10 }, (_, i) => ({
   ...baseAgent,
   slug: `agent-${i}`,
-  agent_name,
+  agent_name: `Workflow ${i}`,
   creator: "AutoGPT",
 }));
 
@@ -116,26 +119,19 @@ describe("Marketplace with hire-experts on", () => {
     );
   });
 
-  test("lists skills as rows that do not link to a skill page", async () => {
+  test("lists skills as tiles that do not link to a skill page", async () => {
     render(<MainMarkeplacePage />);
 
-    const row = await screen.findByTestId("skill-row");
-    expect(within(row).getByText("Outreach playbook")).toBeDefined();
-    expect(within(row).queryByRole("link")).toBeNull();
+    const tile = await screen.findByTestId("skill-tile");
+    expect(within(tile).getByText("Outreach playbook")).toBeDefined();
+    expect(tile.tagName).toBe("BUTTON");
     expect(screen.queryByTestId("skill-card")).toBeNull();
   });
 
-  test("See skill opens the instructions in a dialog", async () => {
+  test("a skill tile opens the instructions in a dialog", async () => {
     render(<MainMarkeplacePage />);
 
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: "More options for Outreach playbook",
-      }),
-    );
-    await userEvent.click(
-      await screen.findByRole("menuitem", { name: "See skill" }),
-    );
+    await userEvent.click(await screen.findByTestId("skill-tile"));
 
     const dialog = await screen.findByTestId("skill-dialog");
     expect(
@@ -143,7 +139,7 @@ describe("Marketplace with hire-experts on", () => {
     ).toBeDefined();
   });
 
-  test("shows workflows as one row below skills, without the full grid", async () => {
+  test("shows eight workflow tiles below skills, without the full grid", async () => {
     render(<MainMarkeplacePage />);
 
     const skills = await screen.findByRole("heading", { name: "Skills" });
@@ -152,19 +148,59 @@ describe("Marketplace with hire-experts on", () => {
     });
     // Node.DOCUMENT_POSITION_FOLLOWING === 4: the workflows heading comes after.
     expect(skills.compareDocumentPosition(workflows) & 4).toBe(4);
-    expect(screen.getAllByTestId("workflow-chip")).toHaveLength(2);
+    expect(screen.getAllByTestId("workflow-tile")).toHaveLength(8);
     expect(screen.queryByText("All AI Workflows")).toBeNull();
     expect(screen.queryByTestId("store-card")).toBeNull();
   });
 
-  test("Show all swaps the row for the full grid", async () => {
+  test("Load all asks the skills endpoint for the whole catalogue", async () => {
+    const catalogue: MarketplaceSkill[] = Array.from(
+      { length: 12 },
+      (_, i) => ({
+        ...outreach,
+        slug: `skill-${i}`,
+        name: `skill-${i}`,
+        title: `Skill ${i}`,
+      }),
+    );
+    server.use(
+      http.get("/api/proxy/api/store/skills", ({ request }) => {
+        const pageSize = Number(
+          new URL(request.url).searchParams.get("page_size") ?? 8,
+        );
+        return HttpResponse.json({
+          skills: catalogue.slice(0, pageSize),
+          pagination: {
+            total_items: catalogue.length,
+            total_pages: 1,
+            current_page: 1,
+            page_size: pageSize,
+          },
+        });
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findAllByTestId("skill-tile")).toHaveLength(8);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Load all 12 skills" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("skill-tile")).toHaveLength(12),
+    );
+  });
+
+  test("Load all shows the rest as tiles, not cards", async () => {
     render(<MainMarkeplacePage />);
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "Show all 2 workflows" }),
+      await screen.findByRole("button", { name: "Load all 10 workflows" }),
     );
 
-    expect(screen.getAllByTestId("store-card").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("workflow-chip")).toBeNull();
+    expect(screen.getAllByTestId("workflow-tile")).toHaveLength(10);
+    expect(screen.queryByTestId("store-card")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show fewer" })).toBeDefined();
   });
 });

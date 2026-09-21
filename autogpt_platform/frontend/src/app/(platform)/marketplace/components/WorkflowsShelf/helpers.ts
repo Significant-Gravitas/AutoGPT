@@ -1,7 +1,5 @@
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
-export const RAIL_SIZE = 12;
-
 export function featuredFirst(
   agents: StoreAgent[],
   featured: StoreAgent[],

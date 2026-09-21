@@ -5,10 +5,15 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
-import { SHELF_SIZE } from "../SkillsSection/helpers";
+import {
+  SHELF_GRID,
+  SHELF_MAX_SIZE,
+  SHELF_PREVIEW_SIZE,
+} from "../Shelf/helpers";
+import { ShelfMoreButton } from "../Shelf/ShelfMoreButton";
 import { useSkillsSection } from "../SkillsSection/useSkillsSection";
 import { SkillDialog } from "./components/SkillDialog";
-import { SkillRow } from "./components/SkillRow";
+import { SkillTile } from "./components/SkillTile";
 
 const HEADING_ID = "skills-heading";
 
@@ -17,9 +22,13 @@ interface Props {
 }
 
 export function SkillsList({ category }: Props) {
+  // "Load all" widens the page it asks for rather than slicing a page it
+  // already holds: the shelf only ever fetches the tiles it shows.
+  const [pageSize, setPageSize] = useState(SHELF_PREVIEW_SIZE);
   const { skills, total, installedSlugs, isLoading, isError, refetch } =
-    useSkillsSection({ category });
+    useSkillsSection({ category, pageSize });
   const [openSlug, setOpenSlug] = useState<string | null>(null);
+  const isExpanded = pageSize > SHELF_PREVIEW_SIZE;
 
   if (!isLoading && !isError && skills.length === 0) return null;
 
@@ -36,7 +45,7 @@ export function SkillsList({ category }: Props) {
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."
         action={
-          total > SHELF_SIZE
+          total > SHELF_PREVIEW_SIZE
             ? { label: "Browse all skills", href: "/marketplace/skills" }
             : undefined
         }
@@ -46,10 +55,10 @@ export function SkillsList({ category }: Props) {
           role="status"
           aria-busy="true"
           aria-label="Loading skills"
-          className="grid grid-cols-1 gap-x-8 md:grid-cols-2"
+          className={SHELF_GRID}
         >
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="my-2 h-12 w-full rounded-xl" />
+          {Array.from({ length: SHELF_PREVIEW_SIZE }, (_, i) => (
+            <Skeleton key={i} className="h-[4.75rem] w-full rounded-xl" />
           ))}
         </div>
       ) : isError ? (
@@ -64,9 +73,9 @@ export function SkillsList({ category }: Props) {
           </button>
         </div>
       ) : (
-        <ul className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+        <ul className={SHELF_GRID}>
           {skills.map((skill) => (
-            <SkillRow
+            <SkillTile
               key={skill.slug}
               skill={skill}
               isInstalled={installedSlugs.has(skill.slug)}
@@ -75,6 +84,18 @@ export function SkillsList({ category }: Props) {
           ))}
         </ul>
       )}
+      {total > SHELF_PREVIEW_SIZE ? (
+        <ShelfMoreButton
+          isExpanded={isExpanded}
+          total={Math.min(total, SHELF_MAX_SIZE)}
+          noun="skills"
+          onToggle={() =>
+            setPageSize(
+              isExpanded ? SHELF_PREVIEW_SIZE : Math.min(total, SHELF_MAX_SIZE),
+            )
+          }
+        />
+      ) : null}
       {openSlug ? (
         <SkillDialog
           key={openSlug}
