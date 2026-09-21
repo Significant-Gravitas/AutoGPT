@@ -4,6 +4,7 @@ import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Text } from "@/components/atoms/Text/Text";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { BriefingByline } from "./components/BriefingByline";
@@ -24,6 +25,10 @@ export function RecentWork({ dashboard, className }: Props) {
   const completed = dashboard.recent_work?.completed_count ?? 0;
   const failed = dashboard.recent_work?.failed_count ?? 0;
   const isEmpty = groups.length === 0 && !briefing.narrative;
+
+  // An exposure event: the briefing is an inline byline with no expand step,
+  // so it counts as opened once its content actually renders.
+  useTrackFunnelViewOnce("briefing_opened", Boolean(briefing.narrative));
 
   return (
     <HomeTile

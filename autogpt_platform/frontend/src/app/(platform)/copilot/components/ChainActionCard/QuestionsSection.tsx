@@ -9,8 +9,14 @@ import {
 } from "@hugeicons/core-free-icons";
 import { m } from "framer-motion";
 import { useId, useState } from "react";
+import {
+  isAnswered,
+  toAnswerText,
+  toMultiAnswer,
+} from "../../tools/clarifying-questions";
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
+import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
 
 interface Props {
   requests: QuestionRequest[];
@@ -18,7 +24,8 @@ interface Props {
   onProceed: () => void;
 }
 
-/** One question per step. Picking an option advances on its own; the footer
+/** One question per step. Picking an option advances on its own — except on a
+ *  multi-select question, where there is a second pick to make; the footer
  *  pager (chevrons + ring dots) moves between questions, and the round action
  *  button advances and, on the last step, sends every answer as one message. */
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
@@ -37,7 +44,9 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const current = Math.min(step, questions.length - 1);
   const { request, question, id } = questions[current];
   const labelId = `${sectionId}-${id}`;
-  const answered = (request.answers[question.keyword] ?? "").trim().length > 0;
+  const answer = request.answers[question.keyword];
+  const multiOptions = question.allow_multiple ? (question.options ?? []) : [];
+  const answered = isAnswered(answer);
   const isLast = current === questions.length - 1;
   const actionEnabled = isLast ? isReady : answered;
 
@@ -87,19 +96,31 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         >
           {question.question}
         </span>
-        <QuestionAnswerField
-          // The field's typing toggle must reset per question; keying it here
-          // rather than only on the wrapper keeps that contract local to the
-          // component that owns the state.
-          key={id}
-          question={question}
-          value={request.answers[question.keyword] ?? ""}
-          labelId={labelId}
-          autoFocus={current > 0}
-          onChange={(value) => request.onAnswer(question.keyword, value)}
-          onPick={handlePick}
-          onSubmit={handleAction}
-        />
+        {multiOptions.length > 0 ? (
+          <QuestionMultiAnswerField
+            key={id}
+            options={multiOptions}
+            value={toMultiAnswer(answer)}
+            labelId={labelId}
+            autoFocus={current > 0}
+            onChange={(value) => request.onAnswer(question.keyword, value)}
+            onSubmit={handleAction}
+          />
+        ) : (
+          <QuestionAnswerField
+            // The field's typing toggle must reset per question; keying it
+            // here rather than only on the wrapper keeps that contract local
+            // to the component that owns the state.
+            key={id}
+            question={question}
+            value={toAnswerText(answer)}
+            labelId={labelId}
+            autoFocus={current > 0}
+            onChange={(value) => request.onAnswer(question.keyword, value)}
+            onPick={handlePick}
+            onSubmit={handleAction}
+          />
+        )}
       </m.div>
 
       <div className="flex items-center justify-between px-5 pb-4 pt-1">

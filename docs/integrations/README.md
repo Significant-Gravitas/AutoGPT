@@ -261,6 +261,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
+| [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
+| [Jev Filter](block-integrations/typesafe/filter.md#jev-filter) | Filter items with sequential Jev scores, one call per item |
+| [Jev Pick Best](block-integrations/typesafe/pick_best.md#jev-pick-best) | Choose the best candidate using Jev and rank candidates directly by its probabilities |
+| [Jev Route](block-integrations/typesafe/route.md#jev-route) | Route data using Jev's typed choice |
+| [Jev Score](block-integrations/typesafe/score.md#jev-score) | Score evidence with Jev using an explicit ordered scale |
+| [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |

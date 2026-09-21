@@ -49,6 +49,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 const outreach: MarketplaceSkill = {
   slug: "outreach-playbook",
   name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: [],

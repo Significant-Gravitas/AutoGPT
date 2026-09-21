@@ -2,6 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { markHireStarted } from "@/services/experts/hire-timing";
 import { useExpertPackageDownload } from "@/services/experts/useExpertPackageDownload";
 import {
@@ -100,6 +101,7 @@ export function ExpertHireActions({
   // in a dialog, and sometimes on another page entirely.
   function handleHire() {
     markHireStarted(expert.id);
+    trackFunnel("hire_started", { template_id: expert.id });
     onHire();
   }
 

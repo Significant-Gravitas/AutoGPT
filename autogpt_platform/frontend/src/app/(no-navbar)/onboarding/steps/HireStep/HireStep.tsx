@@ -4,8 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { cn } from "@/lib/utils";
 import { useRef } from "react";
 import {
@@ -38,13 +37,7 @@ export function HireStep() {
     <FadeIn>
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <BotAvatar
-            config={AUTOPILOT_AVATAR}
-            status={step.isPending ? "working" : "idle"}
-            size={120}
-            trackPointer
-            showBadge={false}
-          />
+          <AutopilotAvatar size={120} />
           <Text variant="h4" as="h1">
             {hireTitle(step.team, step.isPending)}
           </Text>

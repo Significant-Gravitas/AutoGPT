@@ -23,6 +23,7 @@ from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
+    check_skill_slug,
     manifest_json,
     validate_expert_package,
 )
@@ -77,6 +78,11 @@ def package_from_zip(data: bytes) -> ExpertPackage:
         # opens cleanly and fails here.
         try:
             manifest = _manifest(archive.read(manifest_info))
+            for slug in sorted(skill_members):
+                try:
+                    check_skill_slug(slug)
+                except ValueError as exc:
+                    raise ExpertPackageError(str(exc))
             skills = {
                 slug: _skill(archive, slug, files)
                 for slug, files in sorted(skill_members.items())
