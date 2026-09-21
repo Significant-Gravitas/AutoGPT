@@ -1,11 +1,12 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 
-import { isBookkeepingPart } from "../../messageParts";
+import {
+  isBookkeepingPart,
+  PENDING_DRAINED_PART_TYPE,
+} from "../../messageParts";
 import { getTurnMessages, type MessagePart } from "./helpers";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
-
-export const PENDING_DRAINED_PART_TYPE = "data-pending-drained";
 
 /** Marks a row that is only part of its source message. The final segment
  *  keeps the untouched message id, so everything keyed on it (turn stats,

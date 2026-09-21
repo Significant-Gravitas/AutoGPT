@@ -999,6 +999,73 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     expect(screen.getAllByTestId("message-user")).toHaveLength(2);
   });
 
+  it("keeps a text-less hint out of the tool chain it lands in", () => {
+    // The hint is stream bookkeeping: left in the parts, it would split the
+    // chain around it into two.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                drainedTurn[1].parts[0],
+                {
+                  type: "data-pending-drained",
+                  id: "hint-0",
+                  data: { drainedCount: 1 },
+                },
+                drainedTurn[1].parts[2],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    const renderedParts = JSON.parse(
+      screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+    ) as { type: string }[];
+    expect(renderedParts.map((p) => p.type)).toEqual([
+      "tool-read_file",
+      "tool-read_file",
+    ]);
+  });
+
+  it("shows the thinking indicator while the follow-up is the newest thing in the turn", () => {
+    // Answer text is normally inflight, but a drain hint landing after it
+    // means the assistant has not produced anything for the follow-up yet.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                { type: "text", text: "Here is your week.", state: "done" },
+                drainedTurn[1].parts[1],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
   it("leaves the turn whole when the hint carries no text", () => {
     const withoutText = [
       drainedTurn[0],

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
-import { PENDING_DRAINED_PART_TYPE } from "./components/ChatMessagesContainer/midTurnSplit";
+import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this

@@ -35,6 +35,7 @@ import {
 import {
   getLatestAssistantStatusMessage,
   isBookkeepingPart,
+  PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
@@ -383,10 +384,19 @@ export function ChatMessagesContainer({
     if (lastMessage?.role !== "assistant") return false;
     // Ignore bookkeeping parts — none of them counts as "real" content that
     // hides the Thinking indicator. See `isBookkeepingPart` for the list.
-    const parts = lastMessage.parts.filter((p) => !isBookkeepingPart(p));
-    if (parts.length === 0) return false;
+    // A drain hint newer than the last content part is the one exception:
+    // the follow-up just landed and nothing has been produced past it, so
+    // the text or tool above it is settled and Thinking is the only sign
+    // the assistant picked the follow-up up.
+    let lastIndex = lastMessage.parts.length - 1;
+    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
+        return false;
+      lastIndex--;
+    }
+    if (lastIndex < 0) return false;
 
-    const lastPart = parts[parts.length - 1];
+    const lastPart = lastMessage.parts[lastIndex];
 
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;

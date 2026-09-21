@@ -213,6 +213,22 @@ describe("splitMessagesAtDrainHints", () => {
     expect(splitMessagesAtDrainHints(messages)).toBe(messages);
   });
 
+  it("does not count a text-less hint as the turn's first drawn content", () => {
+    // A count-only hint (older backend, or a turn-start drain) renders
+    // nothing, so a text-bearing hint right after it is still a turn-start
+    // drain: splitting there would cut a segment holding only the hint.
+    const messages = [
+      PROMPT,
+      assistant("a1", [
+        hintPart(),
+        hintPart([{ id: "pm-1", content: "also check Friday" }]),
+        toolPart("read"),
+      ]),
+    ];
+
+    expect(splitMessagesAtDrainHints(messages)).toBe(messages);
+  });
+
   it("keeps an empty tail segment when the hint is the newest part", () => {
     const rows = splitMessagesAtDrainHints([
       PROMPT,
