@@ -13,6 +13,10 @@ from typing import Any
 
 from posthog import Posthog
 
+from backend.util.feature_flag_definition_cache import (
+    get_flag_definition_cache,
+    refresh_interval_seconds,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -143,15 +147,21 @@ def _build_client() -> Posthog | None:
         return None
 
     personal_api_key = settings.secrets.posthog_personal_api_key
+    # One shared refresher, so the definitions bill stops scaling with replica
+    # count. Without a provider the SDK polls PostHog once per process.
+    definition_cache = get_flag_definition_cache() if personal_api_key else None
     _client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
         personal_api_key=personal_api_key or None,
         enable_local_evaluation=bool(personal_api_key),
+        poll_interval=refresh_interval_seconds(),
+        flag_definition_cache_provider=definition_cache,
     )
     _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
-        f"(local evaluation: {'on' if personal_api_key else 'off'})"
+        f"(local evaluation: {'on' if personal_api_key else 'off'}, "
+        f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client
