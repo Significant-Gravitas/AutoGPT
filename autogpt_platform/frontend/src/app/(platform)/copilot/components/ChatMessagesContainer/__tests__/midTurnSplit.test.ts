@@ -1,7 +1,10 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
 
+import { makePromotedUserBubble } from "../../../helpers/makePromotedBubble";
 import {
+  asMidTurnFallbackRow,
+  isMidTurnFallbackRow,
   isMidTurnSegmentRow,
   messagesCarryDrainedText,
   splitMessagesAtDrainHints,
@@ -44,6 +47,11 @@ function user(id: string, text: string): ChatMessage {
 }
 
 const PROMPT = user("user-1", "plan my week");
+
+/** The bubble `useCopilotPendingChips` promotes above the live assistant. */
+function fallback(id: string, text: string): ChatMessage {
+  return makePromotedUserBubble(text, "midturn", id);
+}
 
 describe("splitMessagesAtDrainHints", () => {
   it("returns the same array when no message carries a hint", () => {
@@ -237,5 +245,122 @@ describe("splitMessagesAtDrainHints", () => {
 
     expect(rows[0]).toBe(messages[0]);
     expect(messages[1].parts).toHaveLength(3);
+  });
+
+  it("hides the fallback row whose text a hint draws at the drain point", () => {
+    // The backstop GET resolved before the hint reached the client, so the
+    // chip was promoted above the assistant; the hint then draws the same
+    // follow-up where it belongs. One bubble, not two.
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      fallback("chip-1", "follow up"),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "follow up" }]),
+        toolPart("write"),
+      ]),
+    ]);
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("keeps a repeated identical fallback row the hint did not draw", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      fallback("chip-1", "continue"),
+      fallback("chip-2", "continue"),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "continue" }]),
+        toolPart("write"),
+      ]),
+    ]);
+
+    // Two distinct drains of the same text: one drawn by its hint, the
+    // other (count-only or dropped hint) still on its fallback row.
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "promoted-midturn-chip-2",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("keeps a fallback row with text no hint drew", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      fallback("chip-1", "something else"),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "follow up" }]),
+      ]),
+    ]);
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "promoted-midturn-chip-1",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("only reconciles fallback rows sitting directly above the hint's turn", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      fallback("chip-1", "continue"),
+      assistant("a0", [textPart("earlier turn")]),
+      user("user-2", "next"),
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "continue" }]),
+      ]),
+    ]);
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "promoted-midturn-chip-1",
+      "a0",
+      "user-2",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
+  });
+
+  it("treats a hydrated mid-turn row the resume cut kept as a fallback row", () => {
+    const hydrated = user("session-seq-5", "and book it");
+    const kept = asMidTurnFallbackRow(hydrated);
+
+    expect(isMidTurnFallbackRow(hydrated)).toBe(false);
+    expect(isMidTurnFallbackRow(kept)).toBe(true);
+    expect(isMidTurnFallbackRow(fallback("chip-1", "x"))).toBe(true);
+    expect(isMidTurnFallbackRow(PROMPT)).toBe(false);
+    // Idempotent, and the row keeps its parts and its sequence suffix.
+    expect(asMidTurnFallbackRow(kept)).toBe(kept);
+    expect(kept.parts).toBe(hydrated.parts);
+    expect(kept.id.endsWith("-seq-5")).toBe(true);
+
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      kept,
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "and book it" }]),
+        toolPart("write"),
+      ]),
+    ]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "a1#seg0",
+      "midturn-pm-1",
+      "a1",
+    ]);
   });
 });

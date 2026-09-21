@@ -352,8 +352,10 @@ export function ChatMessagesContainer({
   // the underlying message stays whole. See `splitMessagesAtDrainHints`.
   const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
+  // Read off the rendered rows: a fallback follow-up row the split drops in
+  // favour of the drain-point bubble has no element to anchor the tail on.
   const lastUserMessageID =
-    messages.findLast((message) => message.role === "user")?.id ?? null;
+    renderRows.findLast((row) => row.role === "user")?.id ?? null;
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND

@@ -16,6 +16,28 @@ export function isMidTurnSegmentRow(message: ChatMessage): boolean {
   return message.id.includes(SEGMENT_ID_MARKER);
 }
 
+/**
+ * A follow-up bubble that stands in for the drain point because the stream
+ * did not (or has not yet) drawn one: the chip `useCopilotPendingChips`
+ * promotes just above the live assistant, or the hydrated mid-turn user row
+ * the resume cut keeps (see `useCopilotStream`). `makePromotedUserBubble`
+ * builds the same prefix for the `midturn` flavour.
+ */
+const MIDTURN_FALLBACK_ID_PREFIX = "promoted-midturn-";
+
+export function isMidTurnFallbackRow(message: ChatMessage): boolean {
+  return (
+    message.role === "user" && message.id.startsWith(MIDTURN_FALLBACK_ID_PREFIX)
+  );
+}
+
+/** Keep a hydrated user row as a fallback row. The `-seq-N` suffix stays on
+ *  the id so hydration can still read the row's sequence. */
+export function asMidTurnFallbackRow(message: ChatMessage): ChatMessage {
+  if (isMidTurnFallbackRow(message)) return message;
+  return { ...message, id: `${MIDTURN_FALLBACK_ID_PREFIX}${message.id}` };
+}
+
 interface DrainedMessage {
   /** Backend-assigned id of the pending message; null on a malformed hint. */
   id: string | null;
@@ -37,8 +59,8 @@ interface DrainedMessage {
  *
  * The split point is the backend's `data-pending-drained` hint, which
  * carries the drained text (`data.messages`). A hint without it comes from
- * an older backend: no split, and `useCopilotPendingChips` keeps promoting
- * a bubble at the tail as before.
+ * an older backend: no split, and the fallback row `useCopilotPendingChips`
+ * promotes above the live assistant stays the bubble.
  */
 export function splitMessagesAtDrainHints(
   messages: ChatMessage[],
@@ -51,46 +73,58 @@ export function splitMessagesAtDrainHints(
       rows.push(message);
       continue;
     }
-    rows.push(...splitAssistantMessage(message));
+    const segments = splitAssistantMessage(message);
+    dropFallbackRowsDrawnBy(rows, segments);
+    rows.push(...segments);
   }
   return rows;
 }
 
-/**
- * Does the live stream carry the drained text itself? When it does, the
- * follow-up bubble comes from the split above and `useCopilotPendingChips`
- * must not promote a second one at the tail.
- */
+/** Does the live stream carry the drained text itself? */
 export function messagesCarryDrainedText(messages: ChatMessage[]): boolean {
   return messages.some(hasSplittableDrainHint);
 }
 
 /**
- * The follow-up texts the split above actually draws, in transcript order.
+ * A follow-up can reach the transcript twice: as a fallback row (the chip
+ * promoted when the backstop GET beat the hint, or the hydrated row a resume
+ * kept) and as the bubble a text-bearing hint draws at the drain point. The
+ * drain point wins, so the fallback row is dropped from the rendered rows —
+ * the message array `useChat` owns is left alone.
  *
- * `useCopilotPendingChips` promotes a drained chip into a bubble only when
- * the transcript is not already showing it. Asking that per text rather than
- * "does this transcript contain any text-bearing hint" matters when the two
- * kinds are mixed — an older turn's text-bearing hint must not suppress the
- * bubble for a later count-only drain, whose entries are dropped from the
- * queue either way and would otherwise vanish until hydration.
+ * Fallback rows sit directly above the assistant they belong to, so matching
+ * walks back from the split only while it keeps seeing them: an earlier
+ * turn's rows are never consumed. Each drawn bubble consumes one fallback row
+ * of the same text, so a repeated "continue" whose second drain carried no
+ * text still renders twice.
  */
-export function drainedTextsInMessages(messages: ChatMessage[]): string[] {
-  const texts: string[] = [];
-  for (const message of messages) {
-    if (message.role !== "assistant") continue;
-    let hasVisibleAbove = false;
-    for (const part of message.parts) {
-      const drained = readDrainedMessages(part);
-      if (drained.length === 0) {
-        if (isVisiblePart(part)) hasVisibleAbove = true;
-        continue;
-      }
-      if (!hasVisibleAbove) continue;
-      for (const entry of drained) texts.push(entry.content);
-    }
+function dropFallbackRowsDrawnBy(
+  rows: ChatMessage[],
+  segments: ChatMessage[],
+): void {
+  const remaining = new Map<string, number>();
+  for (const row of segments) {
+    if (row.role !== "user") continue;
+    const text = userText(row);
+    remaining.set(text, (remaining.get(text) ?? 0) + 1);
   }
-  return texts;
+  if (remaining.size === 0) return;
+
+  let start = rows.length;
+  while (start > 0 && isMidTurnFallbackRow(rows[start - 1])) start--;
+  const kept = rows.splice(start).filter((row) => {
+    const count = remaining.get(userText(row)) ?? 0;
+    if (count === 0) return true;
+    remaining.set(userText(row), count - 1);
+    return false;
+  });
+  rows.push(...kept);
+}
+
+function userText(message: ChatMessage): string {
+  return message.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
 }
 
 function splitAssistantMessage(message: ChatMessage): ChatMessage[] {

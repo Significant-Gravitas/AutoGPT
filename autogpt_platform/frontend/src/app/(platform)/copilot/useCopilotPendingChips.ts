@@ -4,10 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
-import {
-  drainedTextsInMessages,
-  PENDING_DRAINED_PART_TYPE,
-} from "./components/ChatMessagesContainer/midTurnSplit";
+import { PENDING_DRAINED_PART_TYPE } from "./components/ChatMessagesContainer/midTurnSplit";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -383,16 +380,6 @@ function useMidTurnDrainPromotion({
     latestSessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Answered when the GET resolves, not when the poll is fired: a backstop
-  // tick that raced the hint would otherwise insert a bubble the render-time
-  // split is about to draw anyway, and the user would see the message twice.
-  const latestMessagesRef = useRef(messages);
-  latestMessagesRef.current = messages;
-  const renderedFollowUpTextsRef = useRef(() =>
-    drainedTextsInMessages(latestMessagesRef.current),
-  );
-  const renderedFollowUpTexts = renderedFollowUpTextsRef.current;
-
   // Fast path: promote the moment the backend signals a drain.  We count
   // ``data-pending-drained`` parts across messages and react to the count
   // increasing — replays (AI SDK resume re-emits the parts) leave the
@@ -427,17 +414,8 @@ function useMidTurnDrainPromotion({
       setMessages,
       setQueue,
       isCurrentSession,
-      renderedFollowUpTexts,
     );
-  }, [
-    drainHintCount,
-    sessionId,
-    status,
-    queue,
-    setMessages,
-    setQueue,
-    renderedFollowUpTexts,
-  ]);
+  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
 
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
@@ -455,11 +433,10 @@ function useMidTurnDrainPromotion({
         setMessages,
         setQueue,
         isCurrentSession,
-        renderedFollowUpTexts,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queue, setMessages, setQueue, renderedFollowUpTexts]);
+  }, [sessionId, status, queue, setMessages, setQueue]);
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -481,9 +458,6 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
-  /** Follow-up texts the transcript already draws itself, because their
-   *  drain hint carried the text (see ``drainedTextsInMessages``). */
-  renderedFollowUpTexts: () => string[],
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -504,52 +478,36 @@ async function pollBackendAndPromote(
   const drained = snapshotQueue.slice(0, drainedCount);
   const drainedIds = new Set(drained.map((entry) => entry.id));
 
-  // Fallback only. A backend that ships the drained text on the
-  // ``data-pending-drained`` hint lets the transcript render the bubble at
-  // the drain point (``splitMessagesAtDrainHints``), which is where it
-  // chronologically belongs; promoting here as well would show it twice.
-  // Against an older backend the hint carries a count alone, so the chip
-  // still has to become a bubble somewhere, and the only slot AI SDK leaves
-  // us is just above the streaming assistant.
+  // Every drained chip becomes a fallback bubble, whether or not the
+  // ``data-pending-drained`` hint carried its text. A backend that ships the
+  // text lets the transcript draw the bubble at the drain point instead
+  // (``splitMessagesAtDrainHints``), and the render-time split then drops
+  // the fallback row it matches — so deciding here from the transcript's
+  // hints is unnecessary, and unsafe: the poll cannot tell which hint was
+  // this drain's, so an earlier drain's text would suppress a later chip
+  // with the same words (count-only hint, dropped hint) and lose its bubble.
   //
-  // Why not simply append it? ``useChat`` streams every SSE delta into
-  // ``messages[-1]``; pushing the user bubble onto the tail makes ``[-1]``
-  // the user bubble and every subsequent chunk lands in the wrong slot
-  // (silently) until a page refresh. Inserting before the assistant keeps
-  // the stream flowing, at the cost of showing the follow-up above the work
-  // that preceded it until ``useHydrateOnStreamEnd`` snaps the list to the
-  // DB order at the end of the turn.
-  // Matched per entry, and by text because the queue carries client-side
-  // ids while the hint carries backend ones. Counted rather than set-tested
-  // so two chips with identical text, only one of which the stream drew,
-  // still leave one bubble to promote.
-  const remainingRendered = new Map<string, number>();
-  for (const text of renderedFollowUpTexts()) {
-    remainingRendered.set(text, (remainingRendered.get(text) ?? 0) + 1);
-  }
-  const toPromote = drained.filter((entry) => {
-    const rendered = remainingRendered.get(entry.text) ?? 0;
-    if (rendered === 0) return true;
-    remainingRendered.set(entry.text, rendered - 1);
-    return false;
+  // Why not simply append the bubble? ``useChat`` streams every SSE delta
+  // into ``messages[-1]``; pushing the user bubble onto the tail makes
+  // ``[-1]`` the user bubble and every subsequent chunk lands in the wrong
+  // slot (silently) until a page refresh. Inserting before the assistant
+  // keeps the stream flowing, at the cost of showing a count-only follow-up
+  // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
+  // the list to the DB order at the end of the turn.
+  setMessages((prev) => {
+    const newBubbles = drained
+      .map((entry) =>
+        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
+      )
+      // Skip bubbles that are already there (effect re-run safety).
+      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+    if (newBubbles.length === 0) return prev;
+    const lastIdx = prev.length - 1;
+    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
+      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
+    }
+    return [...prev, ...newBubbles];
   });
-
-  if (toPromote.length > 0) {
-    setMessages((prev) => {
-      const newBubbles = toPromote
-        .map((entry) =>
-          makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
-        )
-        // Skip bubbles that are already there (effect re-run safety).
-        .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-      if (newBubbles.length === 0) return prev;
-      const lastIdx = prev.length - 1;
-      if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
-        return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
-      }
-      return [...prev, ...newBubbles];
-    });
-  }
   // Drop only the drained entries by id; entries appended after the
   // snapshot survive the in-flight poll race.
   setQueue((current) => current.filter((entry) => !drainedIds.has(entry.id)));

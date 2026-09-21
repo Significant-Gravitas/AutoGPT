@@ -192,6 +192,21 @@ const RESUME_REPLAY_WITH_DRAIN: UIMessageChunk[] = [
   { type: "text-end", id: "replay-2" },
 ];
 
+/** The replay from a backend that only reports how many messages it drained:
+ *  the follow-up text has to come from the hydrated row instead. */
+const RESUME_REPLAY_WITH_COUNT_ONLY_DRAIN: UIMessageChunk[] =
+  RESUME_REPLAY_WITH_DRAIN.map((chunk) =>
+    chunk.type === "data-pending-drained"
+      ? { ...chunk, data: { drainedCount: 1 } }
+      : chunk,
+  );
+
+/** The replay from a backend that emits no drain hint at all. */
+const RESUME_REPLAY_WITHOUT_DRAIN_HINT: UIMessageChunk[] =
+  RESUME_REPLAY_WITH_DRAIN.filter(
+    (chunk) => chunk.type !== "data-pending-drained",
+  );
+
 /**
  * A turn the backend started on its own (the engine-switch continuation
  * dispatched with ``is_user_message=False``): the completed answer is
@@ -322,6 +337,45 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       ]);
       expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
       expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["only a drained count", RESUME_REPLAY_WITH_COUNT_ONLY_DRAIN],
+    ["no drain hint", RESUME_REPLAY_WITHOUT_DRAIN_HINT],
+  ])(
+    "keeps the hydrated follow-up when the replay's hint carries %s",
+    { timeout: 20000 },
+    async (_label, replayChunks) => {
+      renderResumedSession(
+        DRAINED_MIDTURN_MESSAGES,
+        "2026-05-13T00:04:00Z",
+        replayChunks,
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+
+      // The replay cannot redraw a follow-up it has no text for, and the
+      // pending buffer it came from is already empty, so the hydrated row is
+      // the only copy — it must survive the resume cut. The assistant halves
+      // still come from the replay alone.
+      expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+      expect(screen.getAllByText(REPLAYED_HALF)).toHaveLength(1);
+      expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
+      expect(
+        Array.from(document.querySelectorAll("[data-message-id]")).map((el) =>
+          el.getAttribute("data-message-id"),
+        ),
+      ).toEqual([
+        `${TEST_SESSION_ID}-seq-1`,
+        `${TEST_SESSION_ID}-seq-2`,
+        `${TEST_SESSION_ID}-seq-3`,
+        `promoted-midturn-${TEST_SESSION_ID}-seq-5`,
+        "resumed-turn-2",
+      ]);
     },
   );
 

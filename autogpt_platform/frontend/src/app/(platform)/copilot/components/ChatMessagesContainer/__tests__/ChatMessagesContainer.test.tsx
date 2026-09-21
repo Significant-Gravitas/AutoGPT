@@ -967,6 +967,38 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     ).toEqual(["false", "true"]);
   });
 
+  it("draws a promoted fallback bubble once its hint carries the text", () => {
+    // The backstop GET promoted the chip above the assistant before the SSE
+    // hint arrived; the hint then draws the same follow-up at the drain
+    // point. Exactly one bubble, between the two assistant segments.
+    const withFallback = [
+      drainedTurn[0],
+      {
+        id: "promoted-midturn-pending-chip-local-1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "also check Friday" }],
+      },
+      drainedTurn[1],
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withFallback}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    // The prompt and one follow-up: the fallback row is not drawn as well.
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
   it("leaves the turn whole when the hint carries no text", () => {
     const withoutText = [
       drainedTurn[0],

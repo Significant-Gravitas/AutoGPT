@@ -32,6 +32,7 @@ import {
   hasVisibleAssistantContent,
   isEngineSwitchPart,
 } from "./helpers";
+import { asMidTurnFallbackRow } from "./components/ChatMessagesContainer/midTurnSplit";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
 import {
@@ -434,12 +435,15 @@ export function useCopilotStream({
       // (engine-switch continuation) has no user row in front of it, so a
       // user-anchored cut would also delete the completed answer above it
       // — content the resume never replays. The turn's own opening prompt
-      // is kept (the replay does not re-emit it); everything after it goes,
-      // INCLUDING a user row the backend drained into the middle of the
-      // turn — the replay re-emits that one as a `data-pending-drained`
-      // hint, which the transcript renders as its own bubble, so keeping
-      // the hydrated copy would both duplicate the bubble and stop the cut
-      // at it, leaving the pre-drain chain on screen twice.
+      // is kept (the replay does not re-emit it); every assistant row after
+      // it goes, and the cut does not stop at a user row the backend drained
+      // into the middle of the turn — leaving the pre-drain chain above it
+      // would show that chain twice. The drained row itself is kept, as a
+      // fallback bubble above the replayed assistant: the pending buffer it
+      // came from is empty, and a replay whose hint carries no text (older
+      // backend) cannot redraw it. When the hint does carry the text, the
+      // transcript draws the bubble at the drain point and drops the
+      // matching fallback row (`splitMessagesAtDrainHints`).
       const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
       const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
       const activeTurnIndex = activeTurnStartMessageId
@@ -451,7 +455,10 @@ export function useCopilotStream({
           : activeTurnIndex + (prev[activeTurnIndex].role === "user" ? 1 : 0);
       const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
       if (tail.length > 0 && tail.every((m) => extractDbSequence(m) !== null)) {
-        return prev.slice(0, cutIndex);
+        const drainedFollowUps = tail
+          .filter((m) => m.role === "user")
+          .map(asMidTurnFallbackRow);
+        return [...prev.slice(0, cutIndex), ...drainedFollowUps];
       }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
