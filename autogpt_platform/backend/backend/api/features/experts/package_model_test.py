@@ -7,13 +7,25 @@ import pytest
 from pydantic import ValidationError
 
 from backend.api.features.experts.package_model import (
+    MAX_AVATAR_BYTES,
+    MAX_MANIFEST_BYTES,
     ExpertManifest,
     ExpertPackage,
+    ExpertPackageError,
     PackagedAvatar,
     PackagedIdentity,
+    PackagedSkill,
     PackagedWorkflow,
     expert_slug,
     manifest_json,
+    validate_expert_package,
+)
+from backend.copilot.tools.skills import (
+    MAX_PACKAGE_BYTES,
+    MAX_PACKAGE_FILE_BYTES,
+    SkillFile,
+    SkillPackage,
+    validate_package,
 )
 
 IDENTITY = PackagedIdentity(name="Maria")
@@ -141,3 +153,104 @@ def test_a_packages_size_counts_its_manifest_skills_and_avatar():
     )
     assert package.size_bytes == len(manifest_json(package.manifest)) + 4
     assert package.slug == "maria"
+
+
+# ---------------------------------------------------------------------------
+# What the reader would refuse, refused before it is written
+# ---------------------------------------------------------------------------
+
+
+def _skill(*sizes: int, path: str = "assets/f{i}.bin") -> SkillPackage:
+    return SkillPackage(
+        skill_md="---\nname: s\ndescription: d\n---\n\n# s\n",
+        files=[
+            SkillFile(relative_path=path.format(i=i), content=b"\0" * size)
+            for i, size in enumerate(sizes)
+        ],
+    )
+
+
+def _with_skills(**skills: SkillPackage) -> ExpertPackage:
+    return ExpertPackage(
+        manifest=ExpertManifest(
+            identity=IDENTITY,
+            skills=[PackagedSkill(slug=slug, name=slug) for slug in skills],
+        ),
+        skills=skills,
+    )
+
+
+def test_a_package_within_every_cap_passes():
+    validate_expert_package(_with_skills(a=_skill(10), b=_skill(10, 10)))
+
+
+@pytest.mark.parametrize(
+    "package, message",
+    [
+        (
+            ExpertPackage(
+                manifest=ExpertManifest(
+                    identity=IDENTITY, tool_profile={"pad": "x" * MAX_MANIFEST_BYTES}
+                )
+            ),
+            "expert.json",
+        ),
+        (_with_skills(a=_skill(MAX_PACKAGE_FILE_BYTES + 1)), "skill 'a'"),
+        (
+            _with_skills(a=SkillPackage(skill_md="x" * (MAX_PACKAGE_FILE_BYTES + 1))),
+            "skill 'a': SKILL.md",
+        ),
+        (
+            _with_skills(
+                a=_skill(*[MAX_PACKAGE_FILE_BYTES] * 6),
+                b=_skill(*[MAX_PACKAGE_FILE_BYTES] * 6),
+            ),
+            "package unpacks to",
+        ),
+        (
+            ExpertPackage(
+                manifest=ExpertManifest(
+                    identity=IDENTITY,
+                    avatar=PackagedAvatar(kind="file", path="avatar.png"),
+                ),
+                avatar_bytes=b"\0" * (MAX_AVATAR_BYTES + 1),
+            ),
+            "avatar",
+        ),
+    ],
+    ids=["manifest", "skill-file", "skill-root", "combined", "avatar"],
+)
+def test_a_package_over_a_size_cap_is_refused_as_over_limit(
+    package: ExpertPackage, message: str
+):
+    with pytest.raises(ExpertPackageError, match=message) as exc:
+        validate_expert_package(package)
+    assert exc.value.over_limit
+
+
+def test_a_root_skill_md_exactly_at_the_file_cap_passes():
+    """The skill format leaves the root unbounded, so a standalone skill of
+    this size stores; the archive reader holds it to the file cap, and the
+    boundary is the reader's: at the cap is in, one byte over is out."""
+    at_cap = SkillPackage(skill_md="é" * (MAX_PACKAGE_FILE_BYTES // 2))
+    assert len(at_cap.skill_md.encode("utf-8")) == MAX_PACKAGE_FILE_BYTES
+    validate_package(at_cap)
+    validate_package(SkillPackage(skill_md="x" * (MAX_PACKAGE_FILE_BYTES + 1)))
+
+    validate_expert_package(_with_skills(a=at_cap))
+
+
+def test_a_skill_with_an_unsafe_path_is_refused_but_not_as_over_limit():
+    """A path rule is a 400, not a 413 — the distinction the route relies on."""
+    with pytest.raises(ExpertPackageError, match="skill 'a'") as exc:
+        validate_expert_package(_with_skills(a=_skill(1, path="../{i}.bin")))
+    assert not exc.value.over_limit
+
+
+def test_the_combined_cap_is_the_skill_package_cap():
+    room = MAX_PACKAGE_BYTES - _with_skills(a=_skill()).size_bytes
+    validate_expert_package(
+        _with_skills(
+            a=_skill(*[MAX_PACKAGE_FILE_BYTES] * 9, room - 9 * MAX_PACKAGE_FILE_BYTES)
+        )
+    )

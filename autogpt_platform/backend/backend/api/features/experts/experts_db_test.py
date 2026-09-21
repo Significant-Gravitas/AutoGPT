@@ -56,6 +56,7 @@ from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
+from backend.util.feature_flag import Flag
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -453,6 +454,44 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
         description=f"{hub_listing.slug} description",
     )
     assert unlinked.bundled_skills == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_bundled_skill_listings_are_the_live_rows_a_hire_installs_from(
+    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
+):
+    """An export needs the whole listing, in roster order, minus anything the
+    Hub no longer serves — exactly the set ``hire_expert`` installs."""
+    first = await make_hub_listing()
+    withdrawn = await make_hub_listing()
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": withdrawn.id}, data={"isDeleted": True}
+    )
+    template = await _seed_template(
+        name="Maria",
+        preload_listings=[],
+        bundled=[first.id, withdrawn.id, hub_listing.id],
+    )
+
+    listings = await experts_db.bundled_skill_listings("user-1", template.id)
+
+    assert [listing.id for listing in listings] == [first.id, hub_listing.id]
+    assert listings[1].ActiveVersion is not None
+    assert listings[1].ActiveVersion.body == "# body\n"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_bundled_skill_listings_are_none_while_the_hub_is_off(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    flag = AsyncMock(return_value=False)
+    monkeypatch.setattr(experts_db, "is_feature_enabled", flag)
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+
+    assert await experts_db.bundled_skill_listings("user-1", template.id) == []
+    flag.assert_awaited_once_with(Flag.SKILLS_HUB, "user-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -5047,7 +5086,9 @@ async def _published_template_with_skills(owner_id: str) -> prisma.models.Expert
             "identity": "Careful and brief.",
             "isTemplate": True,
             "skills": ["research"],
-            "publishedPackage": Base64.encode(zip_from_package(package)),
+            "PublishedPackage": {
+                "create": {"package": Base64.encode(zip_from_package(package))}
+            },
         }
     )
     _seeded_template_ids.append(template.id)
@@ -5072,9 +5113,9 @@ async def test_a_published_templates_unreadable_package_does_not_fail_the_hire(
     server: SpinTestServer, test_user
 ):
     template = await _published_template_with_skills(test_user.id)
-    await prisma.models.Expert.prisma().update(
-        where={"id": template.id},
-        data={"publishedPackage": Base64.encode(b"not a zip")},
+    await prisma.models.ExpertPublishedPackage.prisma().update(
+        where={"expertId": template.id},
+        data={"package": Base64.encode(b"not a zip")},
     )
 
     hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert

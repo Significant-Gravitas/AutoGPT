@@ -24,6 +24,7 @@ from backend.api.features.experts.package_model import (
     ExpertPackage,
     ExpertPackageError,
     manifest_json,
+    validate_expert_package,
 )
 from backend.api.features.zip_members import add_member, checked_members, mode
 from backend.copilot.tools.skills import (
@@ -41,6 +42,10 @@ ROOT_SKILL_MD = "SKILL.md"
 # A compressed archive already past the uncompressed cap cannot hold a package
 # that fits, so one number bounds both the request body and the tree.
 MAX_ZIP_BYTES = MAX_PACKAGE_BYTES
+# The manifest may be larger than any one skill file, so the archive-wide
+# member cap is the largest of the three kinds; each member is then held to
+# its own kind's cap once sorted, still from the central directory.
+MAX_MEMBER_BYTES = max(MAX_MANIFEST_BYTES, MAX_PACKAGE_FILE_BYTES, MAX_AVATAR_BYTES)
 
 _SHAPE = "an expert package is expert.json, skills/ and an optional avatar"
 _NAMED_PATHS = 10
@@ -61,13 +66,13 @@ def package_from_zip(data: bytes) -> ExpertPackage:
         members = _unwrapped(
             checked_members(
                 archive.infolist(),
-                max_file_bytes=MAX_PACKAGE_FILE_BYTES,
+                max_file_bytes=MAX_MEMBER_BYTES,
                 max_total_bytes=MAX_PACKAGE_BYTES,
                 error=ExpertPackageError,
             )
         )
         manifest_info, skill_members, avatar = _partitioned(members)
-        _check_declared_sizes(manifest_info, avatar)
+        _check_declared_sizes(manifest_info, skill_members, avatar)
         # A member's CRC is verified as it decompresses, so a corrupt archive
         # opens cleanly and fails here.
         try:
@@ -95,7 +100,12 @@ def zip_from_package(package: ExpertPackage) -> bytes:
 
     Members go in sorted with a fixed stamp, so exporting an unchanged expert
     twice produces the same file and a download can be checksummed.
+
+    A package :func:`package_from_zip` would refuse is refused here instead of
+    written — including one whose content is incompressible enough that the
+    archive itself would be over the cap an upload is held to.
     """
+    validate_expert_package(package)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         add_member(archive, MANIFEST_NAME, manifest_json(package.manifest), False)
@@ -108,7 +118,13 @@ def zip_from_package(package: ExpertPackage) -> bytes:
         avatar = package.manifest.avatar
         if package.avatar_bytes is not None and avatar and avatar.path:
             add_member(archive, avatar.path, package.avatar_bytes, False)
-    return buffer.getvalue()
+    data = buffer.getvalue()
+    if len(data) > MAX_ZIP_BYTES:
+        raise ExpertPackageError(
+            f"archive would be {len(data)} bytes; the limit is {MAX_ZIP_BYTES}",
+            over_limit=True,
+        )
+    return data
 
 
 _Members = dict[str, zipfile.ZipInfo]
@@ -177,14 +193,25 @@ def _listed(paths: list[str]) -> str:
     return f"{shown} and {remaining} more" if remaining > 0 else shown
 
 
-def _check_declared_sizes(manifest: zipfile.ZipInfo, avatar: _Avatar) -> None:
-    """The central directory's sizes, before either member is decompressed."""
+def _check_declared_sizes(
+    manifest: zipfile.ZipInfo, skills: dict[str, _Members], avatar: _Avatar
+) -> None:
+    """Each kind of member against its own cap, from the sizes the central
+    directory declares, before any member is decompressed."""
     if manifest.file_size > MAX_MANIFEST_BYTES:
         raise ExpertPackageError(
             f"{MANIFEST_NAME} is {manifest.file_size} bytes; the limit is "
             f"{MAX_MANIFEST_BYTES}",
             over_limit=True,
         )
+    for slug, members in sorted(skills.items()):
+        for path, info in sorted(members.items()):
+            if info.file_size > MAX_PACKAGE_FILE_BYTES:
+                raise ExpertPackageError(
+                    f"skill '{slug[:120]}' file '{path[:120]}' unpacks to "
+                    f"{info.file_size} bytes; the limit is {MAX_PACKAGE_FILE_BYTES}",
+                    over_limit=True,
+                )
     if avatar and avatar[1].file_size > MAX_AVATAR_BYTES:
         raise ExpertPackageError(
             f"avatar is {avatar[1].file_size} bytes; the limit is "

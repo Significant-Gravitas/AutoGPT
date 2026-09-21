@@ -13,7 +13,14 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import list_user_skills, store_user_skill
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillPackage,
+    list_user_skills,
+    prepare_user_skill,
+    render_skill_markdown,
+    store_user_skill,
+)
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -61,20 +68,49 @@ async def get_marketplace_skill(slug: str) -> skill_model.MarketplaceSkillDetail
     return skill_model.MarketplaceSkillDetails.from_db(listing)
 
 
-async def get_live_skills(
+async def get_live_listings(
     listing_ids: list[str],
-) -> dict[str, skill_model.MarketplaceSkill]:
-    """The live listings among *listing_ids*, keyed by id, in one query."""
+) -> dict[str, prisma.models.SkillListing]:
+    """The live listings among *listing_ids* as rows with their active
+    version, keyed by id, in one query."""
     if not listing_ids:
         return {}
     listings = await prisma.models.SkillListing.prisma().find_many(
         where=_live_listing_where({"id": {"in": listing_ids}}),
         include=_LISTING_INCLUDE,
     )
+    return {listing.id: listing for listing in listings}
+
+
+async def get_live_skills(
+    listing_ids: list[str],
+) -> dict[str, skill_model.MarketplaceSkill]:
+    """The live listings among *listing_ids*, keyed by id, in one query."""
     return {
-        listing.id: skill_model.MarketplaceSkill.from_db(listing)
-        for listing in listings
+        listing_id: skill_model.MarketplaceSkill.from_db(listing)
+        for listing_id, listing in (await get_live_listings(listing_ids)).items()
     }
+
+
+def installable_skill(
+    listing: prisma.models.SkillListing,
+) -> tuple[ParsedSkill, SkillPackage]:
+    """What :func:`install_marketplace_skill` would write for *listing*,
+    without writing it: the skill as it would be stored, and its package — a
+    ``SKILL.md`` alone, since a listing publishes nothing beside it.
+
+    Raises :class:`ValueError` exactly where the install would, so a caller
+    packaging a listing skips the same ones a hire skips.
+    """
+    active = skill_model.active_version(listing)
+    parsed = prepare_user_skill(
+        name=listing.slug,
+        description=active.description,
+        body=active.body,
+        triggers=list(active.triggers),
+        version=str(active.version),
+    )
+    return parsed, SkillPackage(skill_md=render_skill_markdown(parsed))
 
 
 async def install_marketplace_skill(

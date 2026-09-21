@@ -7273,12 +7273,13 @@
             }
           },
           "400": {
-            "description": "One of the expert's agents is not published"
+            "description": "One of the expert's agents is not published, or the expert cannot be packaged"
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Expert not found" },
+          "413": { "description": "Expert is too large to package" },
           "422": {
             "description": "Validation Error",
             "content": {

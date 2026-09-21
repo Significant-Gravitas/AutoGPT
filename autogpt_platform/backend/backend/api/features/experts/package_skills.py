@@ -43,6 +43,11 @@ async def install_package_skills(
                 description=parsed.description,
                 body=parsed.body,
                 triggers=list(parsed.triggers),
+                # Whole frontmatter, as the upload and copy paths keep it: a
+                # skill's version, license or allowed-tools must not be
+                # stripped just because it arrived inside an expert.
+                version=parsed.version,
+                extra=parsed.extra,
                 files=stored.files,
                 expert_id=expert_id,
             )
