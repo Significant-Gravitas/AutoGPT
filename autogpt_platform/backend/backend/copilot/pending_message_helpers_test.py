@@ -204,6 +204,7 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 409
@@ -235,6 +236,7 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
         message="hi",
         context=None,
         file_ids=None,
+        folder_ids=None,
         expert_id=None,
     )
 
@@ -275,6 +277,7 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 429
@@ -873,6 +876,7 @@ async def test_queue_pending_rejects_file_outside_expert_scope(
             message="hi",
             context=None,
             file_ids=["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            folder_ids=None,
             expert_id="expert-a",
         )
     assert exc_info.value.status_code == 400
@@ -906,6 +910,7 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
         message="hi",
         context=None,
         file_ids=["file-1"],
+        folder_ids=None,
         expert_id="expert-a",
     )
 

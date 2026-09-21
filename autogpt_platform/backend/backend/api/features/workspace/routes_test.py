@@ -1200,6 +1200,7 @@ def test_list_files_filters_to_the_experts_own_conversations(
         folder_id=None,
         root_only=False,
         allowed_path_prefixes=["/sessions/s1/", "/sessions/s2/"],
+        include_user_files=False,
     )
 
 
@@ -1218,18 +1219,64 @@ def test_list_files_unowned_expert_lists_nothing(
     response = client.get("/files?expert_id=expert-x")
     assert response.status_code == 200
     assert response.json()["files"] == []
+    # Both branches of the filter fail closed: no session prefixes, and the
+    # user-files grant is carried by the scope, never inferred from expert_id.
     assert mock_instance.list_files.call_args.kwargs["allowed_path_prefixes"] == []
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is False
 
 
-@pytest.mark.parametrize(
-    "query", ["session_id=sess-1", "folder_id=fld-1", "root_only=true"]
-)
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
-def test_list_files_rejects_expert_id_with_other_axes(mock_get_workspace, query):
-    response = client.get(f"/files?expert_id=expert-a&{query}")
+def test_list_files_rejects_expert_id_with_session_id(mock_get_workspace):
+    """Both name which conversations to show, so combining them is ambiguous."""
+    response = client.get("/files?expert_id=expert-a&session_id=sess-1")
     assert response.status_code == 400
     assert "expert_id" in response.json()["detail"]
     mock_get_workspace.assert_not_called()
+
+
+@pytest.mark.parametrize("query", ["folder_id=fld-1", "root_only=true"])
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_combines_expert_id_with_the_folder_filters(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, query
+):
+    """A folder selects across the whole workspace, which is exactly the axis
+    the picker needs while filtered to one expert."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a", session_ids=["s1"], reads_user_files=True
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get(f"/files?expert_id=expert-a&{query}")
+
+    assert response.status_code == 200
+    kwargs = mock_instance.list_files.call_args.kwargs
+    assert kwargs["allowed_path_prefixes"] == ["/sessions/s1/"]
+    assert kwargs["include_user_files"] is True
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_for_an_expert_spans_the_users_own_files(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a", session_ids=["s1"], reads_user_files=True
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-a")
+
+    assert response.status_code == 200
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is True
 
 
 @patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
