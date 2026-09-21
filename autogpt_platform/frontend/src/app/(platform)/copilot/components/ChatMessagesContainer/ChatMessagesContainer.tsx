@@ -46,8 +46,10 @@ import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader } from "./components/ThreadHeader";
+import { PendingUploadMessage } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -74,6 +76,11 @@ interface Props {
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** A just-sent message whose local attachments are still uploading. It is
+   *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
+   *  so it renders as a placeholder bubble with an "Uploading files…"
+   *  status in the thinking indicator's usual spot. */
+  pendingSend?: PendingUploadSend | null;
   /** Extra bottom padding (px) applied to the scrollable message list so
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
@@ -309,6 +316,7 @@ export function ChatMessagesContainer({
   onRetry,
   turnStats,
   queuedMessages,
+  pendingSend,
   bottomContentPadding,
   readOnly = false,
   filePattern,
@@ -517,11 +525,14 @@ export function ChatMessagesContainer({
               onLoadMore={onLoadMore}
             />
           )}
-          {isLoading && messages.length === 0 && !isRestoringActiveSession && (
-            <div className="flex flex-1 items-center justify-center">
-              <LoadingSpinner className="text-neutral-600" />
-            </div>
-          )}
+          {isLoading &&
+            messages.length === 0 &&
+            !isRestoringActiveSession &&
+            !pendingSend && (
+              <div className="flex flex-1 items-center justify-center">
+                <LoadingSpinner className="text-neutral-600" />
+              </div>
+            )}
           {messages.map((message, messageIndex) => {
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
@@ -751,6 +762,12 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
+          {!readOnly && pendingSend && (
+            <PendingUploadMessage
+              pendingSend={pendingSend}
+              isCompact={isCompact}
+            />
+          )}
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"

@@ -3,7 +3,11 @@ import { uploadFileDirect } from "@/lib/direct-upload";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
-import { useCopilotStreamStore } from "./copilotStreamStore";
+import {
+  useCopilotStreamStore,
+  type PendingUploadAttachment,
+  type PendingUploadSend,
+} from "./copilotStreamStore";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildWorkspaceFilePart,
@@ -99,6 +103,10 @@ export function useSendMessage({
     }));
   }
 
+  function setPendingUploadSend(send: PendingUploadSend | null) {
+    useCopilotStreamStore.getState().setPendingUploadSend(send);
+  }
+
   async function dispatchToSession(
     sid: string,
     text: string,
@@ -122,7 +130,16 @@ export function useSendMessage({
       });
       return;
     }
+    // The bubble shows right away; the transcript reads "Uploading N files…"
+    // until the uploads land and the real message takes the placeholder's
+    // spot. The slot is re-set here (not only in onSend) because this is the
+    // one path every send with files goes through, including the flush after
+    // session creation.
+    setPendingUploadSend(
+      describePendingUpload(sid, text, files, prebuiltParts),
+    );
     setIsUploadingFiles(true);
+    let send: Promise<void> | undefined;
     try {
       const uploaded = await uploadFiles(files, sid);
       if (uploaded.length === 0) {
@@ -133,23 +150,25 @@ export function useSendMessage({
         });
         // The workspace references didn't fail to upload (they need no upload),
         // so don't discard them just because the local uploads failed.
-        if (prebuiltParts.length > 0) {
-          await sendMessage({ text, files: prebuiltParts, metadata });
-          return;
+        if (prebuiltParts.length === 0) {
+          throw new Error("All file uploads failed");
         }
-        throw new Error("All file uploads failed");
+        send = sendMessage({ text, files: prebuiltParts, metadata });
+      } else {
+        // Merge already-stored workspace parts with the freshly uploaded ones so
+        // a single message can mix both kinds of attachment.
+        const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
+        send = sendMessage({ text, files: allParts, metadata });
       }
-      // Merge already-stored workspace parts with the freshly uploaded ones so
-      // a single message can mix both kinds of attachment.
-      const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
-      await sendMessage({
-        text,
-        files: allParts.length > 0 ? allParts : undefined,
-        metadata,
-      });
     } finally {
+      // `sendMessage` pushes the user bubble into `messages` synchronously,
+      // so the placeholder can go in the same tick with no gap between the
+      // two. Its promise only settles when the whole stream ends, which is
+      // why the cleanup happens here and not after the await below.
+      setPendingUploadSend(null);
       setIsUploadingFiles(false);
     }
+    await send;
   }
 
   // Hold dispatchToSession in a ref so the queued-send effect can fire
@@ -225,6 +244,11 @@ export function useSendMessage({
 
     if (isCreatingSessionRef.current) return;
     isCreatingSessionRef.current = true;
+    if (files && files.length > 0) {
+      setPendingUploadSend(
+        describePendingUpload(null, trimmed, files, workspaceParts),
+      );
+    }
     // Workspace parts must reach the post-creation flush, which reads them
     // from the store via `takePendingFirstSend`. Append so a pre-set part
     // (e.g. workflow-import) isn't clobbered.
@@ -244,6 +268,7 @@ export function useSendMessage({
         useCopilotStreamStore.getState();
       setPendingFirstSend(null);
       setPendingFileParts([]);
+      setPendingUploadSend(null);
       throw err;
     } finally {
       isCreatingSessionRef.current = false;
@@ -254,5 +279,35 @@ export function useSendMessage({
     useCopilotStreamStore.getState().setPendingFileParts(parts);
   }
 
-  return { onSend, isUploadingFiles, setPendingFileParts };
+  const storedPendingSend = useCopilotStreamStore((s) => s.pendingUploadSend);
+  // A placeholder belongs to the chat it was sent from: one bound to another
+  // session (the user switched threads mid-upload) must not show up here.
+  const pendingSend =
+    storedPendingSend &&
+    (storedPendingSend.sessionId === null ||
+      storedPendingSend.sessionId === sessionId)
+      ? storedPendingSend
+      : null;
+
+  return { onSend, isUploadingFiles, pendingSend, setPendingFileParts };
+}
+
+function describePendingUpload(
+  sessionId: string | null,
+  text: string,
+  files: File[],
+  prebuiltParts: FileUIPart[],
+): PendingUploadSend {
+  const stored: PendingUploadAttachment[] = prebuiltParts.map((part) => ({
+    name: part.filename ?? "file",
+    mediaType: part.mediaType,
+    isUploading: false,
+  }));
+  const local: PendingUploadAttachment[] = files.map((file) => ({
+    name: file.name,
+    mediaType: file.type || "application/octet-stream",
+    sizeBytes: file.size,
+    isUploading: true,
+  }));
+  return { sessionId, text, attachments: [...stored, ...local] };
 }

@@ -870,3 +870,90 @@ describe("ChatMessagesContainer — expert kickoff", () => {
     expect(screen.getAllByTestId("message-user")).toHaveLength(1);
   });
 });
+
+// ── pending upload placeholder ────────────────────────────────────────────
+
+describe("ChatMessagesContainer — pendingSend", () => {
+  const pendingSend = {
+    sessionId: "sess-123",
+    text: "tell me about this",
+    attachments: [
+      {
+        name: "talk.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 2048,
+        isUploading: true,
+      },
+      { name: "icon.png", mediaType: "image/png", isUploading: true },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the sent text and attachments before the message reaches the transcript", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(screen.getByText("talk.pdf")).toBeDefined();
+    expect(screen.getByText("icon.png")).toBeDefined();
+  });
+
+  it("narrates the upload in the thinking indicator", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 2 files…",
+    );
+  });
+
+  it("uses the singular for a single file", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={{
+          ...pendingSend,
+          attachments: pendingSend.attachments.slice(0, 1),
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 1 file…",
+    );
+  });
+
+  it("does not show the history spinner while the placeholder is up", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+      />,
+    );
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(
+      container.querySelector(".animate-spin.text-neutral-600"),
+    ).toBeNull();
+  });
+
+  it("keeps the placeholder out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByText("tell me about this")).toBeNull();
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+});

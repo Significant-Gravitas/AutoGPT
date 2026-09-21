@@ -57,6 +57,31 @@ export interface PendingFirstSend {
   metadata?: ExpertKickoffMetadata;
 }
 
+export interface PendingUploadAttachment {
+  name: string;
+  mediaType: string;
+  sizeBytes?: number;
+  /** Local files upload before the send; workspace references are already stored. */
+  isUploading: boolean;
+}
+
+/**
+ * The message the user just sent, shown as a placeholder bubble while its
+ * local attachments upload. The real user message only enters `messages`
+ * once `sendMessage` runs after the uploads, which can take seconds for
+ * large files — without this the transcript stays blank for that window.
+ *
+ * `sessionId` is null between the first send of a new chat and session
+ * creation; the slot lives here (not in React state) for the same remount
+ * reason as `PendingFirstSend`. Never persisted: a reload mid-upload loses
+ * the `File` objects, so there is nothing left to wait for.
+ */
+export interface PendingUploadSend {
+  sessionId: string | null;
+  text: string;
+  attachments: PendingUploadAttachment[];
+}
+
 interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
   pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
@@ -70,6 +95,7 @@ interface CopilotStreamStore {
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
+  pendingUploadSend: PendingUploadSend | null;
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
@@ -80,6 +106,7 @@ interface CopilotStreamStore {
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
   setPendingFileParts: (parts: FileUIPart[]) => void;
+  setPendingUploadSend: (send: PendingUploadSend | null) => void;
   /** Read-and-clear; used by the post-session-creation flush effect. */
   takePendingFirstSend: (sessionId: string) => {
     send: PendingFirstSend | null;
@@ -98,6 +125,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       pendingFirstSend: null,
       pendingFirstSendSessionId: null,
       pendingFileParts: [],
+      pendingUploadSend: null,
 
       getCoord(sessionId) {
         return { ...defaultCoord, ...get().sessions[sessionId] };
@@ -148,6 +176,9 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       setPendingFileParts(parts) {
         set({ pendingFileParts: parts });
       },
+      setPendingUploadSend(send) {
+        set({ pendingUploadSend: send });
+      },
       takePendingFirstSend(sessionId) {
         const {
           pendingFirstSend,
@@ -172,6 +203,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           pendingFirstSend: null,
           pendingFirstSendSessionId: null,
           pendingFileParts: [],
+          pendingUploadSend: null,
         });
       },
     }),
