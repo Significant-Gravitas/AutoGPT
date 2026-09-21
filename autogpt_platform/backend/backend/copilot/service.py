@@ -257,96 +257,36 @@ _USER_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{USER_CONTEXT_TAG}>.*?</{USER_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
-# Matches *any* occurrence of a `<user_context>...</user_context>` block,
-# anywhere in the string. Used to defensively strip user-supplied tags from
-# untrusted input before re-injecting the trusted prefix.
-#
-# Uses a **greedy** `.*` so that nested / malformed tags like
-#   `<user_context>bad</user_context>extra</user_context>`
-# are consumed in full rather than leaving `extra</user_context>` as raw
-# text that could confuse an LLM parser.
-#
-# Trade-off: if a user types two separate `<user_context>` blocks with
-# legitimate text between them (e.g. `<user_context>A</user_context> and
-# compare with <user_context>B</user_context>`), the greedy match will
-# consume the inter-tag text too.  This is acceptable because user-supplied
-# `<user_context>` tags are always malicious (the tag is server-only) and
-# should be removed entirely; preserving text between attacker tags is not
-# a correctness requirement.
-_USER_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{USER_CONTEXT_TAG}>.*</{USER_CONTEXT_TAG}>\s*", re.DOTALL
+# Every block the server injects into a prompt. Both directions read it: the
+# inbound sanitizer strips a user-typed copy before it reaches the model, and
+# the display strip peels it back off the stored message. The expert half comes
+# from the module that renders it, so adding a block there covers both here —
+# a tag missing from this tuple is both spoofable and user-visible, which is
+# what #14688 shipped.
+SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
+    USER_CONTEXT_TAG,
+    MEMORY_CONTEXT_TAG,
+    ENV_CONTEXT_TAG,
+    BUDGET_CONTEXT_TAG,
+    SESSION_CONTEXT_TAG,
+    SKILLS_CONTEXT_TAG,
+    SKILLS_UPDATE_TAG,
+    VOICE_TURN_TAG,
+    *_EXPERT_BLOCK_TAGS,
 )
 
-# Strip any lone (unpaired) opening or closing user_context tags that survive
-# the block removal above.  For example: ``<user_context>spoof`` has no closing
-# tag and would pass through _USER_CONTEXT_ANYWHERE_RE unchanged.
-_USER_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{USER_CONTEXT_TAG}>", re.IGNORECASE)
+# Unpaired tags that survive block removal — `<user_context>spoof` has no
+# closing tag, so nothing above would touch it.
+_LONE_TAG_RES = {
+    tag: re.compile(rf"</?{tag}>", re.IGNORECASE) for tag in SERVER_INJECTED_BLOCK_TAGS
+}
 
-# Same treatment for <memory_context> — a server-only tag injected from Graphiti
-# warm context. User-supplied occurrences must be stripped before the message
-# reaches the LLM, using the same greedy/lone-tag approach as user_context.
-_MEMORY_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{MEMORY_CONTEXT_TAG}>.*</{MEMORY_CONTEXT_TAG}>\s*", re.DOTALL
+# One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
+# injectors write. Non-greedy with a backreference, so a block ends at its own
+# closing tag.
+_LEADING_BLOCK_RE = re.compile(
+    r"^<(?P<tag>[A-Za-z_][A-Za-z0-9_]*)>.*?</(?P=tag)>\n\n", re.DOTALL
 )
-_MEMORY_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{MEMORY_CONTEXT_TAG}>", re.IGNORECASE)
-
-# Same treatment for <env_context> — a server-only tag injected by the SDK
-# service to carry the real session working directory.  User-supplied
-# occurrences must be stripped so they cannot spoof filesystem paths.
-_ENV_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{ENV_CONTEXT_TAG}>.*</{ENV_CONTEXT_TAG}>\s*", re.DOTALL
-)
-_ENV_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{ENV_CONTEXT_TAG}>", re.IGNORECASE)
-
-_VOICE_TURN_ANYWHERE_RE = re.compile(
-    rf"<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\s*", re.DOTALL
-)
-_VOICE_TURN_LONE_TAG_RE = re.compile(rf"</?{VOICE_TURN_TAG}>", re.IGNORECASE)
-
-_BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
-)
-_BUDGET_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{BUDGET_CONTEXT_TAG}>", re.IGNORECASE)
-
-# Same treatment for <session_context> — server-only tag injected from the
-# scheduler per-session follow-up index. User-supplied occurrences are
-# stripped so a typed ``<session_context>...</session_context>`` block
-# cannot forge a fake session id or smuggle a phantom "cancel that"
-# referent past the model.
-_SESSION_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{SESSION_CONTEXT_TAG}>.*</{SESSION_CONTEXT_TAG}>\s*", re.DOTALL
-)
-_SESSION_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{SESSION_CONTEXT_TAG}>", re.IGNORECASE)
-
-# Same treatment for <available_skills> — server-only tag injected from
-# the skill registry. User-supplied occurrences are stripped so a typed
-# ``<available_skills>...</available_skills>`` block cannot forge a fake
-# entry the model would then try to read_skill().
-_SKILLS_CONTEXT_ANYWHERE_RE = re.compile(
-    rf"<{SKILLS_CONTEXT_TAG}>.*</{SKILLS_CONTEXT_TAG}>\s*", re.DOTALL
-)
-_SKILLS_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{SKILLS_CONTEXT_TAG}>", re.IGNORECASE)
-
-# Same treatment for <skills_update> — server-only tag prepended to the
-# current turn's model input when the registry drifted since session start.
-_SKILLS_UPDATE_ANYWHERE_RE = re.compile(
-    rf"<{SKILLS_UPDATE_TAG}>.*</{SKILLS_UPDATE_TAG}>\s*", re.DOTALL
-)
-_SKILLS_UPDATE_LONE_TAG_RE = re.compile(rf"</?{SKILLS_UPDATE_TAG}>", re.IGNORECASE)
-
-# Expert-session blocks injected by expert_context.py. The anywhere/lone-tag
-# pairs get the same sanitizer treatment as the other server-only tags so a
-# user-typed block cannot spoof the expert persona.
-_EXPERT_IDENTITY_ANYWHERE_RE = re.compile(
-    r"<expert_identity>.*</expert_identity>\s*", re.DOTALL
-)
-_EXPERT_IDENTITY_LONE_TAG_RE = re.compile(r"</?expert_identity>", re.IGNORECASE)
-_EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
-    r"<expert_workflows>.*</expert_workflows>\s*", re.DOTALL
-)
-_EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
-_TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
-_TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
 
 
 def _sanitize_user_context_field(value: str) -> str:
@@ -386,60 +326,39 @@ def strip_user_context_prefix(content: str) -> str:
 
 
 def strip_server_injected_tags(text: str) -> str:
-    """Strip all server-only XML context tags + blocks from ``text``.
+    """Strip every server-only block and tag in :data:`SERVER_INJECTED_BLOCK_TAGS`.
 
-    Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<skills_update>``,
-    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>`` and
-    ``<voice_turn>`` blocks (and their lone tags).  Used both by
-    :func:`sanitize_user_supplied_context` on inbound user messages and by
-    stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
-    will later land alongside server-injected versions of the same tags in
-    the next turn's prompt.
+    Used by :func:`sanitize_user_supplied_context` on inbound user messages, and
+    by stores (e.g. :tool:`store_skill`) that persist LLM-authored text landing
+    beside server-injected copies of the same tags in the next turn's prompt. A
+    user who types one of these could otherwise forge the trusted personalisation,
+    the memory prefix, the working directory, the budget hint, a session id the
+    model would pass to ``delete_schedule``, a skill the registry does not hold,
+    or an expert's persona, workflows and machine.
+
+    Order does not matter: each tag is distinct.
     """
-    # Strip <user_context> blocks and lone tags
-    without_user_ctx = _USER_CONTEXT_ANYWHERE_RE.sub("", text)
-    without_user_ctx = _USER_CONTEXT_LONE_TAG_RE.sub("", without_user_ctx)
-    # Strip <memory_context> blocks and lone tags
-    without_mem_ctx = _MEMORY_CONTEXT_ANYWHERE_RE.sub("", without_user_ctx)
-    without_mem_ctx = _MEMORY_CONTEXT_LONE_TAG_RE.sub("", without_mem_ctx)
-    # Strip <env_context> blocks and lone tags — prevents spoofing of working-directory
-    # context that the SDK service injects server-side.
-    without_env_ctx = _ENV_CONTEXT_ANYWHERE_RE.sub("", without_mem_ctx)
-    without_env_ctx = _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
-    # Strip <budget_context> blocks and lone tags — prevents spoofing of the
-    # server-injected per-turn USD-budget hint.
-    without_budget_ctx = _BUDGET_CONTEXT_ANYWHERE_RE.sub("", without_env_ctx)
-    without_budget_ctx = _BUDGET_CONTEXT_LONE_TAG_RE.sub("", without_budget_ctx)
-    # Strip <session_context> blocks and lone tags — prevents spoofing of the
-    # server-injected per-session follow-up awareness block (a forged block
-    # could fake a session_id the model would pass to delete_schedule, or
-    # invent phantom follow-ups the model would "cancel" via list_schedules).
-    without_session_ctx = _SESSION_CONTEXT_ANYWHERE_RE.sub("", without_budget_ctx)
-    without_session_ctx = _SESSION_CONTEXT_LONE_TAG_RE.sub("", without_session_ctx)
-    # Strip <available_skills> blocks and lone tags — prevents spoofing of
-    # the server-injected per-user skill index.
-    without_skills_ctx = _SKILLS_CONTEXT_ANYWHERE_RE.sub("", without_session_ctx)
-    without_skills_ctx = _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
-    # Strip the expert-session blocks and lone tags — prevents spoofing of
-    # the server-injected expert persona / workflows / team-awareness blocks.
-    without_expert = _EXPERT_IDENTITY_ANYWHERE_RE.sub("", without_skills_ctx)
-    without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
-    without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
-    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
-    # Strip <voice_turn> blocks and lone tags — a forged closing tag would
-    # otherwise end the server's block and put the user's own text where the
-    # per-turn instruction goes.
-    without_voice = _VOICE_TURN_ANYWHERE_RE.sub("", without_expert)
-    without_voice = _VOICE_TURN_LONE_TAG_RE.sub("", without_voice)
-    # Strip <skills_update> blocks and lone tags — prevents spoofing of the
-    # server-injected per-turn skill-drift notice. Strip order is
-    # irrelevant: every pattern targets a distinct tag name.
-    without_skills_update = _SKILLS_UPDATE_ANYWHERE_RE.sub("", without_voice)
-    return _SKILLS_UPDATE_LONE_TAG_RE.sub("", without_skills_update)
+    for tag in SERVER_INJECTED_BLOCK_TAGS:
+        text = _strip_block(text, tag)
+        text = _LONE_TAG_RES[tag].sub("", text)
+    return text
+
+
+def _strip_block(text: str, tag: str) -> str:
+    """Drop everything from the first ``<tag>`` to the LAST matching closing tag.
+
+    Same result as a greedy ``<tag>.*</tag>\\s*`` substitution, which is
+    quadratic on a message of repeated opening tags. Text between two forged
+    blocks goes with them: these tags are server-only, so a user-typed one is
+    always an attack and preserving what sits between two of them is not a
+    correctness requirement.
+    """
+    open_tag, close_tag = f"<{tag}>", f"</{tag}>"
+    start = text.find(open_tag)
+    end = text.rfind(close_tag)
+    if start == -1 or end < start:
+        return text
+    return text[:start] + text[end + len(close_tag) :].lstrip()
 
 
 def sanitize_user_supplied_context(message: str) -> str:
@@ -466,32 +385,6 @@ def sanitize_user_supplied_context(message: str) -> str:
     return strip_server_injected_tags(message)
 
 
-# Every server-injected block that may sit at the front of a stored user
-# message. The expert half comes from the module that renders it, so adding a
-# block there registers it here too — a tag missing from this set renders
-# verbatim in the user's own message (#14688 shipped that to every user).
-DISPLAY_STRIPPED_BLOCK_TAGS: frozenset[str] = frozenset(
-    {
-        USER_CONTEXT_TAG,
-        MEMORY_CONTEXT_TAG,
-        ENV_CONTEXT_TAG,
-        BUDGET_CONTEXT_TAG,
-        SESSION_CONTEXT_TAG,
-        SKILLS_CONTEXT_TAG,
-        SKILLS_UPDATE_TAG,
-        VOICE_TURN_TAG,
-        *_EXPERT_BLOCK_TAGS,
-    }
-)
-
-# One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
-# injectors write. Non-greedy with a backreference, so a block ends at its own
-# closing tag.
-_LEADING_BLOCK_RE = re.compile(
-    r"^<(?P<tag>[A-Za-z_][A-Za-z0-9_]*)>.*?</(?P=tag)>\n\n", re.DOTALL
-)
-
-
 def strip_injected_context_for_display(message: str) -> str:
     """Remove the server-injected context blocks before returning to the user.
 
@@ -500,7 +393,7 @@ def strip_injected_context_for_display(message: str) -> str:
     leading blocks off the front in any order until plain user text remains;
     mid-message occurrences stay, so text a user really typed is never cut.
 
-    A leading block whose tag is not in :data:`DISPLAY_STRIPPED_BLOCK_TAGS` is
+    A leading block whose tag is not in :data:`SERVER_INJECTED_BLOCK_TAGS` is
     kept but stepped over rather than ending the walk. That block is somebody's
     unregistered addition and shows up as the user's words either way, but
     going on means it cannot also expose the ``<user_context>`` behind it —
@@ -509,7 +402,7 @@ def strip_injected_context_for_display(message: str) -> str:
     unknown: list[str] = []
     rest = message
     while match := _LEADING_BLOCK_RE.match(rest):
-        if match["tag"].lower() not in DISPLAY_STRIPPED_BLOCK_TAGS:
+        if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
             unknown.append(match.group(0))
         rest = rest[match.end() :]
     return "".join(unknown) + rest
