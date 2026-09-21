@@ -959,6 +959,93 @@ class TestStripInjectedContextForDisplay:
         message = "<team_context>\nMaria — Marketing\n</team_context>\n\nhello"
         assert strip_injected_context_for_display(message) == "hello"
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "expert_id, expected_blocks",
+        [
+            (None, ["team_context", "standing_work", "routines"]),
+            (
+                "exp-1",
+                ["expert_workflows", "routines", "expert_computer", "team_context"],
+            ),
+        ],
+    )
+    async def test_strips_every_block_the_real_prefix_carries(
+        self, expert_id, expected_blocks
+    ):
+        """Drives ``build_expert_context`` rather than a hand-written sample.
+
+        The two tests above pin one tag each, which is why #14688's
+        ``<standing_work>`` shipped unregistered: the walk stopped there and
+        rendered the ``<user_context>`` behind it as the user's own words.
+        """
+        from backend.copilot.expert_context import build_expert_context
+        from backend.copilot.service import strip_injected_context_for_display
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Frankie")]
+        )
+        mock_db.list_routines = AsyncMock(
+            return_value=[
+                ExpertRoutine(
+                    id="routine-1",
+                    expert_id=None,
+                    title="Weekly calendar read",
+                    prompt="Read the week ahead.",
+                    crons=["0 8 * * 1"],
+                    source="OWNER",
+                    enabled=True,
+                )
+            ]
+        )
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            prefix = await build_expert_context("user-1", expert_id)
+
+        # Without this the assertion below passes on an empty prefix.
+        for tag in expected_blocks:
+            assert f"<{tag}>" in prefix
+
+        message = (
+            prefix
+            + "<session_context>\nsession_id: abc\n</session_context>\n\n"
+            + "<user_context>\nBusiness: Acme\nPlan: ENTERPRISE\n</user_context>\n\n"
+            + "what can you do?"
+        )
+        assert strip_injected_context_for_display(message) == "what can you do?"
+
+    def test_an_unregistered_block_cannot_leak_the_context_behind_it(self):
+        """The next block someone adds without registering its tag.
+
+        It renders — nothing can hide a block the strip has never heard of —
+        but the walk goes on, so the user's own business profile does not.
+        """
+        from backend.copilot.service import strip_injected_context_for_display
+
+        message = (
+            "<block_from_a_later_pr>\nnot registered yet\n</block_from_a_later_pr>\n\n"
+            "<user_context>\nBusiness: Acme\nPlan: ENTERPRISE\n</user_context>\n\n"
+            "what can you do?"
+        )
+        result = strip_injected_context_for_display(message)
+
+        assert "Plan: ENTERPRISE" not in result
+        assert "<user_context>" not in result
+        assert result.endswith("what can you do?")
+
+    def test_a_leading_xml_block_the_user_typed_survives(self):
+        """The cost of walking past an unknown block: it must not eat user text."""
+        from backend.copilot.service import strip_injected_context_for_display
+
+        message = "<config>\n<port>8080</port>\n</config>\n\nwhy does this fail?"
+        assert strip_injected_context_for_display(message) == message
+
 
 class TestExpertTagSpoofingStripped:
     def test_user_typed_expert_tags_are_sanitized(self):

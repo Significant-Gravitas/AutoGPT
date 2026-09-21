@@ -33,6 +33,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
+from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
 from .model import (
@@ -289,12 +290,6 @@ _MEMORY_CONTEXT_ANYWHERE_RE = re.compile(
 )
 _MEMORY_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{MEMORY_CONTEXT_TAG}>", re.IGNORECASE)
 
-# Anchored prefix variant — strips a <memory_context> block only when it sits
-# at the very start of the string (same rationale as _USER_CONTEXT_PREFIX_RE).
-_MEMORY_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{MEMORY_CONTEXT_TAG}>.*?</{MEMORY_CONTEXT_TAG}>\n\n", re.DOTALL
-)
-
 # Same treatment for <env_context> — a server-only tag injected by the SDK
 # service to carry the real session working directory.  User-supplied
 # occurrences must be stripped so they cannot spoof filesystem paths.
@@ -302,17 +297,6 @@ _ENV_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{ENV_CONTEXT_TAG}>.*</{ENV_CONTEXT_TAG}>\s*", re.DOTALL
 )
 _ENV_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{ENV_CONTEXT_TAG}>", re.IGNORECASE)
-
-# Anchored prefix variant for <env_context>.
-_ENV_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
-)
-
-# Prepended per-turn on voice turns; the user typed none of it, so it must
-# not appear in their own message when the history is read back.
-_VOICE_TURN_PREFIX_RE = re.compile(
-    rf"^<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\n\n", re.DOTALL
-)
 
 _VOICE_TURN_ANYWHERE_RE = re.compile(
     rf"<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\s*", re.DOTALL
@@ -323,9 +307,6 @@ _BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
 )
 _BUDGET_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{BUDGET_CONTEXT_TAG}>", re.IGNORECASE)
-_BUDGET_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{BUDGET_CONTEXT_TAG}>.*?</{BUDGET_CONTEXT_TAG}>\n\n", re.DOTALL
-)
 
 # Same treatment for <session_context> — server-only tag injected from the
 # scheduler per-session follow-up index. User-supplied occurrences are
@@ -336,9 +317,6 @@ _SESSION_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{SESSION_CONTEXT_TAG}>.*</{SESSION_CONTEXT_TAG}>\s*", re.DOTALL
 )
 _SESSION_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{SESSION_CONTEXT_TAG}>", re.IGNORECASE)
-_SESSION_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{SESSION_CONTEXT_TAG}>.*?</{SESSION_CONTEXT_TAG}>\n\n", re.DOTALL
-)
 
 # Same treatment for <available_skills> — server-only tag injected from
 # the skill registry. User-supplied occurrences are stripped so a typed
@@ -348,9 +326,6 @@ _SKILLS_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{SKILLS_CONTEXT_TAG}>.*</{SKILLS_CONTEXT_TAG}>\s*", re.DOTALL
 )
 _SKILLS_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{SKILLS_CONTEXT_TAG}>", re.IGNORECASE)
-_SKILLS_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{SKILLS_CONTEXT_TAG}>.*?</{SKILLS_CONTEXT_TAG}>\n\n", re.DOTALL
-)
 
 # Same treatment for <skills_update> — server-only tag prepended to the
 # current turn's model input when the registry drifted since session start.
@@ -358,34 +333,20 @@ _SKILLS_UPDATE_ANYWHERE_RE = re.compile(
     rf"<{SKILLS_UPDATE_TAG}>.*</{SKILLS_UPDATE_TAG}>\s*", re.DOTALL
 )
 _SKILLS_UPDATE_LONE_TAG_RE = re.compile(rf"</?{SKILLS_UPDATE_TAG}>", re.IGNORECASE)
-_SKILLS_UPDATE_PREFIX_RE = re.compile(
-    rf"^<{SKILLS_UPDATE_TAG}>.*?</{SKILLS_UPDATE_TAG}>\n\n", re.DOTALL
-)
 
-# Expert-session blocks injected by expert_context.py. <expert_workflows> /
-# <team_context> are prepended in front of every other block, so the display
-# strip loop must know them or it stops before reaching the standard tags.
-# The anywhere/lone-tag pairs get the same sanitizer treatment as the other
-# server-only tags so a user-typed block cannot spoof the expert persona.
+# Expert-session blocks injected by expert_context.py. The anywhere/lone-tag
+# pairs get the same sanitizer treatment as the other server-only tags so a
+# user-typed block cannot spoof the expert persona.
 _EXPERT_IDENTITY_ANYWHERE_RE = re.compile(
     r"<expert_identity>.*</expert_identity>\s*", re.DOTALL
 )
 _EXPERT_IDENTITY_LONE_TAG_RE = re.compile(r"</?expert_identity>", re.IGNORECASE)
-_EXPERT_IDENTITY_PREFIX_RE = re.compile(
-    r"^<expert_identity>.*?</expert_identity>\n\n", re.DOTALL
-)
 _EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
     r"<expert_workflows>.*</expert_workflows>\s*", re.DOTALL
 )
 _EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
-_EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
-    r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
-)
 _TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
 _TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
-_TEAM_CONTEXT_PREFIX_RE = re.compile(
-    r"^<team_context>.*?</team_context>\n\n", re.DOTALL
-)
 
 
 def _sanitize_user_context_field(value: str) -> str:
@@ -505,41 +466,53 @@ def sanitize_user_supplied_context(message: str) -> str:
     return strip_server_injected_tags(message)
 
 
+# Every server-injected block that may sit at the front of a stored user
+# message. The expert half comes from the module that renders it, so adding a
+# block there registers it here too — a tag missing from this set renders
+# verbatim in the user's own message (#14688 shipped that to every user).
+DISPLAY_STRIPPED_BLOCK_TAGS: frozenset[str] = frozenset(
+    {
+        USER_CONTEXT_TAG,
+        MEMORY_CONTEXT_TAG,
+        ENV_CONTEXT_TAG,
+        BUDGET_CONTEXT_TAG,
+        SESSION_CONTEXT_TAG,
+        SKILLS_CONTEXT_TAG,
+        SKILLS_UPDATE_TAG,
+        VOICE_TURN_TAG,
+        *_EXPERT_BLOCK_TAGS,
+    }
+)
+
+# One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
+# injectors write. Non-greedy with a backreference, so a block ends at its own
+# closing tag.
+_LEADING_BLOCK_RE = re.compile(
+    r"^<(?P<tag>[A-Za-z_][A-Za-z0-9_]*)>.*?</(?P=tag)>\n\n", re.DOTALL
+)
+
+
 def strip_injected_context_for_display(message: str) -> str:
-    """Remove all server-injected XML context blocks before returning to the user.
+    """Remove the server-injected context blocks before returning to the user.
 
-    Used by the chat-history GET endpoint to hide server-side prefixes that
-    were stored in the DB alongside the user's message.  Strips
-    ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, ``<voice_turn>``,
-    ``<available_skills>``, and ``<skills_update>``
-    blocks from the **start** of the message, iterating until no more leading
-    injected blocks remain.
+    Used by the chat-history GET endpoint to hide the prefix
+    ``inject_user_context`` persisted alongside the user's own words. Peels
+    leading blocks off the front in any order until plain user text remains;
+    mid-message occurrences stay, so text a user really typed is never cut.
 
-    All tag types are server-injected and always appear as a prefix (never
-    mid-message in stored data), so an anchored loop is both correct and safe.
-    The loop handles any permutation of the tags at the front, matching the
-    arbitrary order that different code paths may produce.
+    A leading block whose tag is not in :data:`DISPLAY_STRIPPED_BLOCK_TAGS` is
+    kept but stepped over rather than ending the walk. That block is somebody's
+    unregistered addition and shows up as the user's words either way, but
+    going on means it cannot also expose the ``<user_context>`` behind it —
+    the business profile and plan tier — which is what #14688 did.
     """
-    # Repeatedly strip any leading injected block until the message starts with
-    # plain user text. The prefix anchors keep mid-message occurrences intact,
-    # which preserves any user-typed text that happens to contain these strings.
-    prev: str | None = None
-    result = message
-    while result != prev:
-        prev = result
-        result = _USER_CONTEXT_PREFIX_RE.sub("", result)
-        result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
-        result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
-        result = _VOICE_TURN_PREFIX_RE.sub("", result)
-        result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
-        result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
-        result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)
-        result = _SKILLS_UPDATE_PREFIX_RE.sub("", result)
-        result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
-        result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
-        result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
-    return result
+    unknown: list[str] = []
+    rest = message
+    while match := _LEADING_BLOCK_RE.match(rest):
+        if match["tag"].lower() not in DISPLAY_STRIPPED_BLOCK_TAGS:
+            unknown.append(match.group(0))
+        rest = rest[match.end() :]
+    return "".join(unknown) + rest
 
 
 # Public alias used by the SDK and baseline services to strip user-supplied
