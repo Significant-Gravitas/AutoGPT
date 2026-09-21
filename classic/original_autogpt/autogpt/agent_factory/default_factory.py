@@ -18,6 +18,8 @@ from forge.config.ai_profile import AIProfile
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig, PromptStrategyName
 
+    from forge.permissions import CommandPermissionManager
+
 
 class DefaultAgentFactory(AgentFactory):
     """Default implementation of AgentFactory.
@@ -29,15 +31,21 @@ class DefaultAgentFactory(AgentFactory):
     and ExecutionContext.
     """
 
-    def __init__(self, app_config: "AppConfig"):
+    def __init__(
+        self,
+        app_config: "AppConfig",
+        permission_manager: Optional["CommandPermissionManager"] = None,
+    ):
         """Initialize the factory.
 
         Args:
             app_config: The application configuration to use for
                 creating agents. This provides LLM settings, disabled
                 commands, etc.
+            permission_manager: The permission manager to use for child agents.
         """
         self.app_config = app_config
+        self.permission_manager = permission_manager
 
     def create_agent(
         self,
@@ -111,6 +119,7 @@ class DefaultAgentFactory(AgentFactory):
             llm_provider=context.llm_provider,
             file_storage=context.file_storage,
             app_config=config,
+            permission_manager=self.permission_manager,
             execution_context=context,
         )
 
