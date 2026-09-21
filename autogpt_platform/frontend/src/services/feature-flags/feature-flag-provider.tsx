@@ -8,9 +8,8 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
+import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
 import { buildLDContext } from "./helpers";
-
-const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useAuth();
@@ -34,7 +33,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     <LDProvider
       clientSideID={clientId ?? ""}
       context={context}
-      timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
+      timeout={LD_INIT_TIMEOUT_SECONDS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],

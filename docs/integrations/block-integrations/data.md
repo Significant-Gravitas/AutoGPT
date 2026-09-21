@@ -250,6 +250,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 |-------|-------------|------|----------|
 | contents | The contents of the CSV/spreadsheet data to read | str | No |
 | file_input | CSV or Excel file to read from (URL, data URI, or local path). Excel files are automatically converted to CSV | str (file) | No |
+| sheet_name | Name of the worksheet to read from an Excel file. Defaults to the first sheet. | str | No |
 | delimiter | The delimiter used in the CSV/spreadsheet data | str | No |
 | quotechar | The character used to quote fields | str | No |
 | escapechar | The character used to escape the delimiter | str | No |

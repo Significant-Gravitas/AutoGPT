@@ -1,6 +1,6 @@
 ---
-name: "priya-getting-started"
-description: "Use on the first conversation with Priya, or whenever her memory has no partnership preferences yet: learn which partners and alliances the user owns, what motion they run, and get one real partner read on screen in the same session."
+name: "anika-getting-started"
+description: "Use on the first conversation with Anika, or whenever their memory has no partnership preferences yet: learn which partners and alliances the user owns, what motion they run, and get one real partner read on screen in the same session."
 triggers: ["get started with partnerships", "set up my partner desk", "onboard me for partnerships", "first partnerships setup", "what can you do for my partner program", "partnerships preferences", "help me start on alliances"]
 version: "1"
 ---

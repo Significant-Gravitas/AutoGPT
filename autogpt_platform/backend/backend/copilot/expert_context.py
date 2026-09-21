@@ -34,6 +34,18 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
+# Every top-level block this module renders into a prompt. The display strip in
+# ``service.py`` peels these off the front of a stored user message by name, so
+# a new block missing from this tuple renders verbatim as if the user typed it.
+OWNED_BLOCK_TAGS = (
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
+)
+
 
 class ExpertSessionUnavailableError(RuntimeError):
     """The persisted expert scope cannot safely supply its identity."""
@@ -120,8 +132,8 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"ever acts when asked is half a colleague: when you notice something "
         f"in your own area that would be worth doing every week, or every "
         f"weekday morning, say so and offer to take it on. "
-        f"`list_routines` shows any you already came with, and "
-        f"`schedule_routine` both switches one on and sets up a new one you "
+        f"`tool:list_routines` shows any you already came with, and "
+        f"`tool:schedule_routine` both switches one on and sets up a new one you "
         f"and the user agreed on — you are not limited to the routines you "
         f"arrived with, and an expert that arrived with none can still build "
         f"its own. Offer only work inside your role as "
@@ -131,7 +143,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"the user finds out by noticing that nothing ever arrived — so "
         f"'I'll check every Monday' is a promise you may only make after the "
         f"call returns. Every routine you set up is the user's to see and "
-        f"change: `list_schedules` shows what is really scheduled.\n"
+        f"change: `tool:list_schedules` shows what is really scheduled.\n"
         f"</standing_work>\n"
         f"<first_turn>\n"
         f"Your first turn after being hired arrives as a hidden instruction "
@@ -301,9 +313,10 @@ def render_account_standing_work_block() -> str:
     return (
         "<standing_work>\n"
         "Work that repeats, or that the user will want to find and change "
-        "later, belongs in a routine: `schedule_routine` leaves a named record "
+        "later, belongs in a routine: `tool:schedule_routine` leaves a named "
+        "record "
         "they can switch off, and gives recurring work its own thread so each "
-        "run remembers the last. `list_routines` shows what you hold. Offer "
+        "run remembers the last. `tool:list_routines` shows what you hold. Offer "
         "one when you notice work repeating, rather than waiting to be asked "
         "twice, and never say a routine is running before the call that "
         "schedules it has returned — an unkept cadence is silent.\n"
@@ -348,7 +361,7 @@ async def _routines_block(user_id: str, expert_id: str | None) -> str:
         f"<routines>\n"
         f"Standing work you can do unattended. Each runs as a turn of yours at "
         f"its own time, in the user's timezone. Switch one on with "
-        f"`schedule_routine` — never silently, always after the user has "
+        f"`tool:schedule_routine` — never silently, always after the user has "
         f"chosen it:\n"
         f"{lines}\n"
         f"{proposal_rule}"
@@ -401,7 +414,7 @@ def render_expert_workflows_block(expert: Expert) -> str:
         f"<expert_workflows>\n"
         f"Workflows installed on this expert — the only ones you can run, edit, "
         f"or schedule (`run_agent` with the IDs below). To use another agent, "
-        f"install it first with `install_expert_workflow` from the marketplace "
+        f"install it first with `tool:install_expert_workflow` from the marketplace "
         f"or the owner's library — `find_library_agent` lists what the library "
         f"holds; agents you build here are installed for you:\n"
         f"{workflow_lines}\n"
@@ -586,8 +599,8 @@ def _empty_team_context(templates: list[Expert]) -> str:
         "<team_context>\n"
         "The user has not hired any experts yet. You are their Head of AI: "
         "when recurring work shows up, propose hiring one expert from the "
-        "roster below with `hire_expert(template_id=...)`, or raising a "
-        "custom one with `raise_expert(...)`, and say why. Always offer both "
+        "roster below with `tool:hire_expert` (`template_id`), or raising a "
+        "custom one with `tool:raise_expert`, and say why. Always offer both "
         "paths (hire from the roster, or raise your own). Propose one hire "
         "at a time. Never hire silently — both tools return an approval card "
         "the user must confirm; do not describe the card's contents, the "

@@ -32,7 +32,7 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, "
-            "auto-fixes, and saves. Requires get_agent_building_guide and "
+            "auto-fixes, and saves. Requires tool:get_agent_building_guide and "
             "find_library_agent(for_creation=true) first."
         )
 

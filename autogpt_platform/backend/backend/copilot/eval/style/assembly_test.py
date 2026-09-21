@@ -46,7 +46,13 @@ def test_rubric_has_three_anchors_per_dimension():
 
 def test_the_baseline_covers_the_whole_roster_and_says_what_produced_it():
     baseline = load_baseline()
-    assert {b.expert for b in baseline.experts} == {e.name for e in roster_experts()}
+    assert {b.expert for b in baseline.experts} == {e.name for e in roster_experts()}, (
+        "baseline.json does not cover the current roster. Regenerate it with "
+        "`poetry run expert-style-eval --write-baseline`: a paid run against the "
+        "live models, roughly $1-2 per expert ($26.89 for the twenty-four-expert "
+        "run on 2026-09-18). Adding, renaming or removing a roster expert needs "
+        "one. Procedure: 'Adding or changing a roster expert' in backend/AGENTS.md."
+    )
     for stored in baseline.experts:
         assert stored.scores.n == len(stored.by_prompt) > 0
         assert 0 <= stored.scores.mean <= 100
@@ -67,7 +73,11 @@ def test_every_expert_has_thirty_prompts_across_every_kind(expert: str):
 
 
 def test_fixture_set_covers_the_whole_roster():
-    assert {f.expert for f in load_fixtures()} == {e.name for e in roster_experts()}
+    assert {f.expert for f in load_fixtures()} == {e.name for e in roster_experts()}, (
+        "every roster expert needs its own fixtures/<name>.json. Copy a sibling "
+        "and rewrite its 27 reference prompts; this one costs nothing. Procedure: "
+        "'Adding or changing a roster expert' in backend/AGENTS.md."
+    )
 
 
 @pytest.mark.asyncio
